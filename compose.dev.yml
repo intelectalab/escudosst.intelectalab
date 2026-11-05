@@ -1,0 +1,97 @@
+# Entorno de desarrollo local de EscudoSST (docs/15-infraestructura-y-despliegue.md §7).
+# Uso:   docker compose -f compose.dev.yml up -d
+# Parar: docker compose -f compose.dev.yml down      (NUNCA agregar -v: borra las bases)
+#
+# Los puertos del host no son los predeterminados (5432, 6379, 1025, 8025)
+# para no chocar con otros proyectos que corran en la misma máquina.
+
+name: escudosst
+
+services:
+  pg-main:
+    image: postgres:17
+    container_name: escudo_pg_main
+    environment:
+      POSTGRES_DB: escudo_main
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_dev
+      ESCUDO_API_PASSWORD: escudo_api_dev
+      ESCUDO_OWNER_PASSWORD: escudo_owner_dev
+      TZ: America/Lima
+    ports:
+      - "5440:5432"
+    volumes:
+      - pg_main_data:/var/lib/postgresql/data
+      - ./database:/database:ro
+      - ./docker/postgres/init-main.sh:/docker-entrypoint-initdb.d/01-init-main.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d escudo_main"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  pg-medical:
+    image: postgres:17
+    container_name: escudo_pg_medical
+    environment:
+      POSTGRES_DB: escudo_medical
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_dev
+      ESCUDO_MED_API_PASSWORD: escudo_med_api_dev
+      TZ: America/Lima
+    ports:
+      - "5441:5432"
+    volumes:
+      - pg_medical_data:/var/lib/postgresql/data
+      - ./database:/database:ro
+      - ./docker/postgres/init-medical.sh:/docker-entrypoint-initdb.d/01-init-medical.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d escudo_medical"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: escudo_redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+
+  mailpit:
+    image: axllent/mailpit
+    container_name: escudo_mailpit
+    ports:
+      - "1026:1025"   # SMTP
+      - "8026:8025"   # bandeja web: http://localhost:8026
+
+  # Almacenamiento S3 local (docs piden MinIO): pendiente. La imagen pública
+  # minio/minio ya no se puede descargar de Docker Hub; mientras tanto Laravel
+  # usa el disco local (FILESYSTEM_DISK=local). Elegir reemplazo con el equipo.
+
+  api:
+    build:
+      context: ./docker/php
+    container_name: escudo_api
+    working_dir: /var/www/backend
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+    environment:
+      TZ: America/Lima
+    ports:
+      - "8000:8000"   # API: http://localhost:8000
+    volumes:
+      - ./backend:/var/www/backend
+    depends_on:
+      pg-main:
+        condition: service_healthy
+      pg-medical:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  pg_main_data:
+  pg_medical_data:
+  redis_data:

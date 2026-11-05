@@ -1,0 +1,9 @@
+# Fin de línea LF en el repositorio para que Docker y Linux lean bien los archivos.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
