@@ -6,6 +6,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { CodeInput } from "@/components/mfa/CodeInput";
 import { QrCode } from "@/components/mfa/QrCode";
+import { AccountEditor } from "@/components/AccountEditor";
 import { RecoveryCodes } from "@/components/mfa/RecoveryCodes";
 import { Icon } from "@/components/ui/Icon";
 import { api, ApiError } from "@/lib/api";
@@ -325,21 +326,14 @@ export function AccountPanel({
             </div>
           </section>
 
-          <section className="space-y-2 rounded-2xl border border-line bg-surface p-6 shadow-sm">
+          <section className="space-y-4 rounded-2xl border border-line bg-surface p-6 shadow-sm">
             <h2 className="flex items-center gap-2.5 text-lg font-semibold">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-soft text-brand-strong">
                 <Icon name="user" size={17} />
               </span>
-              Tus datos
+              Tus datos y acceso
             </h2>
-            <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
-              <dt className="text-muted">Nombre</dt>
-              <dd className="font-semibold">{user.full_name}</dd>
-              <dt className="text-muted">Correo</dt>
-              <dd className="break-all font-semibold">{user.email}</dd>
-              <dt className="text-muted">{roleLabel}</dt>
-              <dd className="font-semibold">{roleValue}</dd>
-            </dl>
+            <AccountEditor name={user.full_name} email={user.email} roleLabel={roleLabel} roleValue={roleValue} platform={user.is_platform_staff} />
           </section>
         </div>
       </div>

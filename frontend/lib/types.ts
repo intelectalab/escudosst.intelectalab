@@ -8,6 +8,7 @@ export type User = {
   timezone: string;
   mfa_enabled: boolean;
   is_platform_staff: boolean;
+  platform_role?: "owner" | "support" | null;
   last_login_at: string | null;
 };
 

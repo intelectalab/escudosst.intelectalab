@@ -448,7 +448,7 @@ export default function EditStoryPage() {
           </section>
 
           <section className="form-section space-y-3">
-            <h3 className="font-display text-[15px] font-semibold">Logo del cliente</h3>
+            <h3 className="font-display text-[15px] font-semibold">Logo del cliente <span className="font-normal text-muted">(opcional)</span></h3>
             {isNew ? (
               <p className="rounded-lg bg-bg px-3 py-2 text-xs text-muted">Primero crea el caso para subirlo.</p>
             ) : (
@@ -458,7 +458,7 @@ export default function EditStoryPage() {
                   <img src={assetUrl(s.logo_file_id) ?? ""} alt="Logo actual" className="h-14 w-auto rounded-lg border border-line bg-white object-contain p-2" />
                 )}
                 <FilePick label={s.logo_file_id ? "Cambiar logo" : "Subir logo (PNG, JPG, WEBP)"} accept="image/png,image/jpeg,image/webp,image/avif" busy={busy === "logo"} onPick={(f) => upload("logo", f)} />
-                <p className="text-xs text-muted">Sin fotos de personas. Si no hay logo, se muestra la inicial del cliente.</p>
+                <p className="text-xs text-muted">Opcional. Es el logo de la empresa del cliente: sale en la tarjeta y la ficha del caso en /casos. Si no hay, se muestra su inicial. Sin fotos de personas.</p>
               </>
             )}
           </section>

@@ -43,6 +43,7 @@ const SECTIONS: { title: string; items: Item[] }[] = [
   {
     title: "Operación",
     items: [
+      { href: "/plataforma/equipo", label: "Equipo de la plataforma", icon: "people", ready: true },
       { href: "/plataforma/bitacora", label: "Bitácora de auditoría", icon: "history", ready: true },
       { href: "/plataforma/salud", label: "Salud del sistema", icon: "heart", ready: true },
     ],
@@ -221,7 +222,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
             <div className="flex items-center gap-1.5">
               <NotificationsBell />
               <span className="mx-1 hidden h-8 w-px bg-line sm:block" aria-hidden="true" />
-              <UserMenu name={user.full_name} email={user.email} role="Dueño de la plataforma" accountHref="/plataforma/cuenta" noticesHref="/plataforma/avisos" onLogout={logout} />
+              <UserMenu name={user.full_name} email={user.email} role={user.platform_role === "support" ? "Soporte de la plataforma" : "Dueño de la plataforma"} accountHref="/plataforma/cuenta" noticesHref="/plataforma/avisos" onLogout={logout} />
             </div>
           </header>
           <main className="flex-1 p-3 sm:p-4 xl:p-5">{children}</main>

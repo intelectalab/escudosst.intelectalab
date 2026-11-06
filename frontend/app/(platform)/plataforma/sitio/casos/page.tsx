@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { Chip, PageHeader } from "@/components/ui/Display";
+import { Chip, PageHeader, StatCard } from "@/components/ui/Display";
 import { FormField } from "@/components/ui/Form";
 import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
@@ -17,6 +17,8 @@ import { assetUrl, STORY_SECTORS } from "@/lib/site";
 import { STORY_STATUS, type StoryStatus } from "@/lib/stories";
 
 type Row = { id: string; slug: string; title: string; client_name: string; sector: string; logo_file_id: string | null; project_year: number | null; is_example: boolean; status: StoryStatus; has_consent: boolean };
+type Filter = "all" | "published" | "pending" | "invites" | "examples";
+type Client = { id: string; legal_name: string; trade_name: string | null; ruc: string; contact_name: string | null; contact_email: string | null };
 type Invite = { id: string; client_name: string; contact_name: string; contact_email: string; status: "sent" | "submitted"; expired: boolean; expires_at: string; sent_count: number; last_sent_at: string; story_id: string | null };
 
 const STEPS = [
@@ -31,6 +33,8 @@ export default function CasosPanelPage() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [inviting, setInviting] = useState(false);
+  const [editingText, setEditingText] = useState(false);
+  const [filter, setFilter] = useState<Filter>("all");
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; tone: "ok" | "bad" } | null>(null);
 
@@ -58,14 +62,11 @@ export default function CasosPanelPage() {
     }
   }
 
-  const list = rows ?? [];
+  const all = rows ?? [];
   const pending = invites.filter((i) => i.status === "sent");
-  const stats: [string, number, string][] = [
-    ["Publicados", list.filter((r) => r.status === "published").length, "globe"],
-    ["Por aprobar", list.filter((r) => r.status === "draft" && (r.has_consent || r.is_example)).length, "check"],
-    ["Invitaciones abiertas", pending.filter((i) => !i.expired).length, "mail"],
-    ["Ejemplos", list.filter((r) => r.is_example).length, "star"],
-  ];
+  const isPending = (r: Row) => r.status === "draft" && (r.has_consent || r.is_example);
+  const list = all.filter((r) => (filter === "published" ? r.status === "published" : filter === "pending" ? isPending(r) : filter === "examples" ? r.is_example : true));
+  const toggle = (f: Filter) => setFilter((x) => (x === f ? "all" : f));
 
   return (
     <div className="w-full space-y-5">
@@ -76,6 +77,9 @@ export default function CasosPanelPage() {
         description="Historias de clientes que se muestran en /casos. El cliente las cuenta y autoriza en línea; tú las revisas y publicas."
         aside={
           <div className="flex flex-wrap gap-2">
+            <Button icon="file" onClick={() => setEditingText(true)}>
+              Texto de autorización
+            </Button>
             <Link href="/plataforma/sitio/casos/nuevo" className="inline-flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-semibold shadow-sm hover:border-brand hover:text-brand-strong">
               <Icon name="pen" size={15} /> Cargar a mano
             </Link>
@@ -86,30 +90,23 @@ export default function CasosPanelPage() {
         }
       />
 
-      <ul className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {stats.map(([l, n, icon]) => (
-          <li key={l} className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-brand to-side text-white shadow-sm">
-              <Icon name={icon} size={18} />
-            </span>
-            <span>
-              <b className="block font-display text-2xl leading-none">{rows ? n : "–"}</b>
-              <span className="text-xs text-muted">{l}</span>
-            </span>
-          </li>
-        ))}
-      </ul>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard label="Publicados" value={rows ? all.filter((r) => r.status === "published").length : "–"} icon="globe" tone="ok" hint="Se ven en /casos" active={filter === "published"} onClick={() => toggle("published")} />
+        <StatCard label="Por aprobar" value={rows ? all.filter(isPending).length : "–"} icon="check" tone="amber" hint="Con autorización, esperan tu revisión" active={filter === "pending"} onClick={() => toggle("pending")} />
+        <StatCard label="Invitaciones abiertas" value={pending.filter((i) => !i.expired).length} icon="mail" tone="brand" hint="Esperando que el cliente responda" active={filter === "invites"} onClick={() => toggle("invites")} />
+        <StatCard label="Ejemplos" value={rows ? all.filter((r) => r.is_example).length : "–"} icon="star" tone="na" hint="Casos de muestra, no reales" active={filter === "examples"} onClick={() => toggle("examples")} />
+      </div>
 
-      <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-        <h2 className="px-1 font-display font-semibold">Cómo funciona</h2>
-        <ol className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+        <h2 className="border-b border-line bg-gradient-to-r from-side to-brand px-5 py-2.5 text-sm font-semibold text-white">Cómo funciona</h2>
+        <ol className="grid grid-cols-1 gap-0 sm:grid-cols-2 xl:grid-cols-5">
           {STEPS.map(([icon, t, d], i) => (
-            <li key={t} className="relative flex items-start gap-3 rounded-xl bg-bg/70 p-3">
-              <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-strong">
+            <li key={t} className="relative flex gap-3 border-line p-4 sm:[&:not(:last-child)]:border-r">
+              <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full bg-side text-white ring-4 ring-brand-soft">
                 <Icon name={icon} size={16} />
-                <span className="absolute -right-1.5 -top-1.5 grid h-4 w-4 place-items-center rounded-full bg-brand text-[10px] font-bold text-white">{i + 1}</span>
               </span>
               <span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-brand">Paso {i + 1}</span>
                 <b className="block text-sm leading-snug">{t}</b>
                 <span className="text-xs text-muted">{d}</span>
               </span>
@@ -119,10 +116,19 @@ export default function CasosPanelPage() {
       </section>
 
       <div className="grid grid-cols-1 items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <section className="space-y-3">
-          <h2 className="font-display text-lg font-semibold">Casos</h2>
+        <section className={`space-y-3 ${filter === "invites" ? "hidden" : ""}`}>
+          <h2 className="flex items-center justify-between font-display text-lg font-semibold">
+            Casos
+            {filter !== "all" && filter !== "invites" && (
+              <button type="button" onClick={() => setFilter("all")} className="text-sm font-normal text-brand hover:underline">
+                Ver todos
+              </button>
+            )}
+          </h2>
           {rows === null ? (
             <p className="text-sm text-muted">Cargando…</p>
+          ) : list.length === 0 && all.length > 0 ? (
+            <p className="rounded-2xl border border-dashed border-line bg-surface p-6 text-center text-sm text-muted">Ningún caso en este filtro.</p>
           ) : list.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-line bg-surface p-10 text-center">
               <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-brand-soft text-brand-strong">
@@ -164,12 +170,12 @@ export default function CasosPanelPage() {
           )}
         </section>
 
-        <section className="space-y-3">
+        <section className={`space-y-3 ${filter === "invites" ? "2xl:col-span-2" : ""}`}>
           <h2 className="flex items-center justify-between font-display text-lg font-semibold">
             Invitaciones
             {pending.length > 0 && <span className="text-sm font-normal text-muted">{pending.length} esperando respuesta</span>}
           </h2>
-          <div className="rounded-2xl border border-line bg-surface p-2 shadow-sm">
+          <div className={`rounded-2xl border bg-surface p-2 shadow-sm ${filter === "invites" ? "border-brand ring-2 ring-brand/20" : "border-line"}`}>
             {invites.length === 0 ? (
               <p className="p-4 text-center text-sm text-muted">Aún no invitaste a nadie.</p>
             ) : (
@@ -223,8 +229,96 @@ export default function CasosPanelPage() {
           }}
         />
       )}
+      {editingText && (
+        <AuthorizationTextModal
+          onClose={() => setEditingText(false)}
+          onSaved={() => {
+            setEditingText(false);
+            setToast({ text: "Texto guardado. Se usa desde ahora; lo ya firmado conserva su versión.", tone: "ok" });
+          }}
+        />
+      )}
       {toast && <Toast message={toast.text} tone={toast.tone} onClose={() => setToast(null)} />}
     </div>
+  );
+}
+
+type Template = { template: string; is_default: boolean; version: string; default: string; placeholders: Record<string, string>; required: string[] };
+
+/** Texto de la autorización que firma el cliente. Lo cambia el Dueño; cada cambio es una versión nueva. */
+function AuthorizationTextModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [t, setT] = useState<Template | null>(null);
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api<{ data: Template }>("/internal/site/success-stories/authorization-text").then((r) => {
+      setT(r.data);
+      setText(r.data.template);
+    });
+  }, []);
+
+  async function save(template: string | null) {
+    setSaving(true);
+    setError(null);
+    try {
+      await api("/internal/site/success-stories/authorization-text", { method: "PUT", body: { template } });
+      onSaved();
+    } catch (e) {
+      setError(e instanceof ApiError ? (e.errors?.template?.[0] ?? e.detail ?? e.message) : "No se pudo guardar.");
+      setSaving(false);
+    }
+  }
+
+  const missing = t ? t.required.filter((m) => !text.includes(m)) : [];
+
+  return (
+    <Modal
+      title="Texto de la autorización"
+      icon="file"
+      onClose={onClose}
+      footer={
+        <>
+          {t && !t.is_default && (
+            <Button variant="ghost" onClick={() => save(null)} disabled={saving}>
+              Volver al texto modelo
+            </Button>
+          )}
+          <Button onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" icon="check" loading={saving} disabled={!t || missing.length > 0 || text === t.template} onClick={() => save(text)}>
+            Guardar versión nueva
+          </Button>
+        </>
+      }
+    >
+      {!t ? (
+        <div className="h-64 animate-pulse rounded-xl bg-line/40" />
+      ) : (
+        <div className="space-y-4">
+          <p className="flex flex-wrap items-center gap-2 text-sm">
+            <Chip tone={t.is_default ? "amber" : "ok"}>{t.is_default ? "Texto modelo" : "Texto propio"}</Chip>
+            <span className="text-muted">Versión vigente: {t.version}</span>
+          </p>
+          <p className="rounded-lg bg-amber-soft/70 px-3 py-2 text-xs text-amber-ink">
+            Es el texto que el cliente lee y firma. El modelo debe revisarlo un abogado antes de usarlo con clientes reales. Lo ya firmado no cambia: cada constancia guarda su texto exacto.
+          </p>
+          <FormField label="Texto" error={error ?? (missing.length ? `Faltan marcadores obligatorios: ${missing.join(", ")}` : undefined)}>
+            <textarea className="input min-h-72 font-mono text-[13px] leading-relaxed" value={text} maxLength={6000} onChange={(e) => setText(e.target.value)} />
+          </FormField>
+          <div>
+            <p className="mb-1.5 text-xs font-semibold text-muted">Marcadores (se reemplazan con los datos de quien firma). Tócalos para copiarlos.</p>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(t.placeholders).map(([k, d]) => (
+                <button key={k} type="button" title={d} onClick={() => navigator.clipboard?.writeText(k)} className={`rounded-md border px-2 py-1 font-mono text-xs ${t.required.includes(k) ? "border-brand/40 bg-brand-soft text-brand-strong" : "border-line bg-bg"}`}>
+                  {k}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -233,8 +327,28 @@ function InviteModal({ onClose, onDone }: { onClose: () => void; onDone: (email:
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [alert, setAlert] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [results, setResults] = useState<Client[]>([]);
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<Client | null>(null);
   const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
   const err = (k: string) => errors[k]?.[0];
+
+  // Buscador de empresas registradas: al elegir una, se llena el contacto con su administrador de cuenta.
+  useEffect(() => {
+    if (picked) return;
+    const t = window.setTimeout(() => {
+      api<{ data: Client[] }>(`/internal/site/success-stories/clients?q=${encodeURIComponent(f.client_name)}`)
+        .then((r) => setResults(r.data))
+        .catch(() => setResults([]));
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [f.client_name, picked]);
+
+  function pick(c: Client) {
+    setPicked(c);
+    setOpen(false);
+    setF((x) => ({ ...x, client_name: c.trade_name || c.legal_name, contact_name: c.contact_name ?? x.contact_name, contact_email: c.contact_email ?? x.contact_email }));
+  }
 
   async function send(e: FormEvent) {
     e.preventDefault();
@@ -270,8 +384,44 @@ function InviteModal({ onClose, onDone }: { onClose: () => void; onDone: (email:
       <form id="invite-story" onSubmit={send} className="space-y-4" noValidate>
         <p className="rounded-lg bg-brand-soft/60 px-3 py-2 text-sm text-brand-strong">Le llega un correo con un enlace para contar su historia y autorizar la publicación. No tienes que enviar ni recibir archivos.</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormField label="Empresa del cliente" error={err("client_name")}>
-            <input className="input" maxLength={120} value={f.client_name} onChange={(e) => set("client_name", e.target.value)} />
+          <FormField label="Empresa del cliente" error={err("client_name")} hint={picked ? `Cliente registrado · RUC ${picked.ruc}` : "Busca por nombre o RUC, o escribe una empresa que no esté registrada."}>
+            <span className="relative block">
+              <input
+                className="input pr-9"
+                maxLength={120}
+                value={f.client_name}
+                role="combobox"
+                aria-controls="client-options"
+                aria-expanded={open}
+                aria-autocomplete="list"
+                onFocus={() => setOpen(true)}
+                onBlur={() => window.setTimeout(() => setOpen(false), 150)}
+                onChange={(e) => {
+                  setPicked(null);
+                  setOpen(true);
+                  set("client_name", e.target.value);
+                }}
+              />
+              <Icon name={picked ? "check" : "search"} size={16} className={`absolute right-3 top-1/2 -translate-y-1/2 ${picked ? "text-ok" : "text-muted"}`} />
+              {open && !picked && results.length > 0 && (
+                <ul id="client-options" role="listbox" className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-line bg-surface p-1 shadow-xl">
+                  {results.map((c) => (
+                    <li key={c.id}>
+                      <button type="button" role="option" aria-selected={false} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(c)} className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-bg">
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-soft text-xs font-bold text-brand-strong">{(c.trade_name || c.legal_name).charAt(0)}</span>
+                        <span className="min-w-0">
+                          <b className="block truncate text-sm">{c.trade_name || c.legal_name}</b>
+                          <span className="block truncate text-xs text-muted">
+                            RUC {c.ruc}
+                            {c.contact_name ? ` · ${c.contact_name}` : " · sin administrador"}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </span>
           </FormField>
           <FormField label="Rubro (opcional)" error={err("sector")}>
             <select className="input" value={f.sector} onChange={(e) => set("sector", e.target.value)}>

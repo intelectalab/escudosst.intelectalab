@@ -4,6 +4,7 @@
 // Pasos: correo y contraseña → (primera vez) configurar la app de autenticación → código → códigos de recuperación.
 // Pendiente: «olvidé mi contraseña», código por correo e ingreso por DNI.
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { Brand } from "@/components/Brand";
@@ -177,6 +178,11 @@ export default function LoginPage() {
               <Field label="Contraseña" error={fieldErrors.password?.[0]}>
                 <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="input" required />
               </Field>
+              <p className="-mt-2 text-right text-sm">
+                <Link href="/recuperar" className="font-semibold text-brand hover:underline">
+                  ¿Olvidaste tu contraseña?
+                </Link>
+              </p>
               <Submit loading={loading} label="Ingresar" busy="Ingresando…" />
             </form>
           )}

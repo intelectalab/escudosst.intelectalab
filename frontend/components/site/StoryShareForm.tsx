@@ -5,12 +5,13 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Alert, Check, Done, Field, Honeypot, Submit } from "@/components/site/PublicForms";
+import { SignaturePad } from "@/components/site/SignaturePad";
 import { Icon } from "@/components/ui/Icon";
 import { type PublicModule, STORY_SECTORS } from "@/lib/site";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-type Info = { client_name: string; sector: string | null; contact_name: string; contact_email: string; message: string | null; expires_at: string; authorization_template: string };
+type Info = { client_name: string; sector: string | null; contact_name: string; contact_email: string; message: string | null; expires_at: string; authorization_template: string; owner: string; brand: string };
 
 const onlyDigits = (v: string, n: number) => v.replace(/\D/g, "").slice(0, n);
 
@@ -38,6 +39,7 @@ export function StoryShareForm({ token }: { token: string }) {
   const [picked, setPicked] = useState<string[]>([]);
   const [logo, setLogo] = useState<File | null>(null);
   const [authorize, setAuthorize] = useState(false);
+  const [signature, setSignature] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [alert, setAlert] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -65,13 +67,17 @@ export function StoryShareForm({ token }: { token: string }) {
   // Vista del texto que se firma, con los datos que va escribiendo (el servidor arma el texto final igual).
   const preview = useMemo(() => {
     if (!info) return "";
-    const ruc = f.company_ruc.length === 11 ? ` (RUC ${f.company_ruc})` : "";
-    return info.authorization_template
-      .replace("[tu nombre]", f.signer_name || "[tu nombre]")
-      .replace("con DNI N.°", `con ${f.signer_doc_type} N.°`)
-      .replace("[tu documento]", f.signer_doc_number || "[tu documento]")
-      .replace("[tu cargo]", f.signer_role || "[tu cargo]")
-      .replace(`de ${info.client_name},`, `de ${f.company_name || info.client_name}${ruc},`);
+    const fill: Record<string, string> = {
+      "{firmante}": f.signer_name || "[tu nombre]",
+      "{tipo_documento}": f.signer_doc_type,
+      "{documento}": f.signer_doc_number || "[tu documento]",
+      "{cargo}": f.signer_role || "[tu cargo]",
+      "{empresa}": f.company_name || info.client_name,
+      "{ruc_empresa}": f.company_ruc.length === 11 ? ` (RUC ${f.company_ruc})` : "",
+      "{titular}": info.owner,
+      "{marca}": info.brand,
+    };
+    return info.authorization_template.replace(/\{[a-z_]+\}/g, (m) => fill[m] ?? m);
   }, [info, f]);
 
   async function submit(e: FormEvent) {
@@ -88,6 +94,7 @@ export function StoryShareForm({ token }: { token: string }) {
     picked.forEach((c) => fd.append("modules[]", c));
     if (logo) fd.append("logo", logo);
     fd.append("authorize", authorize ? "1" : "0");
+    if (signature) fd.append("signature", signature);
     try {
       const r = await fetch(`${API}/api/v1/public/success-stories/share/${token}`, { method: "POST", headers: { Accept: "application/json" }, body: fd });
       const j = await r.json().catch(() => ({}));
@@ -252,6 +259,10 @@ export function StoryShareForm({ token }: { token: string }) {
         </div>
         <div className="max-h-72 overflow-y-auto whitespace-pre-line rounded-xl border border-[var(--site-border)] bg-[var(--site-surface)] p-4 text-sm leading-relaxed text-[var(--site-text)]" aria-label="Texto de la autorización">
           {preview}
+        </div>
+        <div>
+          <p className="mb-1.5 text-sm font-semibold text-[var(--site-navy-title)]">Tu firma</p>
+          <SignaturePad onChange={setSignature} error={err("signature")} />
         </div>
         <Check checked={authorize} onChange={setAuthorize} error={err("authorize")}>
           Leí el texto y, con mis datos de arriba, <b>autorizo la publicación</b> del caso en nombre de la empresa.
