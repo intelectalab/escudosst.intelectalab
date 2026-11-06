@@ -90,7 +90,8 @@ class SiteAssetsController extends Controller
 
     public function show(string $id): StreamedResponse
     {
-        $a = DB::connection('platform')->selectOne('select disk, path, mime_type from site_assets where id = ?', [$id]);
+        // Las autorizaciones de casos de éxito son privadas: no salen por aquí.
+        $a = DB::connection('platform')->selectOne("select disk, path, mime_type from site_assets where id = ? and kind <> 'story_consent'", [$id]);
         if (! $a || ! Storage::disk($a->disk)->exists($a->path)) {
             throw ApiProblem::notFound('El archivo no existe.');
         }

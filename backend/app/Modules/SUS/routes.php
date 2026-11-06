@@ -8,11 +8,14 @@ use App\Modules\SUS\Http\Controllers\MetricsController;
 use App\Modules\SUS\Http\Controllers\MySubscriptionController;
 use App\Modules\SUS\Http\Controllers\PlanCatalogController;
 use App\Modules\SUS\Http\Controllers\PlanModulesController;
+use App\Modules\SUS\Http\Controllers\PlatformNotificationsController;
 use App\Modules\SUS\Http\Controllers\SubscriptionsController;
 use Illuminate\Support\Facades\Route;
 
 // Panel interno del dueño de la plataforma (docs/08-api.md §16). Sin X-Company-Id.
 Route::middleware(['auth:sanctum', 'platform'])->prefix('internal')->group(function () {
+    // Avisos de la campana del panel
+    Route::get('notifications', [PlatformNotificationsController::class, 'index']);
     // SCR-SUS-01 · Planes y módulos
     Route::get('plans', [PlanModulesController::class, 'index']);
     Route::patch('plans/{plan}', [PlanCatalogController::class, 'updatePlan'])->where('plan', '[A-Za-z]');

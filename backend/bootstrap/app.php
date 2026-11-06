@@ -32,6 +32,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'platform' => RequirePlatformStaff::class,
         ]);
 
+        // La API no redirige a una pantalla de inicio de sesión (no existe): responde 401 en problem+json aunque el
+        // cliente no envíe «Accept: application/json». Antes eso terminaba en un error 500.
+        $middleware->redirectGuestsTo(fn (Request $request) => $request->is('api/*') ? null : '/login');
+
         // Empresa activa: valida membresía y fija RLS (docs/01-arquitectura.md §4).
         $middleware->group('company', [
             ResolveCompany::class,

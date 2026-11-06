@@ -29,7 +29,7 @@
                             </table>
                         @endif
                         @if ($note)
-                            <p style="margin:0 0 18px;font-size:13px;color:#6b7684;line-height:1.5;">{{ $note }}</p>
+                            <p style="margin:0 0 18px;font-size:13px;color:#6b7684;line-height:1.5;white-space:pre-line;">{{ $note }}</p>
                         @endif
                         @if ($buttonUrl)
                             <p style="margin:0;text-align:center;">

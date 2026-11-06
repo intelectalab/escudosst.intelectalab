@@ -11,7 +11,10 @@ use App\Modules\WEB\Http\Controllers\PublicSiteController;
 use App\Modules\WEB\Http\Controllers\SiteAssetsController;
 use App\Modules\WEB\Http\Controllers\SiteContentController;
 use App\Modules\WEB\Http\Controllers\SiteMenuController;
+use App\Modules\WEB\Http\Controllers\SitePagesController;
 use App\Modules\WEB\Http\Controllers\SiteSettingsController;
+use App\Modules\WEB\Http\Controllers\SuccessStoriesController;
+use App\Modules\WEB\Http\Controllers\SuccessStoryInvitesController;
 use Illuminate\Support\Facades\Route;
 
 // Sitio web público (sin sesión). Límite de uso por IP.
@@ -23,7 +26,11 @@ Route::middleware('throttle:120,1')->prefix('public')->group(function () {
     Route::get('complaints/info', [ComplaintsController::class, 'info']);
     Route::get('site/assets/{id}', [SiteAssetsController::class, 'show'])->whereUuid('id');
     Route::get('faqs', [SiteContentController::class, 'publicFaqs']);
+    Route::get('pages', [SitePagesController::class, 'publicIndex']);
+    Route::get('pages/{slug}', [SitePagesController::class, 'publicShow'])->where('slug', '[a-z0-9/-]+');
     Route::get('testimonials', [SiteContentController::class, 'publicTestimonials']);
+    Route::get('success-stories', [SuccessStoriesController::class, 'publicIndex']);
+    Route::get('success-stories/{slug}', [SuccessStoriesController::class, 'publicShow'])->where('slug', '[a-z0-9-]+');
     Route::post('cookie-consent', [CookieConsentController::class, 'store']);
 });
 
@@ -37,6 +44,17 @@ Route::middleware('throttle:6,10')->prefix('public')->group(function () {
 // Seguimiento de una hoja: límite propio para que no se puedan probar claves al azar.
 Route::middleware('throttle:10,10')->prefix('public')->group(function () {
     Route::post('complaints/status', [ComplaintsController::class, 'status']);
+});
+
+// Casos de éxito por invitación: el cliente abre su enlace personal (token), cuenta su historia y firma;
+// y puede retirar su autorización con el enlace de su correo.
+Route::middleware('throttle:30,10')->prefix('public/success-stories')->group(function () {
+    Route::get('share/{token}', [SuccessStoryInvitesController::class, 'showShare'])->where('token', '[A-Za-z0-9]{48}');
+    Route::get('withdraw/{token}', [SuccessStoryInvitesController::class, 'showWithdraw'])->where('token', '[A-Za-z0-9]{48}');
+});
+Route::middleware('throttle:6,10')->prefix('public/success-stories')->group(function () {
+    Route::post('share/{token}', [SuccessStoryInvitesController::class, 'submitShare'])->where('token', '[A-Za-z0-9]{48}');
+    Route::post('withdraw/{token}', [SuccessStoryInvitesController::class, 'withdraw'])->where('token', '[A-Za-z0-9]{48}');
 });
 
 // Panel del dueño · Sitio web (SCR-WEB-21 y SCR-WEB-24)
@@ -57,6 +75,27 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal/site')->group(
     Route::post('{kind}', [SiteContentController::class, 'store'])->whereIn('kind', ['faqs', 'testimonials', 'products']);
     Route::patch('{kind}/{id}', [SiteContentController::class, 'update'])->whereIn('kind', ['faqs', 'testimonials', 'products'])->whereUuid('id');
     Route::delete('{kind}/{id}', [SiteContentController::class, 'destroy'])->whereIn('kind', ['faqs', 'testimonials', 'products'])->whereUuid('id');
+    Route::get('success-stories/invites', [SuccessStoryInvitesController::class, 'index']);
+    Route::post('success-stories/invites', [SuccessStoryInvitesController::class, 'store']);
+    Route::post('success-stories/invites/{id}/resend', [SuccessStoryInvitesController::class, 'resend'])->whereUuid('id');
+    Route::delete('success-stories/invites/{id}', [SuccessStoryInvitesController::class, 'destroy'])->whereUuid('id');
+    Route::get('success-stories/{id}/consents', [SuccessStoryInvitesController::class, 'consents'])->whereUuid('id');
+    Route::get('success-stories/{id}/consents/{consentId}/file', [SuccessStoryInvitesController::class, 'consentFile'])->whereUuid('id')->whereUuid('consentId');
+    Route::get('success-stories', [SuccessStoriesController::class, 'index']);
+    Route::post('success-stories', [SuccessStoriesController::class, 'store']);
+    Route::get('success-stories/{id}', [SuccessStoriesController::class, 'show'])->whereUuid('id');
+    Route::patch('success-stories/{id}', [SuccessStoriesController::class, 'update'])->whereUuid('id');
+    Route::delete('success-stories/{id}', [SuccessStoriesController::class, 'destroy'])->whereUuid('id');
+    Route::post('success-stories/{id}/actions', [SuccessStoriesController::class, 'act'])->whereUuid('id');
+    Route::post('success-stories/{id}/{kind}', [SuccessStoriesController::class, 'upload'])->whereUuid('id')->whereIn('kind', ['logo', 'consent']);
+    Route::delete('success-stories/{id}/logo', [SuccessStoriesController::class, 'removeLogo'])->whereUuid('id');
+    Route::get('success-stories/{id}/consent', [SuccessStoriesController::class, 'consent'])->whereUuid('id');
+    Route::get('pages', [SitePagesController::class, 'index']);
+    Route::post('pages', [SitePagesController::class, 'store']);
+    Route::get('pages/{id}', [SitePagesController::class, 'show'])->whereUuid('id');
+    Route::patch('pages/{id}', [SitePagesController::class, 'update'])->whereUuid('id');
+    Route::post('pages/{id}/publish', [SitePagesController::class, 'publish'])->whereUuid('id');
+    Route::post('pages/{id}/archive', [SitePagesController::class, 'archive'])->whereUuid('id');
     Route::get('leads', [LeadsController::class, 'index']);
     Route::get('leads/export', [LeadsController::class, 'export']);
     Route::get('leads/{id}', [LeadsController::class, 'show'])->whereUuid('id');
