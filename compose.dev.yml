@@ -17,6 +17,7 @@ services:
       POSTGRES_PASSWORD: postgres_dev
       ESCUDO_API_PASSWORD: escudo_api_dev
       ESCUDO_OWNER_PASSWORD: escudo_owner_dev
+      ESCUDO_PLATFORM_PASSWORD: escudo_platform_dev
       TZ: America/Lima
     ports:
       - "5440:5432"
@@ -24,6 +25,8 @@ services:
       - pg_main_data:/var/lib/postgresql/data
       - ./database:/database:ro
       - ./docker/postgres/init-main.sh:/docker-entrypoint-initdb.d/01-init-main.sh:ro
+      # .inc para que el entrypoint no lo ejecute solo; lo llama init-main.sh al final
+      - ./docker/postgres/dev-seed.sql:/docker-entrypoint-initdb.d/dev-seed.sql.inc:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d escudo_main"]
       interval: 5s
@@ -76,13 +79,20 @@ services:
       context: ./docker/php
     container_name: escudo_api
     working_dir: /var/www/backend
-    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+    # Servidor de PHP con varios procesos (PHP_CLI_SERVER_WORKERS); es lo mismo que «artisan serve» pero en paralelo.
+    command: ["sh", "-c", "cd public && exec php -S 0.0.0.0:8000 ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php"]
     environment:
       TZ: America/Lima
+      # Varios procesos: el panel pide varias cosas a la vez y con uno solo se atendían en fila.
+      PHP_CLI_SERVER_WORKERS: "8"
     ports:
       - "8000:8000"   # API: http://localhost:8000
     volumes:
       - ./backend:/var/www/backend
+      # vendor/ en un volumen de Docker: en Windows leerlo desde la carpeta es muy lento.
+      # Se llena con: docker compose -f compose.dev.yml exec api composer install
+      - api_vendor:/var/www/backend/vendor
+      - ./docker/php/dev.ini:/usr/local/etc/php/conf.d/zz-dev.ini:ro
     depends_on:
       pg-main:
         condition: service_healthy
@@ -91,7 +101,27 @@ services:
       redis:
         condition: service_started
 
+  # Programador de tareas de Laravel: corre los procesos diarios (vencimientos de suscripciones).
+  scheduler:
+    build:
+      context: ./docker/php
+    container_name: escudo_scheduler
+    working_dir: /var/www/backend
+    command: ["php", "artisan", "schedule:work"]
+    environment:
+      TZ: America/Lima
+    volumes:
+      - ./backend:/var/www/backend
+      - api_vendor:/var/www/backend/vendor
+      - ./docker/php/dev.ini:/usr/local/etc/php/conf.d/zz-dev.ini:ro
+    depends_on:
+      pg-main:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
 volumes:
   pg_main_data:
   pg_medical_data:
   redis_data:
+  api_vendor:
