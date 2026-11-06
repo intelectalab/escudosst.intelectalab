@@ -36,6 +36,22 @@ function inviteToken(): string
     return basename((string) $url);
 }
 
+/** Firma de prueba: un PNG con trazos (como el que arma el lienzo del formulario). */
+function signatureDataUrl(): string
+{
+    $img = imagecreatetruecolor(400, 140);
+    imagefill($img, 0, 0, imagecolorallocate($img, 255, 255, 255));
+    $ink = imagecolorallocate($img, 13, 59, 110);
+    imagesetthickness($img, 3);
+    for ($x = 20; $x < 380; $x += 18) {
+        imageline($img, $x, 70 + (int) (30 * sin($x / 20)), $x + 18, 70 + (int) (30 * sin(($x + 18) / 20)), $ink);
+    }
+    ob_start();
+    imagepng($img);
+
+    return 'data:image/png;base64,'.base64_encode((string) ob_get_clean());
+}
+
 function shareBody(array $o = []): array
 {
     return $o + [
@@ -45,7 +61,7 @@ function shareBody(array $o = []): array
         'results' => [['value' => '0', 'label' => 'permisos perdidos'], ['value' => '', 'label' => '']],
         'quote' => 'Ahora todo queda registrado.', 'modules' => ['PTR', 'INS'],
         'signer_name' => 'Rosa Prueba Quispe', 'signer_role' => 'Jefa de SST', 'signer_doc_type' => 'DNI', 'signer_doc_number' => '12345678',
-        'signer_email' => 'rosa@prueba.test', 'authorize' => true,
+        'signer_email' => 'rosa@prueba.test', 'authorize' => true, 'signature' => signatureDataUrl(),
     ];
 }
 
@@ -55,6 +71,7 @@ it('el cliente envía su historia y firma: queda el caso en borrador con la evid
     expect($info['client_name'])->toBe('Minera Prueba SAC')->and($info['authorization_template'])->toContain('AUTORIZACIÓN');
 
     $this->postJson("/api/v1/public/success-stories/share/{$token}", shareBody(['authorize' => false]))->assertStatus(422)->assertJsonValidationErrors('authorize');
+    $this->postJson("/api/v1/public/success-stories/share/{$token}", shareBody(['signature' => 'data:image/png;base64,AAAA']))->assertStatus(422)->assertJsonValidationErrors('signature');
     $this->postJson("/api/v1/public/success-stories/share/{$token}", shareBody())->assertCreated();
     $this->getJson("/api/v1/public/success-stories/share/{$token}")->assertStatus(410);   // el enlace sirve una sola vez
 
@@ -66,6 +83,8 @@ it('el cliente envía su historia y firma: queda el caso en borrador con la evid
     expect($c->text_sha256)->toBe(hash('sha256', $c->authorization_text))
         ->and($c->authorization_text)->toContain('Rosa Prueba Quispe')
         ->and($c->signer_doc_number)->not->toContain('12345678');   // cifrado
+    expect($c->signature_file_id)->not->toBeNull();
+    $this->get("/api/v1/public/site/assets/{$c->signature_file_id}")->assertNotFound();   // la firma no es pública
 
     $panel = $this->getJson("/api/v1/internal/site/success-stories/{$story->id}/consents", authHeaders(tokenFor(ADMIN_EMAIL)))->json('data.0');
     expect($panel['signer_doc_masked'])->toBe('•••••678');
@@ -110,4 +129,28 @@ it('un enlace cancelado o vencido no sirve', function () {
     $this->deleteJson("/api/v1/internal/site/success-stories/invites/{$id}", [], authHeaders(tokenFor(ADMIN_EMAIL)))->assertNoContent();
     $this->getJson("/api/v1/public/success-stories/share/{$token}")->assertNotFound();
     $this->getJson('/api/v1/public/success-stories/share/'.str_repeat('a', 48))->assertNotFound();
+});
+
+it('el Dueño cambia el texto de la autorización (con sus marcadores) y sube la versión', function () {
+    $h = authHeaders(tokenFor(ADMIN_EMAIL));
+    $t = $this->getJson('/api/v1/internal/site/success-stories/authorization-text', $h)->assertOk()->json('data');
+    expect($t['is_default'])->toBeTrue()->and($t['version'])->toBe('v1-modelo');
+
+    $sin = str_replace('{firmante}', 'alguien', $t['template']);
+    $this->putJson('/api/v1/internal/site/success-stories/authorization-text', ['template' => $sin], $h)->assertStatus(422)->assertJsonValidationErrors('template');
+    $nuevo = $t['template']."
+
+Texto revisado por el área legal.";
+    $this->putJson('/api/v1/internal/site/success-stories/authorization-text', ['template' => $nuevo], $h)->assertNoContent();
+    expect($this->getJson('/api/v1/internal/site/success-stories/authorization-text', $h)->json('data'))->toMatchArray(['is_default' => false, 'version' => 'v2']);
+
+    $token = inviteToken();
+    $this->postJson("/api/v1/public/success-stories/share/{$token}", shareBody())->assertCreated();
+    $c = DB::connection('platform')->selectOne("select c.* from success_story_consents c join success_stories s on s.id = c.story_id where s.slug = 'minera-prueba-sac'");
+    expect($c->authorization_version)->toBe('v2')->and($c->authorization_text)->toContain('Texto revisado por el área legal.')->and($c->authorization_text)->toContain('Rosa Prueba Quispe');
+});
+
+it('busca clientes registrados con su administrador para invitarlos', function () {
+    $rows = collect($this->getJson('/api/v1/internal/site/success-stories/clients?q=a', authHeaders(tokenFor(ADMIN_EMAIL)))->assertOk()->json('data'));
+    expect($rows)->not->toBeEmpty()->and($rows->first())->toHaveKeys(['legal_name', 'ruc', 'contact_name', 'contact_email']);
 });

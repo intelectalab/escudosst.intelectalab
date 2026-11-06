@@ -63,7 +63,7 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal/site')->group(
     Route::patch('settings', [SiteSettingsController::class, 'update']);
     Route::get('legal', [LegalDocumentsController::class, 'index']);
     Route::patch('legal/versions/{version}', [LegalDocumentsController::class, 'saveDraft'])->whereUuid('version');
-    Route::post('legal/versions/{version}/publish', [LegalDocumentsController::class, 'publish'])->whereUuid('version');
+    Route::post('legal/versions/{version}/publish', [LegalDocumentsController::class, 'publish'])->whereUuid('version')->middleware('platform.owner');
     Route::post('legal/{document}/versions', [LegalDocumentsController::class, 'newVersion'])->whereUuid('document');
     Route::get('requests', [DemoRequestsController::class, 'index']);
     Route::patch('requests/{id}', [DemoRequestsController::class, 'update'])->whereUuid('id');
@@ -75,6 +75,9 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal/site')->group(
     Route::post('{kind}', [SiteContentController::class, 'store'])->whereIn('kind', ['faqs', 'testimonials', 'products']);
     Route::patch('{kind}/{id}', [SiteContentController::class, 'update'])->whereIn('kind', ['faqs', 'testimonials', 'products'])->whereUuid('id');
     Route::delete('{kind}/{id}', [SiteContentController::class, 'destroy'])->whereIn('kind', ['faqs', 'testimonials', 'products'])->whereUuid('id');
+    Route::get('success-stories/authorization-text', [SuccessStoryInvitesController::class, 'template']);
+    Route::put('success-stories/authorization-text', [SuccessStoryInvitesController::class, 'saveTemplate'])->middleware('platform.owner');
+    Route::get('success-stories/clients', [SuccessStoryInvitesController::class, 'clients']);
     Route::get('success-stories/invites', [SuccessStoryInvitesController::class, 'index']);
     Route::post('success-stories/invites', [SuccessStoryInvitesController::class, 'store']);
     Route::post('success-stories/invites/{id}/resend', [SuccessStoryInvitesController::class, 'resend'])->whereUuid('id');
@@ -86,7 +89,7 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal/site')->group(
     Route::get('success-stories/{id}', [SuccessStoriesController::class, 'show'])->whereUuid('id');
     Route::patch('success-stories/{id}', [SuccessStoriesController::class, 'update'])->whereUuid('id');
     Route::delete('success-stories/{id}', [SuccessStoriesController::class, 'destroy'])->whereUuid('id');
-    Route::post('success-stories/{id}/actions', [SuccessStoriesController::class, 'act'])->whereUuid('id');
+    Route::post('success-stories/{id}/actions', [SuccessStoriesController::class, 'act'])->whereUuid('id')->middleware('platform.owner');
     Route::post('success-stories/{id}/{kind}', [SuccessStoriesController::class, 'upload'])->whereUuid('id')->whereIn('kind', ['logo', 'consent']);
     Route::delete('success-stories/{id}/logo', [SuccessStoriesController::class, 'removeLogo'])->whereUuid('id');
     Route::get('success-stories/{id}/consent', [SuccessStoriesController::class, 'consent'])->whereUuid('id');
@@ -94,14 +97,14 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal/site')->group(
     Route::post('pages', [SitePagesController::class, 'store']);
     Route::get('pages/{id}', [SitePagesController::class, 'show'])->whereUuid('id');
     Route::patch('pages/{id}', [SitePagesController::class, 'update'])->whereUuid('id');
-    Route::post('pages/{id}/publish', [SitePagesController::class, 'publish'])->whereUuid('id');
-    Route::post('pages/{id}/archive', [SitePagesController::class, 'archive'])->whereUuid('id');
+    Route::post('pages/{id}/publish', [SitePagesController::class, 'publish'])->whereUuid('id')->middleware('platform.owner');
+    Route::post('pages/{id}/archive', [SitePagesController::class, 'archive'])->whereUuid('id')->middleware('platform.owner');
     Route::get('leads', [LeadsController::class, 'index']);
-    Route::get('leads/export', [LeadsController::class, 'export']);
+    Route::get('leads/export', [LeadsController::class, 'export'])->middleware('platform.owner');
     Route::get('leads/{id}', [LeadsController::class, 'show'])->whereUuid('id');
     Route::patch('leads/{id}', [LeadsController::class, 'update'])->whereUuid('id');
     Route::get('complaints', [ComplaintsController::class, 'index']);
-    Route::get('complaints/export', [ComplaintsController::class, 'export']);
+    Route::get('complaints/export', [ComplaintsController::class, 'export'])->middleware('platform.owner');
     Route::get('complaints/{id}', [ComplaintsController::class, 'show'])->whereUuid('id');
     Route::post('complaints/{id}/actions', [ComplaintsController::class, 'act'])->whereUuid('id');
 });

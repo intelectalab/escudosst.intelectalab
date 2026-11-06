@@ -63,10 +63,10 @@ ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, full_name = EXCLUDED.full
 
 -- Dueño de la plataforma (superadmin). No pertenece a ninguna empresa: is_platform_staff = true.
 -- MFA obligatorio (RN-USR-05). Contraseña: EscudoDemo2026
-INSERT INTO users (id, email, email_verified_at, full_name, password_hash, status, is_platform_staff)
+INSERT INTO users (id, email, email_verified_at, full_name, password_hash, status, is_platform_staff, platform_role)
 VALUES ('01900000-0000-7000-8000-000000000300', 'admin@escudo.test', now(), 'Equipo EscudoSST',
-        '$2y$12$kbOcrxqHvSMu430p6uK/8eTqrNpgScQ4s3VpsWqOfppFYFogMA8I.', 'active', true)
-ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, is_platform_staff = true, status = 'active';
+        '$2y$12$kbOcrxqHvSMu430p6uK/8eTqrNpgScQ4s3VpsWqOfppFYFogMA8I.', 'active', true, 'owner')
+ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, is_platform_staff = true, platform_role = 'owner', status = 'active';
 
 -- Membresías: cada usuario solo en la empresa de su plan
 DELETE FROM memberships WHERE id IN ('01900000-0000-7000-8000-000000000401', '01900000-0000-7000-8000-000000000402',

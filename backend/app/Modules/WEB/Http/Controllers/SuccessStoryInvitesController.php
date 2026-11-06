@@ -35,6 +35,7 @@ class SuccessStoryInvitesController extends Controller
         'results.max' => 'Hasta 4 resultados.',
         'logo.max' => 'El logo debe pesar menos de 1 MB.',
         'logo.mimetypes' => 'El logo debe ser PNG, JPG o WEBP.',
+        'signature.required' => 'Dibuja tu firma en el recuadro.',
     ];
 
     public function __construct(private SuccessStoryInvitesService $svc) {}
@@ -98,6 +99,24 @@ class SuccessStoryInvitesController extends Controller
         ]);
     }
 
+    public function template(): JsonResponse
+    {
+        return response()->json(['data' => $this->svc->template()]);
+    }
+
+    public function saveTemplate(Request $request): Response
+    {
+        $d = $request->validate(['template' => ['nullable', 'string', 'min:200', 'max:6000']], self::MESSAGES + ['template.min' => 'El texto es muy corto para una autorización.']);
+        $this->svc->saveTemplate($d['template'] ?? null, $request->user()->id);
+
+        return response()->noContent();
+    }
+
+    public function clients(Request $request): JsonResponse
+    {
+        return response()->json(['data' => $this->svc->clients((string) $request->query('q', ''))]);
+    }
+
     // ---------------------------------------------------------------- Público
 
     public function showShare(string $token): JsonResponse
@@ -131,6 +150,7 @@ class SuccessStoryInvitesController extends Controller
             'signer_doc_number' => ['required', 'string', 'regex:/^[A-Za-z0-9]{8,12}$/'],
             'signer_email' => ['required', 'email', 'max:160'],
             'authorize' => ['accepted'],
+            'signature' => ['required', 'string', 'max:560000'],
         ], self::MESSAGES + ['signer_doc_number.regex' => 'Revisa el número: de 8 a 12 letras o números, sin espacios.']);
 
         $ipHash = hash_hmac('sha256', (string) $request->ip(), (string) config('app.key'));

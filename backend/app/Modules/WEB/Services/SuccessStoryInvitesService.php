@@ -28,8 +28,33 @@ class SuccessStoryInvitesService
 {
     public const VALID_DAYS = 30;
 
-    /** Versión del texto de autorización. Texto modelo: debe validarlo un abogado (docs/10, punto 22). */
-    public const TEXT_VERSION = 'v1-modelo';
+    /**
+     * Texto modelo de la autorización (debe validarlo un abogado, docs/10 punto 22). El Dueño lo puede cambiar desde el
+     * panel; cada cambio sube la versión. Marcadores: ver PLACEHOLDERS.
+     */
+    public const DEFAULT_TEMPLATE = <<<'TXT'
+        AUTORIZACIÓN PARA PUBLICAR UN CASO DE ÉXITO
+
+        Yo, {firmante}, identificado(a) con {tipo_documento} N.° {documento}, en mi calidad de {cargo} de {empresa}{ruc_empresa}, declaro que tengo facultades para autorizar en nombre de la empresa y autorizo a {titular}, titular de {marca}, a publicar en su sitio web, redes sociales y materiales comerciales el caso de éxito que envío en este formulario: el nombre y el logo de la empresa, el reto, la solución, los resultados y cifras indicados, y la cita.
+
+        Declaro que la información es veraz y que las cifras están respaldadas por la empresa. El caso no incluye fotos de personas ni datos personales de trabajadores.
+
+        Esta autorización es gratuita y no tiene plazo. Puedo retirarla en cualquier momento con el enlace que recibiré por correo; al retirarla, el caso deja de mostrarse de inmediato.
+        TXT;
+
+    /** Marcadores que se reemplazan con los datos de quien firma. Los obligatorios no se pueden quitar del texto. */
+    public const PLACEHOLDERS = [
+        '{firmante}' => 'Nombre de quien firma',
+        '{tipo_documento}' => 'DNI, CE o pasaporte',
+        '{documento}' => 'Número de documento',
+        '{cargo}' => 'Cargo de quien firma',
+        '{empresa}' => 'Empresa del cliente',
+        '{ruc_empresa}' => '« (RUC …)» si lo escribió; si no, nada',
+        '{titular}' => 'Razón social y RUC del titular de EscudoSST',
+        '{marca}' => 'Nombre comercial (EscudoSST)',
+    ];
+
+    public const REQUIRED_PLACEHOLDERS = ['{firmante}', '{documento}', '{empresa}'];
 
     public function __construct(private AccountsService $accounts) {}
 
@@ -128,10 +153,9 @@ class SuccessStoryInvitesService
             'contact_email' => $i->contact_email,
             'message' => $i->message,
             'expires_at' => $i->expires_at,
-            'authorization_template' => $this->authorizationText([
-                'signer_name' => '[tu nombre]', 'signer_doc_type' => 'DNI', 'signer_doc_number' => '[tu documento]',
-                'signer_role' => '[tu cargo]', 'company_name' => $i->client_name, 'company_ruc' => null,
-            ], $s),
+            'authorization_template' => trim((string) ($s['story_authorization_template'] ?? '')) ?: self::DEFAULT_TEMPLATE,
+            'owner' => ($s['legal_name'] ?? '').(($s['ruc'] ?? null) ? " (RUC {$s['ruc']})" : ''),
+            'brand' => $s['trade_name'] ?? 'EscudoSST',
         ];
     }
 
@@ -156,8 +180,9 @@ class SuccessStoryInvitesService
         ];
         $text = $this->authorizationText($signer, $s);
         $withdrawToken = Str::random(48);
+        $signaturePng = $this->signaturePng($d['signature']);
 
-        $out = $db->transaction(function () use ($db, $i, $d, $s, $signer, $text, $modules, $results, $logo, $ipHash, $userAgent, $withdrawToken) {
+        $out = $db->transaction(function () use ($db, $i, $d, $s, $signer, $text, $modules, $results, $logo, $ipHash, $userAgent, $withdrawToken, $signaturePng) {
             $storyId = $db->table('success_stories')->insertGetId([
                 'slug' => $this->uniqueSlug($signer['company_name']),
                 'title' => trim($d['title'] ?? '') ?: "{$signer['company_name']} ordenó su SST con EscudoSST",
@@ -179,7 +204,8 @@ class SuccessStoryInvitesService
 
             $consentId = (string) Str::uuid7();
             $acceptedAt = now();
-            $html = $this->constancia($signer + ['signer_email' => $d['signer_email']], $text, $acceptedAt->toIso8601String(), $consentId, $ipHash, $s);
+            $signatureId = $this->storeAsset('story_signature', 'image/png', $signaturePng, "firma-{$consentId}.png", strlen($signaturePng));
+            $html = $this->constancia($signer + ['signer_email' => $d['signer_email']], $text, $acceptedAt->toIso8601String(), $consentId, $ipHash, $s, $signaturePng);
             $fileId = $this->storeAsset('story_consent', 'text/html', $html, "constancia-autorizacion-{$consentId}.html", strlen($html));
 
             $db->table('success_story_consents')->insert([
@@ -193,10 +219,11 @@ class SuccessStoryInvitesService
                 'signer_doc_type' => $signer['signer_doc_type'],
                 'signer_doc_number' => Crypt::encryptString($signer['signer_doc_number']),
                 'signer_email' => mb_strtolower(trim($d['signer_email'])),
-                'authorization_version' => self::TEXT_VERSION,
+                'authorization_version' => $this->version($s),
                 'authorization_text' => $text,
                 'text_sha256' => hash('sha256', $text),
                 'file_id' => $fileId,
+                'signature_file_id' => $signatureId,
                 'accepted_at' => $acceptedAt,
                 'ip_hash' => $ipHash,
                 'user_agent' => $userAgent ? mb_substr($userAgent, 0, 300) : null,
@@ -208,7 +235,7 @@ class SuccessStoryInvitesService
             return ['story_id' => $storyId, 'consent_id' => $consentId];
         });
 
-        $this->accounts->audit(null, 'success_story_submitted', 'success_stories', $out['story_id'], ['invite_id' => $i->id, 'consent_id' => $out['consent_id'], 'text_version' => self::TEXT_VERSION]);
+        $this->accounts->audit(null, 'success_story_submitted', 'success_stories', $out['story_id'], ['invite_id' => $i->id, 'consent_id' => $out['consent_id'], 'text_version' => $this->version($s)]);
         $this->mailSigner($d['signer_email'], $signer['signer_name'], $text, $withdrawToken);
         $this->mailTeam("Caso de éxito recibido: {$signer['company_name']}", 'El cliente envió su historia y firmó la autorización. Revísala, apruébala y publícala.', [
             ['Empresa', $signer['company_name']], ['Firmó', "{$signer['signer_name']} ({$signer['signer_role']})"],
@@ -255,22 +282,87 @@ class SuccessStoryInvitesService
     {
         $ruc = $p['company_ruc'] ? " (RUC {$p['company_ruc']})" : '';
         $owner = ($s['legal_name'] ?? 'GRUPO DE SOLUCIONES CREATIVAS SAC').(($s['ruc'] ?? null) ? " (RUC {$s['ruc']})" : '');
-        $brand = $s['trade_name'] ?? 'EscudoSST';
+        $template = trim((string) ($s['story_authorization_template'] ?? '')) ?: self::DEFAULT_TEMPLATE;
 
-        return <<<TXT
-            AUTORIZACIÓN PARA PUBLICAR UN CASO DE ÉXITO
-
-            Yo, {$p['signer_name']}, identificado(a) con {$p['signer_doc_type']} N.° {$p['signer_doc_number']}, en mi calidad de {$p['signer_role']} de {$p['company_name']}{$ruc}, declaro que tengo facultades para autorizar en nombre de la empresa y autorizo a {$owner}, titular de {$brand}, a publicar en su sitio web, redes sociales y materiales comerciales el caso de éxito que envío en este formulario: el nombre y el logo de la empresa, el reto, la solución, los resultados y cifras indicados, y la cita.
-
-            Declaro que la información es veraz y que las cifras están respaldadas por la empresa. El caso no incluye fotos de personas ni datos personales de trabajadores.
-
-            Esta autorización es gratuita y no tiene plazo. Puedo retirarla en cualquier momento con el enlace que recibiré por correo; al retirarla, el caso deja de mostrarse de inmediato.
-            TXT;
+        return strtr($template, [
+            '{firmante}' => $p['signer_name'], '{tipo_documento}' => $p['signer_doc_type'], '{documento}' => $p['signer_doc_number'],
+            '{cargo}' => $p['signer_role'], '{empresa}' => $p['company_name'], '{ruc_empresa}' => $ruc,
+            '{titular}' => $owner, '{marca}' => $s['trade_name'] ?? 'EscudoSST',
+        ]);
     }
 
-    private function constancia(array $p, string $text, string $acceptedAt, string $consentId, string $ipHash, array $s): string
+    public function version(array $s): string
+    {
+        $n = (int) ($s['story_authorization_version'] ?? 1);
+
+        return trim((string) ($s['story_authorization_template'] ?? '')) === '' ? "v{$n}-modelo" : "v{$n}";
+    }
+
+    /** Para el panel: el texto vigente, su versión y los marcadores. */
+    public function template(): array
+    {
+        $s = $this->settings();
+
+        return [
+            'template' => trim((string) ($s['story_authorization_template'] ?? '')) ?: self::DEFAULT_TEMPLATE,
+            'is_default' => trim((string) ($s['story_authorization_template'] ?? '')) === '',
+            'version' => $this->version($s),
+            'default' => self::DEFAULT_TEMPLATE,
+            'placeholders' => self::PLACEHOLDERS,
+            'required' => self::REQUIRED_PLACEHOLDERS,
+        ];
+    }
+
+    /** Cambia el texto (null = volver al modelo). Sube la versión; lo ya firmado conserva su texto. */
+    public function saveTemplate(?string $template, string $actor): void
+    {
+        $t = $template !== null ? trim(str_replace("\r\n", "\n", $template)) : null;
+        if ($t !== null && $t === trim(self::DEFAULT_TEMPLATE)) {
+            $t = null;
+        }
+        if ($t !== null) {
+            $missing = array_values(array_filter(self::REQUIRED_PLACEHOLDERS, fn ($m) => ! str_contains($t, $m)));
+            if ($missing) {
+                throw new ApiProblem(422, 'validation_failed', 'Revisa el texto', 'Faltan marcadores obligatorios: '.implode(', ', $missing).'.', ['errors' => ['template' => ['Faltan marcadores obligatorios: '.implode(', ', $missing).'.']]]);
+            }
+        }
+        $this->db()->update(
+            'update site_settings set story_authorization_template = ?, story_authorization_version = story_authorization_version + 1, updated_by = ? where singleton',
+            [$t, $actor]
+        );
+        $this->accounts->audit($actor, 'success_story_authorization_text_changed', 'site_settings', null, ['reset_to_default' => $t === null, 'sha256' => $t ? hash('sha256', $t) : null]);
+    }
+
+    /**
+     * Buscador de clientes para invitar: empresas registradas y su administrador de cuenta (el mismo dato que ya
+     * muestra «Cuentas y suscripciones»; se lee por la empresa, como allí).
+     */
+    public function clients(string $q): array
+    {
+        $like = '%'.str_replace(['%', '_'], ['\%', '\_'], trim($q)).'%';
+        $rows = $this->db()->select(
+            "select c.id, c.legal_name, c.trade_name, trim(c.ruc) as ruc, c.economic_sector
+               from companies c
+              where c.deleted_at is null and (c.legal_name ilike ? or c.trade_name ilike ? or c.ruc like ?)
+              order by c.legal_name limit 12",
+            [$like, $like, $like]
+        );
+
+        return array_map(function ($c) {
+            $admin = $this->accounts->companyAdmins($c->id)[0] ?? null;
+            $c->contact_name = $admin['full_name'] ?? null;
+            $c->contact_email = $admin['email'] ?? null;
+
+            return $c;
+        }, $rows);
+    }
+
+    private function constancia(array $p, string $text, string $acceptedAt, string $consentId, string $ipHash, array $s, ?string $signaturePng = null): string
     {
         $e = fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+        $signatureRow = $signaturePng
+            ? '<tr><td>Firma</td><td><img alt="Firma" style="max-height:110px;max-width:100%;background:#fff" src="data:image/png;base64,'.base64_encode($signaturePng).'"></td></tr>'
+            : '';
         $hash = hash('sha256', $text);
         $body = nl2br($e($text));
         $date = $e(now()->parse($acceptedAt)->timezone('America/Lima')->format('d/m/Y H:i'));
@@ -291,7 +383,8 @@ class SuccessStoryInvitesService
             <tr><td>Correo</td><td>{$e($p['signer_email'])}</td></tr>
             <tr><td>Fecha y hora (Lima)</td><td>{$date}</td></tr>
             <tr><td>Forma de aceptación</td><td>Formulario web con enlace personal enviado al correo del firmante; casilla de aceptación marcada.</td></tr>
-            <tr><td>Versión del texto</td><td>{$e(self::TEXT_VERSION)}</td></tr>
+            <tr><td>Versión del texto</td><td>{$e($this->version($s))}</td></tr>
+            {$signatureRow}
             <tr><td>Huella del texto (SHA-256)</td><td style="font-family:monospace;font-size:12px;word-break:break-all">{$hash}</td></tr>
             <tr><td>Origen (IP, en hash)</td><td style="font-family:monospace;font-size:12px;word-break:break-all">{$e($ipHash)}</td></tr>
             <tr><td>N.° de constancia</td><td style="font-family:monospace">{$e($consentId)}</td></tr>
@@ -308,7 +401,7 @@ class SuccessStoryInvitesService
         $disk = config('escudo.site_assets_disk', 'local');
         $id = (string) Str::uuid7();
         $ext = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp', 'image/avif' => 'avif', 'text/html' => 'html'][$mime] ?? 'bin';
-        $path = ($kind === 'story_consent' ? 'private/' : 'site/')."{$kind}-{$id}.{$ext}";
+        $path = (in_array($kind, ['story_consent', 'story_signature'], true) ? 'private/' : 'site/')."{$kind}-{$id}.{$ext}";
         Storage::disk($disk)->put($path, $content);
         $this->db()->insert(
             'insert into site_assets (id, kind, disk, path, mime_type, size_bytes, original_name) values (?, ?, ?, ?, ?, ?, ?)',
@@ -316,6 +409,22 @@ class SuccessStoryInvitesService
         );
 
         return $id;
+    }
+
+    /** Firma dibujada: PNG en data URL, de tamaño razonable y que no esté en blanco. */
+    private function signaturePng(string $dataUrl): string
+    {
+        $bad = fn () => new ApiProblem(422, 'validation_failed', 'Revisa la firma', 'Dibuja tu firma en el recuadro.', ['errors' => ['signature' => ['Dibuja tu firma en el recuadro.']]]);
+        if (! str_starts_with($dataUrl, 'data:image/png;base64,')) {
+            throw $bad();
+        }
+        $png = base64_decode(substr($dataUrl, 22), true);
+        $info = $png ? @getimagesizefromstring($png) : false;
+        if (! $info || $info[2] !== IMAGETYPE_PNG || strlen($png) > 400_000 || strlen($png) < 600) {
+            throw $bad();   // menos de ~600 bytes es un lienzo vacío
+        }
+
+        return $png;
     }
 
     private function uniqueSlug(string $name): string
@@ -360,7 +469,7 @@ class SuccessStoryInvitesService
 
     private function settings(): array
     {
-        return (array) $this->db()->selectOne('select legal_name, ruc, trade_name, sales_email, contact_email from site_settings where singleton');
+        return (array) $this->db()->selectOne('select legal_name, ruc, trade_name, sales_email, contact_email, story_authorization_template, story_authorization_version from site_settings where singleton');
     }
 
     private function url(string $path): string

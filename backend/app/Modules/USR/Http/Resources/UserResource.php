@@ -24,6 +24,7 @@ class UserResource extends JsonResource
             'timezone' => $this->timezone,
             'mfa_enabled' => $this->mfa_enabled,
             'is_platform_staff' => $this->is_platform_staff,
+            'platform_role' => $this->platform_role,
             'last_login_at' => $this->last_login_at?->toIso8601String(),
         ];
     }

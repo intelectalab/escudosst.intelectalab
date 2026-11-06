@@ -3,6 +3,7 @@
 use App\Core\Http\ApiProblem;
 use App\Core\Http\Middleware\FeatureGate;
 use App\Core\Http\Middleware\RequirePermission;
+use App\Core\Http\Middleware\RequirePlatformOwner;
 use App\Core\Http\Middleware\RequirePlatformStaff;
 use App\Core\Http\Middleware\ResolveCompany;
 use App\Core\Http\Middleware\SetTenantContext;
@@ -30,6 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'module' => FeatureGate::class,
             'permission' => RequirePermission::class,
             'platform' => RequirePlatformStaff::class,
+            'platform.owner' => RequirePlatformOwner::class,
         ]);
 
         // La API no redirige a una pantalla de inicio de sesión (no existe): responde 401 en problem+json aunque el
