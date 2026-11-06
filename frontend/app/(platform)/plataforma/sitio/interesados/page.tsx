@@ -4,7 +4,6 @@
 // Se diferencia de «Solicitudes»: allí está cada pedido suelto; aquí, la persona y su seguimiento comercial.
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { SitePanelTabs } from "@/components/site/SitePanelTabs";
 import { Button } from "@/components/ui/Button";
 import { Chip, type ChipTone, EmptyState, PageHeader, StatCard } from "@/components/ui/Display";
 import { ChoiceCards, FormField } from "@/components/ui/Form";
@@ -100,14 +99,13 @@ export default function InteresadosPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="w-full space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Sitio web", "/plataforma/sitio"], ["Interesados"]]}
-        icon="globe"
-        title="Sitio web"
+        icon="people"
+        title="Interesados"
         description="Personas que dejaron sus datos en el sitio. Una ficha por persona con todo lo que pidió, para darle seguimiento hasta que sea cliente."
       />
-      <SitePanelTabs />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="En seguimiento" value={count.new + count.contacted + count.qualified} hint={`${count.new} nuevos`} icon="people" tone="brand" active={filter === "open"} onClick={() => setFilter("open")} />

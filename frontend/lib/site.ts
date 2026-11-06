@@ -85,6 +85,10 @@ export type Testimonial = { author_name: string; author_role: string | null; com
 export const getFaqs = () => get<Faq[]>("faqs", []);
 export const getTestimonials = () => get<Testimonial[]>("testimonials", []);
 
+export type PageSummary = { slug: string; page_type: string; sector_code: string | null; title: string; summary: string | null };
+export const getPages = (tipo: "sector" | "product" | "landing") => get<PageSummary[]>(`pages?tipo=${tipo}`, []);
+export const getPage = (slug: string) => get<import("@/lib/pages").PublicPage | null>(`pages/${slug}`, null);
+
 /** Enlace de WhatsApp con mensaje (wa.me). Null si el dueño no configuró el número. */
 export function whatsappLink(s: SiteSettings, message?: string | null): string | null {
   if (!s.whatsapp_number) return null;
@@ -106,3 +110,37 @@ export function contactHref(_s: SiteSettings, intent: "trial" | "demo" | "quote"
 }
 
 export const PLAN_RANK: Record<string, number> = { E: 1, P: 2, C: 3, K: 4 };
+
+/** Casos de éxito (SCR-WEB-09): solo los publicados, con autorización del cliente o rotulados «Ejemplo». */
+export type StoryResult = { value: string; label: string };
+export type SuccessStory = {
+  slug: string;
+  title: string;
+  client_name: string;
+  sector: string;
+  logo_file_id: string | null;
+  challenge: string;
+  solution: string;
+  results: StoryResult[];
+  quote: string | null;
+  project_year: number | null;
+  modules: string[];
+  is_example: boolean;
+  published_at: string | null;
+};
+export const STORY_SECTORS: Record<string, string> = {
+  construction: "Construcción",
+  mining: "Minería",
+  agroindustry: "Agroindustria",
+  manufacturing: "Manufactura",
+  retail: "Retail",
+  services: "Servicios",
+  office: "Oficinas",
+  health: "Salud",
+  education: "Educación",
+  transport: "Transporte",
+  energy: "Energía",
+  other: "Otros",
+};
+export const getStories = (sector?: string) => get<SuccessStory[]>(`success-stories${sector ? `?sector=${encodeURIComponent(sector)}` : ""}`, []);
+export const getStory = (slug: string) => get<SuccessStory | null>(`success-stories/${slug}`, null);

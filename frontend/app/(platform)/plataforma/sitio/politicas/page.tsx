@@ -6,7 +6,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { LegalBody } from "@/components/LegalBody";
-import { SitePanelTabs } from "@/components/site/SitePanelTabs";
 import { Button } from "@/components/ui/Button";
 import { Chip, PageHeader } from "@/components/ui/Display";
 import { FormField, SwitchRow } from "@/components/ui/Form";
@@ -57,21 +56,20 @@ export default function PoliticasPage() {
   useEffect(load, [load]);
 
   if (error) return <p className="rounded-xl border border-bad/30 bg-bad-soft p-4 text-bad">{error}</p>;
-  if (!docs) return <div className="mx-auto h-96 max-w-6xl animate-pulse rounded-2xl bg-line/40" aria-label="Cargando" />;
+  if (!docs) return <div className="h-96 w-full animate-pulse rounded-2xl bg-line/40" aria-label="Cargando" />;
 
   const open = docs.find((d) => d.id === openId);
   const published = docs.filter((d) => d.versions.some((v) => v.status === "published")).length;
   const withTest = docs.filter((d) => d.versions.some((v) => v.status === "draft" && v.has_test_text)).length;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="w-full space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Sitio web", "/plataforma/sitio"], ["Políticas"]]}
         icon="file"
-        title="Sitio web"
+        title="Políticas"
         description="Textos legales del sitio: se editan aquí y se publican cuando el abogado los valide."
       />
-      <SitePanelTabs />
 
       {open ? (
         <Editor

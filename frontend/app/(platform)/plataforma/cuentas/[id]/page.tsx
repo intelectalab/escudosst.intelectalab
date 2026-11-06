@@ -78,7 +78,7 @@ export default function CuentaDetallePage() {
   const admin = account.companies.flatMap((c) => c.admins)[0];
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Cuentas y suscripciones", "/plataforma/cuentas"], [account.name]]}
         icon="building"
@@ -502,7 +502,7 @@ function Block({ title, icon, count, children }: { title: string; icon: string; 
 
 function Skeleton() {
   return (
-    <div className="mx-auto max-w-7xl animate-pulse space-y-6" aria-label="Cargando cuenta">
+    <div className="mx-auto w-full max-w-[1600px] animate-pulse space-y-6" aria-label="Cargando cuenta">
       <div className="h-12 w-80 rounded-xl bg-line/60" />
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="h-96 rounded-2xl bg-line/50" />

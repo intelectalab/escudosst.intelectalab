@@ -2,6 +2,7 @@
 // sin promesas de tiempos ni condiciones comerciales no decididas (docs/07 §1.5).
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { DashboardMock, FotocheckMock, ReportMock, StepArt, SunafilMock } from "@/components/site/Mockups";
 import { FinalCta, PlanCards, SectionTitle, TextLink, TrustSeals } from "@/components/site/Sections";
 import { FaqJsonLd, FaqList, TestimonialCards } from "@/components/site/FaqTestimonials";
@@ -353,9 +354,9 @@ export default async function HomePage() {
               <SectionTitle eyebrow="Preguntas frecuentes" title="Lo que suelen preguntarnos" center={false} />
               <p className="text-[var(--site-text-2)]">¿No encuentras tu duda? Escríbenos y te respondemos.</p>
               <div className="flex flex-col gap-3 sm:flex-row">
-                <a href="/demo?tipo=contacto" className="site-btn site-btn-outline bg-white">
+                <Link href="/demo?tipo=contacto" className="site-btn site-btn-outline bg-white">
                   Hacer una consulta
-                </a>
+                </Link>
                 <TextLink href="/preguntas-frecuentes">Ver todas</TextLink>
               </div>
             </Reveal>

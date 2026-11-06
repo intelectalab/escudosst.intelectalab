@@ -28,7 +28,7 @@ async function post(path: string, body: unknown): Promise<{ ok: true; data: Reco
   }
 }
 
-function Field({ label, error, hint, optional, children, className = "" }: { label: string; error?: string; hint?: string; optional?: boolean; children: React.ReactNode; className?: string }) {
+export function Field({ label, error, hint, optional, children, className = "" }: { label: string; error?: string; hint?: string; optional?: boolean; children: React.ReactNode; className?: string }) {
   return (
     <label className={`block ${className}`}>
       <span className="mb-1.5 block text-sm font-semibold text-[var(--site-navy-title)]">
@@ -44,7 +44,7 @@ function Field({ label, error, hint, optional, children, className = "" }: { lab
   );
 }
 
-function Honeypot({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function Honeypot({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
       <label>
@@ -55,7 +55,7 @@ function Honeypot({ value, onChange }: { value: string; onChange: (v: string) =>
   );
 }
 
-function Check({ checked, onChange, error, children }: { checked: boolean; onChange: (v: boolean) => void; error?: string; children: React.ReactNode }) {
+export function Check({ checked, onChange, error, children }: { checked: boolean; onChange: (v: boolean) => void; error?: string; children: React.ReactNode }) {
   return (
     <div>
       <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 text-sm transition-colors ${checked ? "border-[var(--site-action)]/40 bg-[var(--site-surface)]" : "border-[#d5dde7]"}`}>
@@ -67,7 +67,7 @@ function Check({ checked, onChange, error, children }: { checked: boolean; onCha
   );
 }
 
-function Alert({ text }: { text: string | null }) {
+export function Alert({ text }: { text: string | null }) {
   if (!text) return null;
   return (
     <p role="alert" className="rounded-xl border-l-4 border-[var(--site-red)] bg-[#E2453C]/8 px-4 py-3 text-sm font-semibold text-[#A3271F]">
@@ -76,7 +76,7 @@ function Alert({ text }: { text: string | null }) {
   );
 }
 
-function Done({ icon, title, children }: { icon: string; title: string; children: React.ReactNode }) {
+export function Done({ icon, title, children }: { icon: string; title: string; children: React.ReactNode }) {
   return (
     <div className="site-card p-8 text-center sm:p-10" role="status">
       <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-[#22A35A]/12 text-[#167A42]">
@@ -88,7 +88,7 @@ function Done({ icon, title, children }: { icon: string; title: string; children
   );
 }
 
-function Submit({ saving, children }: { saving: boolean; children: React.ReactNode }) {
+export function Submit({ saving, children }: { saving: boolean; children: React.ReactNode }) {
   return (
     <button type="submit" disabled={saving} className="site-btn site-btn-primary w-full disabled:opacity-60">
       {saving ? "Enviando…" : children}

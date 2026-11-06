@@ -67,22 +67,37 @@ export function PageHeader({
   aside?: React.ReactNode;
   children?: React.ReactNode;
 }) {
+  // La raíz sin enlace («Panel de la plataforma», «Mi empresa») ya se ve en el menú y la barra superior: no se repite.
+  // Solo se muestra la ruta en subpáginas, con un botón para volver al nivel anterior.
+  const path = crumbs.length > 1 && !crumbs[0][1] ? crumbs.slice(1) : crumbs;
+  const back = [...path.slice(0, -1)].reverse().find(([, href]) => !!href);
   return (
     <header className="space-y-4">
-      <nav className="flex flex-wrap items-center gap-1.5 text-sm text-muted" aria-label="Ruta">
-        {crumbs.map(([label, href], i) => (
-          <span key={label} className="inline-flex items-center gap-1.5">
-            {i > 0 && <span aria-hidden="true">›</span>}
-            {href ? (
-              <Link href={href} className="hover:text-brand hover:underline">
-                {label}
-              </Link>
-            ) : (
-              <span className={i === crumbs.length - 1 ? "font-semibold text-fg" : ""}>{label}</span>
-            )}
-          </span>
-        ))}
-      </nav>
+      {path.length > 1 && (
+        <nav className="flex flex-wrap items-center gap-2 text-sm" aria-label="Ruta">
+          {back && (
+            <Link href={back[1]!} className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-surface text-muted shadow-sm transition-colors hover:border-brand hover:text-brand" aria-label={`Volver a ${back[0]}`} title={`Volver a ${back[0]}`}>
+              <Icon name="back" size={16} />
+            </Link>
+          )}
+          <ol className="flex min-w-0 flex-wrap items-center gap-1 text-muted">
+            {path.map(([label, href], i) => (
+              <li key={label} className="inline-flex min-w-0 items-center gap-1">
+                {i > 0 && <span aria-hidden="true" className="text-line">/</span>}
+                {href && i < path.length - 1 ? (
+                  <Link href={href} className="rounded-md px-1.5 py-0.5 hover:bg-brand-soft hover:text-brand-strong">
+                    {label}
+                  </Link>
+                ) : (
+                  <span aria-current={i === path.length - 1 ? "page" : undefined} className={`truncate px-1.5 py-0.5 ${i === path.length - 1 ? "font-semibold text-fg" : ""}`}>
+                    {label}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        </nav>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-6">
         <div className="flex min-w-0 gap-4">
           <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand text-white shadow-md shadow-brand/30">

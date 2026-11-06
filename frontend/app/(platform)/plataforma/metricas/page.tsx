@@ -131,7 +131,7 @@ export default function MetricasPage() {
     router.push(`/plataforma/cuentas?${params}`);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Métricas"]]}
         icon="grid"

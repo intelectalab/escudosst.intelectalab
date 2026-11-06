@@ -4,7 +4,6 @@
 // Lo publicado/aprobado/visible se ve en el sitio en menos de un minuto.
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { SitePanelTabs } from "@/components/site/SitePanelTabs";
 import { Button } from "@/components/ui/Button";
 import { Chip, type ChipTone, EmptyState, PageHeader } from "@/components/ui/Display";
 import { ChoiceCards, FormField, FormSection, SwitchRow } from "@/components/ui/Form";
@@ -50,9 +49,8 @@ export default function ContenidoPage() {
   const tab = TABS.find(([k]) => k === kind)!;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeader crumbs={[["Panel de la plataforma"], ["Sitio web", "/plataforma/sitio"], ["Contenido"]]} icon="globe" title="Sitio web" description="Preguntas frecuentes, testimonios y otros productos que se muestran en el sitio." />
-      <SitePanelTabs />
+    <div className="w-full space-y-6">
+      <PageHeader crumbs={[["Panel de la plataforma"], ["Sitio web", "/plataforma/sitio"], ["Contenido"]]} icon="heart" title="Preguntas y testimonios" description="Preguntas frecuentes, testimonios y otros productos que se muestran en el sitio." />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div role="tablist" className="flex flex-wrap gap-1 rounded-xl bg-surface p-1 shadow-sm ring-1 ring-line">

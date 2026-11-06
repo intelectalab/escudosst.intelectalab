@@ -4,7 +4,6 @@
 // Los archivos se aplican al subirlos; el menú se guarda con su botón. El sitio los muestra en menos de un minuto.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SitePanelTabs } from "@/components/site/SitePanelTabs";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/Display";
 import { Icon } from "@/components/ui/Icon";
@@ -105,14 +104,13 @@ export default function MarcaPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="w-full space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Sitio web", "/plataforma/sitio"], ["Logo y menú"]]}
-        icon="globe"
-        title="Sitio web"
+        icon="tag"
+        title="Logo y menú"
         description="Cómo se ve la marca en el sitio: logo, ícono de la pestaña y los enlaces del menú superior."
       />
-      <SitePanelTabs />
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {ASSETS.map((a) => (

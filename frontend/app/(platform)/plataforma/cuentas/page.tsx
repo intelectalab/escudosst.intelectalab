@@ -77,7 +77,7 @@ export default function CuentasPage() {
   const shownCompanies = filtered.reduce((n, a) => n + a.companies.length, 0);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Cuentas y suscripciones"]]}
         icon="building"
@@ -267,7 +267,7 @@ function CompanyRow({ accountId, company: c, single }: { accountId: string; comp
 
 function Skeleton() {
   return (
-    <div className="mx-auto max-w-7xl animate-pulse space-y-6" aria-label="Cargando cuentas">
+    <div className="mx-auto w-full max-w-[1600px] animate-pulse space-y-6" aria-label="Cargando cuentas">
       <div className="h-12 w-80 rounded-xl bg-line/60" />
       <div className="h-24 rounded-2xl bg-line/40" />
       {[0, 1].map((i) => (

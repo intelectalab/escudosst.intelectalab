@@ -4,7 +4,6 @@
 // El equipo marca cada una como contactada, demo agendada, convertida o descartada, con una nota interna.
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { SitePanelTabs } from "@/components/site/SitePanelTabs";
 import { Button } from "@/components/ui/Button";
 import { Chip, type ChipTone, EmptyState, PageHeader, StatCard } from "@/components/ui/Display";
 import { ChoiceCards, FormField } from "@/components/ui/Form";
@@ -70,14 +69,13 @@ export default function SolicitudesPage() {
   const list = (rows ?? []).filter((r) => (filter === "open" ? ["new", "contacted", "demo_scheduled"].includes(r.status) : r.status === filter));
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="w-full space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Sitio web", "/plataforma/sitio"], ["Solicitudes"]]}
-        icon="globe"
-        title="Sitio web"
+        icon="clock"
+        title="Solicitudes"
         description="Bandeja de los formularios del sitio. Cuando alguien llena «Agenda una demo», «Pedir cotización» o «Hacer una consulta», llega aquí."
       />
-      <SitePanelTabs />
 
       <ol className="grid grid-cols-1 gap-3 md:grid-cols-3">
         {(

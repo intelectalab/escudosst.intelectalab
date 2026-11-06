@@ -2,8 +2,10 @@
 
 // Botón flotante de WhatsApp (SCR-WEB-13): visible en todas las páginas del sitio si el dueño configuró el número.
 // En el celular queda a la izquierda del borde para no tapar los botones principales.
+// Una página por bloques puede traer su propio mensaje (<PageWhatsAppMessage>): se lee al cambiar de página.
 
-import { useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export function WhatsAppIcon({ size = 26 }: { size?: number }) {
   return (
@@ -16,9 +18,20 @@ export function WhatsAppIcon({ size = 26 }: { size?: number }) {
   );
 }
 
-export function WhatsAppFloat({ href }: { href: string | null }) {
+/** Marca invisible con el mensaje de WhatsApp propio de la página. */
+export function PageWhatsAppMessage({ message }: { message: string | null }) {
+  return message ? <span hidden data-wa-message={message} /> : null;
+}
+
+export function WhatsAppFloat({ number, message }: { number: string | null; message: string }) {
   const [hover, setHover] = useState(false);
-  if (!href) return null;
+  const [pageMessage, setPageMessage] = useState<string | null>(null);
+  const path = usePathname();
+  useEffect(() => {
+    setPageMessage(document.querySelector("[data-wa-message]")?.getAttribute("data-wa-message") ?? null);
+  }, [path]);
+  if (!number) return null;
+  const href = `https://wa.me/${number}?text=${encodeURIComponent(pageMessage || message)}`;
   return (
     <a
       href={href}

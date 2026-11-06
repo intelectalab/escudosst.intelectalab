@@ -110,7 +110,7 @@ export default function SaludPage() {
   const failedWeek = h.mail_days.reduce((n, d) => n + d.failed, 0);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Salud del sistema"]]}
         icon="heart"

@@ -6,7 +6,7 @@ import { CookieBanner } from "@/components/site/CookieBanner";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { WhatsAppFloat } from "@/components/site/WhatsAppFloat";
-import { assetUrl, contactHref, getSite, whatsappLink } from "@/lib/site";
+import { assetUrl, contactHref, getSite } from "@/lib/site";
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
   const site = await getSite();
@@ -43,7 +43,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
         {children}
       </main>
       <SiteFooter site={site} />
-      <WhatsAppFloat href={whatsappLink(s)} />
+      <WhatsAppFloat number={s.whatsapp_number} message={s.whatsapp_default_message || "Hola, quiero conocer EscudoSST"} />
       <CookieBanner />
     </div>
   );

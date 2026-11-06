@@ -6,7 +6,6 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { SitePanelTabs } from "@/components/site/SitePanelTabs";
 import { Chip, PageHeader } from "@/components/ui/Display";
 import { FormField, SwitchRow } from "@/components/ui/Form";
 import { Icon } from "@/components/ui/Icon";
@@ -68,7 +67,7 @@ export default function SitioPage() {
   }, []);
 
   if (error) return <p className="rounded-xl border border-bad/30 bg-bad-soft p-4 text-bad">{error}</p>;
-  if (!form) return <div className="mx-auto h-96 max-w-6xl animate-pulse rounded-2xl bg-line/40" aria-label="Cargando" />;
+  if (!form) return <div className="h-96 w-full animate-pulse rounded-2xl bg-line/40" aria-label="Cargando" />;
 
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setForm((f) => (f ? { ...f, [k]: v } : f));
   const val = (k: keyof Settings) => (form[k] as string | null) ?? "";
@@ -109,11 +108,11 @@ export default function SitioPage() {
   );
 
   return (
-    <form onSubmit={save} className="mx-auto max-w-6xl space-y-6" noValidate>
+    <form onSubmit={save} className="w-full space-y-6" noValidate>
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Sitio web"]]}
         icon="globe"
-        title="Sitio web"
+        title="Contacto y WhatsApp"
         description="Marca, contacto y datos legales del sitio público. Lo que guardes se ve en la web en menos de un minuto."
         aside={
           <div className="flex flex-wrap gap-2">
@@ -127,11 +126,10 @@ export default function SitioPage() {
         }
       />
 
-      <SitePanelTabs />
 
-      <div className="grid gap-6 xl:grid-cols-[16rem_minmax(0,1fr)]">
+      <div className="grid gap-6 2xl:grid-cols-[16rem_minmax(0,1fr)]">
         {/* Lateral: lista para publicar y accesos */}
-        <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+        <aside className="space-y-4 2xl:sticky 2xl:top-24 2xl:self-start">
           <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="font-display font-semibold">Lista para publicar</h2>

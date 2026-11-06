@@ -46,6 +46,9 @@ export function SiteFooter({ site }: { site: SiteData }) {
               ["/como-funciona", "Cómo funciona"],
               ["/planes", "Planes"],
               ["/complementos", "Complementos"],
+              ["/sectores", "Sectores"],
+              ["/consultoras", "Para consultoras"],
+              ["/casos", "Casos de éxito"],
               ["/preguntas-frecuentes", "Preguntas frecuentes"],
               ["/login", "Iniciar sesión"],
             ].map(([href, label]) => (

@@ -5,7 +5,6 @@
 // empezar revisión, prorrogar con motivo (hasta el tope legal), responder (se envía por correo), cerrar y anotar.
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { SitePanelTabs } from "@/components/site/SitePanelTabs";
 import { Button } from "@/components/ui/Button";
 import { Chip, type ChipTone, EmptyState, PageHeader, StatCard } from "@/components/ui/Display";
 import { FormField } from "@/components/ui/Form";
@@ -93,14 +92,13 @@ export default function ReclamosPage() {
   const list = (rows ?? []).filter((r) => (filter === "open" ? r.light !== "gray" : r.light === filter));
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="w-full space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Sitio web", "/plataforma/sitio"], ["Libro de Reclamaciones"]]}
-        icon="globe"
-        title="Sitio web"
+        icon="history"
+        title="Libro de Reclamaciones"
         description="Reclamos y quejas de consumidores sobre EscudoSST. La ley exige responder dentro del plazo; el semáforo te avisa cuáles vencen."
       />
-      <SitePanelTabs />
 
       <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
         <h2 className="font-display font-semibold">Cómo se atiende una hoja</h2>

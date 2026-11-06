@@ -150,7 +150,7 @@ export default function PlanesPage() {
   const totalCompanies = matrixPlans.reduce((n, p) => n + p.companies_count, 0);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8">
+    <div className="mx-auto w-full max-w-[1600px] space-y-8">
       {/* Encabezado */}
       <header className="space-y-4">
         <nav className="flex items-center gap-1.5 text-sm text-muted" aria-label="Ruta">
@@ -637,7 +637,7 @@ function MiniStat({ label, value, sub, icon }: { label: string; value: string; s
 
 function PageSkeleton() {
   return (
-    <div className="mx-auto max-w-7xl animate-pulse space-y-6" aria-label="Cargando planes">
+    <div className="mx-auto w-full max-w-[1600px] animate-pulse space-y-6" aria-label="Cargando planes">
       <div className="h-12 w-72 rounded-xl bg-line/60" />
       <div className="grid gap-5 md:grid-cols-3">
         {[0, 1, 2].map((i) => (

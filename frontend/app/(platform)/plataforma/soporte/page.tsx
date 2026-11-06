@@ -77,7 +77,7 @@ export default function SoportePage() {
   const toggle = (v: View) => setView((cur) => (cur === v ? "all" : v));
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Accesos de soporte"]]}
         icon="shield"

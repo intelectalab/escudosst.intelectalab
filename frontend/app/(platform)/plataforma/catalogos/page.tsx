@@ -58,7 +58,7 @@ export default function CatalogosPage() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6">
       <PageHeader crumbs={[["Panel de la plataforma"], ["Catálogos globales"]]} icon="box" title="Catálogos globales" description="Datos legales y técnicos que usan todas las empresas." />
 
       <section aria-label="Resumen" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
