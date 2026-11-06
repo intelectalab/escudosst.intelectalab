@@ -2,48 +2,53 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Database\Factories\UserFactory;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
+/**
+ * Usuario de la plataforma (tabla users, módulo USR).
+ * Único por correo en toda la plataforma (RN-USR-01); el acceso a cada
+ * empresa se da por memberships.
+ */
 class User extends Authenticatable
 {
-    /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasUuids;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
+    /** La tabla no tiene remember_token: la sesión es por token de Sanctum. */
+    protected $rememberTokenName = '';
+
     protected $fillable = [
-        'name',
         'email',
-        'password',
+        'full_name',
+        'phone_e164',
+        'locale',
+        'timezone',
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
     protected $hidden = [
-        'password',
-        'remember_token',
+        'password_hash',
+        'mfa_secret',
+        'mfa_recovery_codes',
+        'reauth_secret_hash',
+        'document_number',
+        'document_number_hash',
     ];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
+    public function getAuthPasswordName(): string
+    {
+        return 'password_hash';
+    }
+
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            'last_login_at' => 'datetime',
+            'locked_until' => 'datetime',
+            'password_changed_at' => 'datetime',
+            'mfa_enabled' => 'boolean',
+            'is_platform_staff' => 'boolean',
         ];
     }
 }
