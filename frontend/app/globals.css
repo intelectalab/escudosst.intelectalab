@@ -1,26 +1,344 @@
 @import "tailwindcss";
 
+/* Colores y fuentes tomados del prototipo (prototipo/src/styles.css). */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #eef1f5;
+  --surface: #ffffff;
+  --line: #e0e5eb;
+  --fg: #262b33;
+  --muted: #6b7684;
+  --brand: #1f7fd1;
+  --brand-strong: #1764ab;
+  --brand-soft: #e3effb;
+  --side: #0d3b6e;
+  --ok: #22a35a;
+  --ok-soft: #e0f4e8;
+  --bad: #e2453c;
+  --bad-soft: #fce6e4;
+  --amber-soft: #fff4d1;
+  --amber-ink: #7a5600;
+  --na: #8a94a3;
+  --na-soft: #edf0f3;
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* Tema oscuro (prototipo/src/styles.css). «Automático» sigue al sistema; «Claro» y «Oscuro» lo fijan
+   con data-theme en <html> (lib/theme.ts). */
+:root[data-theme="dark"] {
+  --bg: #0e1621;
+  --surface: #16202d;
+  --line: #273546;
+  --fg: #e7ecf2;
+  --muted: #9aa7b6;
+  --brand: #4da3ec;
+  --brand-strong: #84c0f3;
+  --brand-soft: #16304d;
+  --side: #0a2a4f;
+  --ok: #3cc777;
+  --ok-soft: #133222;
+  --bad: #f2645c;
+  --bad-soft: #3b1816;
+  --amber-soft: #3a3011;
+  --amber-ink: #f9d46a;
+  --na: #8e99a8;
+  --na-soft: #222d3a;
+  color-scheme: dark;
 }
-
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  :root:not([data-theme="light"]) {
+    --bg: #0e1621;
+    --surface: #16202d;
+    --line: #273546;
+    --fg: #e7ecf2;
+    --muted: #9aa7b6;
+    --brand: #4da3ec;
+    --brand-strong: #84c0f3;
+    --brand-soft: #16304d;
+    --side: #0a2a4f;
+    --ok: #3cc777;
+    --ok-soft: #133222;
+    --bad: #f2645c;
+    --bad-soft: #3b1816;
+    --amber-soft: #3a3011;
+    --amber-ink: #f9d46a;
+    --na: #8e99a8;
+    --na-soft: #222d3a;
+    color-scheme: dark;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-side: var(--side);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-amber-soft: var(--amber-soft);
+  --color-amber-ink: var(--amber-ink);
+  --color-na: var(--na);
+  --color-na-soft: var(--na-soft);
+  --font-sans: var(--font-body), "Segoe UI", system-ui, sans-serif;
+  --font-display: var(--font-title), "Segoe UI", system-ui, sans-serif;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+}
+
+/* Campos y filtros. En @layer components para que las clases de Tailwind (pl-10, w-auto…) puedan
+   ajustarlos; fuera de una capa ganarían siempre y romperían, por ejemplo, el ícono del buscador. */
+@layer components {
+  .input,
+  .filter-control {
+    width: 100%;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--fg);
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .input {
+    border-radius: 0.625rem;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.95rem;
+    line-height: 1.4;
+  }
+  .input::placeholder,
+  .filter-control::placeholder {
+    color: var(--muted);
+    opacity: 0.75;
+  }
+  .input:hover,
+  .filter-control:hover {
+    border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+  }
+  .input:focus,
+  .filter-control:focus {
+    outline: none;
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
+  }
+  .input[aria-invalid="true"] {
+    border-color: var(--bad);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 14%, transparent);
+  }
+  textarea.input {
+    resize: vertical;
+  }
+  .input {
+    box-shadow: 0 1px 2px rgb(16 24 40 / 0.05);
+  }
+  select.input {
+    appearance: none;
+    padding-right: 2.25rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7684' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+  }
+
+  /* Ventanas y formularios: cabecera con un toque de color y secciones en tarjetas sobre un fondo suave. */
+  .modal-head {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--brand-soft) 85%, var(--surface)) 0%, var(--surface) 70%);
+  }
+  .modal-body {
+    background: color-mix(in srgb, var(--bg) 45%, var(--surface));
+  }
+  .form-section {
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    background: var(--surface);
+    padding: 1.125rem;
+    box-shadow: 0 1px 3px rgb(16 24 40 / 0.04);
+  }
+  @media (min-width: 640px) {
+    .form-section {
+      padding: 1.25rem 1.375rem;
+    }
+  }
+
+  /* Barra de búsqueda y filtros de las listas */
+  .filter-control {
+    height: 2.5rem;
+    border-radius: 0.625rem;
+    font-size: 0.875rem;
+  }
+  select.filter-control {
+    appearance: none;
+    padding: 0 2.25rem 0 0.85rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7684' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.7rem center;
+    cursor: pointer;
+  }
+  select.filter-control.is-active {
+    border-color: color-mix(in srgb, var(--brand) 55%, var(--line));
+    background-color: var(--brand-soft);
+    color: var(--brand-strong);
+    font-weight: 600;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Sitio web público (docs/07 §1.5): tokens --site-* y piezas comunes.
+   ------------------------------------------------------------------ */
+.site {
+  --site-navy: #0d3b6e;
+  --site-navy-title: #00254d;
+  --site-action: #1f7fd1;
+  --site-action-hover: #176bb3;
+  --site-bg: #eef1f5;
+  --site-surface: #f7fafe;
+  --site-card: #ffffff;
+  --site-amber: #f4b90f;
+  --site-green: #22a35a;
+  --site-red: #e2453c;
+  --site-teal: #1fb5a3;
+  --site-text: #262b33;
+  --site-text-2: #6b7684;
+  --site-border: rgba(13, 59, 110, 0.08);
+  color: var(--site-text);
+  background: var(--site-card);
+}
+
+@layer components {
+  .site-card {
+    background: var(--site-card);
+    border: 1px solid var(--site-border);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px -2px rgba(13, 59, 110, 0.08);
+  }
+  .site-card-hover {
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+  }
+  .site-card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -4px rgba(13, 59, 110, 0.14);
+  }
+  .site-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 48px;
+    padding: 12px 24px;
+    border-radius: 10px;
+    font-weight: 700;
+    transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  }
+  .site-btn:active {
+    transform: scale(0.98);
+  }
+  .site-btn:focus-visible {
+    outline: 2px solid var(--site-action);
+    outline-offset: 2px;
+  }
+  .site-btn-primary {
+    background: var(--site-action);
+    color: #fff;
+    box-shadow: 0 6px 18px -6px rgba(31, 127, 209, 0.6);
+  }
+  .site-btn-primary:hover {
+    background: var(--site-action-hover);
+  }
+  .site-btn-outline {
+    border: 1.5px solid rgba(13, 59, 110, 0.18);
+    color: var(--site-navy);
+    background: #fff;
+  }
+  .site-btn-outline:hover {
+    border-color: var(--site-action);
+    color: var(--site-action);
+  }
+  .site-btn-light {
+    background: #fff;
+    color: var(--site-navy);
+  }
+  .site-btn-ghost-light {
+    border: 1.5px solid rgba(255, 255, 255, 0.45);
+    color: #fff;
+  }
+  .site-btn-ghost-light:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  /* Franja diagonal de seguridad: ámbar sobre azul institucional (sin urgencia falsa). */
+  /* Al imprimir la constancia del Libro de Reclamaciones: solo el contenido. */
+  @media print {
+    .site header,
+    .site footer,
+    .site [role="dialog"],
+    .wa-float {
+      display: none !important;
+    }
+  }
+  /* Movimiento suave del sitio: avisos que flotan y secciones que aparecen al bajar. */
+  @keyframes site-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  .site-float {
+    animation: site-float 5s ease-in-out infinite;
+  }
+  .site-float-late {
+    animation: site-float 5s ease-in-out 1.6s infinite;
+  }
+  .site-reveal {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .site-reveal.is-shown {
+    opacity: 1;
+    transform: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .site-float,
+    .site-float-late {
+      animation: none;
+    }
+    .site-reveal {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+  }
+  /* El banner de cookies no se tapa con el botón de WhatsApp (SCR-WEB-13). */
+  html[data-cookie-banner="open"] .wa-float {
+    display: none;
+  }
+  .site .input {
+    background: #ffffff;
+    color: var(--site-text);
+    border-color: #d5dde7;
+  }
+  .site-stripe {
+    background: repeating-linear-gradient(-45deg, var(--site-amber) 0 14px, var(--site-navy) 14px 28px);
+  }
+  .site-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--site-action);
+  }
+  .site-dots {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
 }
