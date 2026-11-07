@@ -47,7 +47,7 @@ const STATUS: Record<Status, { label: string; tone: ChipTone; tile: string; box:
     meaning: "Funciona, pero algo no está como debería.",
   },
   error: { label: "Con error", tone: "bad", tile: "bg-bad-soft text-bad", box: "bg-bad-soft text-bad", meaning: "No funciona o está por fallar: hay que atenderlo." },
-  off: { label: "Sin configurar", tone: "na", tile: "bg-na-soft text-muted", box: "bg-bg text-muted", meaning: "Todavía no se configura: depende de una decisión o del servidor." },
+  off: { label: "Pendiente", tone: "na", tile: "bg-na-soft text-muted", box: "bg-bg text-muted", meaning: "Todavía no se contrata o configura. No es una falla." },
 };
 
 const GROUPS: [Check["group"], string][] = [
@@ -128,8 +128,8 @@ export default function SaludPage() {
         <div className="flex items-start gap-3 rounded-2xl border border-brand/30 bg-brand-soft/60 px-4 py-3 text-sm text-brand-strong">
           <Icon name="globe" size={18} className="mt-0.5 shrink-0" />
           <p>
-            <b>Estás viendo el entorno de desarrollo (tu computadora).</b> Cuando EscudoSST esté en el servidor, esta misma pantalla medirá el disco del servidor, los archivos en Backblaze B2, los
-            trabajadores de la cola, el correo de Elastic Email y los respaldos. Lo que hoy dice «Sin configurar» se activa al subirlo.
+            <b>Estás viendo el entorno de desarrollo (tu computadora).</b> En el servidor, esta misma pantalla mide el disco, los archivos, la cola de tareas, el correo y las
+            copias de seguridad reales. Lo que dice «Pendiente» depende de un servicio que aún no se contrata; no es una falla.
           </p>
         </div>
       )}
@@ -146,7 +146,7 @@ export default function SaludPage() {
         <StatCard label="Funcionan" value={count("ok")} hint="Sin problemas" icon="check" tone="ok" active={filter === "ok"} onClick={() => toggle("ok")} />
         <StatCard label="Para revisar" value={count("warning")} hint="Advertencias" icon="clock" tone="amber" active={filter === "warning"} onClick={() => toggle("warning")} />
         <StatCard label="Con error" value={problems} hint="Requieren atención" icon="lock" tone="bad" active={filter === "error"} onClick={() => toggle("error")} />
-        <StatCard label="Sin configurar" value={count("off")} hint="Pendientes del equipo" icon="box" tone="na" active={filter === "off"} onClick={() => toggle("off")} />
+        <StatCard label="Pendientes" value={count("off")} hint="Servicios por contratar" icon="box" tone="na" active={filter === "off"} onClick={() => toggle("off")} />
       </section>
 
       <BackupsSection onToast={(t) => setToast(t)} />

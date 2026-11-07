@@ -57,16 +57,16 @@ class HealthController extends Controller
             $this->mail(),
             [
                 'key' => 'whatsapp', 'name' => 'WhatsApp', 'group' => 'comms', 'icon' => 'mail', 'status' => 'off',
-                'detail' => 'Proveedor por definir (DA-02).',
+                'detail' => 'Pendiente: falta elegir el proveedor de WhatsApp. Mientras tanto los avisos llegan por correo.',
                 'help' => 'Para enviar avisos y alertas por WhatsApp.',
-                'fix' => 'Elegir el proveedor (BSP) y cargar sus credenciales en el servidor.',
+                'fix' => 'Nada en el panel. Cuando se elija el proveedor, el equipo técnico conecta su cuenta en el servidor.',
             ],
             $this->backups(),
             [
                 'key' => 'sunat', 'name' => 'Facturación electrónica (OSE)', 'group' => 'comms', 'icon' => 'file', 'status' => 'off',
-                'detail' => 'Proveedor por definir (DA-06). Las facturas quedan «SUNAT pendiente».',
+                'detail' => 'Pendiente: falta contratar el proveedor de facturación electrónica. Los pagos se registran igual y su factura queda como «SUNAT pendiente».',
                 'help' => 'Envía a la SUNAT la factura de cada pago de suscripción.',
-                'fix' => 'Contratar el proveedor OSE y conectar su API.',
+                'fix' => 'Nada en el panel. Mientras tanto, emite la factura por tu sistema actual. Cuando se contrate el proveedor (OSE), el equipo técnico lo conecta.',
             ],
         ];
 
@@ -147,14 +147,17 @@ class HealthController extends Controller
     {
         $disk = (string) config('filesystems.default');
         $base = [
-            'key' => 'files', 'name' => 'Archivos de las empresas (Backblaze B2)', 'group' => 'infra', 'icon' => 'file',
-            'help' => 'Evidencias, fotos, PDF y firmas. En producción no se guardan en el servidor sino en Backblaze B2, cifrados.',
-            'fix' => 'Cargar en el servidor las credenciales del bucket de B2 (FILESYSTEM_DISK=s3 y las variables AWS_*).',
+            'key' => 'files', 'name' => 'Archivos de las empresas', 'group' => 'infra', 'icon' => 'file',
+            'help' => 'Evidencias, fotos, PDF y firmas que suben las empresas. Lo ideal es guardarlos en un almacenamiento externo (Backblaze B2), aparte del servidor.',
+            'fix' => 'Nada en el panel. Cuando se contrate Backblaze B2, el equipo técnico carga sus datos de acceso en el servidor y los archivos pasan a guardarse ahí.',
         ];
         if ($disk !== 's3') {
+            // Pendiente (no es una falla): funciona guardando en el disco del servidor mientras se contrata B2.
             return $base + [
-                'status' => app()->isProduction() ? 'error' : 'off',
-                'detail' => app()->isProduction() ? 'Los archivos se están guardando en el disco del servidor, no en B2.' : 'En desarrollo los archivos se guardan en tu computadora.',
+                'status' => 'off',
+                'detail' => app()->isProduction()
+                    ? 'Funcionan: por ahora se guardan en el disco de este servidor. Falta contratar el almacenamiento externo (Backblaze B2).'
+                    : 'En desarrollo los archivos se guardan en tu computadora.',
             ];
         }
         $start = microtime(true);
@@ -260,17 +263,45 @@ class HealthController extends Controller
         ];
     }
 
+    /**
+     * Copias de seguridad: lee las copias reales (BackupService, a las 02:30). Si están al día pero solo en el
+     * servidor, queda «Revisar» con la explicación: falta una copia fuera del servidor (Backblaze B2).
+     */
     private function backups(): array
     {
-        $prod = app()->isProduction();
-
-        return [
-            'key' => 'backups', 'name' => 'Respaldos', 'group' => 'comms', 'icon' => 'shield',
-            'status' => $prod ? 'error' : 'off',
-            'detail' => $prod ? 'Sin respaldos configurados.' : 'No aplica en desarrollo.',
-            'help' => 'Copias de seguridad diarias de las bases de datos, cifradas en Backblaze B2, para recuperar todo si el servidor falla.',
-            'fix' => 'Al subir al servidor: configurar pgBackRest (o WAL-G) hacia B2 según docs/15 §9 y probar una restauración.',
+        $base = [
+            'key' => 'backups', 'name' => 'Copias de seguridad', 'group' => 'infra', 'icon' => 'shield',
+            'help' => 'Copia diaria y cifrada de las bases de datos (también la médica), para recuperar la información si algo falla.',
         ];
+        try {
+            $status = app(\App\Modules\SUS\Services\BackupService::class)->status();
+        } catch (Throwable $e) {
+            return $base + ['status' => 'error', 'detail' => 'No se pudo leer el estado de las copias.', 'fix' => 'Revisa «Copias de seguridad» en este panel o avisa al equipo técnico.'];
+        }
+        $targets = collect($status['targets']);
+        $failed = $targets->firstWhere('last_status', 'failed');
+        $last = $targets->pluck('last_ok_at')->filter()->min();
+        $at = (string) $status['config']['daily_at'];
+
+        if ($failed) {
+            return $base + ['status' => 'error', 'at' => $last, 'detail' => "Falló la última copia de {$failed['label']}.", 'fix' => 'Revisa el error en «Copias de seguridad» y vuelve a intentarlo con «Hacer copia ahora».'];
+        }
+        if (! $last) {
+            return $base + ['status' => 'warning', 'detail' => "Aún no hay copias. La primera se hace sola hoy a las {$at}.", 'fix' => 'Puedes hacer una ahora desde «Copias de seguridad», o esperar a la copia automática.'];
+        }
+        if ($targets->contains('overdue', true)) {
+            return $base + ['status' => 'error', 'at' => $last, 'detail' => 'La copia está atrasada: la última tiene más de un día.', 'fix' => 'Revisa que el programador de tareas esté activo (en esta misma página) y haz una copia ahora.'];
+        }
+        $offsite = (string) config('filesystems.disks.'.$status['config']['disk'].'.driver') === 's3';
+        if (! $offsite) {
+            return $base + [
+                'status' => 'warning', 'at' => $last,
+                'detail' => "Funcionan: se hace una copia cifrada cada día a las {$at} y se guarda en este servidor. Falta guardar también una copia fuera del servidor.",
+                'fix' => 'Nada urgente. Cuando se contrate Backblaze B2, el equipo técnico lo conecta para que cada copia se guarde también fuera del servidor (por si el servidor completo falla).',
+            ];
+        }
+
+        return $base + ['status' => 'ok', 'at' => $last, 'detail' => "Copia cifrada diaria a las {$at}, guardada fuera del servidor.", 'fix' => ''];
     }
 
     private function timed(string $key, string $name, string $group, string $icon, string $help, string $fix, callable $fn): array
