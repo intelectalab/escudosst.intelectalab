@@ -4,9 +4,11 @@
 // Envían a la API pública; el campo «website» es una trampa para bots (no se ve ni se lee con lector de pantalla).
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { storedRef } from "@/components/site/RefCapture";
 import { Icon } from "@/components/ui/Icon";
 import { isValidRuc, SECTORS } from "@/lib/accounts";
+import { track } from "@/lib/track";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -116,8 +118,12 @@ const onlyDigits = (v: string, max: number) => v.replace(/\D/g, "").slice(0, max
 // ---------------------------------------------------------------- Prueba gratis
 
 export function TrialForm() {
-  const [f, setF] = useState({ ruc: "", legal_name: "", trade_name: "", economic_sector: "", headcount: "", full_name: "", email: "", phone: "", website: "" });
+  const [f, setF] = useState({ ruc: "", legal_name: "", trade_name: "", economic_sector: "", headcount: "", full_name: "", email: "", phone: "", website: "", ref: "" });
   const [accept, setAccept] = useState(false);
+  useEffect(() => {
+    const ref = storedRef();
+    if (ref) setF((x) => ({ ...x, ref }));
+  }, []);
   const [errors, setErrors] = useState<Errors>({});
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -136,10 +142,12 @@ export function TrialForm() {
       economic_sector: f.economic_sector || null,
       headcount: f.headcount === "" ? null : Number(f.headcount),
       phone: f.phone.trim() || null,
+      ref: f.ref.trim() || null,
       accept_legal: accept,
     });
     setSaving(false);
     if (r.ok) {
+      track("form_submit", "trial");
       setSentTo(r.data.email ?? f.email);
       scrollToForm();
     }
@@ -218,6 +226,9 @@ export function TrialForm() {
           </Field>
           <Field label="Celular" optional error={err("phone")}>
             <input className="input" type="tel" maxLength={30} autoComplete="tel" value={f.phone} onChange={(e) => set("phone", e.target.value)} />
+          </Field>
+          <Field label="Código de partner" optional error={err("ref")} hint="Si una consultora te recomendó, escribe su código.">
+            <input className="input font-mono uppercase" maxLength={32} value={f.ref} onChange={(e) => set("ref", e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ""))} />
           </Field>
         </div>
       </fieldset>
@@ -316,6 +327,7 @@ export function DemoForm({
     });
     setSaving(false);
     if (r.ok) {
+      track("form_submit", type);
       setDone(true);
       scrollToForm();
     }

@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { DemoForm, type RequestType } from "@/components/site/PublicForms";
 import { Icon } from "@/components/ui/Icon";
-import { getPricing, getSite, whatsappLink } from "@/lib/site";
+import { getDemoAgenda, getPricing, getSite, whatsappLink } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Agenda una demo · EscudoSST",
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 export default async function DemoPage({ searchParams }: { searchParams: Promise<{ tipo?: string; plan?: string; interes?: string }> }) {
   const q = await searchParams;
-  const [site, pricing] = await Promise.all([getSite(), getPricing()]);
+  const [site, pricing, agenda] = await Promise.all([getSite(), getPricing(), getDemoAgenda()]);
   const type: RequestType = q.tipo === "cotizacion" ? "quote" : q.tipo === "contacto" ? "contact" : "demo";
   const plans = pricing.plans.map((p) => [p.code, p.name] as [string, string]);
   const wa = whatsappLink(site.settings, "Hola, quiero conocer EscudoSST.");
@@ -58,6 +58,17 @@ export default async function DemoPage({ searchParams }: { searchParams: Promise
                 <span className="text-sm text-white/75">Un recorrido por el sistema con datos de ejemplo, sin registrarte.</span>
               </span>
             </a>
+          )}
+          {agenda.result === "ok" && (
+            <Link href="/demo/agendar" data-track="demo-elegir-horario" className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-[#1F7FD1] to-[#0D3B6E] p-5 text-white shadow-md transition hover:-translate-y-0.5">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/15">
+                <Icon name="clock" size={22} />
+              </span>
+              <span>
+                <b className="block font-display">Elige tú el día y la hora</b>
+                <span className="text-sm text-white/80">Mira los horarios libres y reserva tu demo al momento.</span>
+              </span>
+            </Link>
           )}
           <div className="rounded-2xl border border-[var(--site-border)] bg-white p-5 shadow-sm">
             <p className="font-display font-bold text-[var(--site-navy-title)]">¿Prefieres empezar ya?</p>

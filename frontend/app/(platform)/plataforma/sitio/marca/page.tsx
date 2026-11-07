@@ -3,6 +3,7 @@
 // Sitio web › Logo y menú (SCR-WEB-21): logo (fondo claro), logo para fondo oscuro, favicon y el menú de la cabecera.
 // Los archivos se aplican al subirlos; el menú se guarda con su botón. El sitio los muestra en menos de un minuto.
 
+import { LinkPicker, type LinkPage } from "@/components/site/LinkPicker";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/Display";
@@ -15,7 +16,7 @@ import { assetUrl } from "@/lib/site";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type Kind = "logo" | "logo_dark" | "favicon";
-type Item = { label: string; url: string; visible: boolean };
+type Item = { label: string; url: string; visible: boolean; available?: boolean };
 
 const ASSETS: { kind: Kind; column: string; title: string; text: string; accept: string; dark?: boolean; square?: boolean }[] = [
   { kind: "logo", column: "logo_file_id", title: "Logo", text: "Se ve en la cabecera del sitio. PNG, JPG, WEBP o AVIF, menos de 1 MB. Ideal: fondo transparente, unos 400 × 120 px.", accept: ".png,.jpg,.jpeg,.webp,.avif" },
@@ -27,6 +28,7 @@ export default function MarcaPage() {
   const [ids, setIds] = useState<Record<string, string | null> | null>(null);
   const [items, setItems] = useState<Item[] | null>(null);
   const [defaults, setDefaults] = useState<Item[]>([]);
+  const [pages, setPages] = useState<LinkPage[]>([]);
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -36,9 +38,10 @@ export default function MarcaPage() {
     api<{ data: Record<string, string | null> }>("/internal/site/settings").then((r) =>
       setIds({ logo_file_id: r.data.logo_file_id, logo_dark_file_id: r.data.logo_dark_file_id, favicon_file_id: r.data.favicon_file_id }),
     );
-    api<{ data: Item[]; defaults: Item[] }>("/internal/site/menu").then((r) => {
+    api<{ data: Item[]; defaults: Item[]; pages: LinkPage[] }>("/internal/site/menu").then((r) => {
       setItems(r.data);
       setDefaults(r.defaults);
+      setPages(r.pages);
     });
   }, []);
   useEffect(load, [load]);
@@ -56,6 +59,7 @@ export default function MarcaPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.errors?.file?.[0] ?? json.detail ?? "No se pudo subir el archivo.");
       setToast({ text: "Listo. El sitio lo mostrará en menos de un minuto.", tone: "ok" });
+      window.sessionStorage.removeItem("escudo.brand");   // el panel vuelve a leer el logo
       load();
     } catch (e) {
       setToast({ text: e instanceof Error ? e.message : "No se pudo subir el archivo.", tone: "bad" });
@@ -69,6 +73,7 @@ export default function MarcaPage() {
     try {
       await api(`/internal/site/assets/${kind}`, { method: "DELETE" });
       setToast({ text: "Se volvió al de EscudoSST por defecto.", tone: "ok" });
+      window.sessionStorage.removeItem("escudo.brand");
       load();
     } finally {
       setBusy(null);
@@ -170,8 +175,17 @@ export default function MarcaPage() {
               </label>
               <label className="block">
                 <span className="sr-only">Destino</span>
-                <input className="input font-mono text-sm" maxLength={250} placeholder="/planes o https://…" value={it.url} aria-invalid={!!errors[`items.${i}.url`] || undefined} onChange={(e) => setItem(i, { url: e.target.value.trim() })} />
-                {errors[`items.${i}.url`] && <span className="mt-1 block text-xs text-bad">● {errors[`items.${i}.url`][0]}</span>}
+                <LinkPicker
+                  value={it.url}
+                  pages={pages}
+                  invalid={!!errors[`items.${i}.url`]}
+                  onChange={(url, label) => setItem(i, { url, available: true, ...(label && !it.label.trim() ? { label } : {}) })}
+                />
+                {errors[`items.${i}.url`] ? (
+                  <span className="mt-1 block text-xs text-bad">● {errors[`items.${i}.url`][0]}</span>
+                ) : (
+                  it.available === false && <span className="mt-1 block text-xs text-amber-ink">● Esa página ya no está publicada: el enlace no se muestra en el sitio hasta que la publiques o elijas otra.</span>
+                )}
               </label>
               <span className="flex items-center gap-1">
                 <button type="button" onClick={() => setItem(i, { visible: !it.visible })} className="grid h-10 w-10 place-items-center rounded-lg text-muted hover:bg-bg" aria-label={it.visible ? "Ocultar" : "Mostrar"} title={it.visible ? "Ocultar" : "Mostrar"}>
@@ -211,7 +225,7 @@ export default function MarcaPage() {
             Agregar enlace
           </Button>
         )}
-        <p className="mt-3 text-xs text-muted">Páginas del sitio: /producto, /como-funciona, /planes, /complementos, /preguntas-frecuentes, /demo, /prueba-gratis. También puedes enlazar a otra web con https://.</p>
+        <p className="mt-3 text-xs text-muted">Cada enlace lleva a una página que ya existe: las fijas del sitio y las que publicaste (sectores, diferenciadores, casos, políticas). Una página nueva aparece en la lista cuando la publicas. También puedes enlazar a otra web con https://.</p>
       </section>
 
       {toast && <Toast message={toast.text} tone={toast.tone} onClose={() => setToast(null)} />}

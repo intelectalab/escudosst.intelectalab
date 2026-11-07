@@ -9,7 +9,8 @@ export type Block =
   | { type: "modules"; title: string; items: string[] }
   | { type: "video"; title: string; url: string }
   | { type: "faq"; title: string; items: { q: string; a: string }[] }
-  | { type: "cta"; title: string; text: string; button: "trial" | "demo" | "consultancy" };
+  | { type: "cta"; title: string; text: string; button: "trial" | "demo" | "consultancy" }
+  | { type: "image"; title: string; caption: string; media_id: string; file_id?: string; alt?: string | null; width?: number | null; height?: number | null };
 
 export type BlockType = Block["type"];
 
@@ -32,6 +33,7 @@ export const BLOCK_TYPES: { type: BlockType; label: string; help: string; icon: 
   { type: "modules", label: "Módulos", help: "Tarjetas de módulos del sistema.", icon: "grid", empty: () => ({ type: "modules", title: "Módulos que más te sirven", items: [] }) },
   { type: "video", label: "Video", help: "YouTube o Vimeo. Se carga solo si la persona acepta cookies de marketing.", icon: "play", empty: () => ({ type: "video", title: "", url: "" }) },
   { type: "faq", label: "Preguntas", help: "Preguntas frecuentes propias de esta página.", icon: "search", empty: () => ({ type: "faq", title: "Preguntas frecuentes", items: [{ q: "", a: "" }] }) },
+  { type: "image", label: "Imagen", help: "Una foto o captura de la biblioteca de medios.", icon: "eye", empty: () => ({ type: "image", title: "", caption: "", media_id: "" }) },
   { type: "cta", label: "Llamado a la acción", help: "Invitación final con botón.", icon: "chevron", empty: () => ({ type: "cta", title: "", text: "", button: "trial" }) },
 ];
 

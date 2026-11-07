@@ -3,7 +3,7 @@
 // Marco común de las pantallas de acceso sin sesión (recuperar contraseña, crear contraseña, confirmar correo).
 
 import Link from "next/link";
-import { Brand } from "@/components/Brand";
+import { AppBrand } from "@/components/AppBrand";
 import { Icon } from "@/components/ui/Icon";
 
 export function AuthCard({ children }: { children: React.ReactNode }) {
@@ -11,7 +11,7 @@ export function AuthCard({ children }: { children: React.ReactNode }) {
     <main className="relative grid min-h-screen place-items-center overflow-hidden bg-bg p-4 sm:p-6">
       <div className="absolute inset-x-0 top-0 h-64 bg-gradient-to-br from-side to-brand" aria-hidden="true" />
       <div className="relative w-full max-w-md space-y-6 rounded-2xl border border-line bg-surface p-6 shadow-xl sm:p-8">
-        <Brand />
+        <AppBrand />
         {children}
       </div>
     </main>

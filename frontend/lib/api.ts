@@ -4,7 +4,7 @@
 
 import { session } from "./session";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 /** Error en formato problem+json (docs/08-api.md §7). */
 export class ApiError extends Error {
@@ -52,7 +52,17 @@ export async function api<T>(path: string, { method = "GET", body, withCompany =
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    if (res.status === 401 && data.type === "unauthenticated") session.clear();
+    if (res.status === 401 && data.type === "unauthenticated") {
+      const had = !!session.getToken();
+      session.clear();
+      // La sesión se cerró (inactividad o tiempo máximo): se vuelve al ingreso con el aviso, sin mostrar un error.
+      // La promesa queda pendiente a propósito: la pantalla se va y nada más debe reaccionar.
+      if (had && typeof window !== "undefined") {
+        session.markExpired();
+        window.location.assign("/login");
+        return new Promise<T>(() => undefined);
+      }
+    }
     throw new ApiError(res.status, data.type ?? "error", data.title ?? "Error", data.detail, data.errors);
   }
 

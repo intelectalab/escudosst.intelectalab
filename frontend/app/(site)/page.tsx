@@ -109,10 +109,10 @@ export default async function HomePage() {
               ))}
             </ul>
             <div className="flex flex-col gap-3 pt-2 sm:flex-row">
-              <a href={contactHref(s, "trial")} className="site-btn site-btn-primary shadow-[0_10px_24px_-10px_#1F7FD1]">
+              <a href={contactHref(s, "trial")} data-track="portada-prueba-1" className="site-btn site-btn-primary shadow-[0_10px_24px_-10px_#1F7FD1]">
                 Prueba gratis <Icon name="chevron" size={16} />
               </a>
-              <a href={contactHref(s, "demo")} className="site-btn site-btn-outline bg-white">
+              <a href={contactHref(s, "demo")} data-track="portada-demo-2" className="site-btn site-btn-outline bg-white">
                 Agenda una demo
               </a>
             </div>
@@ -208,7 +208,7 @@ export default async function HomePage() {
           {FEATURES.map((f, i) => {
             const plan = planName(planOf(f.module));
             return (
-              <div key={f.module} className={`grid items-center gap-10 lg:grid-cols-2 lg:gap-16 ${i % 2 ? "lg:[&>*:first-child]:order-2" : ""}`}>
+              <div key={f.module} className={`grid grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16 [&>*]:min-w-0 ${i % 2 ? "lg:[&>*:first-child]:order-2" : ""}`}>
                 <div className="space-y-5">
                   <p className="site-eyebrow">{f.eyebrow}</p>
                   <h2 className="font-display text-[28px] font-bold leading-tight text-[var(--site-navy-title)] sm:text-[34px]">{f.title}</h2>
@@ -229,10 +229,10 @@ export default async function HomePage() {
                     </p>
                   )}
                   <div className="flex flex-col gap-3 sm:flex-row">
-                    <a href={contactHref(s, "trial")} className="site-btn site-btn-primary">
+                    <a href={contactHref(s, "trial")} data-track="portada-prueba-3" className="site-btn site-btn-primary">
                       Probar gratis
                     </a>
-                    <a href={contactHref(s, "demo")} className="site-btn site-btn-outline">
+                    <a href={contactHref(s, "demo")} data-track="portada-demo-4" className="site-btn site-btn-outline">
                       Ver demo
                     </a>
                   </div>
@@ -276,7 +276,7 @@ export default async function HomePage() {
                 Agenda una demo y te mostramos EscudoSST con ejemplos de tu sector. Si prefieres explorar solo, crea tu cuenta de prueba.
               </p>
               <div className="flex flex-col gap-3 pt-1 sm:flex-row">
-                <a href={contactHref(s, "demo")} className="site-btn site-btn-primary">
+                <a href={contactHref(s, "demo")} data-track="portada-demo-5" className="site-btn site-btn-primary">
                   Agenda una demo <Icon name="chevron" size={16} />
                 </a>
                 {s.interactive_demo_url ? (
@@ -284,7 +284,7 @@ export default async function HomePage() {
                     <Icon name="play" size={16} /> Ver la demo ahora
                   </a>
                 ) : (
-                  <a href={contactHref(s, "trial")} className="site-btn site-btn-outline bg-white">
+                  <a href={contactHref(s, "trial")} data-track="portada-prueba-6" className="site-btn site-btn-outline bg-white">
                     Probar gratis
                   </a>
                 )}

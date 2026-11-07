@@ -49,7 +49,15 @@ export function SiteFooter({ site }: { site: SiteData }) {
               ["/sectores", "Sectores"],
               ["/consultoras", "Para consultoras"],
               ["/casos", "Casos de éxito"],
+              ["/recursos", "Recursos gratis"],
+              ["/herramientas/calculadora-multas", "Calculadora de multas"],
+              ["/herramientas/autodiagnostico", "Autodiagnóstico Ley 29783"],
               ["/preguntas-frecuentes", "Preguntas frecuentes"],
+              ["/ayuda", "Centro de ayuda"],
+              ["/partners", "Programa de partners"],
+              ["/boletin", "Boletín normativo"],
+              ["/confianza", "Centro de confianza"],
+              ["/estado", "Estado del servicio"],
               ["/login", "Iniciar sesión"],
             ].map(([href, label]) => (
               <li key={href}>

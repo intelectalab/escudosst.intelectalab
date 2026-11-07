@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { type Media, MediaPicker, MediaThumb } from "@/components/platform/MediaKit";
 import { Button } from "@/components/ui/Button";
 import { Chip, PageHeader } from "@/components/ui/Display";
 import { FormField, FormSection, SwitchRow } from "@/components/ui/Form";
@@ -371,6 +372,8 @@ export default function EditStoryPage() {
             </div>
             {err("modules") && <p className="text-xs font-medium text-bad">● {err("modules")}</p>}
           </FormSection>
+
+          {!isNew && <GallerySection storyId={id} onToast={(text, tone) => setToast({ text, tone })} />}
         </div>
 
         <aside className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:sticky 2xl:top-24 2xl:block 2xl:space-y-5 2xl:self-start">
@@ -498,5 +501,101 @@ function FilePick({ label, accept, busy, onPick }: { label: string; accept: stri
         {label}
       </Button>
     </>
+  );
+}
+
+type GalleryItem = { media_id: string; caption: string | null; file_id: string; title: string; alt_text: string | null; width: number | null; height: number | null };
+
+/** Galería del caso (portafolio): imágenes de la biblioteca de medios con leyenda y orden. Se guarda aparte. */
+function GallerySection({ storyId, onToast }: { storyId: string; onToast: (t: string, tone: "ok" | "bad") => void }) {
+  const [items, setItems] = useState<GalleryItem[] | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api<{ data: GalleryItem[] }>(`/internal/site/success-stories/${storyId}/gallery`).then((r) => setItems(r.data));
+  }, [storyId]);
+
+  const change = (next: GalleryItem[]) => {
+    setItems(next);
+    setDirty(true);
+  };
+  const move = (i: number, d: -1 | 1) => {
+    if (!items) return;
+    const n = [...items];
+    [n[i], n[i + d]] = [n[i + d], n[i]];
+    change(n);
+  };
+
+  async function save() {
+    if (!items) return;
+    setSaving(true);
+    try {
+      await api(`/internal/site/success-stories/${storyId}/gallery`, { method: "PUT", body: { items: items.map((g) => ({ media_id: g.media_id, caption: g.caption || null })) } });
+      setDirty(false);
+      onToast("Galería guardada.", "ok");
+    } catch (e) {
+      onToast(e instanceof ApiError ? (Object.values(e.errors ?? {})[0]?.[0] ?? e.message) : "No se pudo guardar la galería.", "bad");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <FormSection title="Galería" icon="eye" description="Fotos del proyecto desde la biblioteca de medios (hasta 12). Sin fotos de personas identificables sin su permiso.">
+      {items === null ? (
+        <div className="h-24 animate-pulse rounded-xl bg-line/40" />
+      ) : items.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-line p-5 text-center text-sm text-muted">Sin imágenes todavía.</p>
+      ) : (
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {items.map((g, i) => (
+            <li key={g.media_id} className="flex gap-3 rounded-xl border border-line p-2.5">
+              <span className="h-20 w-28 shrink-0 overflow-hidden rounded-lg bg-bg">
+                <MediaThumb m={{ kind: "image", file_id: g.file_id, alt_text: g.alt_text } as Media} />
+              </span>
+              <span className="min-w-0 flex-1 space-y-1.5">
+                <b className="block truncate text-xs">{g.title}</b>
+                <input className="input !py-1.5 text-sm" maxLength={200} placeholder="Leyenda (opcional)" value={g.caption ?? ""} onChange={(e) => change(items.map((x, k) => (k === i ? { ...x, caption: e.target.value } : x)))} />
+                <span className="flex gap-1">
+                  <button type="button" disabled={i === 0} onClick={() => move(i, -1)} className="rounded-md px-1.5 py-0.5 text-xs text-muted hover:bg-bg disabled:opacity-30" aria-label="Subir">
+                    ↑
+                  </button>
+                  <button type="button" disabled={i === items.length - 1} onClick={() => move(i, 1)} className="rounded-md px-1.5 py-0.5 text-xs text-muted hover:bg-bg disabled:opacity-30" aria-label="Bajar">
+                    ↓
+                  </button>
+                  <button type="button" onClick={() => change(items.filter((_, k) => k !== i))} className="ml-auto rounded-md px-1.5 py-0.5 text-xs font-semibold text-bad hover:bg-bad-soft">
+                    Quitar
+                  </button>
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {(items?.length ?? 0) < 12 && (
+          <Button size="sm" variant="soft" icon="plus" onClick={() => setPicking(true)}>
+            Agregar imágenes
+          </Button>
+        )}
+        <Button size="sm" variant="primary" icon="check" loading={saving} disabled={!dirty} onClick={save}>
+          Guardar galería
+        </Button>
+      </div>
+      {picking && (
+        <MediaPicker
+          kind="image"
+          multiple
+          exclude={(items ?? []).map((g) => g.media_id)}
+          onClose={() => setPicking(false)}
+          onPick={(ms) => {
+            setPicking(false);
+            change([...(items ?? []), ...ms.map((m) => ({ media_id: m.id, caption: null, file_id: m.file_id, title: m.title, alt_text: m.alt_text, width: m.width, height: m.height }))].slice(0, 12));
+          }}
+        />
+      )}
+    </FormSection>
   );
 }

@@ -14,6 +14,7 @@ export type SiteSettings = {
   contact_phone: string | null;
   whatsapp_number: string | null;
   whatsapp_default_message: string | null;
+  google?: { verification: string | null; ga4: string | null };
   blog_url: string | null;
   interactive_demo_url: string | null;
   complaints_officer_name: string | null;
@@ -127,6 +128,7 @@ export type SuccessStory = {
   modules: string[];
   is_example: boolean;
   published_at: string | null;
+  gallery?: { file_id: string; alt_text: string | null; width: number | null; height: number | null; caption: string | null; is_example: boolean }[];
 };
 export const STORY_SECTORS: Record<string, string> = {
   construction: "Construcción",
@@ -143,4 +145,8 @@ export const STORY_SECTORS: Record<string, string> = {
   other: "Otros",
 };
 export const getStories = (sector?: string) => get<SuccessStory[]>(`success-stories${sector ? `?sector=${encodeURIComponent(sector)}` : ""}`, []);
+/** Recursos publicados (/recursos). El archivo nunca viene aquí: se pide con un enlace firmado. */
+export const getResources = () => get<{ slug: string; title: string; description: string | null; resource_type: string; sector: string | null; is_gated: boolean; cover_file_id: string | null }[]>("resources", []);
+/** ¿La agenda pública de demos está activa? (para mostrar «Elige tu horario»). */
+export const getDemoAgenda = () => get<{ result: string }>("demo/slots", { result: "disabled" });
 export const getStory = (slug: string) => get<SuccessStory | null>(`success-stories/${slug}`, null);

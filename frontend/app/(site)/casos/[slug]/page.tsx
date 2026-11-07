@@ -1,5 +1,5 @@
 // Ficha de un caso de éxito (SCR-WEB-09): sector, año, resultados, reto, solución, cita y módulos usados.
-// La galería de imágenes llega con la biblioteca de medios.
+// La galería sale de la biblioteca de medios (cada imagen con su texto alternativo y leyenda).
 
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -7,7 +7,7 @@ import { notFound } from "next/navigation";
 import { FinalCta } from "@/components/site/Sections";
 import { ExampleBadge, StoryLogo } from "@/components/site/Stories";
 import { Icon } from "@/components/ui/Icon";
-import { getModules, getSite, getStory, STORY_SECTORS } from "@/lib/site";
+import { assetUrl, getModules, getSite, getStory, STORY_SECTORS } from "@/lib/site";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -76,6 +76,30 @@ export default async function CasoPage({ params }: Props) {
             <blockquote className="font-display text-xl leading-relaxed sm:text-2xl">«{s.quote}»</blockquote>
             <figcaption className="mt-4 text-sm text-white/70">{s.client_name}</figcaption>
           </figure>
+        </section>
+      )}
+
+      {s.gallery && s.gallery.length > 0 && (
+        <section className="px-4 pb-12 lg:px-8" aria-label="Galería del proyecto">
+          <div className="mx-auto max-w-[1000px] space-y-4">
+            <h2 className="font-display text-[24px] font-bold text-[var(--site-navy-title)]">Galería del proyecto</h2>
+            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {s.gallery.map((g) => (
+                <li key={g.file_id}>
+                  <figure className="site-card overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={assetUrl(g.file_id) ?? ""} alt={g.alt_text ?? ""} width={g.width ?? undefined} height={g.height ?? undefined} loading="lazy" className="aspect-[4/3] w-full object-cover" />
+                    {(g.caption || g.is_example) && (
+                      <figcaption className="flex items-center gap-2 px-4 py-3 text-sm text-[var(--site-text-2)]">
+                        {g.is_example && <ExampleBadge />}
+                        {g.caption}
+                      </figcaption>
+                    )}
+                  </figure>
+                </li>
+              ))}
+            </ul>
+          </div>
         </section>
       )}
 

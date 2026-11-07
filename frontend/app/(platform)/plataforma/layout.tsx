@@ -9,7 +9,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Brand } from "@/components/Brand";
+import { AppBrand } from "@/components/AppBrand";
 import { NotificationsBell } from "@/components/platform/NotificationsBell";
 import { UserMenu } from "@/components/platform/UserMenu";
 import { PlatformUserContext } from "@/components/PlatformContext";
@@ -151,7 +151,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
   const brand = (mini: boolean) => (
     <div className="overflow-hidden whitespace-nowrap border-b border-white/10 px-[17px] py-4">
       <div className={mini ? "[&_.font-display]:opacity-0 [&_.font-display]:transition-opacity group-hover/side:[&_.font-display]:opacity-100" : ""}>
-        <Brand light />
+        <AppBrand light />
       </div>
       <div
         className={`overflow-hidden transition-all duration-200 ${mini ? "mt-0 max-h-0 opacity-0 group-hover/side:mt-3 group-hover/side:max-h-16 group-hover/side:opacity-100" : "mt-3 max-h-16"}`}

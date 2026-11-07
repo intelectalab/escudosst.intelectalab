@@ -10,18 +10,29 @@ import { Icon } from "@/components/ui/Icon";
 
 const GROUPS: { title: string; items: [string, string, string][] }[] = [
   {
+    title: "Resumen",
+    items: [["/plataforma/sitio/metricas", "Resumen y métricas", "grid"]],
+  },
+  {
     title: "Ajustes",
     items: [
       ["/plataforma/sitio", "Contacto y WhatsApp", "globe"],
       ["/plataforma/sitio/marca", "Logo y menú", "tag"],
       ["/plataforma/sitio/politicas", "Políticas", "file"],
+      ["/plataforma/sitio/confianza", "Subencargados", "lock"],
+      ["/plataforma/sitio/estado", "Estado del servicio", "shield"],
+      ["/plataforma/sitio/seo", "SEO y redirecciones", "search"],
     ],
   },
   {
     title: "Bandejas",
     items: [
       ["/plataforma/sitio/solicitudes", "Solicitudes", "clock"],
+      ["/plataforma/sitio/agenda", "Agenda de demos", "clock"],
       ["/plataforma/sitio/interesados", "Interesados", "people"],
+      ["/plataforma/sitio/partners", "Partners y referidos", "building"],
+      ["/plataforma/sitio/crm", "Conexión con el CRM", "refresh"],
+      ["/plataforma/sitio/boletin", "Boletín", "mail"],
       ["/plataforma/sitio/reclamos", "Libro de Reclamaciones", "history"],
     ],
   },
@@ -31,6 +42,12 @@ const GROUPS: { title: string; items: [string, string, string][] }[] = [
       ["/plataforma/sitio/paginas", "Páginas", "pen"],
       ["/plataforma/sitio/contenido", "Preguntas y testimonios", "heart"],
       ["/plataforma/sitio/casos", "Casos de éxito", "star"],
+      ["/plataforma/sitio/recursos", "Recursos descargables", "file"],
+      ["/plataforma/sitio/calculadora", "Calculadora de multas", "tag"],
+      ["/plataforma/sitio/autodiagnostico", "Autodiagnóstico", "check"],
+      ["/plataforma/sitio/ayuda", "Centro de ayuda", "help"],
+      ["/plataforma/sitio/chatbot", "Chatbot", "help"],
+      ["/plataforma/sitio/medios", "Biblioteca de medios", "eye"],
     ],
   },
 ];

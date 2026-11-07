@@ -21,9 +21,12 @@ const PUBLIC_API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // El favicon lo sube el dueño en Sitio web › Marca y menú; se consulta con caché de un minuto.
 export async function generateMetadata(): Promise<Metadata> {
   let favicon: string | null = null;
+  let verification: string | null = null;
   try {
     const res = await fetch(`${API}/api/v1/public/site`, { next: { revalidate: 60 } });
-    favicon = ((await res.json()) as { data?: { settings?: { favicon_file_id?: string | null } } }).data?.settings?.favicon_file_id ?? null;
+    const s = ((await res.json()) as { data?: { settings?: { favicon_file_id?: string | null; google?: { verification?: string | null } } } }).data?.settings;
+    favicon = s?.favicon_file_id ?? null;
+    verification = s?.google?.verification ?? null;   // Search Console (Sitio web › SEO y redirecciones)
   } catch {
     favicon = null;
   }
@@ -31,6 +34,7 @@ export async function generateMetadata(): Promise<Metadata> {
     title: "EscudoSST",
     description: "Gestión de Seguridad y Salud en el Trabajo",
     ...(favicon ? { icons: { icon: `${PUBLIC_API}/api/v1/public/site/assets/${favicon}` } } : {}),
+    ...(verification ? { verification: { google: verification } } : {}),
   };
 }
 

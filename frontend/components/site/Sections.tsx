@@ -41,10 +41,10 @@ export function FinalCta({ s }: { s: SiteSettings }) {
           <h2 className="font-display text-[28px] font-bold leading-tight sm:text-[38px]">Deja el Excel y el papel. Ordena tu SST en un solo lugar.</h2>
           <p className="text-[17px] text-white/80">Regístrate con tu RUC y empieza con tu línea base. Te acompañamos en el camino.</p>
           <div className="flex flex-col justify-center gap-3 sm:flex-row">
-            <a href={contactHref(s, "trial")} className="site-btn site-btn-light">
+            <a href={contactHref(s, "trial")} data-track="cta-final-prueba" className="site-btn site-btn-light">
               Prueba gratis <Icon name="chevron" size={16} />
             </a>
-            <a href={contactHref(s, "demo")} className="site-btn site-btn-ghost-light">
+            <a href={contactHref(s, "demo")} data-track="cta-final-demo" className="site-btn site-btn-ghost-light">
               Agenda una demo
             </a>
           </div>
@@ -129,7 +129,7 @@ export function PlanCards({
                 ))}
               </ul>
             )}
-            <a href={contactHref(s, "quote", p.code)} className={`site-btn mt-auto w-full ${p.code === "P" ? "site-btn-primary" : "site-btn-outline"}`}>
+            <a href={contactHref(s, "quote", p.code)} data-track={`plan-${p.code}`} className={`site-btn mt-auto w-full ${p.code === "P" ? "site-btn-primary" : "site-btn-outline"}`}>
               {p.price ? "Contratar" : "Solicitar cotización"}
             </a>
           </article>

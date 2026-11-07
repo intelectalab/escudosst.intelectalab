@@ -4,7 +4,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Brand } from "@/components/Brand";
+import { AppBrand } from "@/components/AppBrand";
 import { api, ApiError } from "@/lib/api";
 import { session } from "@/lib/session";
 import type { CompanyOption, User } from "@/lib/types";
@@ -59,7 +59,7 @@ export default function SelectCompanyPage() {
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
       <div className="w-full max-w-lg space-y-6">
-        <Brand />
+        <AppBrand />
         <div>
           <h1 className="text-2xl font-semibold">¿Con qué empresa vas a trabajar?</h1>
           <p className="text-muted mt-1">Puedes cambiar de empresa en cualquier momento.</p>

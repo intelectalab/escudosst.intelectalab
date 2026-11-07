@@ -2,9 +2,13 @@
 // Se arma en el servidor con los datos que el dueño edita en el panel (Sitio web → Marca y ajustes).
 
 import Link from "next/link";
+import { ChatbotWidget } from "@/components/site/ChatbotWidget";
 import { CookieBanner } from "@/components/site/CookieBanner";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
+import { GoogleAnalytics } from "@/components/site/GoogleAnalytics";
+import { RefCapture } from "@/components/site/RefCapture";
+import { SiteTracker } from "@/components/site/SiteTracker";
 import { WhatsAppFloat } from "@/components/site/WhatsAppFloat";
 import { assetUrl, contactHref, getSite } from "@/lib/site";
 
@@ -14,7 +18,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
   const bar = s.announcement_bar;
 
   return (
-    <div className="site flex min-h-screen flex-col">
+    <div className="site flex min-h-screen flex-col overflow-x-clip">
       <a href="#contenido" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:font-semibold">
         Saltar al contenido
       </a>
@@ -43,8 +47,12 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
         {children}
       </main>
       <SiteFooter site={site} />
+      <ChatbotWidget hasWhatsApp={!!s.whatsapp_number} />
       <WhatsAppFloat number={s.whatsapp_number} message={s.whatsapp_default_message || "Hola, quiero conocer EscudoSST"} />
       <CookieBanner />
+      <GoogleAnalytics id={s.google?.ga4 ?? null} />
+      <RefCapture />
+      <SiteTracker />
     </div>
   );
 }

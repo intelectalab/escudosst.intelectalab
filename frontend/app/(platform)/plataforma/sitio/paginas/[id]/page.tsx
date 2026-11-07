@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { MediaPicker } from "@/components/platform/MediaKit";
 import { PageBlocks } from "@/components/site/PageBlocks";
 import { Button } from "@/components/ui/Button";
 import { Chip, PageHeader } from "@/components/ui/Display";
@@ -14,7 +15,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Toast } from "@/components/ui/Toast";
 import { api, ApiError } from "@/lib/api";
 import { type Block, BLOCK_TYPES, CTA_BUTTONS, PAGE_TYPES, type PageType } from "@/lib/pages";
-import type { PublicModule } from "@/lib/site";
+import { assetUrl, type PublicModule } from "@/lib/site";
 
 type Page = {
   id: string;
@@ -390,6 +391,7 @@ function BlockEditor({
           </div>
         </>
       )}
+      {b.type === "image" && <ImageBlockEditor b={b} error={err("media_id")} field={field} onChange={onChange} />}
       {b.type === "video" && (
         <>
           {field("title", "Título (opcional)", 120)}
@@ -431,5 +433,53 @@ function BlockEditor({
         </>
       )}
     </section>
+  );
+}
+
+/** Bloque «Imagen»: elige una imagen de la biblioteca de medios (su texto alternativo viene de la biblioteca). */
+function ImageBlockEditor({
+  b,
+  error,
+  field,
+  onChange,
+}: {
+  b: Extract<Block, { type: "image" }>;
+  error?: string;
+  field: (f: string, label: string, max: number, long?: boolean, hint?: string) => React.ReactNode;
+  onChange: (b: Block) => void;
+}) {
+  const [picking, setPicking] = useState(false);
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="h-24 w-36 shrink-0 overflow-hidden rounded-xl border border-line bg-bg">
+          {b.file_id ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={assetUrl(b.file_id) ?? ""} alt={b.alt ?? ""} className="h-full w-full object-cover" />
+          ) : (
+            <span className="grid h-full place-items-center text-xs text-muted">Sin imagen</span>
+          )}
+        </span>
+        <span className="space-y-1">
+          <Button size="sm" variant="soft" icon="eye" onClick={() => setPicking(true)}>
+            {b.file_id ? "Cambiar imagen" : "Elegir de la biblioteca"}
+          </Button>
+          {b.alt && <span className="block max-w-xs text-xs text-muted">Descripción: {b.alt}</span>}
+          {error && <span className="block text-xs font-medium text-bad">● {error}</span>}
+        </span>
+      </div>
+      {field("title", "Título (opcional)", 120)}
+      {field("caption", "Leyenda (opcional)", 200)}
+      {picking && (
+        <MediaPicker
+          kind="image"
+          onClose={() => setPicking(false)}
+          onPick={([m]) => {
+            setPicking(false);
+            onChange({ ...b, media_id: m.id, file_id: m.file_id, alt: m.alt_text, width: m.width, height: m.height });
+          }}
+        />
+      )}
+    </>
   );
 }

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { VideoBlock } from "@/components/site/VideoBlock";
 import { Icon } from "@/components/ui/Icon";
 import { type Block, CTA_BUTTONS } from "@/lib/pages";
+import { assetUrl } from "@/lib/site";
 
 type Mod = { code: string; name: string; solves: string | null; from_plan?: string | null; is_addon?: boolean };
 
@@ -140,6 +141,17 @@ function BlockView({ b, modules, alt }: { b: Block; modules: Mod[]; alt: boolean
               </details>
             ))}
           </div>
+        </Wrap>
+      ) : null;
+    case "image":
+      return b.file_id ? (
+        <Wrap alt={alt} narrow>
+          <Title>{b.title}</Title>
+          <figure className="space-y-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={assetUrl(b.file_id) ?? ""} alt={b.alt ?? ""} width={b.width ?? undefined} height={b.height ?? undefined} loading="lazy" className="w-full rounded-2xl shadow-lg" />
+            {b.caption && <figcaption className="text-center text-sm text-[var(--site-text-2)]">{b.caption}</figcaption>}
+          </figure>
         </Wrap>
       ) : null;
     case "cta": {

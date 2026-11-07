@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { Brand } from "@/components/Brand";
+import { AppBrand } from "@/components/AppBrand";
 import { CodeInput } from "@/components/mfa/CodeInput";
 import { QrCode } from "@/components/mfa/QrCode";
 import { RecoveryCodes } from "@/components/mfa/RecoveryCodes";
@@ -31,6 +31,10 @@ export default function LoginPage() {
   const [emailSentTo, setEmailSentTo] = useState<string | null>(null);
   const [mfaEnabled, setMfaEnabled] = useState(true);
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+
+  // La sesión anterior se cerró sola (inactividad o vencimiento): se avisa.
+  const [expired, setExpired] = useState(false);
+  useEffect(() => setExpired(session.wasExpired()), []);
 
   // Llega desde la invitación con el correo ya escrito (?email=).
   useEffect(() => {
@@ -112,6 +116,14 @@ export default function LoginPage() {
         setSetup(s);
         setStep("setup");
       } else {
+        // El código llega solo por correo al ingresar; quien tiene la app puede usarla con «Usar el código de la app».
+        try {
+          const sent = await api<{ sent_to: string }>("/auth/mfa/email", { method: "POST", body: { mfa_challenge_id: res.mfa_challenge_id } });
+          setEmailSentTo(sent.sent_to);
+          setMethod("email");
+        } catch {
+          setMethod("app");   // si el correo no sale, queda el código de la app y «Enviarme un código por correo»
+        }
         setStep("verify");
       }
     });
@@ -146,7 +158,7 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen grid lg:grid-cols-2">
       <section className="hidden lg:flex flex-col justify-between bg-side p-12 text-white">
-        <Brand light />
+        <AppBrand light />
         <div className="space-y-4 max-w-md">
           <h1 className="text-3xl font-semibold leading-tight">Seguridad y salud en el trabajo, en orden y a la mano.</h1>
           <p className="text-white/75">IPERC, inspecciones, capacitaciones, EPP y el expediente para SUNAFIL en un solo lugar.</p>
@@ -157,9 +169,14 @@ export default function LoginPage() {
       <section className="flex items-center justify-center p-6">
         <div className="w-full max-w-sm space-y-5 rounded-xl border border-line bg-surface p-8 shadow-sm">
           <div className="lg:hidden">
-            <Brand />
+            <AppBrand />
           </div>
 
+          {expired && !error && step === "password" && (
+            <div role="status" className="rounded-lg bg-amber-soft px-4 py-3 text-sm text-amber-ink">
+              Tu sesión se cerró por seguridad (inactividad o tiempo máximo). Vuelve a ingresar.
+            </div>
+          )}
           {error && (
             <div role="alert" className="rounded-lg bg-bad-soft px-4 py-3 text-sm text-bad">
               {error}

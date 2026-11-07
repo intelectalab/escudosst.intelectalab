@@ -4,6 +4,7 @@
 // Se actualiza sola cada 30 segundos.
 
 import { useCallback, useEffect, useState } from "react";
+import { BackupsSection } from "@/components/platform/BackupsSection";
 import { Button } from "@/components/ui/Button";
 import { ColumnChart, SERIES_COLORS } from "@/components/ui/Charts";
 import { Chip, type ChipTone, EmptyState, PageHeader, StatCard } from "@/components/ui/Display";
@@ -147,6 +148,8 @@ export default function SaludPage() {
         <StatCard label="Con error" value={problems} hint="Requieren atención" icon="lock" tone="bad" active={filter === "error"} onClick={() => toggle("error")} />
         <StatCard label="Sin configurar" value={count("off")} hint="Pendientes del equipo" icon="box" tone="na" active={filter === "off"} onClick={() => toggle("off")} />
       </section>
+
+      <BackupsSection onToast={(t) => setToast(t)} />
 
       {shown.length === 0 && (
         <div className="rounded-2xl border border-line bg-surface">

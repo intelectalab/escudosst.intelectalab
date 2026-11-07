@@ -144,12 +144,14 @@ export function SiteHeader({ trialHref, demoHref, blogUrl, menu, logoUrl = null,
             </Link>
             <a
               href={demoHref}
+              data-track="cabecera-demo"
               className="site-btn site-btn-outline hidden min-h-[42px] px-4 py-2 text-sm xl:inline-flex"
             >
               Agenda una demo
             </a>
             <a
               href={trialHref}
+              data-track="cabecera-prueba"
               className="site-btn site-btn-primary min-h-[42px] px-4 py-2 text-sm"
             >
               Prueba gratis
@@ -233,10 +235,10 @@ export function SiteHeader({ trialHref, demoHref, blogUrl, menu, logoUrl = null,
               ))}
             </nav>
             <div className="space-y-2 border-t border-[var(--site-border)] p-4">
-              <a href={trialHref} className="site-btn site-btn-primary w-full">
+              <a href={trialHref} data-track="menu-movil-prueba" className="site-btn site-btn-primary w-full">
                 Prueba gratis
               </a>
-              <a href={demoHref} className="site-btn site-btn-outline w-full">
+              <a href={demoHref} data-track="menu-movil-demo" className="site-btn site-btn-outline w-full">
                 Agenda una demo
               </a>
               <Link

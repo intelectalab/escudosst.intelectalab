@@ -5,7 +5,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { Brand } from "@/components/Brand";
+import { AppBrand } from "@/components/AppBrand";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/Form";
 import { Icon } from "@/components/ui/Icon";
@@ -64,7 +64,7 @@ export default function InvitacionPage() {
   return (
     <main className="grid min-h-screen place-items-center bg-bg p-4 sm:p-6">
       <div className="w-full max-w-md space-y-6 rounded-2xl border border-line bg-surface p-6 shadow-sm sm:p-8">
-        <Brand />
+        <AppBrand />
 
         {invalid ? (
           <div className="space-y-4 text-center">
