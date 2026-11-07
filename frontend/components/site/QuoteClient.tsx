@@ -300,10 +300,10 @@ function Pay({ token, q, onDone }: { token: string; q: PublicQuote; onDone: () =
           <Field label="Fecha del pago" error={err("paid_on")}>
             <input className="input" type="date" max={today} value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
           </Field>
-          <Field label="Monto pagado (S/)" error={err("amount")}>
+          <Field label="Monto pagado (S/)" hint={Number(amount) !== Number(q.total) ? `El total es ${money(q.total)}.` : undefined} error={err("amount")}>
             <input className="input tabular-nums" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(",", ".").replace(/[^\d.]/g, ""))} />
           </Field>
-          <Field label="N.° de operación (opcional)" error={err("reference")}>
+          <Field label="N.° de operación (opcional)" hint="Figura en tu voucher o en la app de tu banco." error={err("reference")}>
             <input className="input" maxLength={120} value={reference} onChange={(e) => setReference(e.target.value)} />
           </Field>
         </div>
@@ -358,12 +358,12 @@ function Notice({ icon, tone, title, children }: { icon: string; tone: "amber" |
   );
 }
 
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: React.ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-sm font-semibold text-[var(--site-navy-title)]">{label}</span>
       {children}
-      {error && <span className="mt-1.5 block text-xs font-semibold text-[var(--site-red)]">● {error}</span>}
+      {error ? <span className="mt-1.5 block text-xs font-semibold text-[var(--site-red)]">● {error}</span> : hint && <span className="mt-1.5 block text-xs text-[var(--site-text-2)]">{hint}</span>}
     </label>
   );
 }

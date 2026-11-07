@@ -9,7 +9,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Fragment, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Chip, PageHeader } from "@/components/ui/Display";
-import { ChoiceCards, FormField } from "@/components/ui/Form";
+import { AffixInput, ChoiceCards, FormField } from "@/components/ui/Form";
 import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
@@ -198,6 +198,9 @@ function Editor({
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
+  // Descuento especial: se escribe en soles o en %; a la API siempre va el monto en soles.
+  const [discountMode, setDiscountMode] = useState<"amount" | "pct">("amount");
+  const [discountPct, setDiscountPct] = useState("");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm({ ...form, [k]: v });
   const setCompany = (i: number, patch: Partial<QuoteCompany>) => set("companies", form.companies.map((c, j) => (j === i ? { ...c, ...patch } : c)));
@@ -226,6 +229,13 @@ function Editor({
       if (timer.current) clearTimeout(timer.current);
     };
   }, [body]);
+
+  const subtotal = preview?.subtotal;
+  useEffect(() => {
+    if (discountMode !== "pct" || subtotal === undefined) return;
+    const amount = String(Math.round(subtotal * Math.min(100, Number(discountPct) || 0)) / 100);
+    if (amount !== form.discount_amount) setForm({ ...form, discount_amount: amount });
+  }, [discountMode, discountPct, subtotal, form, setForm]);
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -310,15 +320,15 @@ function Editor({
               </span>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <FormField label="RUC" error={err(`companies.${i}.ruc`)}>
+              <FormField label="RUC" hint="11 dígitos. Si ya está en EscudoSST (p. ej. hizo la prueba gratis), al pagar se activa esa misma cuenta." error={err(`companies.${i}.ruc`)}>
                 <input className="input tabular-nums" inputMode="numeric" maxLength={11} value={c.ruc} onChange={(e) => setCompany(i, { ruc: e.target.value.replace(/\D/g, "") })} />
               </FormField>
               <div className="sm:col-span-2">
-                <FormField label="Razón social" error={err(`companies.${i}.legal_name`)}>
+                <FormField label="Razón social" hint="Tal como figura en SUNAT: sale en el PDF y en la cuenta." error={err(`companies.${i}.legal_name`)}>
                   <input className="input" maxLength={160} value={c.legal_name} onChange={(e) => setCompany(i, { legal_name: e.target.value })} />
                 </FormField>
               </div>
-              <FormField label="Trabajadores" error={err(`companies.${i}.headcount`)}>
+              <FormField label="Trabajadores" hint="Con esto se define si le toca Comité o Supervisor SST." error={err(`companies.${i}.headcount`)}>
                 <input className="input tabular-nums" type="number" min={1} value={c.headcount ?? ""} onChange={(e) => setCompany(i, { headcount: e.target.value ? Number(e.target.value) : null })} />
               </FormField>
               <FormField label="Sector (opcional)">
@@ -331,7 +341,7 @@ function Editor({
                   ))}
                 </select>
               </FormField>
-              <FormField label="Plan" error={err(`companies.${i}.plan_code`)}>
+              <FormField label="Plan" hint="Precio por empresa al mes (se edita en Planes y módulos)." error={err(`companies.${i}.plan_code`)}>
                 <select className="input" value={c.plan_code} onChange={(e) => setCompany(i, { plan_code: e.target.value as QuoteCompany["plan_code"] })}>
                   {plans.map((pl) => (
                     <option key={pl.code} value={pl.code}>
@@ -342,7 +352,8 @@ function Editor({
               </FormField>
             </div>
             <div>
-              <span className="mb-1.5 block text-sm font-semibold">Complementos (opcional)</span>
+              <span className="block text-sm font-semibold">Complementos (opcional)</span>
+              <span className="mb-2 block text-xs text-muted">Se suman al plan de esta empresa. Los «próximamente» aún no se pueden contratar; los «Por definir» necesitan precio en Planes y módulos › Complementos.</span>
               <div className="flex flex-wrap gap-2">
                 {addons.map((a) => {
                   const on = c.addon_codes.includes(a.code);
@@ -356,7 +367,7 @@ function Editor({
                       title={a.available ? undefined : "Próximamente: aún no se puede contratar"}
                     >
                       {on && "✓ "}
-                      {a.name} <span className={on ? "text-white/80" : "text-muted"}>{a.available ? `· ${money(a.price)}/mes` : "· próximamente"}</span>
+                      {a.name} <span className={on ? "text-white/80" : "text-muted"}>{a.available ? (a.price === null ? "· Por definir" : `· ${money(a.price)}/mes`) : "· próximamente"}</span>
                     </button>
                   );
                 })}
@@ -375,17 +386,50 @@ function Editor({
           <Icon name="file" size={17} /> Condiciones
         </h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormField label="Descuento (S/, opcional)" hint="Se resta del total." error={err("discount_amount")}>
-            <input className="input tabular-nums" inputMode="decimal" value={form.discount_amount} onChange={(e) => set("discount_amount", e.target.value.replace(",", ".").replace(/[^\d.]/g, ""))} />
-          </FormField>
-          <FormField label="Válida hasta" hint="Si la dejas pasada, al enviar se pone la vigencia por defecto." error={err("valid_until")}>
+          <div>
+            <FormField
+              label="Descuento especial (opcional)"
+              hint={
+                discountMode === "pct" && preview
+                  ? `Equivale a ${money(form.discount_amount || 0)}. Se resta del total y sale en el PDF.`
+                  : "Solo para este cliente (p. ej. por ser grupo). Se resta del total y sale en el PDF. El descuento por pago anual ya va incluido aparte."
+              }
+              error={err("discount_amount")}
+            >
+              {discountMode === "amount" ? (
+                <AffixInput prefix="S/" inputMode="decimal" value={form.discount_amount} onChange={(e) => set("discount_amount", e.target.value.replace(",", ".").replace(/[^\d.]/g, ""))} />
+              ) : (
+                <AffixInput suffix="%" inputMode="decimal" value={discountPct} onChange={(e) => setDiscountPct(e.target.value.replace(",", ".").replace(/[^\d.]/g, ""))} />
+              )}
+            </FormField>
+            <div className="mt-2 inline-flex rounded-lg border border-line p-0.5 text-xs font-semibold" role="radiogroup" aria-label="Tipo de descuento">
+              {(
+                [
+                  ["amount", "En soles"],
+                  ["pct", "En %"],
+                ] as const
+              ).map(([v, l]) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="radio"
+                  aria-checked={discountMode === v}
+                  onClick={() => setDiscountMode(v)}
+                  className={`rounded-md px-3 py-1 ${discountMode === v ? "bg-brand text-white" : "text-muted hover:text-fg"}`}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <FormField label="Válida hasta" hint="Después de esta fecha el cliente ya no puede aceptarla. Vacía = la vigencia por defecto desde el envío." error={err("valid_until")}>
             <input className="input" type="date" value={form.valid_until} onChange={(e) => set("valid_until", e.target.value)} />
           </FormField>
         </div>
-        <FormField label="Condiciones y notas para el cliente (opcional)" hint="Salen en el PDF. Ej.: si el precio incluye IGV, qué incluye la implementación." error={err("client_notes")}>
+        <FormField label="Condiciones y notas para el cliente (opcional)" hint="Salen en el PDF y en su enlace. Ej.: si el precio incluye o no IGV, qué incluye la implementación, forma de facturación." error={err("client_notes")}>
           <textarea className="input min-h-[90px]" maxLength={3000} value={form.client_notes} onChange={(e) => set("client_notes", e.target.value)} />
         </FormField>
-        <FormField label="Nota interna (opcional)" hint="Solo la ve el equipo." error={err("internal_notes")}>
+        <FormField label="Nota interna (opcional)" hint="Solo la ve el equipo; el cliente no la ve." error={err("internal_notes")}>
           <textarea className="input min-h-[70px]" maxLength={3000} value={form.internal_notes} onChange={(e) => set("internal_notes", e.target.value)} />
         </FormField>
       </section>
@@ -399,7 +443,15 @@ function Editor({
               <b className="ml-2 font-display text-lg text-brand-strong">
                 Total {money(preview.total)} <span className="text-xs font-normal text-muted">/{form.billing_period === "annual" ? "año" : "mes"}</span>
               </b>
-              {!preview.complete && <span className="block text-xs text-amber">Hay conceptos sin precio: defínelos en «Planes y precios» antes de enviar.</span>}
+              {!preview.complete && (
+                <span className="block text-xs text-amber">
+                  Hay conceptos «Por definir»: ponles precio en{" "}
+                  <Link href="/plataforma/planes" className="font-semibold underline">
+                    Planes y módulos
+                  </Link>{" "}
+                  antes de enviar.
+                </span>
+              )}
             </>
           ) : (
             <span className="text-muted">Completa los datos para ver el total.</span>
@@ -660,10 +712,10 @@ function ConfirmModal({ quote, busy, error, onClose, onSubmit }: { quote: QuoteD
           <li>A {quote.contact_email} le llega el correo para crear su contraseña.</li>
         </ul>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormField label="Fecha del pago">
+          <FormField label="Fecha del pago" hint="Cuando llegó el dinero.">
             <input className="input" type="date" max={today} value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
           </FormField>
-          <FormField label="Monto recibido (S/)" hint={differs ? "No coincide con el total cotizado." : undefined}>
+          <FormField label="Monto recibido (S/)" hint={differs ? "No coincide con el total cotizado: revisa antes de confirmar." : "Lo que llegó a la cuenta. Si son varias empresas, se reparte según el monto de cada una."}>
             <input className="input tabular-nums" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(",", ".").replace(/[^\d.]/g, ""))} />
           </FormField>
           <FormField label="Medio">
@@ -675,7 +727,7 @@ function ConfirmModal({ quote, busy, error, onClose, onSubmit }: { quote: QuoteD
               ))}
             </select>
           </FormField>
-          <FormField label="N.° de operación (opcional)">
+          <FormField label="N.° de operación (opcional)" hint="Del voucher o del estado de cuenta, para ubicar el pago después.">
             <input className="input" maxLength={120} value={reference} onChange={(e) => setReference(e.target.value)} />
           </FormField>
         </div>

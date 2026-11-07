@@ -70,7 +70,7 @@ export function EditAddonModal({ addon, onClose, onSaved }: { addon: Addon; onCl
         </FormSection>
 
         <FormSection icon="star" title="Precio y disponibilidad">
-          <FormField label="Precio de referencia mensual" hint="Déjalo vacío para mostrar «Por definir»." error={errors.price_reference?.[0]}>
+          <FormField label="Precio de referencia mensual (por empresa)" hint="Se suma al plan de cada empresa que lo contrate. Se usa en «Planes» y «Complementos» del sitio, en las cotizaciones y su PDF; el pago anual aplica el descuento anual. Vacío = «Por definir» (no se puede incluir en una cotización)." error={errors.price_reference?.[0]}>
             <AffixInput prefix="S/" inputMode="decimal" placeholder="Por definir" value={price} invalid={!!errors.price_reference} onChange={(e) => setPrice(e.target.value.replace(",", "."))} />
           </FormField>
           <SwitchRow label="Complemento activo" hint="Si lo desactivas, ya no se puede contratar. Las suscripciones actuales no cambian." checked={active} onChange={setActive} />

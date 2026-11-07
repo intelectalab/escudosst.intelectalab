@@ -162,7 +162,11 @@ export function EditPlanModal({ plan, matrix, onClose, onSaved, onToggleModule, 
 
           <FormSection icon="star" title="Precio y cobro" description="Los precios no se escriben en el código: si lo dejas vacío, se muestra «Por definir».">
             <div className="grid gap-4 sm:grid-cols-2">
-              <FormField label={plan.code === "K" ? "Precio de referencia por empresa al mes" : "Precio de referencia mensual"} error={fieldError("price_reference")}>
+              <FormField
+                label={plan.code === "K" ? "Precio de referencia por empresa al mes" : "Precio de referencia mensual (por empresa)"}
+                hint="Lo que paga cada empresa al mes. Se usa en «Planes» del sitio, en las cotizaciones y su PDF. Vacío = «Por definir»."
+                error={fieldError("price_reference")}
+              >
                 <AffixInput prefix="S/" inputMode="decimal" placeholder="Por definir" value={form.price} invalid={!!fieldError("price_reference")} onChange={(e) => setForm({ ...form, price: e.target.value.replace(",", ".") })} />
               </FormField>
               <div>
@@ -193,7 +197,7 @@ export function EditPlanModal({ plan, matrix, onClose, onSaved, onToggleModule, 
                     {monthlyPrice == null ? "Paga 12 meses en un solo pago" : `Paga ${formatMoney(monthlyPrice * 12 * (1 - discount / 100))} una vez al año`}
                     {discount > 0 ? ` (12 meses con ${discount}% de descuento).` : " (12 meses, sin descuento)."}
                   </p>
-                  <p className="mt-1 text-xs text-muted">El descuento anual se cambia en Catálogos › Parámetros.</p>
+                  <p className="mt-1 text-xs text-muted">El descuento anual se cambia en esta misma página, en «Descuento por pago anual».</p>
                 </div>
               )}
             </div>

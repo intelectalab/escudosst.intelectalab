@@ -6,6 +6,7 @@
 // - «Complementos»: lista con filtros y «Editar».
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AnnualDiscountCard } from "@/components/sus/AnnualDiscountCard";
 import { EditAddonModal } from "@/components/sus/EditAddonModal";
 import { EditPlanModal } from "@/components/sus/EditPlanModal";
 import { Button } from "@/components/ui/Button";
@@ -253,6 +254,9 @@ export default function PlanesPage() {
       )}
 
       {/* Pestañas */}
+      {/* Descuentos: anual (global) y especiales (en cada cotización) */}
+      <AnnualDiscountCard onSaved={(message) => setToast({ message, tone: "ok" })} />
+
       <section id="contenido" className="scroll-mt-24 space-y-4">
         <div role="tablist" aria-label="Contenido de los planes" className="flex w-full overflow-x-auto rounded-xl border border-line bg-surface p-1 shadow-sm sm:inline-flex sm:w-auto">
           {(

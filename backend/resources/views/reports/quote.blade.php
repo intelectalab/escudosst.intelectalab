@@ -48,27 +48,29 @@
   </table>
 
   <h2>Detalle {{ count($companies) > 1 ? '(grupo de '.count($companies).' empresas: cada una con su propia suscripción)' : '' }}</h2>
+  @php($annual = $period === 'anual')
+  @php($span = $annual ? 2 : 1)
   <table class="data">
-    <tr><th>Concepto</th><th class="r">Mensual de referencia</th><th class="r">Monto {{ $period }}</th></tr>
+    <tr><th>Concepto</th>@if($annual)<th class="r">Precio mensual</th>@endif<th class="r">{{ $annual ? 'Monto por el año' : 'Monto por el mes' }}</th></tr>
     @foreach($companies as $c)
-      <tr class="co"><td colspan="3">{{ $c['legal_name'] }} · RUC {{ $c['ruc'] }} · {{ $c['headcount'] }} trabajadores</td></tr>
+      <tr class="co"><td colspan="{{ $span + 1 }}">{{ $c['legal_name'] }} · RUC {{ $c['ruc'] }} · {{ $c['headcount'] }} trabajadores</td></tr>
       @foreach($c['lines'] as $l)
-        <tr><td>&nbsp;&nbsp;{{ $l['name'] }}</td><td class="r">{{ $money($l['monthly']) }}</td><td class="r">{{ $money($l['amount']) }}</td></tr>
+        <tr><td>&nbsp;&nbsp;{{ $l['name'] }}</td>@if($annual)<td class="r">{{ $money($l['monthly']) }}</td>@endif<td class="r">{{ $money($l['amount']) }}</td></tr>
       @endforeach
       @if(count($companies) > 1)
-        <tr><td class="r" colspan="2">Subtotal {{ $c['legal_name'] }}</td><td class="r">{{ $money($c['amount']) }}</td></tr>
+        <tr><td class="r" colspan="{{ $span }}">Subtotal {{ $c['legal_name'] }}</td><td class="r">{{ $money($c['amount']) }}</td></tr>
       @endif
     @endforeach
-    <tr><td class="r" colspan="2">Subtotal</td><td class="r">{{ $money($q->subtotal) }}</td></tr>
+    <tr><td class="r" colspan="{{ $span }}">Subtotal</td><td class="r">{{ $money($q->subtotal) }}</td></tr>
     @if((float) $q->discount_amount > 0)
-      <tr><td class="r" colspan="2">Descuento</td><td class="r">− {{ $money($q->discount_amount) }}</td></tr>
+      <tr><td class="r" colspan="{{ $span }}">Descuento especial</td><td class="r">− {{ $money($q->discount_amount) }}</td></tr>
     @endif
-    <tr class="tot"><td class="r" colspan="2">TOTAL {{ $period === 'anual' ? 'POR EL AÑO' : 'POR EL MES' }}</td><td class="r">{{ $money($q->total) }}</td></tr>
+    <tr class="tot"><td class="r" colspan="{{ $span }}">TOTAL {{ $annual ? 'POR EL AÑO' : 'POR EL MES' }}</td><td class="r">{{ $money($q->total) }}</td></tr>
   </table>
   @if($period === 'anual' && (float) $q->annual_discount_pct > 0)
-    <p class="muted">El monto anual incluye {{ rtrim(rtrim(number_format((float) $q->annual_discount_pct, 2), '0'), '.') }} % de descuento por pago anual.</p>
+    <p class="muted">Monto por el año = 12 × precio mensual con {{ rtrim(rtrim(number_format((float) $q->annual_discount_pct, 2), '0'), '.') }} % de descuento por pago anual.</p>
   @endif
-  <p class="muted">Montos en soles (PEN).</p>
+  <p class="muted">Montos en soles (PEN). Cada empresa tiene su propia suscripción con el plan y los complementos indicados.</p>
 
   @if($q->client_notes)
     <div class="note"><b>Condiciones y notas</b><br>{{ $q->client_notes }}</div>
