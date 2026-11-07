@@ -398,6 +398,35 @@ function BlockEditor({
           {field("url", "Enlace del video", 250, false, "YouTube o Vimeo, por ejemplo https://www.youtube.com/watch?v=…")}
         </>
       )}
+      {b.type === "compare" && (
+        <>
+          {field("title", "Título", 120)}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {field("manual_label", "Columna de lo manual", 40)}
+            {field("escudo_label", "Columna de EscudoSST", 40)}
+          </div>
+          <p className="text-xs text-muted">Una fila por tarea. Describe lo que hace el sistema, sin precios, sin cifras que no puedas respaldar y sin nombrar a otras empresas.</p>
+          <div className="space-y-3">
+            {b.items.map((r, k) => (
+              <div key={k} className="space-y-2 rounded-xl bg-bg/60 p-3">
+                <input className="input" maxLength={80} placeholder="Tarea (por ejemplo: Capacitaciones)" value={r.task} onChange={(e) => onChange({ ...b, items: b.items.map((x, j) => (j === k ? { ...x, task: e.target.value } : x)) })} />
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <textarea className="input min-h-[60px]" maxLength={200} placeholder="Cómo se hace con Excel y papel" value={r.manual} onChange={(e) => onChange({ ...b, items: b.items.map((x, j) => (j === k ? { ...x, manual: e.target.value } : x)) })} />
+                  <textarea className="input min-h-[60px]" maxLength={200} placeholder="Cómo se hace con EscudoSST" value={r.escudo} onChange={(e) => onChange({ ...b, items: b.items.map((x, j) => (j === k ? { ...x, escudo: e.target.value } : x)) })} />
+                </div>
+                <Button variant="danger-ghost" onClick={() => onChange({ ...b, items: b.items.filter((_, j) => j !== k) })}>
+                  Quitar fila
+                </Button>
+              </div>
+            ))}
+            {b.items.length < 15 && (
+              <Button variant="ghost" icon="plus" onClick={() => onChange({ ...b, items: [...b.items, { task: "", manual: "", escudo: "" }] })}>
+                Agregar fila
+              </Button>
+            )}
+          </div>
+        </>
+      )}
       {b.type === "faq" && (
         <>
           {field("title", "Título", 120)}

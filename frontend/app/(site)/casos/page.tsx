@@ -3,6 +3,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ReviewsBlock } from "@/components/site/ReviewsBlock";
 import { FinalCta, PageHero } from "@/components/site/Sections";
 import { StoryCard } from "@/components/site/Stories";
 import { getSite, getStories, STORY_SECTORS } from "@/lib/site";
@@ -51,6 +52,7 @@ export default async function CasosPage({ searchParams }: { searchParams: Promis
           )}
         </div>
       </section>
+      <ReviewsBlock />
       <FinalCta s={site.settings} />
     </>
   );

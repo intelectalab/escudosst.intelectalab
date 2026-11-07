@@ -5,7 +5,7 @@ const API = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "
 export type SitemapData = { domain: string | null; entries: { path: string; kind: string; last_modified: string | null }[]; noindex: string[] };
 
 /** Páginas fijas del sitio (no salen de la base). Las de la base (sectores, soluciones, casos, políticas) las da la API. */
-export const STATIC_PATHS = ["/", "/producto", "/como-funciona", "/planes", "/complementos", "/sectores", "/casos", "/recursos", "/herramientas/calculadora-multas", "/herramientas/autodiagnostico", "/preguntas-frecuentes", "/ayuda", "/partners", "/boletin", "/confianza", "/estado", "/demo", "/demo/agendar", "/prueba-gratis", "/libro-de-reclamaciones"];
+export const STATIC_PATHS = ["/", "/producto", "/como-funciona", "/planes", "/complementos", "/sectores", "/casos", "/recursos", "/herramientas/calculadora-multas", "/herramientas/autodiagnostico", "/preguntas-frecuentes", "/ayuda", "/partners", "/boletin", "/confianza", "/estado", "/demo", "/demo/agendar", "/prueba-gratis", "/libro-de-reclamaciones", "/integraciones", "/novedades", "/webinars"];
 
 /** Rutas que no deben aparecer en buscadores: panel, aplicación, acceso, enlaces personales y seguimiento de reclamos. */
 export const PRIVATE_PATHS = [
@@ -26,6 +26,9 @@ export const PRIVATE_PATHS = [
   "/boletin/confirmar/",
   "/boletin/baja/",
   "/demo/gestionar/",
+  "/webinars/gestionar/",
+  "/cotizacion/",
+  "/l/",
   "/api/",
 ];
 

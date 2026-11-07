@@ -10,18 +10,21 @@ export type Block =
   | { type: "video"; title: string; url: string }
   | { type: "faq"; title: string; items: { q: string; a: string }[] }
   | { type: "cta"; title: string; text: string; button: "trial" | "demo" | "consultancy" }
-  | { type: "image"; title: string; caption: string; media_id: string; file_id?: string; alt?: string | null; width?: number | null; height?: number | null };
+  | { type: "image"; title: string; caption: string; media_id: string; file_id?: string; alt?: string | null; width?: number | null; height?: number | null }
+  | { type: "compare"; title: string; manual_label: string; escudo_label: string; items: { task: string; manual: string; escudo: string }[] };
 
 export type BlockType = Block["type"];
 
 export type PublicPage = { slug: string; page_type: string; title: string; summary: string | null; blocks: Block[]; whatsapp_message?: string | null; seo?: { meta_title?: string; meta_description?: string; noindex?: boolean } };
 
-export type PageType = "sector" | "product" | "landing";
+export type PageType = "sector" | "product" | "landing" | "comparison" | "campaign";
 
 export const PAGE_TYPES: Record<PageType, { label: string; plural: string; prefix: string; icon: string }> = {
   sector: { label: "Sector", plural: "Páginas por sector", prefix: "sectores/", icon: "building" },
   product: { label: "Diferenciador", plural: "Diferenciadores", prefix: "soluciones/", icon: "star" },
   landing: { label: "Página", plural: "Otras páginas", prefix: "", icon: "file" },
+  comparison: { label: "Comparativa", plural: "Comparativa (EscudoSST vs Excel y papel)", prefix: "", icon: "swap" },
+  campaign: { label: "Landing de campaña", plural: "Landings de campaña", prefix: "l/", icon: "tag" },
 };
 
 /** Catálogo de bloques del editor: nombre, para qué sirve y cómo empieza uno nuevo. */
@@ -34,6 +37,13 @@ export const BLOCK_TYPES: { type: BlockType; label: string; help: string; icon: 
   { type: "video", label: "Video", help: "YouTube o Vimeo. Se carga solo si la persona acepta cookies de marketing.", icon: "play", empty: () => ({ type: "video", title: "", url: "" }) },
   { type: "faq", label: "Preguntas", help: "Preguntas frecuentes propias de esta página.", icon: "search", empty: () => ({ type: "faq", title: "Preguntas frecuentes", items: [{ q: "", a: "" }] }) },
   { type: "image", label: "Imagen", help: "Una foto o captura de la biblioteca de medios.", icon: "eye", empty: () => ({ type: "image", title: "", caption: "", media_id: "" }) },
+  {
+    type: "compare",
+    label: "Tabla comparativa",
+    help: "Cómo se hace cada tarea hoy (Excel y papel) frente a EscudoSST. Sin precios ni nombres de otras empresas.",
+    icon: "swap",
+    empty: () => ({ type: "compare", title: "", manual_label: "Con Excel y papel", escudo_label: "Con EscudoSST", items: [{ task: "", manual: "", escudo: "" }] }),
+  },
   { type: "cta", label: "Llamado a la acción", help: "Invitación final con botón.", icon: "chevron", empty: () => ({ type: "cta", title: "", text: "", button: "trial" }) },
 ];
 

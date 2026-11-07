@@ -18,7 +18,14 @@ export type TrackType =
   | "assessment_completed"
   | "resource_download"
   | "chatbot_open"
-  | "chatbot_lead";
+  | "chatbot_lead"
+  | "popup_view"
+  | "popup_click"
+  | "popup_close"
+  | "webinar_registered"
+  | "savings_calculated"
+  | "review_click"
+  | "campaign_view";
 
 type Utm = { utm_source?: string; utm_medium?: string; utm_campaign?: string; referrer?: string };
 

@@ -22,6 +22,7 @@ const GROUPS: { title: string; items: [string, string, string][] }[] = [
       ["/plataforma/sitio/confianza", "Subencargados", "lock"],
       ["/plataforma/sitio/estado", "Estado del servicio", "shield"],
       ["/plataforma/sitio/seo", "SEO y redirecciones", "search"],
+      ["/plataforma/sitio/lineamientos", "Lineamientos de contenido", "shield"],
     ],
   },
   {
@@ -38,6 +39,15 @@ const GROUPS: { title: string; items: [string, string, string][] }[] = [
     ],
   },
   {
+    title: "Captación",
+    items: [
+      ["/plataforma/sitio/campanas", "Campañas", "tag"],
+      ["/plataforma/sitio/ventanas", "Ventanas emergentes", "bell"],
+      ["/plataforma/sitio/webinars", "Webinars", "play"],
+      ["/plataforma/sitio/resenas", "Reseñas de Google", "star"],
+    ],
+  },
+  {
     title: "Contenido",
     items: [
       ["/plataforma/sitio/paginas", "Páginas", "pen"],
@@ -45,6 +55,9 @@ const GROUPS: { title: string; items: [string, string, string][] }[] = [
       ["/plataforma/sitio/casos", "Casos de éxito", "star"],
       ["/plataforma/sitio/recursos", "Recursos descargables", "file"],
       ["/plataforma/sitio/calculadora", "Calculadora de multas", "tag"],
+      ["/plataforma/sitio/calculadora-ahorro", "Calculadora de ahorro", "clock"],
+      ["/plataforma/sitio/novedades", "Novedades del producto", "star"],
+      ["/plataforma/sitio/integraciones", "Integraciones", "refresh"],
       ["/plataforma/sitio/autodiagnostico", "Autodiagnóstico", "check"],
       ["/plataforma/sitio/ayuda", "Centro de ayuda", "help"],
       ["/plataforma/sitio/chatbot", "Chatbot", "help"],

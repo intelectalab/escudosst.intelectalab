@@ -164,6 +164,18 @@ Artisan::command('escudo:demos:reminders', function (\App\Modules\WEB\Services\D
 
 Schedule::command('escudo:demos:reminders')->everyFiveMinutes()->withoutOverlapping()->name('escudo:demos:reminders');
 
+Artisan::command('escudo:webinars:reminders', function (\App\Modules\WEB\Services\WebinarsService $webinars) {
+    $this->info('Recordatorios de webinar enviados: '.$webinars->sendReminders());
+})->purpose('Envía a los inscritos el recordatorio del día anterior y de la hora previa de cada webinar');
+
+Schedule::command('escudo:webinars:reminders')->everyFiveMinutes()->withoutOverlapping()->name('escudo:webinars:reminders');
+
+Artisan::command('escudo:reviews:refresh', function () {
+    $this->info('Reseñas actualizadas: '.\App\Modules\WEB\Http\Controllers\ReviewsController::refreshDue());
+})->purpose('Renueva la copia de las reseñas de Google cuando vence');
+
+Schedule::command('escudo:reviews:refresh')->hourly()->withoutOverlapping()->name('escudo:reviews:refresh');
+
 Artisan::command('escudo:crm:sync', function (\App\Modules\WEB\Services\CrmService $crm) {
     $this->info('Envíos al CRM procesados: '.$crm->processDue());
 })->purpose('Envía al CRM los registros pendientes y reintenta los fallidos');

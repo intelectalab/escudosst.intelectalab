@@ -124,6 +124,42 @@ function BlockView({ b, modules, alt }: { b: Block; modules: Mod[]; alt: boolean
           <VideoBlock url={b.url} title={b.title || "Video"} />
         </Wrap>
       ) : null;
+    case "compare":
+      return (
+        <Wrap alt={alt}>
+          <Title>{b.title}</Title>
+          <div className="overflow-hidden rounded-2xl border border-[var(--site-border)] bg-white">
+            <div className="hidden grid-cols-[1fr_1.3fr_1.3fr] bg-[var(--site-surface)] text-sm font-bold @3xl:grid">
+              <span className="px-5 py-3 text-[var(--site-text-2)]">Tarea</span>
+              <span className="px-5 py-3 text-[var(--site-text-2)]">{b.manual_label}</span>
+              <span className="px-5 py-3 text-[var(--site-navy-title)]">{b.escudo_label}</span>
+            </div>
+            {b.items.map((r) => (
+              <div key={r.task} className="grid grid-cols-1 gap-2 border-t border-[var(--site-border)] p-4 first:border-t-0 @3xl:grid-cols-[1fr_1.3fr_1.3fr] @3xl:gap-0 @3xl:p-0">
+                <b className="text-[var(--site-navy-title)] @3xl:px-5 @3xl:py-4">{r.task}</b>
+                <p className="flex items-start gap-2 text-[15px] text-[var(--site-text-2)] @3xl:px-5 @3xl:py-4">
+                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#E2453C]/12 text-[#A3271F]" aria-hidden="true">
+                    <Icon name="close" size={11} />
+                  </span>
+                  <span>
+                    <span className="font-semibold @3xl:hidden">{b.manual_label}: </span>
+                    {r.manual}
+                  </span>
+                </p>
+                <p className="flex items-start gap-2 text-[15px] text-[var(--site-text)] @3xl:bg-[#22A35A]/5 @3xl:px-5 @3xl:py-4">
+                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#22A35A] text-white" aria-hidden="true">
+                    <Icon name="check" size={11} />
+                  </span>
+                  <span>
+                    <span className="font-semibold @3xl:hidden">{b.escudo_label}: </span>
+                    {r.escudo}
+                  </span>
+                </p>
+              </div>
+            ))}
+          </div>
+        </Wrap>
+      );
     case "faq":
       return b.items.length ? (
         <Wrap alt={alt} narrow>

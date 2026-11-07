@@ -7,6 +7,7 @@ import { DashboardMock, FotocheckMock, ReportMock, StepArt, SunafilMock } from "
 import { FinalCta, PlanCards, SectionTitle, TextLink, TrustSeals } from "@/components/site/Sections";
 import { FaqJsonLd, FaqList, TestimonialCards } from "@/components/site/FaqTestimonials";
 import { Reveal } from "@/components/site/Reveal";
+import { ReviewsBlock } from "@/components/site/ReviewsBlock";
 import { Icon } from "@/components/ui/Icon";
 import { contactHref, getFaqs, getModules, getPricing, getSite, getTestimonials, whatsappLink } from "@/lib/site";
 
@@ -344,6 +345,9 @@ export default async function HomePage() {
           </div>
         </section>
       )}
+
+      {/* Reseñas de Google: solo si hay una copia vigente (Sitio web › Reseñas de Google) */}
+      <ReviewsBlock />
 
       {/* Preguntas frecuentes */}
       {faqs.length > 0 && (

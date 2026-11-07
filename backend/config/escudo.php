@@ -63,5 +63,7 @@ return [
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
         'redirect_uri' => env('GOOGLE_REDIRECT_URI', rtrim((string) env('APP_URL', 'http://localhost:8000'), '/').'/api/v1/public/demo/google/callback'),
+        // Reseñas de Google (SCR-WEB-81): llave de la API de Places, solo en el archivo de secretos del servidor.
+        'places_api_key' => env('GOOGLE_PLACES_API_KEY'),
     ],
 ];

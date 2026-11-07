@@ -25,7 +25,15 @@ use App\Modules\WEB\Http\Controllers\SiteContentController;
 use App\Modules\WEB\Http\Controllers\SiteMenuController;
 use App\Modules\WEB\Http\Controllers\SitePagesController;
 use App\Modules\WEB\Http\Controllers\SiteSettingsController;
+use App\Modules\WEB\Http\Controllers\CampaignsController;
+use App\Modules\WEB\Http\Controllers\ContentGuidelinesController;
+use App\Modules\WEB\Http\Controllers\IntegrationsController;
+use App\Modules\WEB\Http\Controllers\PopupsController;
+use App\Modules\WEB\Http\Controllers\ProductUpdatesController;
+use App\Modules\WEB\Http\Controllers\ReviewsController;
 use App\Modules\WEB\Http\Controllers\SalesQuotesController;
+use App\Modules\WEB\Http\Controllers\SavingsCalculatorController;
+use App\Modules\WEB\Http\Controllers\WebinarsController;
 use App\Modules\WEB\Http\Controllers\SuccessStoriesController;
 use App\Modules\WEB\Http\Controllers\SuccessStoryInvitesController;
 use App\Modules\WEB\Http\Controllers\TrustStatusController;
@@ -54,6 +62,16 @@ Route::middleware('throttle:web-read')->prefix('public')->group(function () {
     Route::get('complaints/info', [ComplaintsController::class, 'info']);
     Route::get('site/assets/{id}', [SiteAssetsController::class, 'show'])->whereUuid('id');
     Route::get('resources', [ResourcesController::class, 'publicIndex']);
+    // v1.5-b: campañas, ventanas, integraciones, novedades, webinars, reseñas y calculadora de ahorro.
+    Route::get('campaigns/{slug}', [CampaignsController::class, 'publicShow'])->where('slug', '[a-z0-9-]+');
+    Route::get('popups', [PopupsController::class, 'publicIndex']);
+    Route::get('integrations', [IntegrationsController::class, 'publicIndex']);
+    Route::get('product-updates', [ProductUpdatesController::class, 'publicIndex']);
+    Route::get('product-updates/{slug}', [ProductUpdatesController::class, 'publicShow'])->where('slug', '[a-z0-9-]+');
+    Route::get('webinars', [WebinarsController::class, 'publicIndex']);
+    Route::get('webinars/{slug}', [WebinarsController::class, 'publicShow'])->where('slug', '[a-z0-9-]+');
+    Route::get('reviews', [ReviewsController::class, 'publicIndex']);
+    Route::get('tools/savings-calculator', [SavingsCalculatorController::class, 'publicShow']);
     Route::get('tools/fine-calculator', [FineCalculatorController::class, 'parameters']);
     Route::get('tools/self-assessment', [SelfAssessmentController::class, 'show']);
     Route::get('tools/self-assessment/report/{id}', [SelfAssessmentController::class, 'report'])->whereUuid('id')->middleware('signed')->name('public.self-assessment.report');
@@ -84,6 +102,8 @@ Route::middleware('throttle:web-forms')->prefix('public')->group(function () {
     Route::post('resources/{slug}/download', [ResourcesController::class, 'download'])->where('slug', '[a-z0-9-]+');
     Route::post('tools/fine-calculator', [FineCalculatorController::class, 'calculate']);
     Route::post('tools/self-assessment', [SelfAssessmentController::class, 'submit']);
+    Route::post('tools/savings-calculator', [SavingsCalculatorController::class, 'calculate']);
+    Route::post('webinars/{slug}/register', [WebinarsController::class, 'register'])->where('slug', '[a-z0-9-]+');
     Route::post('trial', [PublicFormsController::class, 'trial']);
     Route::post('partners', [PartnersController::class, 'apply']);
     Route::post('demo/book', [DemoBookingController::class, 'book']);
@@ -98,6 +118,7 @@ Route::middleware('throttle:web-sensitive')->prefix('public')->group(function ()
     Route::post('demo/manage/{token}/cancel', [DemoBookingController::class, 'cancel'])->where('token', '[A-Za-z0-9]{48}');
     Route::post('demo/manage/{token}/reschedule', [DemoBookingController::class, 'reschedule'])->where('token', '[A-Za-z0-9]{48}');
     Route::post('newsletter/confirm', [NewsletterController::class, 'confirm']);
+    Route::post('webinars/cancel/{token}', [WebinarsController::class, 'cancelRegistration'])->where('token', '[A-Za-z0-9]{48}');
     Route::post('newsletter/unsubscribe/{token}', [NewsletterController::class, 'unsubscribe'])->where('token', '[a-f0-9]{64}');
     Route::post('help/articles/{slug}/feedback', [HelpCenterController::class, 'feedback'])->where('slug', '[a-z0-9-]+');
     Route::post('complaints/status', [ComplaintsController::class, 'status']);
@@ -134,6 +155,39 @@ Route::middleware('throttle:web-quote-write')->prefix('public/quotes')->group(fu
 Route::middleware(['auth:sanctum', 'platform', \App\Core\Http\Middleware\FlushChatbotIndex::class])->prefix('internal/site')->group(function () {
     Route::get('settings', [SiteSettingsController::class, 'show']);
     Route::get('quotes', [SalesQuotesController::class, 'index']);
+    // Campañas, ventanas, integraciones, novedades, webinars, reseñas, calculadora de ahorro y lineamientos.
+    Route::get('campaigns', [CampaignsController::class, 'index']);
+    Route::post('campaigns', [CampaignsController::class, 'store']);
+    Route::put('campaigns/{id}', [CampaignsController::class, 'update'])->whereUuid('id');
+    Route::post('campaigns/{id}/{action}', [CampaignsController::class, 'act'])->whereUuid('id')->whereIn('action', ['activate', 'pause', 'finish']);
+    Route::get('popups', [PopupsController::class, 'index']);
+    Route::post('popups', [PopupsController::class, 'store']);
+    Route::put('popups/{id}', [PopupsController::class, 'update'])->whereUuid('id');
+    Route::post('popups/{id}/{action}', [PopupsController::class, 'act'])->whereUuid('id')->whereIn('action', ['activate', 'pause']);
+    Route::delete('popups/{id}', [PopupsController::class, 'destroy'])->whereUuid('id');
+    Route::get('integrations', [IntegrationsController::class, 'index']);
+    Route::post('integrations', [IntegrationsController::class, 'store']);
+    Route::put('integrations/{id}', [IntegrationsController::class, 'update'])->whereUuid('id');
+    Route::post('integrations/{id}/{action}', [IntegrationsController::class, 'act'])->whereUuid('id')->whereIn('action', ['publish', 'hide']);
+    Route::delete('integrations/{id}', [IntegrationsController::class, 'destroy'])->whereUuid('id');
+    Route::get('product-updates', [ProductUpdatesController::class, 'index']);
+    Route::post('product-updates', [ProductUpdatesController::class, 'store']);
+    Route::put('product-updates/{id}', [ProductUpdatesController::class, 'update'])->whereUuid('id');
+    Route::post('product-updates/{id}/{action}', [ProductUpdatesController::class, 'act'])->whereUuid('id')->whereIn('action', ['publish', 'archive']);
+    Route::get('webinars', [WebinarsController::class, 'index']);
+    Route::post('webinars', [WebinarsController::class, 'store']);
+    Route::put('webinars/{id}', [WebinarsController::class, 'update'])->whereUuid('id');
+    Route::post('webinars/{id}/{action}', [WebinarsController::class, 'act'])->whereUuid('id')->whereIn('action', ['publish', 'live', 'finish', 'cancel']);
+    Route::get('webinars/{id}/registrations', [WebinarsController::class, 'registrations'])->whereUuid('id');
+    Route::post('webinars/registrations/{rid}/{status}', [WebinarsController::class, 'mark'])->whereUuid('rid')->whereIn('status', ['attended', 'no_show', 'registered']);
+    Route::get('reviews', [ReviewsController::class, 'show']);
+    Route::put('reviews', [ReviewsController::class, 'save'])->middleware('platform.owner');
+    Route::post('reviews/refresh', [ReviewsController::class, 'refresh'])->middleware('platform.owner');
+    Route::get('savings-calculator', [SavingsCalculatorController::class, 'show']);
+    Route::put('savings-calculator', [SavingsCalculatorController::class, 'save']);
+    Route::post('savings-calculator/publish', [SavingsCalculatorController::class, 'publish'])->middleware('platform.owner');
+    Route::get('guidelines', [ContentGuidelinesController::class, 'show']);
+    Route::put('guidelines', [ContentGuidelinesController::class, 'save'])->middleware('platform.owner');
     Route::get('quotes/settings', [SalesQuotesController::class, 'settings']);
     Route::put('quotes/settings', [SalesQuotesController::class, 'saveSettings']);
     Route::get('quotes/new', [SalesQuotesController::class, 'prefill']);
@@ -286,5 +340,6 @@ Route::middleware(['auth:sanctum', 'platform', \App\Core\Http\Middleware\FlushCh
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('me/legal-pending', [LegalAcceptanceController::class, 'pending']);
     Route::get('me/help', [HelpCenterController::class, 'contextual'])->middleware('throttle:web-help');
+    Route::get('me/product-updates', [ProductUpdatesController::class, 'inApp'])->middleware('throttle:web-help');
     Route::post('me/legal-accept', [LegalAcceptanceController::class, 'accept']);
 });

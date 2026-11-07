@@ -34,9 +34,12 @@ class SitePagesController extends Controller
         'faq' => ['title' => 120],
         'cta' => ['title' => 120, 'text' => 300, 'button' => 20],
         'image' => ['title' => 120, 'caption' => 200],
+        // Tabla «cómo se hace hoy» frente a «con EscudoSST» (SCR-WEB-31): filas en items [{task, manual, escudo}].
+        'compare' => ['title' => 120, 'manual_label' => 40, 'escudo_label' => 40],
     ];
 
-    private const TYPES = ['sector', 'product', 'landing'];
+    // comparison: «EscudoSST vs Excel y papel» (/comparativa); campaign: landing de anuncio (/l/{slug}, noindex).
+    private const TYPES = ['sector', 'product', 'landing', 'comparison', 'campaign'];
 
     // ---------------------------------------------------------------- Público
 
@@ -47,7 +50,8 @@ class SitePagesController extends Controller
             "select slug, page_type, sector_code, published_snapshot->>'title' as title, published_snapshot->>'summary' as summary
                from site_pages where status = 'published' and deleted_at is null and page_type = any(?::text[])
               order by sort_order, published_snapshot->>'title'",
-            ['{'.implode(',', in_array($type, self::TYPES, true) ? [$type] : self::TYPES).'}']
+            // Listados públicos: sectores, diferenciadores y otras páginas (la comparativa y las landings de campaña van aparte).
+            ['{'.implode(',', in_array($type, ['sector', 'product', 'landing'], true) ? [$type] : ['sector', 'product', 'landing']).'}']
         );
 
         return response()->json(['data' => $rows])->header('Cache-Control', 'public, max-age=60');
@@ -248,6 +252,15 @@ class SitePagesController extends Controller
                     $this->fail("blocks.{$i}.items", 'Módulos desconocidos: '.implode(', ', $bad).'.');
                 }
                 $clean['items'] = $codes;
+            }
+            if ($type === 'compare') {
+                $clean['manual_label'] = $clean['manual_label'] ?: 'Con Excel y papel';
+                $clean['escudo_label'] = $clean['escudo_label'] ?: 'Con EscudoSST';
+                $clean['items'] = array_slice(array_values(array_filter(array_map(fn ($x) => [
+                    'task' => mb_substr(trim((string) ($x['task'] ?? '')), 0, 80),
+                    'manual' => mb_substr(trim((string) ($x['manual'] ?? '')), 0, 200),
+                    'escudo' => mb_substr(trim((string) ($x['escudo'] ?? '')), 0, 200),
+                ], $b['items'] ?? []), fn ($x) => $x['task'] !== '' && $x['manual'] !== '' && $x['escudo'] !== '')), 0, 15);
             }
             if ($type === 'faq') {
                 $clean['items'] = array_values(array_filter(array_map(fn ($x) => [

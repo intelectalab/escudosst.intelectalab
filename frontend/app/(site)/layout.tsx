@@ -7,6 +7,7 @@ import { CookieBanner } from "@/components/site/CookieBanner";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { GoogleAnalytics } from "@/components/site/GoogleAnalytics";
+import { PopupWidget } from "@/components/site/PopupWidget";
 import { RefCapture } from "@/components/site/RefCapture";
 import { SiteTracker } from "@/components/site/SiteTracker";
 import { WhatsAppFloat } from "@/components/site/WhatsAppFloat";
@@ -50,6 +51,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       <ChatbotWidget hasWhatsApp={!!s.whatsapp_number} />
       <WhatsAppFloat number={s.whatsapp_number} message={s.whatsapp_default_message || "Hola, quiero conocer EscudoSST"} />
       <CookieBanner />
+      <PopupWidget />
       <GoogleAnalytics id={s.google?.ga4 ?? null} />
       <RefCapture />
       <SiteTracker />

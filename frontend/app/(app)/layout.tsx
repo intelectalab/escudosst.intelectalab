@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { AppBrand } from "@/components/AppBrand";
 import { AppContext, type AppState } from "@/components/AppContext";
 import { HelpButton } from "@/components/HelpButton";
+import { ProductUpdatesButton } from "@/components/ProductUpdatesButton";
 import { LegalPendingGate } from "@/components/LegalPendingGate";
 import { NotificationBell } from "@/components/NotificationBell";
 import { SupportRequestBanner } from "@/components/SupportRequestBanner";
@@ -167,6 +168,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="flex items-center gap-2 text-sm">
               <HelpButton />
+              <ProductUpdatesButton />
               {!isSupport && <NotificationBell />}
               {canSeeSupport && (
                 <Link href="/soporte" className="hidden rounded-lg px-3 py-2 text-muted hover:bg-bg hover:text-fg lg:block" title="Accesos de soporte">

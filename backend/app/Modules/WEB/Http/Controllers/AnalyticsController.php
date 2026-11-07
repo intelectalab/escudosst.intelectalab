@@ -127,7 +127,8 @@ class AnalyticsController extends Controller
     private function isPrivate(string $path): bool
     {
         foreach (['/plataforma', '/inicio', '/m/', '/cuenta', '/soporte', '/select-company', '/login', '/invitacion', '/recuperar', '/restablecer',
-            '/confirmar-correo', '/casos/compartir/', '/casos/retirar/', '/boletin/confirmar/', '/boletin/baja/', '/demo/gestionar/'] as $p) {
+            '/confirmar-correo', '/casos/compartir/', '/casos/retirar/', '/boletin/confirmar/', '/boletin/baja/', '/demo/gestionar/',
+            '/webinars/gestionar/', '/cotizacion/'] as $p) {
             if (str_starts_with($path, $p)) {
                 return true;
             }

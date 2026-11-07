@@ -20,6 +20,7 @@ const LINK_GROUPS: { title: string; links: [string, string][] }[] = [
       ["/complementos", "Complementos"],
       ["/sectores", "Sectores"],
       ["/casos", "Casos de éxito"],
+      ["/integraciones", "Integraciones"],
     ],
   },
   {
@@ -28,6 +29,8 @@ const LINK_GROUPS: { title: string; links: [string, string][] }[] = [
       ["/recursos", "Recursos gratis"],
       ["/herramientas/calculadora-multas", "Calculadora de multas"],
       ["/herramientas/autodiagnostico", "Autodiagnóstico"],
+      ["/webinars", "Webinars"],
+      ["/novedades", "Novedades"],
       ["/boletin", "Boletín normativo"],
       ["/preguntas-frecuentes", "Preguntas frecuentes"],
       ["/ayuda", "Centro de ayuda"],

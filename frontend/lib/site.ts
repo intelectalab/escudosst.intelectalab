@@ -150,3 +150,46 @@ export const getResources = () => get<{ slug: string; title: string; description
 /** ¿La agenda pública de demos está activa? (para mostrar «Elige tu horario»). */
 export const getDemoAgenda = () => get<{ result: string }>("demo/slots", { result: "disabled" });
 export const getStory = (slug: string) => get<SuccessStory | null>(`success-stories/${slug}`, null);
+
+// ---------------------------------------------------------------- v1.5-b (SCR-WEB-69 a 83)
+
+export type CampaignPage = { result: "ok" | "ended"; slug?: string; title?: string; summary?: string | null; blocks?: import("@/lib/pages").Block[]; seo?: { meta_title?: string; meta_description?: string; noindex?: boolean }; campaign?: { channel: string; form_type: string | null; utm_source: string | null; utm_medium: string | null; utm_campaign: string | null; ends_on: string | null } };
+export const getCampaign = (slug: string) => get<CampaignPage | null>(`campaigns/${slug}`, null);
+
+export type Integration = { name: string; slug: string; category: string; description: string | null; availability: "available" | "beta" | "planned"; docs_url: string | null; logo_file_id: string | null; logo_alt_text: string | null };
+export const getIntegrations = () => get<Integration[]>("integrations", []);
+
+export type ProductUpdate = { slug: string; title: string; category: "new" | "improvement" | "fix"; modules: string[]; excerpt?: string; body?: string; published_at: string };
+export const getProductUpdates = () => get<ProductUpdate[]>("product-updates", []);
+export const getProductUpdate = (slug: string) => get<ProductUpdate | null>(`product-updates/${slug}`, null);
+
+export type Webinar = {
+  slug: string;
+  title: string;
+  description: string | null;
+  speaker_name: string;
+  speaker_title: string | null;
+  starts_at: string;
+  duration_minutes: number;
+  meeting_provider: string;
+  status: "published" | "live" | "finished";
+  cover_file_id: string | null;
+  recording_file_id: string | null;
+  capacity: number | null;
+  seats_left: number | null;
+  registration_open: boolean;
+};
+export const getWebinars = () => get<{ upcoming: Webinar[]; recorded: Webinar[] }>("webinars", { upcoming: [], recorded: [] });
+export const getWebinar = (slug: string) => get<Webinar | null>(`webinars/${slug}`, null);
+
+export type Review = { author_name: string; author_photo_url: string | null; rating: number; body: string | null; review_published_at: string | null; provider_review_url: string | null };
+export const getReviews = () => get<{ attribution: string; reviews: Review[] }>("reviews", { attribution: "Reseñas de Google", reviews: [] });
+
+export type SavingsCalculator = { assumptions: { minutes_saved_per_record: number | null; manual_hours_reduction_pct: number | null; hourly_cost_pen: number | null }; disclaimer: string; to_validate: boolean; available: boolean } | null;
+export const getSavingsCalculator = () => get<SavingsCalculator>("tools/savings-calculator", null);
+
+export const UPDATE_CATEGORIES: Record<ProductUpdate["category"], [string, string]> = {
+  new: ["Nuevo", "bg-[#1F7FD1]/12 text-[#0D3B6E]"],
+  improvement: ["Mejora", "bg-[#22A35A]/12 text-[#167A42]"],
+  fix: ["Corrección", "bg-[#F4B90F]/20 text-[#6B5200]"],
+};
