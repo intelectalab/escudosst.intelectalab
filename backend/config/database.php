@@ -99,6 +99,38 @@ return [
             'sslmode' => env('DB_SSLMODE', 'prefer'),
         ],
 
+        // Misma base principal con el rol dueño de las tablas: solo para migraciones
+        // (docs/15 §2.3). La aplicación usa 'pgsql' con escudo_api, que no salta RLS.
+        'pgsql_owner' => [
+            'driver' => 'pgsql',
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '5432'),
+            'database' => env('DB_DATABASE', 'escudo_main'),
+            'username' => env('DB_OWNER_USERNAME', 'escudo_owner_login'),
+            'password' => env('DB_OWNER_PASSWORD', ''),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE', 'prefer'),
+        ],
+
+        // Panel interno del dueño de la plataforma (SUS): rol escudo_platform, con políticas RLS propias
+        // sobre catálogos globales, cuentas y suscripciones. Nunca para datos de negocio de las empresas.
+        'platform' => [
+            'driver' => 'pgsql',
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '5432'),
+            'database' => env('DB_DATABASE', 'escudo_main'),
+            'username' => env('DB_PLATFORM_USERNAME', 'escudo_platform_login'),
+            'password' => env('DB_PLATFORM_PASSWORD', ''),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE', 'prefer'),
+        ],
+
         // Base médica separada (docs/01-arquitectura.md §1.3). Solo la usa MedicalRepository.
         'medical' => [
             'driver' => 'pgsql',

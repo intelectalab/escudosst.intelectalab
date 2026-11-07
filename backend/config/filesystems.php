@@ -30,6 +30,13 @@ return [
 
     'disks' => [
 
+        // Copias de seguridad cifradas. En producción: el bucket de respaldos (S3/B2 con bloqueo de objetos).
+        'backups' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/backups'),
+            'throw' => true,
+        ],
+
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),

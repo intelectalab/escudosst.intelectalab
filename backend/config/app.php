@@ -65,7 +65,9 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    // Zona de negocio America/Lima (docs/02 §fechas), la misma de la base. Laravel envía las fechas sin zona: si PHP
+    // estuviera en UTC y la base en Lima, cada fecha guardada quedaría 5 horas corrida.
+    'timezone' => env('APP_TIMEZONE', 'America/Lima'),
 
     /*
     |--------------------------------------------------------------------------
