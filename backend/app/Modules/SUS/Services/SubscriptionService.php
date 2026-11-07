@@ -165,7 +165,7 @@ class SubscriptionService
      * @param  array{amount: float|string, method: string, paid_at: string, reference?: ?string, periods: int, note?: ?string}  $data
      * @return array{current_period_end: string, status: string}
      */
-    public function registerPayment(string $subscriptionId, array $data, string $actor): array
+    public function registerPayment(string $subscriptionId, array $data, string $actor, bool $notify = true): array
     {
         $sub = $this->find($subscriptionId);
         if (in_array($sub->status, ['cancelled', 'pending_cancellation'], true) || $sub->plan_code === 'K') {
@@ -225,7 +225,10 @@ class SubscriptionService
             return ['current_period_end' => $period->until, 'status' => 'active', 'payment_id' => $paymentId];
         });
 
-        $this->notifier->notify($sub, 'paid', ['end' => $result['current_period_end']], 'paid:'.$result['payment_id']);
+        // Desde una cotización el cliente recibe un solo correo de confirmación (no uno por empresa).
+        if ($notify) {
+            $this->notifier->notify($sub, 'paid', ['end' => $result['current_period_end']], 'paid:'.$result['payment_id']);
+        }
 
         return ['current_period_end' => $result['current_period_end'], 'status' => 'active'];
     }

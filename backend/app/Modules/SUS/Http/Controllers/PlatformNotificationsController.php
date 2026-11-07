@@ -50,6 +50,13 @@ class PlatformNotificationsController extends Controller
         $add('requests_new', 'Ventas', 'clock', 'brand', (int) $r->n, $r->at,
             $plural((int) $r->n, '1 solicitud nueva', "{$r->n} solicitudes nuevas"), 'Demos, cotizaciones y consultas sin atender.', '/plataforma/sitio/solicitudes');
 
+        // Cotizaciones: constancia de pago por revisar (el cliente espera su acceso) y aceptadas que aún no pagan.
+        $r = $db->selectOne("select count(*) as n, max(payment_submitted_at) as at from sales_quotes where status = 'payment_submitted' and deleted_at is null");
+        $add('quotes_payment', 'Ventas', 'check', 'amber', (int) $r->n, $r->at,
+            $plural((int) $r->n, '1 pago por confirmar', "{$r->n} pagos por confirmar"), 'Revisa la constancia y confirma el pago para crear la cuenta.', '/plataforma/sitio/cotizaciones');
+        $r = $db->selectOne("select count(*) as n, max(accepted_at) as at from sales_quotes where status = 'accepted' and deleted_at is null");
+        $add('quotes_accepted', 'Ventas', 'clock', 'brand', (int) $r->n, $r->at,
+            $plural((int) $r->n, '1 cotización aceptada', "{$r->n} cotizaciones aceptadas"), 'Esperando que el cliente pague y envíe su constancia.', '/plataforma/sitio/cotizaciones');
         $r = $db->selectOne("select count(*) as n, max(created_at) as at from marketing_leads where status = 'new' and deleted_at is null");
         $add('leads_new', 'Ventas', 'people', 'brand', (int) $r->n, $r->at,
             $plural((int) $r->n, '1 interesado nuevo', "{$r->n} interesados nuevos"), 'Personas que dejaron sus datos en el sitio.', '/plataforma/sitio/interesados');

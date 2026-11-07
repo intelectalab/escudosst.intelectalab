@@ -149,7 +149,8 @@ class AccountsService
             $period = $data['billing_period'];
             $start = now();
             $end = $trial ? $start->copy()->addDays(config('escudo.subscriptions.trial_days'))
-                : ($period === 'annual' ? $start->copy()->addYear() : $start->copy()->addMonth());
+                : (! empty($data['prepaid']) ? $start->copy()   // alta desde una cotización: el periodo lo abre el pago que se registra enseguida
+                    : ($period === 'annual' ? $start->copy()->addYear() : $start->copy()->addMonth()));
 
             $subscriptionId = $this->db()->selectOne(
                 'insert into subscriptions (account_id, company_id, plan_id, status, billing_period, started_at, trial_ends_at,
@@ -221,7 +222,77 @@ class AccountsService
             'company_id' => $result['companyId'],
             'subscription_id' => $result['subscriptionId'],
             'invitation' => $result['userActive'] ? 'access_granted' : 'invited',
+            'admin_user_id' => $result['userId'],
         ];
+    }
+
+    /**
+     * Agrega otra empresa (otro RUC) a una cuenta que ya existe: grupo de empresas, cada una con su propia
+     * suscripción (docs/03 §1). Los administradores indicados entran también a esta empresa.
+     * Con «prepaid» el periodo queda en cero: lo abre el pago que se registra enseguida (alta desde cotización).
+     *
+     * @param  array{ruc: string, legal_name: string, trade_name?: ?string, economic_sector?: ?string, headcount: int, plan: string, billing_period: string, prepaid?: bool}  $data
+     * @param  list<string>  $adminUserIds
+     * @return array{company_id: string, subscription_id: string}
+     */
+    public function addCompany(string $accountId, array $data, array $adminUserIds, string $actorUserId): array
+    {
+        $ruc = $data['ruc'];
+        if (! Ruc::isValid($ruc)) {
+            throw $this->validation('ruc', "El RUC {$ruc} no es válido.");
+        }
+        if ($this->db()->selectOne('select 1 from companies where ruc = ? and deleted_at is null', [$ruc])) {
+            throw $this->validation('ruc', "Ya existe una empresa con el RUC {$ruc}.");
+        }
+        $plan = $this->db()->selectOne("select id, code from plans where code = ? and is_active and deleted_at is null and code <> 'K'", [$data['plan']]);
+        if (! $plan) {
+            throw $this->validation('plan', 'Ese plan no está activo.');
+        }
+        $account = $this->findAccount($accountId);
+
+        $ids = $this->db()->transaction(function () use ($accountId, $account, $data, $ruc, $plan, $actorUserId) {
+            $this->db()->select("select set_config('app.user_id', ?, true)", [$actorUserId]);
+            $headcount = (int) $data['headcount'];
+            $companyId = $this->db()->selectOne(
+                'insert into companies (account_id, ruc, legal_name, trade_name, economic_sector, headcount_declared, sst_model, created_by)
+                 values (?, ?, ?, ?, ?, ?, ?, ?) returning id',
+                [
+                    $accountId, $ruc, $data['legal_name'], $data['trade_name'] ?? null, $data['economic_sector'] ?? null,
+                    $headcount, $headcount >= $this->committeeThreshold() ? 'committee' : 'supervisor', $actorUserId,
+                ]
+            )->id;
+            $start = now();
+            $end = ! empty($data['prepaid']) ? $start->copy() : ($data['billing_period'] === 'annual' ? $start->copy()->addYear() : $start->copy()->addMonth());
+            $subscriptionId = $this->db()->selectOne(
+                "insert into subscriptions (account_id, company_id, plan_id, status, billing_period, started_at, current_period_start, current_period_end, created_by)
+                 values (?, ?, ?, 'active', ?, ?, ?, ?, ?) returning id",
+                [$accountId, $companyId, $plan->id, $data['billing_period'], $start, $start, $end, $actorUserId]
+            )->id;
+            $this->db()->select('select seed_company_defaults(?)', [$companyId]);
+            if ($account->account_type === 'direct') {
+                $this->db()->update("update accounts set account_type = 'group', updated_by = ? where id = ?", [$actorUserId, $accountId]);
+            }
+            $this->audit($actorUserId, 'account_company_added', 'accounts', $accountId, [
+                'account_id' => $accountId,
+                'company' => ['id' => $companyId, 'ruc' => $ruc, 'legal_name' => $data['legal_name']],
+                'plan' => $plan->code,
+                'billing_period' => $data['billing_period'],
+            ]);
+
+            return compact('companyId', 'subscriptionId');
+        });
+
+        // Los administradores de la cuenta entran también a esta empresa. Si aún no crean su contraseña, no pueden
+        // iniciar sesión: al aceptar la invitación de la primera empresa ya ven todas.
+        foreach (array_unique($adminUserIds) as $userId) {
+            $this->withCompany($ids['companyId'], fn (ConnectionInterface $db) => $db->insert(
+                "insert into memberships (company_id, user_id, role_id, status, invited_by, invited_at, accepted_at, created_by)
+                 select ?, ?, r.id, 'active', ?, now(), now(), ? from roles r where r.account_id is null and r.code = ?",
+                [$ids['companyId'], $userId, $actorUserId, $actorUserId, self::ADMIN_ROLE]
+            ));
+        }
+
+        return ['company_id' => $ids['companyId'], 'subscription_id' => $ids['subscriptionId']];
     }
 
     /** Reenvía la invitación al administrador de cuenta que aún no crea su contraseña. */

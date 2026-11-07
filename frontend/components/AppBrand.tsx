@@ -36,7 +36,7 @@ export function AppBrand({ light = false }: { light?: boolean }) {
   }, []);
 
   const file = m && (light ? (m.logoDark ?? m.logo) : m.logo);
-  if (!m || !file) return <Brand light={light} />;
+  if (!m || !file) return <Brand light={light} name={m?.name} />;
   const plate = light && !m.logoDark;   // logo normal sobre fondo oscuro: placa blanca para que se vea
   return (
     <div className="flex items-center gap-2.5">

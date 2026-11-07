@@ -294,6 +294,7 @@ export function DemoForm({
     headcount: "",
     economic_sector: "",
     interest_plan_code: initialPlan,
+    companies_count: "1",
     message: interest && !addons.some((a) => a.name === interest) ? `Me interesa el complemento ${interest}.` : "",
     website: "",
   });
@@ -320,6 +321,7 @@ export function DemoForm({
       economic_sector: f.economic_sector || null,
       interest_plan_code: f.interest_plan_code || null,
       addon_codes: type === "quote" ? addonCodes : [],
+      companies_count: type === "quote" ? Number(f.companies_count) : null,
       message: f.message.trim() || null,
       privacy_consent: privacy,
       marketing_consent: marketing,
@@ -394,7 +396,12 @@ export function DemoForm({
         <Field label="Empresa" error={err("company_name")}>
           <input className="input" maxLength={160} autoComplete="organization" value={f.company_name} aria-invalid={!!err("company_name") || undefined} onChange={(e) => set("company_name", e.target.value)} />
         </Field>
-        <Field label="RUC" optional error={err("ruc")}>
+        <Field
+          label="RUC"
+          optional={type !== "quote"}
+          error={err("ruc") ?? (f.ruc.length === 11 && !isValidRuc(f.ruc) ? "Revisa el RUC: el último dígito no coincide." : undefined)}
+          hint={type === "quote" ? (f.companies_count !== "1" ? "De la empresa principal. Las demás del grupo te las pedimos al cotizar." : "11 dígitos. Con él armamos tu cotización.") : undefined}
+        >
           <input className="input tabular-nums" inputMode="numeric" value={f.ruc} aria-invalid={!!err("ruc") || undefined} onChange={(e) => set("ruc", onlyDigits(e.target.value, 11))} />
         </Field>
         <Field label="Trabajadores" optional error={err("headcount")}>
@@ -410,6 +417,18 @@ export function DemoForm({
             ))}
           </select>
         </Field>
+        {type === "quote" && (
+          <Field label="¿Para cuántas empresas?" error={err("companies_count")} hint="Si es un grupo, cada empresa (cada RUC) tiene su propia suscripción dentro de una sola cuenta." className="sm:col-span-2">
+            <select className="input" value={f.companies_count} onChange={(e) => set("companies_count", e.target.value)}>
+              <option value="1">Una empresa</option>
+              {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                <option key={n} value={n}>
+                  Grupo de {n} empresas
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         {type !== "contact" && plans.length > 0 && (
           <Field
             label="Plan de interés"

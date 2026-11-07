@@ -33,6 +33,9 @@ it('el visitante pide una demo; valida privacidad y datos', function () {
 it('la cotización llega al correo con el plan y los complementos elegidos', function () {
     Mail::fake();
     $form = ['request_type' => 'quote', 'full_name' => 'Rosa Cotiza', 'email' => 'rosa@prueba.test', 'company_name' => 'Textil Prueba', 'privacy_consent' => true];
+    // Para cotizar, el RUC es obligatorio (cada RUC es una empresa en EscudoSST).
+    $this->postJson('/api/v1/public/demo-requests', $form)->assertStatus(422)->assertJsonValidationErrors('ruc');
+    $form['ruc'] = '20100070970';
 
     $this->postJson('/api/v1/public/demo-requests', ['addon_codes' => ['NOEXISTE']] + $form)->assertStatus(422)->assertJsonValidationErrors('addon_codes.0');
     $this->postJson('/api/v1/public/demo-requests', ['interest_plan_code' => 'P', 'addon_codes' => ['IAA', 'OFF']] + $form)->assertCreated();

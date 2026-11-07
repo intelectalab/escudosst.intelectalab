@@ -26,13 +26,21 @@ class SiteRequestMail extends Mailable
         public readonly ?string $buttonUrl = null,
         /** Archivo de calendario (.ics) opcional: [contenido, nombre]. */
         public readonly ?array $ics = null,
+        /** Archivo PDF opcional (p. ej. la cotización): [contenido, nombre]. */
+        public readonly ?array $attachment = null,
     ) {}
 
     public function attachments(): array
     {
-        return $this->ics
-            ? [\Illuminate\Mail\Mailables\Attachment::fromData(fn () => $this->ics[0], $this->ics[1])->withMime('text/calendar; charset=UTF-8; method=PUBLISH')]
-            : [];
+        $files = [];
+        if ($this->ics) {
+            $files[] = \Illuminate\Mail\Mailables\Attachment::fromData(fn () => $this->ics[0], $this->ics[1])->withMime('text/calendar; charset=UTF-8; method=PUBLISH');
+        }
+        if ($this->attachment) {
+            $files[] = \Illuminate\Mail\Mailables\Attachment::fromData(fn () => $this->attachment[0], $this->attachment[1])->withMime('application/pdf');
+        }
+
+        return $files;
     }
 
     public function envelope(): Envelope

@@ -28,6 +28,7 @@ const GROUPS: { title: string; items: [string, string, string][] }[] = [
     title: "Bandejas",
     items: [
       ["/plataforma/sitio/solicitudes", "Solicitudes", "clock"],
+      ["/plataforma/sitio/cotizaciones", "Cotizaciones", "tag"],
       ["/plataforma/sitio/agenda", "Agenda de demos", "clock"],
       ["/plataforma/sitio/interesados", "Interesados", "people"],
       ["/plataforma/sitio/partners", "Partners y referidos", "building"],

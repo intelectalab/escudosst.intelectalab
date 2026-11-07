@@ -54,6 +54,8 @@ class AppServiceProvider extends ServiceProvider
             'web-google-callback' => [20, 10],
             'web-help' => [60, 1],
             'web-newsletter-test' => [10, 10],
+            'web-quote-read' => [40, 10],
+            'web-quote-write' => [8, 10],
             'web-read' => [120, 1],
             'web-sensitive' => [10, 10],
             'web-story-read' => [30, 10],

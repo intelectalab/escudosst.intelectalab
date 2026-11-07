@@ -25,6 +25,7 @@ use App\Modules\WEB\Http\Controllers\SiteContentController;
 use App\Modules\WEB\Http\Controllers\SiteMenuController;
 use App\Modules\WEB\Http\Controllers\SitePagesController;
 use App\Modules\WEB\Http\Controllers\SiteSettingsController;
+use App\Modules\WEB\Http\Controllers\SalesQuotesController;
 use App\Modules\WEB\Http\Controllers\SuccessStoriesController;
 use App\Modules\WEB\Http\Controllers\SuccessStoryInvitesController;
 use App\Modules\WEB\Http\Controllers\TrustStatusController;
@@ -118,9 +119,30 @@ Route::middleware('throttle:web-story-write')->prefix('public/success-stories')-
     Route::post('withdraw/{token}', [SuccessStoryInvitesController::class, 'withdraw'])->where('token', '[A-Za-z0-9]{48}');
 });
 
+// Cotización: enlace personal del cliente (aceptar o no, y enviar la constancia de pago).
+Route::middleware('throttle:web-quote-read')->prefix('public/quotes')->group(function () {
+    Route::get('{token}', [SalesQuotesController::class, 'publicShow'])->where('token', '[A-Za-z0-9]{48}');
+    Route::get('{token}/pdf', [SalesQuotesController::class, 'publicPdf'])->where('token', '[A-Za-z0-9]{48}');
+});
+Route::middleware('throttle:web-quote-write')->prefix('public/quotes')->group(function () {
+    Route::post('{token}/accept', [SalesQuotesController::class, 'accept'])->where('token', '[A-Za-z0-9]{48}');
+    Route::post('{token}/reject', [SalesQuotesController::class, 'reject'])->where('token', '[A-Za-z0-9]{48}');
+    Route::post('{token}/payment', [SalesQuotesController::class, 'payment'])->where('token', '[A-Za-z0-9]{48}');
+});
+
 // Panel del dueño · Sitio web (SCR-WEB-21 y SCR-WEB-24)
 Route::middleware(['auth:sanctum', 'platform', \App\Core\Http\Middleware\FlushChatbotIndex::class])->prefix('internal/site')->group(function () {
     Route::get('settings', [SiteSettingsController::class, 'show']);
+    Route::get('quotes', [SalesQuotesController::class, 'index']);
+    Route::get('quotes/settings', [SalesQuotesController::class, 'settings']);
+    Route::put('quotes/settings', [SalesQuotesController::class, 'saveSettings']);
+    Route::get('quotes/new', [SalesQuotesController::class, 'prefill']);
+    Route::post('quotes/preview', [SalesQuotesController::class, 'preview']);
+    Route::post('quotes', [SalesQuotesController::class, 'store']);
+    Route::get('quotes/{id}', [SalesQuotesController::class, 'show'])->whereUuid('id');
+    Route::put('quotes/{id}', [SalesQuotesController::class, 'update'])->whereUuid('id');
+    Route::post('quotes/{id}/{action}', [SalesQuotesController::class, 'act'])->whereUuid('id')->whereIn('action', ['send', 'cancel', 'reject-evidence', 'confirm-payment']);
+    Route::get('quotes/{id}/file/{kind}', [SalesQuotesController::class, 'file'])->whereUuid('id')->whereIn('kind', ['pdf', 'evidence']);
     Route::patch('settings', [SiteSettingsController::class, 'update']);
     Route::get('legal', [LegalDocumentsController::class, 'index']);
     Route::patch('legal/versions/{version}', [LegalDocumentsController::class, 'saveDraft'])->whereUuid('version');

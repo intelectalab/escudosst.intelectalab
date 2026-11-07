@@ -57,7 +57,7 @@ export function SiteFooter({ site }: { site: SiteData }) {
       <div className="site-stripe h-1.5" aria-hidden="true" />
       <div className="mx-auto grid max-w-[1360px] grid-cols-1 gap-10 px-4 py-14 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1.2fr] lg:px-8">
         <div className="space-y-4">
-          <SiteLogo src={assetUrl(s.logo_dark_file_id)} alt={s.trade_name || "EscudoSST"} light />
+          <SiteLogo src={assetUrl(s.logo_file_id)} darkSrc={assetUrl(s.logo_dark_file_id)} alt={s.trade_name || "EscudoSST"} light />
           <p className="text-sm text-white/70">Gestión de seguridad y salud en el trabajo para empresas peruanas, pensada para la Ley 29783.</p>
           {social.length > 0 && (
             <ul className="flex flex-wrap gap-2">

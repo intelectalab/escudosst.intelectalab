@@ -87,7 +87,8 @@ class PublicFormsController extends Controller
             'email' => ['required', 'email:rfc', 'max:160'],
             'phone' => ['nullable', 'string', 'max:30'],
             'company_name' => ['required', 'string', 'min:2', 'max:160'],
-            'ruc' => ['nullable', 'regex:/^(10|15|17|20)\d{9}$/'],
+            'ruc' => ['nullable', 'required_if:request_type,quote', 'regex:/^(10|15|17|20)\d{9}$/'],
+            'companies_count' => ['nullable', 'integer', 'min:1', 'max:30'],
             'job_title' => ['nullable', 'string', 'max:120'],
             'headcount' => ['nullable', 'integer', 'min:1', 'max:1000000'],
             'economic_sector' => ['nullable', 'in:'.self::SECTORS],
@@ -98,7 +99,10 @@ class PublicFormsController extends Controller
             'privacy_consent' => ['accepted'],
             'marketing_consent' => ['boolean'],
             'source_page' => ['nullable', 'string', 'max:300'],
-        ], $this->messages() + ['ruc.regex' => 'El RUC tiene 11 dígitos y empieza con 10, 15, 17 o 20.']);
+        ], $this->messages() + [
+            'ruc.regex' => 'El RUC tiene 11 dígitos y empieza con 10, 15, 17 o 20.',
+            'ruc.required_if' => 'Para cotizar necesitamos el RUC de la empresa.',
+        ]);
 
         $data['privacy_consent'] = true;
         $data['marketing_consent'] = (bool) ($data['marketing_consent'] ?? false);
@@ -108,7 +112,13 @@ class PublicFormsController extends Controller
         if ($addons->isNotEmpty()) {
             $data['message'] = trim('Complementos de interés: '.$addons->pluck('name')->implode(', ').".\n".($data['message'] ?? ''));
         }
-        $row = collect($data)->except('addon_codes')->all();
+        // Grupo de empresas: el equipo arma la cotización con cada RUC (cada empresa tiene su propia suscripción).
+        $groupSize = (int) ($data['companies_count'] ?? 1);
+        if ($data['request_type'] === 'quote' && $groupSize > 1) {
+            $data['message'] = trim("Empresas del grupo: {$groupSize}.
+".($data['message'] ?? ''));
+        }
+        $row = collect($data)->except(['addon_codes', 'companies_count'])->all();
         $r = json_decode(DB::selectOne(
             "select public_create_demo_request(?::jsonb, decode(?, 'hex')) as r",
             [json_encode($row, JSON_UNESCAPED_UNICODE), $this->ipHash($request)]

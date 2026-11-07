@@ -3,6 +3,7 @@
 // Sitio web › Solicitudes (SCR-WEB-12): demos, cotizaciones y consultas que llegan desde el sitio.
 // El equipo marca cada una como contactada, demo agendada, convertida o descartada, con una nota interna.
 
+import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Chip, type ChipTone, EmptyState, PageHeader, StatCard } from "@/components/ui/Display";
@@ -81,7 +82,7 @@ export default function SolicitudesPage() {
         {(
           [
             ["mail", "1. Llega la solicitud", "Con los datos de la persona y su empresa. Si configuraste el correo de ventas, también te avisamos por correo."],
-            ["people", "2. La contactas", "Por correo o teléfono, para coordinar la demo o enviar la cotización."],
+            ["people", "2. La contactas", "Por correo o teléfono para coordinar la demo, o le preparas la cotización formal desde aquí."],
             ["check", "3. Marcas en qué quedó", "Contactada, demo agendada, convertida en cliente o descartada. Así nadie se queda sin respuesta."],
           ] as const
         ).map(([icon, title, text]) => (
@@ -233,6 +234,19 @@ function RequestModal({ req, onClose, onSaved }: { req: Req; onClose: () => void
               ))}
           </dl>
           {req.message && <p className="mt-4 whitespace-pre-line rounded-xl bg-bg px-4 py-3 text-sm">«{req.message}»</p>}
+          {req.status !== "converted" && req.status !== "discarded" && (
+            <Link
+              href={`/plataforma/sitio/cotizaciones/nueva?solicitud=${req.id}`}
+              className="mt-4 flex items-center gap-3 rounded-xl border border-brand/30 bg-brand-soft px-4 py-3 text-sm transition hover:border-brand"
+            >
+              <Icon name="tag" size={18} className="text-brand-strong" />
+              <span className="flex-1">
+                <b className="block text-brand-strong">Preparar cotización formal</b>
+                <span className="text-xs text-muted">Con sus datos ya cargados. Al aceptarla y pagar, se crea su cuenta.</span>
+              </span>
+              <Icon name="chevron" size={16} className="text-brand-strong" />
+            </Link>
+          )}
         </section>
 
         <section className="form-section space-y-4">
@@ -254,7 +268,7 @@ function RequestModal({ req, onClose, onSaved }: { req: Req; onClose: () => void
               <input className="input" maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej.: no responde, eligió otra solución" />
             </FormField>
           )}
-          {status === "converted" && <p className="text-xs text-muted">Crea su cuenta en «Cuentas y suscripciones» si aún no se registró sola.</p>}
+          {status === "converted" && <p className="text-xs text-muted">Si pagó por una cotización, su cuenta se crea sola al confirmar el pago. Si no, créala en «Cuentas y suscripciones».</p>}
           <FormField label="Nota interna (opcional)" hint="Solo la ve el equipo." error={errors.notes?.[0]}>
             <textarea className="input min-h-[80px]" maxLength={2000} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </FormField>
