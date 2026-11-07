@@ -22,6 +22,11 @@ class PersonalAccessToken extends SanctumToken
 
     public static function findToken($token)
     {
+        // El id es un UUID: un token con otro formato (por ejemplo «1|abc» inventado) es inválido sin consultar la
+        // base; si no, PostgreSQL rechaza el valor y la respuesta sería un error 500 en lugar de 401.
+        if (str_contains((string) $token, '|') && ! \Illuminate\Support\Str::isUuid(explode('|', (string) $token, 2)[0])) {
+            return null;
+        }
         $found = parent::findToken($token);
 
         $idle = (int) config('escudo.auth.idle_minutes');

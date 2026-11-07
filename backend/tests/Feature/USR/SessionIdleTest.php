@@ -23,3 +23,9 @@ it('cierra la sesión que pasó el tiempo de inactividad y mantiene la que se us
     $this->getJson('/api/v1/me', authHeaders($token))->assertUnauthorized();
     expect(DB::table('personal_access_tokens')->where('id', $id)->exists())->toBeFalse();
 });
+
+it('un token inventado o con formato raro responde 401, nunca un error del servidor', function () {
+    foreach (['1|falso', 'sin-barra', '01a1b480-ce73-70bc-aef9-80e8ef23baeb|falso', "'; drop table users; --|x"] as $token) {
+        $this->getJson('/api/v1/me', ['Authorization' => "Bearer {$token}"])->assertStatus(401);
+    }
+});

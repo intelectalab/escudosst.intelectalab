@@ -15,7 +15,11 @@ chown -R www-data:www-data storage 2>/dev/null || true
 
 php artisan config:cache >/dev/null
 php artisan route:cache >/dev/null
-php artisan view:cache >/dev/null
+# Las vistas compiladas van al volumen compartido (storage): las compila solo la API, para que la cola y el
+# programador no choquen con ella al arrancar juntos (rename: No such file or directory).
+if [ "$1" = "php-fpm" ]; then
+  php artisan view:cache >/dev/null
+fi
 chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
 
 # php-fpm baja solo sus procesos a www-data; el resto (cola, programador, artisan) corre directamente como www-data

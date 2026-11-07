@@ -54,6 +54,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // Errores de la API en problem+json y en español (docs/08-api.md §7).
         $isApi = fn (Request $request) => $request->is('api/*');
 
+        // Un 4xx (no existe, sin permiso, datos inválidos) es una respuesta esperada, no un error del sistema: no se
+        // registra en el log, así los errores reales (5xx) no se pierden entre el ruido.
+        $exceptions->dontReportWhen(fn (\Throwable $e) => $e instanceof ApiProblem && $e->status < 500);
+
         $exceptions->render(function (ApiProblem $e, Request $request) {
             return $e->toResponse((string) Str::ulid());
         });
