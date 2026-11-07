@@ -4,7 +4,7 @@
 // (sin editar ni elegir cuáles). Solo se filtra por calificación mínima y cantidad.
 
 import { FormEvent, useEffect, useState } from "react";
-import { dt, HowItWorks, usePanelList, useSave } from "@/components/platform/SitePanelKit";
+import { dt, Guide, usePanelList, useSave } from "@/components/platform/SitePanelKit";
 import { Button } from "@/components/ui/Button";
 import { Chip, PageHeader } from "@/components/ui/Display";
 import { FormField, SwitchRow } from "@/components/ui/Form";
@@ -54,45 +54,11 @@ export default function ResenasPage() {
         title="Reseñas de Google"
         description="Muestra en el sitio las reseñas reales del perfil de Google de la empresa, con la atribución «Reseñas de Google». No se pueden editar ni elegir a mano."
       />
-      <HowItWorks
-        steps={[
-          ["lock", "1. Llave de Google", "El equipo técnico carga la llave de la API de Google Places en el servidor (una sola vez)."],
-          ["globe", "2. ID del lugar", "Copia el ID de tu perfil de Google (empieza con «ChIJ»). Búscalo en el «Place ID Finder» de Google."],
-          ["star", "3. Actívala", "Elige la calificación mínima y cuántas mostrar. Se actualizan solas."],
-        ]}
+      <Guide
+        what="Muestra las reseñas reales del perfil de la empresa en Google (Google Maps), con el sello «Reseñas de Google». Dan confianza porque no se pueden editar."
+        where="En la portada y en Casos de éxito. Si no hay reseñas, no se muestra nada."
+        steps={["Tener el perfil de la empresa en Google con reseñas (business.google.com).", "Pedir al equipo técnico la llave de Google para el servidor (una sola vez).", "Pegar aquí el ID del lugar (empieza con «ChIJ»; se saca en el buscador de Place ID de Google) y activar."]}
       />
-      <section className="form-section space-y-3 text-sm">
-        <h2 className="font-display text-base font-bold">¿Para qué sirve y qué necesito?</h2>
-        <p className="text-muted">
-          Muestra en el sitio las opiniones que tus clientes dejaron en el perfil de Google de la empresa (el que sale en Google Maps). Generan confianza porque son reales y llevan el
-          sello «Reseñas de Google». Se ven en la <b>portada</b> y en <b>Casos de éxito</b>; si no hay reseñas, ese bloque simplemente no aparece.
-        </p>
-        <ol className="list-inside list-decimal space-y-2 text-muted">
-          <li>
-            <b className="text-fg">Tener un perfil de Google Business</b> con reseñas. Si aún no lo tienes, créalo en{" "}
-            <a href="https://business.google.com/" target="_blank" rel="noopener" className="font-semibold text-brand-strong hover:underline">
-              business.google.com
-            </a>{" "}
-            y pide a tus clientes que dejen su opinión.
-          </li>
-          <li>
-            <b className="text-fg">La llave de Google (la hace el equipo técnico, una sola vez):</b> en Google Cloud se crea un proyecto, se activa «Places API (New)» y se genera una
-            clave restringida solo a esa API. Esa clave se guarda en el servidor, nunca en este panel. Google puede cobrar si se pasa del uso gratuito; leer 5 reseñas una vez al día
-            es un uso muy bajo.
-          </li>
-          <li>
-            <b className="text-fg">El ID del lugar:</b> abre el{" "}
-            <a href="https://developers.google.com/maps/documentation/places/web-service/place-id" target="_blank" rel="noopener" className="font-semibold text-brand-strong hover:underline">
-              buscador de Place ID de Google
-            </a>
-            , escribe el nombre de tu empresa como aparece en Google Maps y copia el código que empieza con «ChIJ». Pégalo abajo.
-          </li>
-          <li>
-            <b className="text-fg">Elige qué mostrar y actívalo:</b> calificación mínima (por ejemplo, desde 4 estrellas) y cuántas. No se pueden editar ni elegir una por una: así lo
-            exige Google y así son creíbles.
-          </li>
-        </ol>
-      </section>
       {error && <p className="rounded-lg bg-bad-soft px-4 py-3 text-sm font-semibold text-bad">{error}</p>}
       {res && !res.data.key_ready && (
         <p className="rounded-lg bg-amber-soft px-4 py-3 text-sm text-amber-ink">

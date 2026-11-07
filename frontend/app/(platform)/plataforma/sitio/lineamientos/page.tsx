@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { dt, usePanelList, useSave } from "@/components/platform/SitePanelKit";
+import { dt, Guide, usePanelList, useSave } from "@/components/platform/SitePanelKit";
 import { Button } from "@/components/ui/Button";
 import { Chip, PageHeader } from "@/components/ui/Display";
 import { Icon } from "@/components/ui/Icon";
@@ -48,9 +48,14 @@ export default function LineamientosPage() {
     <div className="w-full space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Sitio web", "/plataforma/sitio"], ["Lineamientos de contenido"]]}
-        icon="shield"
+        icon="checklist"
         title="Lineamientos de contenido"
         description="Para publicar solo lo que EscudoSST puede respaldar. Si un texto contiene una frase bloqueada, el sistema no deja publicarlo (páginas, novedades, webinars, ventanas, integraciones y ajustes del sitio)."
+      />
+      <Guide
+        what="Reglas para que el sitio publique solo lo que EscudoSST puede respaldar. Se basan en el Código de Protección y Defensa del Consumidor (Ley 29571), que exige publicidad veraz, y en las correcciones del diseño del sitio."
+        where="Se aplican solas: si un texto tiene una frase bloqueada, el sistema no deja publicarlo (páginas, novedades, webinars, ventanas e integraciones)."
+        steps={["Mira la «Revisión automática»: lista los textos que incumplen.", "Agrega o quita frases bloqueadas (una por línea).", "«Guardar»."]}
       />
       {error && <p className="rounded-lg bg-bad-soft px-4 py-3 text-sm font-semibold text-bad">{error}</p>}
       {d && (

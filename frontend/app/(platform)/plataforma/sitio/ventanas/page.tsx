@@ -4,7 +4,7 @@
 // al intentar salir, al bajar un % de la página o tras unos segundos. Nunca en el Libro de Reclamaciones, políticas ni formularios.
 
 import { FormEvent, useState } from "react";
-import { act, day, HowItWorks, MediaField, usePanelList, useSave } from "@/components/platform/SitePanelKit";
+import { act, day, Guide, MediaField, usePanelList, useSave } from "@/components/platform/SitePanelKit";
 import { Button } from "@/components/ui/Button";
 import { Chip, EmptyState, PageHeader } from "@/components/ui/Display";
 import { ChoiceCards, FormField } from "@/components/ui/Form";
@@ -62,7 +62,7 @@ export default function VentanasPage() {
     <div className="w-full space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Sitio web", "/plataforma/sitio"], ["Ventanas emergentes"]]}
-        icon="bell"
+        icon="window"
         title="Ventanas emergentes"
         description="Una invitación útil que aparece en el sitio sin interrumpir: se cierra con un clic, se muestra como máximo una por visita y no vuelve a salir hasta pasados los días que elijas."
         aside={
@@ -71,18 +71,16 @@ export default function VentanasPage() {
           </Button>
         }
       />
-      <HowItWorks
-        steps={[
-          ["box", "1. Elige la oferta", "Calculadora de multas, autodiagnóstico, demo, boletín… algo que le sirva a quien visita."],
-          ["eye", "2. Cuándo y dónde", "Al intentar salir, al bajar un % o tras unos segundos; en qué páginas y dispositivos."],
-          ["check", "3. Actívala", "Solo el Dueño. Nunca sale en el Libro de Reclamaciones, políticas ni formularios."],
-        ]}
+      <Guide
+        what="Un recuadro que aparece una sola vez en el sitio para invitar a algo útil (calcular una multa, agendar una demo, suscribirse). Ayuda a captar interesados sin molestar: se cierra con un clic y no vuelve a salir por los días que elijas."
+        where="En las páginas del sitio público que elijas (nunca en el Libro de Reclamaciones, políticas ni formularios)."
+        steps={["Elige la oferta y escribe un título corto.", "Elige cuándo aparece: al intentar salir, al bajar en la página o tras unos segundos.", "«Activar». Aquí ves cuántos la vieron, hicieron clic o la cerraron."]}
       />
       {(error || actError) && <p className="rounded-lg bg-bad-soft px-4 py-3 text-sm font-semibold text-bad">{error ?? actError}</p>}
       {!res ? (
         !error && <p className="text-sm text-muted">Cargando…</p>
       ) : res.data.length === 0 ? (
-        <EmptyState icon="bell" text="Aún no hay ventanas emergentes." />
+        <EmptyState icon="window" text="Aún no hay ventanas emergentes." />
       ) : (
         <ul className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {res.data.map((p) => (

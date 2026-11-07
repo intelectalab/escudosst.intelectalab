@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
-import { act, day, HowItWorks, usePanelList, useSave } from "@/components/platform/SitePanelKit";
+import { act, day, Guide, usePanelList, useSave } from "@/components/platform/SitePanelKit";
 import { Button } from "@/components/ui/Button";
 import { Chip, type ChipTone, EmptyState, PageHeader } from "@/components/ui/Display";
 import { FormField } from "@/components/ui/Form";
@@ -66,7 +66,7 @@ export default function CampanasPage() {
     <div className="w-full space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Sitio web", "/plataforma/sitio"], ["Campañas"]]}
-        icon="tag"
+        icon="megaphone"
         title="Campañas"
         description="Para anuncios en Google, Meta, LinkedIn o correo: cada campaña tiene su página de llegada (landing), el formulario que se muestra y sus enlaces medibles."
         aside={
@@ -75,19 +75,16 @@ export default function CampanasPage() {
           </Button>
         }
       />
-      <HowItWorks
-        steps={[
-          ["pen", "1. Arma la landing", "En Páginas, crea una página de tipo «Landing de campaña» (dirección l/…) y publícala."],
-          ["tag", "2. Crea la campaña", "Elige la landing, el formulario y el nombre para medirla (utm_campaign)."],
-          ["globe", "3. Usa el enlace", "Copia el enlace con UTM y pégalo en tu anuncio. Actívala (solo el Dueño)."],
-          ["eye", "4. Mide", "Visitas, formularios enviados e interesados de esa campaña. Fuera de fechas, la landing avisa que terminó."],
-        ]}
+      <Guide
+        what="Para anuncios pagados (Google, Facebook, LinkedIn) o un correo masivo que tú envías. Cada campaña tiene su propia página de llegada y aquí ves cuántas visitas, formularios e interesados trajo. No envía correos ni publica anuncios: solo te da el enlace para pegarlo en tu anuncio."
+        where="En escudosst.intelectalab.com/l/… solo mientras la campaña está activa y en sus fechas."
+        steps={["Crea la campaña y, en el mismo formulario, su página de llegada («Crear landing»).", "Escribe y publica la landing en Páginas; luego «Activar» la campaña.", "Copia el enlace y pégalo en tu anuncio. Al terminar, la landing avisa que la campaña acabó."]}
       />
       {(error || actError) && <p className="rounded-lg bg-bad-soft px-4 py-3 text-sm font-semibold text-bad">{error ?? actError}</p>}
       {!res ? (
         !error && <p className="text-sm text-muted">Cargando…</p>
       ) : res.data.length === 0 ? (
-        <EmptyState icon="tag" text="Aún no hay campañas. Primero arma su landing en Páginas y luego créala aquí." />
+        <EmptyState icon="megaphone" text="Aún no hay campañas. Crea la primera con «Nueva campaña»." />
       ) : (
         <ul className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {res.data.map((c) => {
@@ -185,9 +182,48 @@ function CampaignModal({ c, res, onClose, onSaved }: { c: Campaign | null; res: 
     ends_on: c?.ends_on ?? "",
     goal: c?.goal ?? "",
   });
-  const { message, saving, run, err } = useSave();
+  const { message, saving, run, err, setMessage } = useSave();
   const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
-  const landing = res.landings.find((l) => l.id === f.landing_page_id);
+  const [landings, setLandings] = useState(res.landings);
+  const [creatingLanding, setCreatingLanding] = useState(false);
+  const landing = landings.find((l) => l.id === f.landing_page_id);
+  const slugify = (t: string) =>
+    t
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 60);
+
+  /** Crea la página de llegada con un encabezado y un botón final; luego se completa y publica en Páginas. */
+  async function createLanding() {
+    const base = f.utm_campaign || slugify(f.name);
+    if (!base) {
+      setMessage("Escribe primero el nombre de la campaña: con él se arma la dirección de la landing.");
+      return;
+    }
+    setCreatingLanding(true);
+    const r = await run(() =>
+      api<{ data: { id: string } }>("/internal/site/pages", {
+        method: "POST",
+        body: {
+          page_type: "campaign",
+          slug: `l/${base}`,
+          title: f.name || base,
+          blocks: [
+            { type: "hero", eyebrow: "", title: f.name || "Ordena la SST de tu empresa", text: "" },
+            { type: "cta", title: "¿Hablamos?", text: "", button: f.form_type === "demo" ? "demo" : "trial" },
+          ],
+        },
+      }),
+    );
+    setCreatingLanding(false);
+    if (r) {
+      setLandings([...landings, { id: r.data.id, slug: `l/${base}`, title: f.name || base, status: "draft" }]);
+      set("landing_page_id", r.data.id);
+    }
+  }
   const preview = campaignUrl({ landing_slug: landing?.slug ?? null, utm_source: f.utm_source, utm_medium: f.utm_medium, utm_campaign: f.utm_campaign });
 
   async function save(e: FormEvent) {
@@ -227,10 +263,10 @@ function CampaignModal({ c, res, onClose, onSaved }: { c: Campaign | null; res: 
               ))}
             </select>
           </FormField>
-          <FormField label="Landing" hint="Página de tipo «Landing de campaña» (se crea en Páginas)." error={err("landing_page_id")}>
+          <FormField label="Página de llegada (landing)" hint="A donde llega quien hace clic en tu anuncio." error={err("landing_page_id")}>
             <select className="input" value={f.landing_page_id} onChange={(e) => set("landing_page_id", e.target.value)}>
               <option value="">Elige una</option>
-              {res.landings.map((l) => (
+              {landings.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.title} (/{l.slug}){l.status !== "published" ? " · sin publicar" : ""}
                 </option>
@@ -247,15 +283,25 @@ function CampaignModal({ c, res, onClose, onSaved }: { c: Campaign | null; res: 
             </select>
           </FormField>
         </div>
-        {res.landings.length === 0 && (
-          <p className="rounded-lg bg-amber-soft px-4 py-3 text-sm text-amber-ink">
-            Aún no hay landings. Créala en{" "}
-            <Link href="/plataforma/sitio/paginas" className="font-semibold underline">
-              Páginas
-            </Link>{" "}
-            con el tipo «Landing de campaña».
-          </p>
-        )}
+        <div className="flex flex-wrap items-center gap-3 rounded-lg bg-bg px-4 py-3 text-sm">
+          {landing ? (
+            <>
+              <span className="min-w-0 flex-1 text-muted">
+                Landing: <b className="text-fg">/{landing.slug}</b> · {landing.status === "published" ? "publicada" : "en borrador: complétala y publícala antes de activar la campaña"}
+              </span>
+              <Link href={`/plataforma/sitio/paginas/${landing.id}`} target="_blank" className="font-semibold text-brand-strong hover:underline">
+                Editar la landing
+              </Link>
+            </>
+          ) : (
+            <>
+              <span className="min-w-0 flex-1 text-muted">¿Aún no tienes la página de llegada? Créala aquí con el nombre de la campaña.</span>
+              <Button size="sm" icon="plus" loading={creatingLanding} onClick={createLanding}>
+                Crear landing
+              </Button>
+            </>
+          )}
+        </div>
         <fieldset className="space-y-3 rounded-xl border border-line p-4">
           <legend className="px-1 text-sm font-semibold">Para medirla (UTM)</legend>
           <p className="text-xs text-muted">Se agregan al enlace. Solo minúsculas, números y guiones. El nombre de campaña es el que une visitas e interesados.</p>

@@ -51,21 +51,17 @@ it('comparativa: bloque de tabla y no se publica con precios', function () {
     growthApi('POST', "pages/{$id}/publish")->assertStatus(422);   // «S/» está bloqueado en la comparativa
 });
 
-it('comparativa: el borrador guarda filas a medias, pero no se publica incompleta; el sitio avisa cuando está publicada', function () {
-    $id = growthApi('POST', 'pages', ['page_type' => 'comparison', 'slug' => 'comparativa', 'title' => 'EscudoSST vs Excel y papel', 'blocks' => [[
+it('comparativa: viene publicada con contenido; el borrador guarda filas a medias pero no se publica incompleta', function () {
+    // La migración la deja publicada (editable en Páginas) y el pie la enlaza.
+    $this->getJson('/api/v1/public/pages/comparativa')->assertOk()->assertJsonPath('data.blocks.1.type', 'compare');
+    expect($this->getJson('/api/v1/public/site')->json('data.optional.comparison'))->toBeTrue();
+
+    $id = growthApi('POST', 'pages', ['page_type' => 'comparison', 'slug' => 'comparativa-borrador', 'title' => 'Otra comparativa', 'blocks' => [[
         'type' => 'compare', 'title' => 'Tarea por tarea', 'manual_label' => '', 'escudo_label' => '',
         'items' => [['task' => 'IPERC', 'manual' => '', 'escudo' => ''], ['task' => 'Capacitaciones', 'manual' => 'Listas en papel', 'escudo' => 'Registro con firma']],
     ]]])->assertCreated()->json('data.id');
     expect(growthApi('GET', "pages/{$id}")->json('data.blocks.0.items'))->toHaveCount(2);
     growthApi('POST', "pages/{$id}/publish")->assertStatus(422)->assertJsonPath('errors', fn ($e) => str_contains(json_encode($e, JSON_UNESCAPED_UNICODE), 'IPERC'));
-    expect($this->getJson('/api/v1/public/site')->json('data.optional.comparison'))->toBeFalse();
-
-    $page = growthApi('GET', "pages/{$id}")->json('data');
-    growthApi('PATCH', "pages/{$id}", ['slug' => 'comparativa', 'title' => 'EscudoSST vs Excel y papel', 'version' => $page['version'], 'blocks' => [[
-        'type' => 'compare', 'title' => 'Tarea por tarea', 'items' => [['task' => 'IPERC', 'manual' => 'Matriz en Excel', 'escudo' => 'Matriz guiada en el sistema']],
-    ]]])->assertOk();
-    growthApi('POST', "pages/{$id}/publish")->assertNoContent();
-    expect($this->getJson('/api/v1/public/site')->json('data.optional.comparison'))->toBeTrue();
 });
 
 it('lineamientos: lista editable y revisión de lo publicado', function () {

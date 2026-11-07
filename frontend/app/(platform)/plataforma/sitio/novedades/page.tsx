@@ -4,7 +4,7 @@
 // la aplicación (con contador de no leídas) y, al publicarse por primera vez, avisarse a los suscriptores del boletín.
 
 import { FormEvent, useState } from "react";
-import { act, day, HowItWorks, usePanelList, useSave } from "@/components/platform/SitePanelKit";
+import { act, day, Guide, usePanelList, useSave } from "@/components/platform/SitePanelKit";
 import { Button } from "@/components/ui/Button";
 import { Chip, type ChipTone, EmptyState, PageHeader } from "@/components/ui/Display";
 import { ChoiceCards, FormField, SwitchRow } from "@/components/ui/Form";
@@ -47,7 +47,7 @@ export default function NovedadesPage() {
     <div className="w-full space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Sitio web", "/plataforma/sitio"], ["Novedades"]]}
-        icon="star"
+        icon="sparkle"
         title="Novedades del producto"
         description="Cuenta qué hay de nuevo en EscudoSST: se publica en /novedades y, si quieres, en la campana de novedades dentro de la aplicación y por correo a los suscriptores del boletín."
         aside={
@@ -56,18 +56,16 @@ export default function NovedadesPage() {
           </Button>
         }
       />
-      <HowItWorks
-        steps={[
-          ["pen", "1. Redacta", "Título, tipo (nuevo, mejora o corrección), módulos y el texto."],
-          ["mail", "2. Elige a quién", "Mostrar en la aplicación y/o avisar a los suscriptores del boletín."],
-          ["globe", "3. Publica", "Solo el Dueño. El aviso al boletín sale una sola vez, la primera vez que se publica."],
-        ]}
+      <Guide
+        what="Avisos de lo nuevo, lo mejorado o lo corregido en EscudoSST, para que los clientes se enteren."
+        where="En escudosst.intelectalab.com/novedades y en la estrella «Novedades» dentro de la aplicación de los clientes."
+        steps={["Escribe la novedad y elige si es Nuevo, Mejora o Corrección.", "Elige si sale en la aplicación y si se avisa por correo al boletín.", "«Publicar»."]}
       />
       {(error || actError) && <p className="rounded-lg bg-bad-soft px-4 py-3 text-sm font-semibold text-bad">{error ?? actError}</p>}
       {!res ? (
         !error && <p className="text-sm text-muted">Cargando…</p>
       ) : res.data.length === 0 ? (
-        <EmptyState icon="star" text="Aún no hay novedades." />
+        <EmptyState icon="sparkle" text="Aún no hay novedades." />
       ) : (
         <ul className="grid grid-cols-1 gap-3">
           {res.data.map((u) => (

@@ -24,7 +24,8 @@ it('trae los borradores de sectores, diferenciadores y consultoras sin publicar'
     expect($rows->where('page_type', 'sector'))->toHaveCount(7)
         ->and($rows->where('page_type', 'product'))->toHaveCount(7)
         ->and($rows->pluck('slug'))->toContain('consultoras')
-        ->and($rows->pluck('status')->unique()->all())->toBe(['draft']);
+        ->and($rows->whereIn('page_type', ['sector', 'product', 'landing'])->pluck('status')->unique()->all())->toBe(['draft'])
+        ->and($rows->firstWhere('slug', 'comparativa')['status'])->toBe('published');   // la comparativa viene publicada (migración 000016)
     $this->getJson('/api/v1/public/pages/sectores/construccion')->assertNotFound();
 });
 

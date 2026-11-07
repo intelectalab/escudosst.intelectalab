@@ -4,7 +4,7 @@
 // (con .ics) y recordatorios un día y una hora antes. Después se marca la asistencia y, si se avisó, se publica la grabación.
 
 import { FormEvent, useEffect, useState } from "react";
-import { act, dt, fromLocalInput, HowItWorks, MediaField, toLocalInput, usePanelList, useSave } from "@/components/platform/SitePanelKit";
+import { act, dt, fromLocalInput, Guide, MediaField, toLocalInput, usePanelList, useSave } from "@/components/platform/SitePanelKit";
 import { Button } from "@/components/ui/Button";
 import { Chip, type ChipTone, EmptyState, PageHeader } from "@/components/ui/Display";
 import { FormField, SwitchRow } from "@/components/ui/Form";
@@ -65,7 +65,7 @@ export default function WebinarsPage() {
     <div className="w-full space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Sitio web", "/plataforma/sitio"], ["Webinars"]]}
-        icon="play"
+        icon="video"
         title="Webinars"
         description="Charlas en vivo con inscripción desde /webinars. Quien se inscribe entra a «Interesados» y recibe el enlace de la reunión y los recordatorios por correo."
         aside={
@@ -74,19 +74,16 @@ export default function WebinarsPage() {
           </Button>
         }
       />
-      <HowItWorks
-        steps={[
-          ["pen", "1. Crea el webinar", "Tema, ponente, fecha (hora de Lima), duración, enlace de la reunión y cupos."],
-          ["globe", "2. Publícalo", "Solo el Dueño. Se abren las inscripciones en /webinars."],
-          ["mail", "3. Avisos automáticos", "Confirmación con el enlace y recordatorios un día y una hora antes."],
-          ["check", "4. Después", "Marca quién asistió. La grabación se publica solo si se avisó a todos."],
-        ]}
+      <Guide
+        what="Charlas en vivo por internet (Meet, Zoom o Teams) sobre SST, para dar a conocer EscudoSST. La inscripción es gratis y cada inscrito queda en «Interesados»."
+        where="En escudosst.intelectalab.com/webinars."
+        steps={["Crea el webinar: tema, ponente, fecha, duración y enlace de la reunión.", "«Publicar»: se abren las inscripciones; a cada inscrito le llegan el enlace y los recordatorios.", "Al terminar, abre «Inscritos» y marca quién asistió."]}
       />
       {(error || actError) && <p className="rounded-lg bg-bad-soft px-4 py-3 text-sm font-semibold text-bad">{error ?? actError}</p>}
       {!res ? (
         !error && <p className="text-sm text-muted">Cargando…</p>
       ) : res.data.length === 0 ? (
-        <EmptyState icon="play" text="Aún no hay webinars." />
+        <EmptyState icon="video" text="Aún no hay webinars." />
       ) : (
         <ul className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {res.data.map((w) => (

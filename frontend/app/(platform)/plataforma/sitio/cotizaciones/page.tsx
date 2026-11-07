@@ -66,7 +66,7 @@ export default function CotizacionesPage() {
     <div className="w-full space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Sitio web", "/plataforma/sitio"], ["Cotizaciones"]]}
-        icon="tag"
+        icon="receipt"
         title="Cotizaciones"
         description="Envía el precio formal (plan y complementos de cada empresa), recibe la aceptación y la constancia de pago, y al confirmar el pago se crea la cuenta del cliente."
         aside={

@@ -4,7 +4,7 @@
 // «Disponible» solo si ya funciona en EscudoSST; si se está probando, «Beta»; si aún no existe, «Planificada».
 
 import { FormEvent, useState } from "react";
-import { act, HowItWorks, MediaField, usePanelList, useSave } from "@/components/platform/SitePanelKit";
+import { act, Guide, MediaField, usePanelList, useSave } from "@/components/platform/SitePanelKit";
 import { Button } from "@/components/ui/Button";
 import { Chip, type ChipTone, EmptyState, PageHeader } from "@/components/ui/Display";
 import { ChoiceCards, FormField } from "@/components/ui/Form";
@@ -57,7 +57,7 @@ export default function IntegracionesPage() {
     <div className="w-full space-y-6">
       <PageHeader
         crumbs={[["Panel de la plataforma"], ["Sitio web", "/plataforma/sitio"], ["Integraciones"]]}
-        icon="refresh"
+        icon="plug"
         title="Integraciones"
         description="Con qué se conecta EscudoSST (correo, calendario, pagos, CRM…). Se muestran en la página pública /integraciones con su estado real."
         aside={
@@ -66,18 +66,16 @@ export default function IntegracionesPage() {
           </Button>
         }
       />
-      <HowItWorks
-        steps={[
-          ["pen", "1. Agrégala", "Nombre, categoría, descripción corta y logo de la biblioteca."],
-          ["shield", "2. Estado veraz", "«Disponible» solo si ya funciona; «Beta» si se prueba; «Planificada» si aún no existe."],
-          ["globe", "3. Publícala", "Aparece en /integraciones. «Ocultar» la quita sin borrarla."],
-        ]}
+      <Guide
+        what="Lista de herramientas con las que EscudoSST se conecta (por ejemplo, Google Calendar, el CRM o el correo), para que el cliente sepa qué puede enlazar."
+        where="En escudosst.intelectalab.com/integraciones."
+        steps={["Agrega la integración con su logo y una frase de para qué sirve.", "Marca su estado real: Disponible, Beta (en prueba) o Planificada.", "«Publicar»."]}
       />
       {(error || actError) && <p className="rounded-lg bg-bad-soft px-4 py-3 text-sm font-semibold text-bad">{error ?? actError}</p>}
       {!res ? (
         !error && <p className="text-sm text-muted">Cargando…</p>
       ) : res.data.length === 0 ? (
-        <EmptyState icon="refresh" text="Aún no hay integraciones." />
+        <EmptyState icon="plug" text="Aún no hay integraciones." />
       ) : (
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {res.data.map((i) => (

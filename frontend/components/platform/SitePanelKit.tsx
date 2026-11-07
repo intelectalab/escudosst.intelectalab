@@ -139,3 +139,29 @@ export const day = (d: string | null) => (d ? new Intl.DateTimeFormat("es-PE", {
 /** Fecha y hora de Lima para un <input type="datetime-local">. */
 export const toLocalInput = (d: string | null) => (d ? new Date(d).toLocaleString("sv-SE", { timeZone: "America/Lima" }).slice(0, 16).replace(" ", "T") : "");
 export const fromLocalInput = (v: string) => (v ? `${v}:00-05:00` : null);
+
+/** Explicación corta de cada pantalla: para qué sirve, dónde se ve y 3 pasos. */
+export function Guide({ what, where, steps }: { what: React.ReactNode; where: React.ReactNode; steps: React.ReactNode[] }) {
+  return (
+    <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="space-y-2 text-sm">
+          <p>
+            <b>Para qué sirve:</b> <span className="text-muted">{what}</span>
+          </p>
+          <p>
+            <b>Dónde se ve:</b> <span className="text-muted">{where}</span>
+          </p>
+        </div>
+        <ol className="space-y-2 text-sm">
+          {steps.map((s, i) => (
+            <li key={i} className="flex items-start gap-2.5">
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand text-xs font-bold text-white">{i + 1}</span>
+              <span className="pt-0.5 text-muted">{s}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  );
+}
