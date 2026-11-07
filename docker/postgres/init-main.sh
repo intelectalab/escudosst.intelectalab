@@ -1,9 +1,10 @@
 #!/bin/bash
 # Se ejecuta solo la primera vez que se crea el volumen de la base principal.
-# Carga el esquema, las semillas y los datos ficticios en escudo_main (desarrollo)
-# y en escudo_main_test (pruebas automáticas), y crea los usuarios LOGIN de desarrollo
-# (database/README.md, sección «Cómo cargar»).
+# Carga el esquema y las semillas en escudo_main y crea los usuarios LOGIN (database/README.md, «Cómo cargar»).
+# En desarrollo (por defecto) también carga los datos ficticios y crea escudo_main_test para las pruebas.
+# En producción: ESCUDO_LOAD_DEV_DATA=false → sin datos ficticios ni base de pruebas.
 set -euo pipefail
+DEV_DATA="${ESCUDO_LOAD_DEV_DATA:-true}"
 
 load_db() {
   local db="$1"
@@ -15,23 +16,28 @@ load_db() {
     psql -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$db" -f "$f"
   done
 
-  echo ">> Datos ficticios de desarrollo en $db"
-  psql -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$db" -f /docker-entrypoint-initdb.d/dev-seed.sql.inc
+  if [ "$DEV_DATA" = "true" ]; then
+    echo ">> Datos ficticios de desarrollo en $db"
+    psql -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$db" -f /docker-entrypoint-initdb.d/dev-seed.sql.inc
+  fi
 }
 
 load_db escudo_main
 
-echo ">> Creando usuarios LOGIN de desarrollo"
+echo ">> Creando usuarios LOGIN"
 psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d escudo_main <<SQL
 CREATE ROLE escudo_api LOGIN PASSWORD '${ESCUDO_API_PASSWORD}' IN ROLE escudo_app;
 CREATE ROLE escudo_owner_login LOGIN PASSWORD '${ESCUDO_OWNER_PASSWORD}' IN ROLE escudo_owner;
 CREATE ROLE escudo_platform_login LOGIN PASSWORD '${ESCUDO_PLATFORM_PASSWORD}' IN ROLE escudo_platform;
 SQL
 
-psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -c "CREATE DATABASE escudo_main_test"
-load_db escudo_main_test
-
-echo ">> escudo_main y escudo_main_test listos"
+if [ "$DEV_DATA" = "true" ]; then
+  psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -c "CREATE DATABASE escudo_main_test"
+  load_db escudo_main_test
+  echo ">> escudo_main y escudo_main_test listos"
+else
+  echo ">> escudo_main listo (producción: sin datos ficticios)"
+fi
 
 create_backup_role() {
   # Usuario de solo lectura para las copias de seguridad (docs/15 §9): lee todas las filas (BYPASSRLS) y nada más.

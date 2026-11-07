@@ -180,7 +180,8 @@ class AccountSecurityService
         ));
     }
 
-    public function invite(string $actor, string $name, string $email, string $role): string
+    /** $actor null = desde la consola del servidor (primer Dueño de la plataforma en producción). */
+    public function invite(?string $actor, string $name, string $email, string $role): string
     {
         $email = Str::lower(trim($email));
         $existing = $this->db()->selectOne('select id, is_platform_staff from users where lower(email) = ?', [$email]);
@@ -193,7 +194,7 @@ class AccountSecurityService
             "insert into users (email, full_name, status, is_platform_staff, platform_role, created_by) values (?, ?, 'invited', true, ?, ?) returning id",
             [$email, trim($name), $role, $actor]
         )->id;
-        $this->audit($actor, 'team_member_invited', $id, ['email' => $email, 'role' => $role]);
+        $this->audit($actor, 'team_member_invited', $id, ['email' => $email, 'role' => $role], $actor ? 'user' : 'system');
         $this->sendTeamInvite($id);
 
         return $id;

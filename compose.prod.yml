@@ -1,0 +1,140 @@
+# Producción de EscudoSST en el VPS (docs/15 §2.2), adaptado al servidor actual:
+#  - El HTTPS lo pone el nginx del servidor (certbot) y reenvía a 127.0.0.1:8096 → contenedor «proxy».
+#  - Ninguna base ni Redis expone puertos hacia afuera.
+#  - Los secretos están en deploy/backend.env (NO está en git; se arma desde deploy/backend.env.example).
+#
+# Uso (siempre con el script, que pasa el archivo de secretos):
+#   ./deploy/escudo.sh build      construir las imágenes
+#   ./deploy/escudo.sh up         levantar o actualizar
+#   ./deploy/escudo.sh migrate    migraciones (rol dueño)
+#   ./deploy/escudo.sh logs api   ver registros
+# NUNCA usar «down -v»: borra las bases de datos.
+
+name: escudo-prod
+
+x-api: &api-base
+  build:
+    context: .
+    dockerfile: docker/php/Dockerfile.prod
+  image: escudo-api:prod
+  env_file: deploy/backend.env
+  environment:
+    TZ: America/Lima
+    APP_ENV: production
+    APP_DEBUG: "false"
+  volumes:
+    - ./deploy/backend.env:/var/www/backend/.env:ro
+    - api_storage:/var/www/backend/storage
+  restart: unless-stopped
+  networks: [interna]
+  depends_on:
+    pg-main:
+      condition: service_healthy
+    pg-medical:
+      condition: service_healthy
+    redis:
+      condition: service_started
+
+services:
+  pg-main:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: escudo_main
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?Falta POSTGRES_SUPERUSER_PASSWORD}
+      ESCUDO_API_PASSWORD: ${DB_PASSWORD:?Falta DB_PASSWORD}
+      ESCUDO_OWNER_PASSWORD: ${DB_OWNER_PASSWORD:?Falta DB_OWNER_PASSWORD}
+      ESCUDO_PLATFORM_PASSWORD: ${DB_PLATFORM_PASSWORD:?Falta DB_PLATFORM_PASSWORD}
+      ESCUDO_BACKUP_PASSWORD: ${DB_BACKUP_PASSWORD:?Falta DB_BACKUP_PASSWORD}
+      ESCUDO_LOAD_DEV_DATA: "false"
+      TZ: America/Lima
+    volumes:
+      - pg_main_data:/var/lib/postgresql/data
+      - ./database:/database:ro
+      - ./docker/postgres/init-main.sh:/docker-entrypoint-initdb.d/01-init-main.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d escudo_main"]   # por TCP: durante la carga inicial solo escucha por socket
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    networks: [interna]
+
+  # Base médica separada (por ahora en el mismo VPS; docs/15 §3 la lleva a DigitalOcean cuando exista el módulo).
+  pg-medical:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: escudo_medical
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      ESCUDO_MED_API_PASSWORD: ${DB_MEDICAL_PASSWORD:?Falta DB_MEDICAL_PASSWORD}
+      ESCUDO_BACKUP_PASSWORD: ${DB_BACKUP_PASSWORD}
+      TZ: America/Lima
+    volumes:
+      - pg_medical_data:/var/lib/postgresql/data
+      - ./database:/database:ro
+      - ./docker/postgres/init-medical.sh:/docker-entrypoint-initdb.d/01-init-medical.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d escudo_medical"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    networks: [interna]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Falta REDIS_PASSWORD}"]
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks: [interna]
+
+  api:
+    <<: *api-base
+    command: ["php-fpm"]
+
+  # Cola de trabajos (correos y tareas en segundo plano).
+  worker:
+    <<: *api-base
+    command: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600"]
+
+  # Programador: copias diarias, boletín, recordatorios de demos, CRM, métricas y vencimientos (zona America/Lima).
+  scheduler:
+    <<: *api-base
+    command: ["php", "artisan", "schedule:work"]
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${APP_URL:?Falta APP_URL}
+        NEXT_PUBLIC_SITE_URL: ${FRONTEND_URL:?Falta FRONTEND_URL}
+        API_INTERNAL_URL: http://proxy
+    image: escudo-web:prod
+    environment:
+      TZ: America/Lima
+      # Las páginas que arma el servidor llaman a la API por la red interna (no salen a internet).
+      API_INTERNAL_URL: http://proxy
+      NEXT_PUBLIC_SITE_URL: ${FRONTEND_URL:?Falta FRONTEND_URL}
+    restart: unless-stopped
+    networks: [interna]
+
+  proxy:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./docker/nginx/escudo.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:8096:80"   # solo el nginx del servidor llega aquí
+    depends_on: [api, web]
+    restart: unless-stopped
+    networks: [interna]
+
+networks:
+  interna:
+
+volumes:
+  pg_main_data:
+  pg_medical_data:
+  redis_data:
+  api_storage:

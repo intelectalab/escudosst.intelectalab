@@ -1,0 +1,18 @@
+# Contexto de la imagen de la API (se construye desde la raíz del repositorio).
+.git
+frontend
+**/node_modules
+backend/vendor
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/storage/app/*
+backend/storage/logs/*
+backend/storage/framework/cache/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+backend/bootstrap/cache/*.php
+deploy/*.env
+*.local.md
+docs
+prototipo

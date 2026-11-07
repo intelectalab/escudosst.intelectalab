@@ -1,0 +1,4 @@
+# Secretos de producción: se arman en el servidor desde deploy/backend.env.example y nunca se suben.
+deploy/backend.env
+deploy/*.env
+!deploy/*.env.example

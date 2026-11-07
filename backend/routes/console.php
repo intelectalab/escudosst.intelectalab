@@ -16,6 +16,28 @@ use Illuminate\Support\Facades\Schedule;
 | Uso: php artisan escudo:mfa-reset correo@empresa.com
 | Pendiente: en producción debe hacerlo soporte con autorización y quedar en la bitácora (AUD).
 */
+/*
+| Primer Dueño de la plataforma en producción (la carga inicial de producción no trae usuarios).
+| Uso: php artisan escudo:create-owner tu.correo@empresa.com "Tu nombre"
+| No pide contraseña: llega un correo con el enlace para crearla (y luego el código de verificación al ingresar).
+*/
+Artisan::command('escudo:create-owner {email} {name}', function (\App\Modules\USR\Services\AccountSecurityService $accounts) {
+    $owners = (int) DB::connection('platform')->selectOne("select count(*) as n from users where platform_role = 'owner' and deleted_at is null")->n;
+    if ($owners > 0 && ! $this->confirm("Ya hay {$owners} Dueño(s) de la plataforma. ¿Crear otro?")) {
+        return 1;
+    }
+    try {
+        $accounts->invite(null, (string) $this->argument('name'), (string) $this->argument('email'), 'owner');
+    } catch (\Throwable $e) {
+        $this->error('No se pudo: '.$e->getMessage());
+
+        return 1;
+    }
+    $this->info('Listo. Revisa el correo '.$this->argument('email').': trae el enlace para crear la contraseña.');
+
+    return 0;
+})->purpose('Crea el primer Dueño de la plataforma y le envía el enlace para crear su contraseña');
+
 Artisan::command('escudo:mfa-reset {email}', function (MfaService $mfa) {
     $found = DB::selectOne('select id from app_auth_lookup_user(?)', [$this->argument('email')]);
 

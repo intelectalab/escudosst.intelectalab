@@ -1,0 +1,40 @@
+# API Laravel para producción (docs/15 §2.2: «api», «worker» y «scheduler» usan esta misma imagen).
+# PHP 8.4 FPM con opcache; el código va dentro de la imagen (no se monta la carpeta) y sin dependencias de desarrollo.
+# Se construye desde la raíz del repositorio:  docker compose -f compose.prod.yml build api
+
+FROM php:8.4-fpm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git unzip libpq-dev libicu-dev libzip-dev libpng-dev libjpeg-dev libfreetype6-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j"$(nproc)" pdo_pgsql pgsql intl zip gd bcmath pcntl opcache \
+    && pecl install redis \
+    && docker-php-ext-enable redis \
+    && rm -rf /var/lib/apt/lists/*
+
+# Cliente de PostgreSQL 17 (pg_dump) para las copias de seguridad cifradas (docs/15 §9).
+RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client-17 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+COPY docker/php/prod.ini /usr/local/etc/php/conf.d/zz-prod.ini
+COPY docker/php/fpm-pool.conf /usr/local/etc/php-fpm.d/zz-escudo.conf
+
+WORKDIR /var/www/backend
+
+# Primero solo las dependencias (se reutilizan si no cambia composer.lock), luego el código.
+COPY backend/composer.json backend/composer.lock ./
+RUN composer install --no-dev --no-scripts --no-autoloader --no-interaction --prefer-dist
+
+COPY backend/ ./
+RUN composer dump-autoload --optimize --no-dev \
+    && mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs storage/app/private bootstrap/cache \
+    && chown -R www-data:www-data storage bootstrap/cache
+
+# El .env real NO va en la imagen: se monta al arrancar (compose.prod.yml).
+RUN rm -f .env
+
+COPY docker/php/entrypoint.prod.sh /usr/local/bin/escudo-entrypoint
+RUN chmod +x /usr/local/bin/escudo-entrypoint
+ENTRYPOINT ["escudo-entrypoint"]
+CMD ["php-fpm"]
