@@ -9,6 +9,40 @@ import type { SiteData } from "@/lib/site";
 import { assetUrl, whatsappLink } from "@/lib/site";
 import { WhatsAppIcon } from "./WhatsAppFloat";
 
+// Enlaces agrupados por tema. «Iniciar sesión» no va aquí: ya está en la cabecera.
+const LINK_GROUPS: { title: string; links: [string, string][] }[] = [
+  {
+    title: "Producto",
+    links: [
+      ["/producto", "Producto y módulos"],
+      ["/como-funciona", "Cómo funciona"],
+      ["/planes", "Planes"],
+      ["/complementos", "Complementos"],
+      ["/sectores", "Sectores"],
+      ["/casos", "Casos de éxito"],
+    ],
+  },
+  {
+    title: "Recursos",
+    links: [
+      ["/recursos", "Recursos gratis"],
+      ["/herramientas/calculadora-multas", "Calculadora de multas"],
+      ["/herramientas/autodiagnostico", "Autodiagnóstico"],
+      ["/boletin", "Boletín normativo"],
+      ["/preguntas-frecuentes", "Preguntas frecuentes"],
+      ["/ayuda", "Centro de ayuda"],
+    ],
+  },
+  {
+    title: "Empresa",
+    links: [
+      ["/partners", "Programa de partners"],
+      ["/confianza", "Centro de confianza"],
+      ["/estado", "Estado del servicio"],
+    ],
+  },
+];
+
 const SOCIAL_LABELS: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube", x: "X" };
 
 export function SiteFooter({ site }: { site: SiteData }) {
@@ -21,7 +55,7 @@ export function SiteFooter({ site }: { site: SiteData }) {
   return (
     <footer id="contacto" className="scroll-mt-20 bg-[var(--site-navy)] text-white">
       <div className="site-stripe h-1.5" aria-hidden="true" />
-      <div className="grid-cols-1 mx-auto grid max-w-[1360px] gap-10 px-4 py-14 sm:grid-cols-2 lg:grid-cols-4 lg:px-8">
+      <div className="mx-auto grid max-w-[1360px] grid-cols-1 gap-10 px-4 py-14 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1.2fr] lg:px-8">
         <div className="space-y-4">
           <SiteLogo src={assetUrl(s.logo_dark_file_id)} alt={s.trade_name || "EscudoSST"} light />
           <p className="text-sm text-white/70">Gestión de seguridad y salud en el trabajo para empresas peruanas, pensada para la Ley 29783.</p>
@@ -36,68 +70,51 @@ export function SiteFooter({ site }: { site: SiteData }) {
               ))}
             </ul>
           )}
+          <div>
+            <h2 className="mb-2 mt-2 text-sm font-bold uppercase tracking-wider text-white/60">Contacto</h2>
+            <ul className="space-y-2.5 text-sm text-white/85">
+              {wa && (
+                <li>
+                  <a href={wa} target="_blank" rel="noopener" className="inline-flex items-center gap-2 hover:text-white">
+                    <WhatsAppIcon size={18} /> WhatsApp
+                  </a>
+                </li>
+              )}
+              {email && (
+                <li>
+                  <a href={`mailto:${email}`} className="inline-flex items-center gap-2 hover:text-white">
+                    <Icon name="mail" size={16} /> {email}
+                  </a>
+                </li>
+              )}
+              {s.contact_phone && <li>Teléfono: {s.contact_phone}</li>}
+              {s.support_email && (
+                <li>
+                  Soporte para clientes:{" "}
+                  <a href={`mailto:${s.support_email}`} className="hover:text-white hover:underline">
+                    {s.support_email}
+                  </a>
+                </li>
+              )}
+              {!wa && !email && !s.contact_phone && !s.support_email && <li className="text-white/60">Datos de contacto por publicar.</li>}
+            </ul>
+          </div>
         </div>
 
-        <div>
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-white/60">Producto</h2>
-          <ul className="space-y-2 text-sm">
-            {[
-              ["/producto", "Producto y módulos"],
-              ["/como-funciona", "Cómo funciona"],
-              ["/planes", "Planes"],
-              ["/complementos", "Complementos"],
-              ["/sectores", "Sectores"],
-              ["/consultoras", "Para consultoras"],
-              ["/casos", "Casos de éxito"],
-              ["/recursos", "Recursos gratis"],
-              ["/herramientas/calculadora-multas", "Calculadora de multas"],
-              ["/herramientas/autodiagnostico", "Autodiagnóstico Ley 29783"],
-              ["/preguntas-frecuentes", "Preguntas frecuentes"],
-              ["/ayuda", "Centro de ayuda"],
-              ["/partners", "Programa de partners"],
-              ["/boletin", "Boletín normativo"],
-              ["/confianza", "Centro de confianza"],
-              ["/estado", "Estado del servicio"],
-              ["/login", "Iniciar sesión"],
-            ].map(([href, label]) => (
-              <li key={href}>
-                <Link href={href} className="text-white/85 hover:text-white hover:underline">
-                  {label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div>
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-white/60">Contacto</h2>
-          <ul className="space-y-2.5 text-sm text-white/85">
-            {wa && (
-              <li>
-                <a href={wa} target="_blank" rel="noopener" className="inline-flex items-center gap-2 hover:text-white">
-                  <WhatsAppIcon size={18} /> WhatsApp
-                </a>
-              </li>
-            )}
-            {email && (
-              <li>
-                <a href={`mailto:${email}`} className="inline-flex items-center gap-2 hover:text-white">
-                  <Icon name="mail" size={16} /> {email}
-                </a>
-              </li>
-            )}
-            {s.contact_phone && <li>Teléfono: {s.contact_phone}</li>}
-            {s.support_email && (
-              <li>
-                Soporte para clientes:{" "}
-                <a href={`mailto:${s.support_email}`} className="hover:text-white hover:underline">
-                  {s.support_email}
-                </a>
-              </li>
-            )}
-            {!wa && !email && !s.contact_phone && !s.support_email && <li className="text-white/60">Datos de contacto por publicar.</li>}
-          </ul>
-        </div>
+        {LINK_GROUPS.map((g) => (
+          <div key={g.title}>
+            <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-white/60">{g.title}</h2>
+            <ul className="space-y-2 text-sm">
+              {g.links.map(([href, label]) => (
+                <li key={href}>
+                  <Link href={href} className="text-white/85 hover:text-white hover:underline">
+                    {label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
 
         <div>
           <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-white/60">Legal</h2>

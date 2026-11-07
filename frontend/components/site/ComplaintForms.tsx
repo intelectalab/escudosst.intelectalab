@@ -43,13 +43,10 @@ function Field({ label, error, hint, optional, children, className = "" }: { lab
   );
 }
 
-function Section({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <fieldset className="space-y-4 border-t border-[var(--site-border)] pt-6 first:border-0 first:pt-0">
-      <legend className="mb-1 flex items-center gap-2.5 font-display text-lg font-bold text-[var(--site-navy-title)]">
-        <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--site-navy)] text-sm text-white">{n}</span>
-        {title}
-      </legend>
+    <fieldset className="space-y-4 border-t border-[var(--site-border)] pt-6">
+      <legend className="sr-only">{title}</legend>
       {children}
     </fieldset>
   );
@@ -62,6 +59,33 @@ const DOCS: [string, string][] = [
   ["RUC", "RUC"],
   ["OTHER", "Otro"],
 ];
+
+// La hoja va en 3 pasos (una sección a la vez) para que no se vea tan larga.
+const STEPS = ["Tus datos", "¿Qué contrataste?", "Tu reclamo o queja"] as const;
+const stepOf = (field: string) => (/^(consumer_(full_name|document|email|phone|address)|guardian_|is_minor)/.test(field) ? 1 : /^(item_|amount_)/.test(field) ? 2 : 3);
+
+function Stepper({ step }: { step: number }) {
+  return (
+    <ol className="flex items-center gap-2" aria-label={`Paso ${step} de ${STEPS.length}`}>
+      {STEPS.map((t, i) => {
+        const n = i + 1;
+        const done = n < step;
+        const now = n === step;
+        return (
+          <li key={t} className={`flex items-center gap-2 ${n < STEPS.length ? "flex-1" : ""}`} aria-current={now ? "step" : undefined}>
+            <span
+              className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm font-bold ${done ? "bg-[#22A35A] text-white" : now ? "bg-[var(--site-navy)] text-white" : "bg-[var(--site-surface)] text-[var(--site-text-2)] ring-1 ring-[var(--site-border)]"}`}
+            >
+              {done ? <Icon name="check" size={14} /> : n}
+            </span>
+            <span className={`text-sm ${now ? "font-bold text-[var(--site-navy-title)]" : "hidden text-[var(--site-text-2)] sm:inline"}`}>{t}</span>
+            {n < STEPS.length && <span className={`h-0.5 flex-1 rounded ${done ? "bg-[#22A35A]" : "bg-[var(--site-border)]"}`} aria-hidden="true" />}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
 type Receipt = { complaint_code: string; filed_at: string; response_due_on: string; tracking_key: string };
 
@@ -91,13 +115,51 @@ export function ComplaintForm({ provider, responseDays }: { provider: Provider; 
   const [errors, setErrors] = useState<Errors>({});
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [step, setStep] = useState(1);
   const [receipt, setReceipt] = useState<(Receipt & { type: string; detail: string; request: string; name: string }) | null>(null);
   const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
   const err = (k: string) => errors[k]?.[0];
   const inv = (k: string) => (err(k) ? true : undefined);
 
+  // Revisión rápida antes de pasar al siguiente paso (la validación completa la hace el servidor al enviar).
+  function checkStep(n: number): Errors {
+    const e: Errors = {};
+    const need = (k: keyof typeof f) => {
+      if (f[k].trim() === "") e[k] = ["Completa este campo."];
+    };
+    if (n === 1) {
+      need("consumer_full_name");
+      need("consumer_document_number");
+      need("consumer_address");
+      if (!/^\S+@\S+\.\S+$/.test(f.consumer_email.trim())) e.consumer_email = ["Escribe un correo válido."];
+      if (minor) {
+        need("guardian_full_name");
+        need("guardian_document_number");
+      }
+    }
+    if (n === 2) need("item_description");
+    return e;
+  }
+
+  function goTo(n: number) {
+    setStep(n);
+    setMessage(null);
+    setTimeout(() => document.getElementById("hoja-reclamacion")?.scrollIntoView({ behavior: "smooth", block: "start" }), 30);
+  }
+
+  function next() {
+    const e = checkStep(step);
+    setErrors(e);
+    if (Object.keys(e).length > 0) {
+      setMessage("Revisa los campos marcados.");
+      return;
+    }
+    goTo(step + 1);
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (step < STEPS.length) return next();
     setSaving(true);
     setMessage(null);
     const nul = (v: string) => (v.trim() === "" ? null : v.trim());
@@ -122,6 +184,8 @@ export function ComplaintForm({ provider, responseDays }: { provider: Provider; 
     } else if (!r.ok) {
       setErrors(r.errors);
       setMessage(r.message);
+      const first = Object.keys(r.errors)[0];
+      if (first) setStep(stepOf(first));
       setTimeout(() => document.querySelector('[role="alert"]')?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     }
   }
@@ -129,7 +193,8 @@ export function ComplaintForm({ provider, responseDays }: { provider: Provider; 
   if (receipt) return <ReceiptView r={receipt} provider={provider} />;
 
   return (
-    <form onSubmit={submit} noValidate className="site-card relative space-y-6 p-6 sm:p-8">
+    <form id="hoja-reclamacion" onSubmit={submit} noValidate className="site-card relative scroll-mt-24 space-y-6 p-6 sm:p-8">
+      <Stepper step={step} />
       <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
         <input tabIndex={-1} autoComplete="off" name="website" value={f.website} onChange={(e) => set("website", e.target.value)} />
       </div>
@@ -139,7 +204,8 @@ export function ComplaintForm({ provider, responseDays }: { provider: Provider; 
         </p>
       )}
 
-      <Section n={1} title="Tus datos">
+      {step === 1 && (
+        <Section title="Tus datos">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Nombres y apellidos" error={err("consumer_full_name")} className="sm:col-span-2">
             <input className="input" maxLength={160} autoComplete="name" value={f.consumer_full_name} aria-invalid={inv("consumer_full_name")} onChange={(e) => set("consumer_full_name", e.target.value)} />
@@ -195,9 +261,11 @@ export function ComplaintForm({ provider, responseDays }: { provider: Provider; 
             </Field>
           </div>
         )}
-      </Section>
+        </Section>
+      )}
 
-      <Section n={2} title="¿Qué contrataste?">
+      {step === 2 && (
+        <Section title="¿Qué contrataste?">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Es un…" error={err("item_type")}>
             <select className="input" value={f.item_type} onChange={(e) => set("item_type", e.target.value)}>
@@ -212,9 +280,12 @@ export function ComplaintForm({ provider, responseDays }: { provider: Provider; 
             <input className="input" maxLength={500} value={f.item_description} aria-invalid={inv("item_description")} onChange={(e) => set("item_description", e.target.value)} />
           </Field>
         </div>
-      </Section>
+        </Section>
+      )}
 
-      <Section n={3} title="Tu reclamo o queja">
+      {step === 3 && (
+        <>
+          <Section title="Tu reclamo o queja">
         <div role="radiogroup" aria-label="Tipo" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {(
             [
@@ -247,9 +318,9 @@ export function ComplaintForm({ provider, responseDays }: { provider: Provider; 
         <Field label="¿Qué solución esperas?" error={err("consumer_request")}>
           <textarea className="input min-h-[80px]" maxLength={2000} value={f.consumer_request} aria-invalid={inv("consumer_request")} onChange={(e) => set("consumer_request", e.target.value)} />
         </Field>
-      </Section>
+          </Section>
 
-      <div className="space-y-2">
+          <div className="space-y-2">
         <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 text-sm ${privacy ? "border-[var(--site-action)]/40 bg-[var(--site-surface)]" : "border-[#d5dde7]"}`}>
           <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--site-action)]" checked={privacy} onChange={(e) => setPrivacy(e.target.checked)} />
           <span>
@@ -263,9 +334,19 @@ export function ComplaintForm({ provider, responseDays }: { provider: Provider; 
         {err("privacy_consent") && <p className="text-xs font-semibold text-[var(--site-red)]">● {err("privacy_consent")}</p>}
       </div>
 
-      <button type="submit" disabled={saving} className="site-btn site-btn-primary w-full disabled:opacity-60">
-        {saving ? "Enviando…" : "Enviar hoja de reclamación"}
-      </button>
+        </>
+      )}
+
+      <div className="flex flex-col-reverse gap-3 sm:flex-row">
+        {step > 1 && (
+          <button type="button" onClick={() => goTo(step - 1)} className="site-btn site-btn-outline sm:w-40">
+            Atrás
+          </button>
+        )}
+        <button type="submit" disabled={saving} className="site-btn site-btn-primary flex-1 disabled:opacity-60">
+          {step < STEPS.length ? `Siguiente: ${STEPS[step]}` : saving ? "Enviando…" : "Enviar hoja de reclamación"}
+        </button>
+      </div>
       <p className="text-center text-xs leading-relaxed text-[var(--site-text-2)]">
         {responseDays ? `Te responderemos por correo en máximo ${responseDays} días hábiles. ` : ""}
         Presentar esta hoja no te impide acudir a otras vías ni es requisito para denunciar ante el INDECOPI.
