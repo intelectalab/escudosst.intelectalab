@@ -1,13 +1,25 @@
 <?php
 
+use App\Modules\WEB\Http\Controllers\AnalyticsController;
+use App\Modules\WEB\Http\Controllers\ChatbotController;
 use App\Modules\WEB\Http\Controllers\ComplaintsController;
 use App\Modules\WEB\Http\Controllers\CookieConsentController;
+use App\Modules\WEB\Http\Controllers\CrmController;
+use App\Modules\WEB\Http\Controllers\DemoBookingController;
 use App\Modules\WEB\Http\Controllers\DemoRequestsController;
+use App\Modules\WEB\Http\Controllers\FineCalculatorController;
+use App\Modules\WEB\Http\Controllers\HelpCenterController;
 use App\Modules\WEB\Http\Controllers\LeadsController;
 use App\Modules\WEB\Http\Controllers\LegalAcceptanceController;
 use App\Modules\WEB\Http\Controllers\LegalDocumentsController;
+use App\Modules\WEB\Http\Controllers\MediaController;
+use App\Modules\WEB\Http\Controllers\NewsletterController;
+use App\Modules\WEB\Http\Controllers\PartnersController;
 use App\Modules\WEB\Http\Controllers\PublicFormsController;
 use App\Modules\WEB\Http\Controllers\PublicSiteController;
+use App\Modules\WEB\Http\Controllers\ResourcesController;
+use App\Modules\WEB\Http\Controllers\SeoController;
+use App\Modules\WEB\Http\Controllers\SelfAssessmentController;
 use App\Modules\WEB\Http\Controllers\SiteAssetsController;
 use App\Modules\WEB\Http\Controllers\SiteContentController;
 use App\Modules\WEB\Http\Controllers\SiteMenuController;
@@ -15,16 +27,48 @@ use App\Modules\WEB\Http\Controllers\SitePagesController;
 use App\Modules\WEB\Http\Controllers\SiteSettingsController;
 use App\Modules\WEB\Http\Controllers\SuccessStoriesController;
 use App\Modules\WEB\Http\Controllers\SuccessStoryInvitesController;
+use App\Modules\WEB\Http\Controllers\TrustStatusController;
 use Illuminate\Support\Facades\Route;
 
+// Métricas propias: solo llegan si el visitante aceptó cookies analíticas (lo controla el sitio).
+Route::middleware('throttle:web-events')->post('public/events', [AnalyticsController::class, 'store']);
+
+// Chatbot: conversación con límite propio (cada mensaje es una llamada).
+Route::middleware('throttle:web-chat')->prefix('public/chatbot')->group(function () {
+    Route::get('/', [ChatbotController::class, 'config']);
+    Route::post('start', [ChatbotController::class, 'start'])->middleware('throttle:web-chat-start');
+    Route::post('message', [ChatbotController::class, 'message']);
+    Route::post('lead', [ChatbotController::class, 'lead'])->middleware('throttle:web-chat-lead');
+    Route::post('rate', [ChatbotController::class, 'rate']);
+    Route::post('handoff', [ChatbotController::class, 'handoff']);
+    Route::post('learn', [ChatbotController::class, 'learn']);
+});
+
 // Sitio web público (sin sesión). Límite de uso por IP.
-Route::middleware('throttle:120,1')->prefix('public')->group(function () {
+Route::middleware('throttle:web-read')->prefix('public')->group(function () {
     Route::get('site', [PublicSiteController::class, 'site']);
     Route::get('pricing', [PublicSiteController::class, 'pricing']);
     Route::get('modules', [PublicSiteController::class, 'modules']);
     Route::get('legal/{slug}', [LegalDocumentsController::class, 'publicPage'])->where('slug', '[a-z0-9-]+');
     Route::get('complaints/info', [ComplaintsController::class, 'info']);
     Route::get('site/assets/{id}', [SiteAssetsController::class, 'show'])->whereUuid('id');
+    Route::get('resources', [ResourcesController::class, 'publicIndex']);
+    Route::get('tools/fine-calculator', [FineCalculatorController::class, 'parameters']);
+    Route::get('tools/self-assessment', [SelfAssessmentController::class, 'show']);
+    Route::get('tools/self-assessment/report/{id}', [SelfAssessmentController::class, 'report'])->whereUuid('id')->middleware('signed')->name('public.self-assessment.report');
+    Route::get('resources/file/{slug}', [ResourcesController::class, 'file'])->where('slug', '[a-z0-9-]+')->middleware('signed')->name('public.resources.file');
+    Route::get('site/sitemap', [SeoController::class, 'sitemap']);
+    Route::get('site/redirects', [SeoController::class, 'activeRedirects']);
+    Route::get('site/redirects/resolve', [SeoController::class, 'resolve']);
+    Route::get('partners/ref/{code}', [PartnersController::class, 'checkCode'])->where('code', '[A-Za-z0-9-]{4,32}');
+    Route::get('demo/slots', [DemoBookingController::class, 'slots']);
+    Route::get('trust', [TrustStatusController::class, 'trust']);
+    Route::get('status', [TrustStatusController::class, 'status']);
+    Route::get('newsletter/issues', [NewsletterController::class, 'issues']);
+    Route::get('newsletter/issues/{slug}', [NewsletterController::class, 'issue'])->where('slug', '[a-z0-9-]+');
+    Route::get('help/categories', [HelpCenterController::class, 'categories']);
+    Route::get('help/articles', [HelpCenterController::class, 'articles']);
+    Route::get('help/articles/{slug}', [HelpCenterController::class, 'article'])->where('slug', '[a-z0-9-]+');
     Route::get('faqs', [SiteContentController::class, 'publicFaqs']);
     Route::get('pages', [SitePagesController::class, 'publicIndex']);
     Route::get('pages/{slug}', [SitePagesController::class, 'publicShow'])->where('slug', '[a-z0-9/-]+');
@@ -35,30 +79,47 @@ Route::middleware('throttle:120,1')->prefix('public')->group(function () {
 });
 
 // Formularios públicos: límite más estricto por IP (captcha por definir, DA-13).
-Route::middleware('throttle:6,10')->prefix('public')->group(function () {
+Route::middleware('throttle:web-forms')->prefix('public')->group(function () {
+    Route::post('resources/{slug}/download', [ResourcesController::class, 'download'])->where('slug', '[a-z0-9-]+');
+    Route::post('tools/fine-calculator', [FineCalculatorController::class, 'calculate']);
+    Route::post('tools/self-assessment', [SelfAssessmentController::class, 'submit']);
     Route::post('trial', [PublicFormsController::class, 'trial']);
+    Route::post('partners', [PartnersController::class, 'apply']);
+    Route::post('demo/book', [DemoBookingController::class, 'book']);
+    Route::post('newsletter', [NewsletterController::class, 'subscribe']);
+    Route::post('status/subscribe', [TrustStatusController::class, 'subscribe']);
     Route::post('demo-requests', [PublicFormsController::class, 'demoRequest']);
     Route::post('complaints', [ComplaintsController::class, 'store']);
 });
 
 // Seguimiento de una hoja: límite propio para que no se puedan probar claves al azar.
-Route::middleware('throttle:10,10')->prefix('public')->group(function () {
+Route::middleware('throttle:web-sensitive')->prefix('public')->group(function () {
+    Route::post('demo/manage/{token}/cancel', [DemoBookingController::class, 'cancel'])->where('token', '[A-Za-z0-9]{48}');
+    Route::post('demo/manage/{token}/reschedule', [DemoBookingController::class, 'reschedule'])->where('token', '[A-Za-z0-9]{48}');
+    Route::post('newsletter/confirm', [NewsletterController::class, 'confirm']);
+    Route::post('newsletter/unsubscribe/{token}', [NewsletterController::class, 'unsubscribe'])->where('token', '[a-f0-9]{64}');
+    Route::post('help/articles/{slug}/feedback', [HelpCenterController::class, 'feedback'])->where('slug', '[a-z0-9-]+');
     Route::post('complaints/status', [ComplaintsController::class, 'status']);
 });
 
 // Casos de éxito por invitación: el cliente abre su enlace personal (token), cuenta su historia y firma;
 // y puede retirar su autorización con el enlace de su correo.
-Route::middleware('throttle:30,10')->prefix('public/success-stories')->group(function () {
+Route::middleware('throttle:web-google-callback')->get('public/demo/google/callback', [DemoBookingController::class, 'googleCallback']);
+Route::middleware('throttle:web-demo-manage')->prefix('public/demo/manage')->group(function () {
+    Route::get('{token}', [DemoBookingController::class, 'manage'])->where('token', '[A-Za-z0-9]{48}');
+    Route::get('{token}/ics', [DemoBookingController::class, 'ics'])->where('token', '[A-Za-z0-9]{48}');
+});
+Route::middleware('throttle:web-story-read')->prefix('public/success-stories')->group(function () {
     Route::get('share/{token}', [SuccessStoryInvitesController::class, 'showShare'])->where('token', '[A-Za-z0-9]{48}');
     Route::get('withdraw/{token}', [SuccessStoryInvitesController::class, 'showWithdraw'])->where('token', '[A-Za-z0-9]{48}');
 });
-Route::middleware('throttle:6,10')->prefix('public/success-stories')->group(function () {
+Route::middleware('throttle:web-story-write')->prefix('public/success-stories')->group(function () {
     Route::post('share/{token}', [SuccessStoryInvitesController::class, 'submitShare'])->where('token', '[A-Za-z0-9]{48}');
     Route::post('withdraw/{token}', [SuccessStoryInvitesController::class, 'withdraw'])->where('token', '[A-Za-z0-9]{48}');
 });
 
 // Panel del dueño · Sitio web (SCR-WEB-21 y SCR-WEB-24)
-Route::middleware(['auth:sanctum', 'platform'])->prefix('internal/site')->group(function () {
+Route::middleware(['auth:sanctum', 'platform', \App\Core\Http\Middleware\FlushChatbotIndex::class])->prefix('internal/site')->group(function () {
     Route::get('settings', [SiteSettingsController::class, 'show']);
     Route::patch('settings', [SiteSettingsController::class, 'update']);
     Route::get('legal', [LegalDocumentsController::class, 'index']);
@@ -75,6 +136,96 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal/site')->group(
     Route::post('{kind}', [SiteContentController::class, 'store'])->whereIn('kind', ['faqs', 'testimonials', 'products']);
     Route::patch('{kind}/{id}', [SiteContentController::class, 'update'])->whereIn('kind', ['faqs', 'testimonials', 'products'])->whereUuid('id');
     Route::delete('{kind}/{id}', [SiteContentController::class, 'destroy'])->whereIn('kind', ['faqs', 'testimonials', 'products'])->whereUuid('id');
+    Route::get('self-assessment', [SelfAssessmentController::class, 'index']);
+    Route::get('self-assessment/{id}', [SelfAssessmentController::class, 'showVersion'])->whereUuid('id');
+    Route::post('self-assessment/{id}/copy', [SelfAssessmentController::class, 'copy'])->whereUuid('id');
+    Route::patch('self-assessment/{id}', [SelfAssessmentController::class, 'update'])->whereUuid('id');
+    Route::put('self-assessment/{id}/questions', [SelfAssessmentController::class, 'saveQuestions'])->whereUuid('id');
+    Route::post('self-assessment/{id}/publish', [SelfAssessmentController::class, 'publish'])->whereUuid('id')->middleware('platform.owner');
+    Route::get('fine-calculator', [FineCalculatorController::class, 'panel']);
+    Route::post('fine-calculator/{k}', [FineCalculatorController::class, 'saveParameter'])->whereIn('k', ['uit', 'micro', 'small', 'non_mype', 'discount'])->middleware('platform.owner');
+    Route::get('resources', [ResourcesController::class, 'index']);
+    Route::post('resources', [ResourcesController::class, 'store']);
+    Route::patch('resources/{id}', [ResourcesController::class, 'update'])->whereUuid('id');
+    Route::post('resources/{id}/{action}', [ResourcesController::class, 'act'])->whereUuid('id')->whereIn('action', ['publish', 'archive'])->middleware('platform.owner');
+    Route::delete('resources/{id}', [ResourcesController::class, 'destroy'])->whereUuid('id')->middleware('platform.owner');
+    Route::get('media', [MediaController::class, 'index']);
+    Route::post('media', [MediaController::class, 'store']);
+    Route::patch('media/{id}', [MediaController::class, 'update'])->whereUuid('id');
+    Route::post('media/{id}/replace', [MediaController::class, 'replace'])->whereUuid('id');
+    Route::get('media/{id}/usages', [MediaController::class, 'usages'])->whereUuid('id');
+    Route::delete('media/{id}', [MediaController::class, 'destroy'])->whereUuid('id')->middleware('platform.owner');
+    Route::get('success-stories/{id}/gallery', [SuccessStoriesController::class, 'gallery'])->whereUuid('id');
+    Route::put('success-stories/{id}/gallery', [SuccessStoriesController::class, 'saveGallery'])->whereUuid('id');
+    Route::get('redirects', [SeoController::class, 'index']);
+    Route::post('redirects', [SeoController::class, 'store'])->middleware('platform.owner');
+    Route::patch('redirects/{id}', [SeoController::class, 'update'])->whereUuid('id')->middleware('platform.owner');
+    Route::delete('redirects/{id}', [SeoController::class, 'destroy'])->whereUuid('id')->middleware('platform.owner');
+    Route::middleware('platform.owner')->prefix('crm')->group(function () {   // Soporte no ve la conexión (RN-WEB-78)
+        Route::get('/', [CrmController::class, 'index']);
+        Route::patch('/', [CrmController::class, 'update']);
+        Route::post('test', [CrmController::class, 'test'])->middleware('throttle:web-crm-test');
+        Route::post('{action}', [CrmController::class, 'setStatus'])->whereIn('action', ['activate', 'pause']);
+        Route::post('events/{action}', [CrmController::class, 'events'])->whereIn('action', ['retry', 'skip']);
+    });
+    Route::get('chatbot', [ChatbotController::class, 'index']);
+    Route::get('chatbot/conversations/{id}', [ChatbotController::class, 'conversation'])->whereUuid('id');
+    Route::patch('chatbot/settings', [ChatbotController::class, 'updateSettings'])->middleware('platform.owner');
+    Route::post('chatbot/intents', [ChatbotController::class, 'saveIntent']);
+    Route::post('chatbot/intents/test', [ChatbotController::class, 'test']);
+    Route::get('chatbot/aliases', [ChatbotController::class, 'aliases']);
+    Route::get('chatbot/targets', [ChatbotController::class, 'targets']);
+    Route::post('chatbot/aliases', [ChatbotController::class, 'teach'])->middleware('platform.owner');
+    Route::patch('chatbot/aliases/{id}', [ChatbotController::class, 'setAlias'])->whereUuid('id')->middleware('platform.owner');
+    Route::patch('chatbot/intents/{id}', [ChatbotController::class, 'saveIntent'])->whereUuid('id');
+    Route::post('chatbot/intents/{id}/{action}', [ChatbotController::class, 'actIntent'])->whereUuid('id')->whereIn('action', ['publish', 'archive', 'delete'])->middleware('platform.owner');
+    Route::get('demos', [DemoBookingController::class, 'index']);
+    Route::get('demos/free-slots', [DemoBookingController::class, 'freeSlots']);
+    Route::patch('demos/settings', [DemoBookingController::class, 'updateSettings'])->middleware('platform.owner');
+    Route::post('demos/hosts', [DemoBookingController::class, 'saveHost'])->middleware('platform.owner');
+    Route::patch('demos/hosts/{id}', [DemoBookingController::class, 'saveHost'])->whereUuid('id')->middleware('platform.owner');
+    Route::post('demos/blackouts', [DemoBookingController::class, 'addBlackout'])->middleware('platform.owner');
+    Route::get('demos/hosts/{id}/google/connect', [DemoBookingController::class, 'googleConnect'])->whereUuid('id');
+    Route::delete('demos/hosts/{id}/google', [DemoBookingController::class, 'googleDisconnect'])->whereUuid('id');
+    Route::delete('demos/blackouts/{id}', [DemoBookingController::class, 'deleteBlackout'])->whereUuid('id')->middleware('platform.owner');
+    Route::post('demos/meetings', [DemoBookingController::class, 'propose'])->middleware('platform.owner');
+    Route::post('demos/meetings/{id}/{action}', [DemoBookingController::class, 'act'])->whereUuid('id')->whereIn('action', ['assign', 'confirm', 'move', 'cancel', 'complete']);
+    Route::get('analytics', [AnalyticsController::class, 'summary']);
+    Route::get('analytics/export', [AnalyticsController::class, 'export'])->middleware('platform.owner');
+    Route::get('trust-status', [TrustStatusController::class, 'index']);
+    Route::post('subprocessors', [TrustStatusController::class, 'saveSubprocessor'])->middleware('platform.owner');
+    Route::patch('subprocessors/{id}', [TrustStatusController::class, 'saveSubprocessor'])->whereUuid('id')->middleware('platform.owner');
+    Route::delete('subprocessors/{id}', [TrustStatusController::class, 'deleteSubprocessor'])->whereUuid('id')->middleware('platform.owner');
+    Route::post('subprocessors/notify', [TrustStatusController::class, 'notifySubprocessors'])->middleware(['platform.owner', 'throttle:web-subprocessors-notify']);
+    Route::patch('status-components/{id}', [TrustStatusController::class, 'updateComponent'])->whereUuid('id')->middleware('platform.owner');
+    Route::post('status-incidents', [TrustStatusController::class, 'storeIncident']);
+    Route::patch('status-incidents/{id}', [TrustStatusController::class, 'updateIncident'])->whereUuid('id');
+    Route::delete('status-incidents/{id}', [TrustStatusController::class, 'deleteIncident'])->whereUuid('id');
+    Route::post('status-incidents/{id}/publish', [TrustStatusController::class, 'publishIncident'])->whereUuid('id')->middleware('platform.owner');
+    Route::post('status-incidents/{id}/updates', [TrustStatusController::class, 'addUpdate'])->whereUuid('id');
+    Route::get('newsletter', [NewsletterController::class, 'index']);
+    Route::post('newsletter/issues', [NewsletterController::class, 'store']);
+    Route::patch('newsletter/issues/{id}', [NewsletterController::class, 'update'])->whereUuid('id');
+    Route::delete('newsletter/issues/{id}', [NewsletterController::class, 'destroy'])->whereUuid('id');
+    Route::post('newsletter/issues/{id}/test', [NewsletterController::class, 'test'])->whereUuid('id')->middleware('throttle:web-newsletter-test');
+    Route::post('newsletter/issues/{id}/send', [NewsletterController::class, 'send'])->whereUuid('id')->middleware('platform.owner');
+    Route::post('newsletter/issues/{id}/cancel', [NewsletterController::class, 'cancel'])->whereUuid('id')->middleware('platform.owner');
+    Route::get('partners', [PartnersController::class, 'index']);
+    Route::post('partners/{id}/review', [PartnersController::class, 'review'])->whereUuid('id')->middleware('platform.owner');
+    Route::patch('partners/codes/{id}', [PartnersController::class, 'updateCode'])->whereUuid('id')->middleware('platform.owner');
+    Route::patch('partners/referrals/{id}', [PartnersController::class, 'updateReferral'])->whereUuid('id')->middleware('platform.owner');
+    Route::get('help', [HelpCenterController::class, 'index']);
+    Route::post('help/categories', [HelpCenterController::class, 'storeCategory']);
+    Route::patch('help/categories/{id}', [HelpCenterController::class, 'updateCategory'])->whereUuid('id');
+    Route::delete('help/categories/{id}', [HelpCenterController::class, 'destroyCategory'])->whereUuid('id')->middleware('platform.owner');
+    Route::post('help/articles', [HelpCenterController::class, 'storeArticle']);
+    Route::patch('help/articles/{id}', [HelpCenterController::class, 'updateArticle'])->whereUuid('id');
+    Route::get('help/articles/{id}/feedback', [HelpCenterController::class, 'articleFeedback'])->whereUuid('id');
+    Route::post('help/articles/{id}/{action}', [HelpCenterController::class, 'actArticle'])->whereUuid('id')->whereIn('action', ['publish', 'archive'])->middleware('platform.owner');
+    Route::delete('help/articles/{id}', [HelpCenterController::class, 'destroyArticle'])->whereUuid('id')->middleware('platform.owner');
+    Route::get('seo', [SeoController::class, 'seo']);
+    Route::get('seo/pages', [SeoController::class, 'pages']);
+    Route::patch('seo', [SeoController::class, 'updateSeo'])->middleware('platform.owner');
     Route::get('success-stories/authorization-text', [SuccessStoryInvitesController::class, 'template']);
     Route::put('success-stories/authorization-text', [SuccessStoryInvitesController::class, 'saveTemplate'])->middleware('platform.owner');
     Route::get('success-stories/clients', [SuccessStoryInvitesController::class, 'clients']);
@@ -112,5 +263,6 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal/site')->group(
 // Re-aceptación de políticas: el usuario de la sesión (sin empresa activa).
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('me/legal-pending', [LegalAcceptanceController::class, 'pending']);
+    Route::get('me/help', [HelpCenterController::class, 'contextual'])->middleware('throttle:web-help');
     Route::post('me/legal-accept', [LegalAcceptanceController::class, 'accept']);
 });

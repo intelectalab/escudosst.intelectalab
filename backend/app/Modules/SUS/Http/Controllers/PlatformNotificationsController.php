@@ -29,6 +29,14 @@ class PlatformNotificationsController extends Controller
         };
         $plural = fn (int $n, string $one, string $many) => $n === 1 ? $one : $many;
 
+        // Copias de seguridad: si la última buena es vieja o la última falló (docs/15 §10).
+        foreach (app(\App\Modules\SUS\Services\BackupService::class)->status()['targets'] as $b) {
+            $failed = $b['last_status'] === 'failed';
+            $add("backup_{$b['target']}", 'Sistema', 'database', 'bad', ($b['overdue'] || $failed) ? 1 : 0, $b['last_ok_at'],
+                $failed ? "Falló la copia de seguridad: {$b['label']}" : "Copia de seguridad atrasada: {$b['label']}",
+                $failed ? 'Revisa el error en Salud del sistema y vuelve a intentarlo.' : 'No hay una copia reciente. Revisa Salud del sistema.', '/plataforma/salud');
+        }
+
         // Reclamos: lo más urgente primero (plazo legal).
         $open = collect($complaints->list())->whereIn('light', ['red', 'amber']);
         $red = $open->where('light', 'red')->count();
@@ -45,6 +53,21 @@ class PlatformNotificationsController extends Controller
         $r = $db->selectOne("select count(*) as n, max(created_at) as at from marketing_leads where status = 'new' and deleted_at is null");
         $add('leads_new', 'Ventas', 'people', 'brand', (int) $r->n, $r->at,
             $plural((int) $r->n, '1 interesado nuevo', "{$r->n} interesados nuevos"), 'Personas que dejaron sus datos en el sitio.', '/plataforma/sitio/interesados');
+
+        $r = $db->selectOne("select count(*) as n, max(started_at) as at from status_incidents where status <> 'resolved' and published_at is not null and deleted_at is null");
+        $add('incidents_open', 'Estado del servicio', 'shield', 'bad', (int) $r->n, $r->at,
+            $plural((int) $r->n, '1 incidente abierto', "{$r->n} incidentes abiertos"), 'Se ve en /estado. Agrega actualizaciones hasta resolverlo.', '/plataforma/sitio/estado');
+        $r = $db->selectOne("select count(*) as n, max(created_at) as at from status_incidents where published_at is null and deleted_at is null");
+        $add('incidents_draft', 'Estado del servicio', 'shield', 'amber', (int) $r->n, $r->at,
+            $plural((int) $r->n, '1 incidente por publicar', "{$r->n} incidentes por publicar"), 'Registrado por el equipo; aún no se ve en /estado.', '/plataforma/sitio/estado');
+
+        $r = $db->selectOne("select count(*) as n, max(updated_at) as at from crm_sync_events where status = 'failed' and attempts >= ?", [\App\Modules\WEB\Services\CrmService::MAX_ATTEMPTS]);
+        $add('crm_failed', 'Ventas', 'refresh', 'bad', (int) $r->n, $r->at,
+            $plural((int) $r->n, '1 envío al CRM falló', "{$r->n} envíos al CRM fallaron"), 'Se agotaron los reintentos. Revisa la conexión y reintenta.', '/plataforma/sitio/crm');
+
+        $r = $db->selectOne("select count(*) as n, max(created_at) as at from partner_applications where status = 'pending' and deleted_at is null");
+        $add('partners_pending', 'Ventas', 'building', 'brand', (int) $r->n, $r->at,
+            $plural((int) $r->n, '1 solicitud de partner', "{$r->n} solicitudes de partner"), 'Consultoras o profesionales que quieren referir clientes.', '/plataforma/sitio/partners');
 
         $r = $db->selectOne("select count(*) as n, max(created_at) as at from site_testimonials where status = 'pending' and deleted_at is null");
         $add('testimonials_pending', 'Sitio web', 'heart', 'amber', (int) $r->n, $r->at,

@@ -36,6 +36,12 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // La API no redirige a una pantalla de inicio de sesión (no existe): responde 401 en problem+json aunque el
         // cliente no envíe «Accept: application/json». Antes eso terminaba en un error 500.
+        // Detrás del nginx del servidor: la IP real del visitante viene en X-Forwarded-For. Solo se confía en proxies de
+        // la red local o de Docker (sin esto, todos los visitantes compartirían la IP del proxy y su límite anti-abuso).
+        $middleware->trustProxies(
+            at: ['127.0.0.1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
+            headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR | \Illuminate\Http\Request::HEADER_X_FORWARDED_HOST | \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT | \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO,
+        );
         $middleware->redirectGuestsTo(fn (Request $request) => $request->is('api/*') ? null : '/login');
 
         // Empresa activa: valida membresía y fija RLS (docs/01-arquitectura.md §4).

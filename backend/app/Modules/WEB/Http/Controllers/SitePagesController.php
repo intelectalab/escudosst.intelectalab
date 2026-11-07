@@ -33,6 +33,7 @@ class SitePagesController extends Controller
         'video' => ['title' => 120, 'url' => 250],
         'faq' => ['title' => 120],
         'cta' => ['title' => 120, 'text' => 300, 'button' => 20],
+        'image' => ['title' => 120, 'caption' => 200],
     ];
 
     private const TYPES = ['sector', 'product', 'landing'];
@@ -59,6 +60,7 @@ class SitePagesController extends Controller
             throw ApiProblem::notFound('La página no existe o aún no se publica.');
         }
         unset($r['result']);
+        $r['blocks'] = self::withImages($r['blocks'] ?? []);
 
         return response()->json(['data' => $r])->header('Cache-Control', 'public, max-age=60');
     }
@@ -86,8 +88,30 @@ class SitePagesController extends Controller
         foreach (['blocks', 'published_snapshot', 'structured_data'] as $k) {
             $row[$k] = $row[$k] === null ? null : json_decode($row[$k], true);
         }
+        $row['blocks'] = self::withImages($row['blocks'] ?? []);
 
         return response()->json(['data' => $row]);
+    }
+
+    /** Agrega a los bloques «image» el archivo y el texto alternativo actuales de su medio. */
+    public static function withImages(array $blocks): array
+    {
+        $ids = array_values(array_filter(array_map(fn ($b) => ($b['type'] ?? '') === 'image' ? ($b['media_id'] ?? null) : null, $blocks)));
+        if (! $ids) {
+            return $blocks;
+        }
+        $media = collect(DB::connection('platform')->select(
+            'select id, file_id, alt_text, width, height from site_media where id = any(?::uuid[]) and deleted_at is null', ['{'.implode(',', $ids).'}']
+        ))->keyBy('id');
+
+        return array_values(array_filter(array_map(function ($b) use ($media) {
+            if (($b['type'] ?? '') !== 'image') {
+                return $b;
+            }
+            $m = $media[$b['media_id'] ?? ''] ?? null;
+
+            return $m ? $b + ['file_id' => $m->file_id, 'alt' => $m->alt_text, 'width' => $m->width, 'height' => $m->height] : null;
+        }, $blocks)));
     }
 
     public function store(Request $request, AccountsService $accounts): JsonResponse
@@ -107,8 +131,15 @@ class SitePagesController extends Controller
         if ((int) $data['version'] !== (int) $p->version) {
             throw new ApiProblem(409, 'conflict', 'Alguien más cambió la página', 'Otra persona guardó cambios mientras editabas. Recarga para ver la última versión.');
         }
-        $this->save($id, $data, $request->user()->id);
-        $accounts->audit($request->user()->id, 'site_page_updated', 'site_pages', $id, ['slug' => $data['slug']]);
+        $db = DB::connection('platform');
+        $db->transaction(function () use ($db, $id, $data, $p, $request) {
+            $this->save($id, $data, $request->user()->id);
+            // Si la página ya está publicada y cambia su dirección, la anterior redirige (301) a la nueva.
+            if ($p->status === 'published' && $p->slug !== $data['slug']) {
+                SeoController::onPageMoved($db, '/'.$p->slug, '/'.$data['slug'], $request->user()->id);
+            }
+        });
+        $accounts->audit($request->user()->id, 'site_page_updated', 'site_pages', $id, ['slug' => $data['slug'], 'previous_slug' => $p->slug !== $data['slug'] ? $p->slug : null]);
 
         // La versión la puede subir también la base (trigger): se devuelve la real para el próximo guardado.
         return response()->json(['data' => ['version' => (int) DB::connection('platform')->selectOne('select version from site_pages where id = ?', [$id])->version]]);
@@ -226,6 +257,15 @@ class SitePagesController extends Controller
             if ($type === 'video' && $clean['url'] !== ''
                 && ! preg_match('~^https://(www\.)?(youtube\.com/watch\?v=[\w-]{6,}|youtu\.be/[\w-]{6,}|vimeo\.com/\d+)~', $clean['url'])) {
                 $this->fail("blocks.{$i}.url", 'Solo videos de YouTube o Vimeo (enlace https).');
+            }
+            if ($type === 'image') {
+                // Solo se guarda el medio de la biblioteca; el archivo y su texto alternativo se leen al mostrar la
+                // página, así reemplazar la imagen en la biblioteca la cambia también aquí.
+                $media = (string) ($b['media_id'] ?? '');
+                if (! \Illuminate\Support\Str::isUuid($media) || ! DB::connection('platform')->selectOne("select 1 from site_media where id = ? and kind in ('image', 'icon') and deleted_at is null", [$media])) {
+                    $this->fail("blocks.{$i}.media_id", 'Elige una imagen de la biblioteca de medios.');
+                }
+                $clean['media_id'] = $media;
             }
             if ($type === 'cta' && ! in_array($clean['button'], ['trial', 'demo', 'consultancy'], true)) {
                 $clean['button'] = 'demo';

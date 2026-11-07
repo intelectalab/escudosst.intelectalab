@@ -45,6 +45,7 @@ class PublicFormsController extends Controller
             'email' => ['required', 'email:rfc', 'max:160'],
             'phone' => ['nullable', 'string', 'max:30'],
             'accept_legal' => ['accepted'],
+            'ref' => ['nullable', 'string', 'max:32'],
         ], $this->messages());
 
         $email = mb_strtolower(trim($data['email']));
@@ -53,7 +54,7 @@ class PublicFormsController extends Controller
             throw ValidationException::withMessages(['email' => 'Este correo ya tiene una cuenta en EscudoSST. Inicia sesión para continuar.']);
         }
 
-        $this->accounts->create([
+        $created = $this->accounts->create([
             'account_type' => 'direct',
             'ruc' => $data['ruc'],
             'legal_name' => trim($data['legal_name']),
@@ -70,6 +71,7 @@ class PublicFormsController extends Controller
             'ip_hash' => $this->ipHash($request),
             'user_agent' => mb_substr((string) $request->userAgent(), 0, 300),
         ], null);
+        PartnersController::attribute($data['ref'] ?? null, $created['account_id'], $data['ruc'], $email);   // RN-WEB-48
 
         return response()->json(['data' => ['email' => $email]], 201);
     }

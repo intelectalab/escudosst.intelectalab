@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\SUS\Http\Controllers\AccountsController;
+use App\Modules\SUS\Http\Controllers\BackupsController;
 use App\Modules\SUS\Http\Controllers\BillingController;
 use App\Modules\SUS\Http\Controllers\CatalogsController;
 use App\Modules\SUS\Http\Controllers\HealthController;
@@ -52,6 +53,8 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal')->group(funct
     });
     Route::get('health', [HealthController::class, 'index']);
     Route::post('health/run-daily', [HealthController::class, 'runDaily']);
+    Route::get('backups', [BackupsController::class, 'index']);
+    Route::post('backups', [BackupsController::class, 'store'])->middleware(['platform.owner', 'throttle:sus-backups']);
     Route::post('subscriptions/{subscription}/change-plan', [SubscriptionsController::class, 'changePlan']);
     Route::post('subscriptions/{subscription}/suspend', [SubscriptionsController::class, 'suspend']);
     Route::post('subscriptions/{subscription}/reactivate', [SubscriptionsController::class, 'reactivate']);

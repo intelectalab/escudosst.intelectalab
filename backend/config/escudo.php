@@ -11,6 +11,8 @@ return [
         'lock_minutes' => (int) env('AUTH_LOCK_MINUTES', 15),
         // Vigencia del token de sesión en minutos (a confirmar).
         'token_ttl_minutes' => (int) env('AUTH_TOKEN_TTL_MINUTES', 720),
+        // Minutos sin usar la sesión antes de cerrarla sola (inactividad). 0 = sin cierre por inactividad (a confirmar).
+        'idle_minutes' => (int) env('AUTH_IDLE_MINUTES', 30),
         // RN-USR-05 (docs/modulos/M-USR.md): roles con MFA obligatorio. Se suman a roles.requires_mfa
         // de la base, que hoy no incluye a sst_manager (docs/08-api.md lo omite). Decisión: más estricto.
         'mfa_required_roles' => [
@@ -35,6 +37,31 @@ return [
     // Dirección del frontend para armar enlaces en los correos.
     'frontend_url' => env('FRONTEND_URL', 'http://localhost:3000'),
 
+    // Copias de seguridad lógicas cifradas (docs/15 §9). Las llaves y la contraseña viven solo en backend/.env.
+    'backups' => [
+        'disk' => env('BACKUP_DISK', 'backups'),
+        'retention_days' => (int) env('BACKUP_RETENTION_DAYS', 30),
+        'daily_at' => env('BACKUP_DAILY_AT', '02:30'),
+        // Si la última copia buena es más vieja que esto, se avisa en la campana (copia atrasada).
+        'max_age_hours' => (int) env('BACKUP_MAX_AGE_HOURS', 26),
+        'timeout_seconds' => (int) env('BACKUP_TIMEOUT_SECONDS', 1800),
+        'db_username' => env('DB_BACKUP_USERNAME', 'escudo_backup'),
+        'db_password' => env('DB_BACKUP_PASSWORD', ''),
+        'key' => env('BACKUP_KEY'),
+        'medical_key' => env('BACKUP_MEDICAL_KEY'),
+    ],
+
     // Disco donde se guardan el logo y el favicon del sitio (local en desarrollo; B2 en producción).
     'site_assets_disk' => env('SITE_ASSETS_DISK', 'local'),
+
+    // Producción: las llamadas de la red interna de Docker (servidor de Next) no cuentan para el límite anti-abuso.
+    'throttle_trust_internal' => (bool) env('THROTTLE_TRUST_INTERNAL', false),
+
+    // Google Calendar para la agenda de demos (RN-WEB-74). Credenciales OAuth de Google Cloud (tipo «Aplicación web»).
+    // La dirección de retorno debe estar autorizada en Google: <APP_URL>/api/v1/public/demo/google/callback
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect_uri' => env('GOOGLE_REDIRECT_URI', rtrim((string) env('APP_URL', 'http://localhost:8000'), '/').'/api/v1/public/demo/google/callback'),
+    ],
 ];

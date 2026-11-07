@@ -12,6 +12,9 @@ use Laravel\Sanctum\PersonalAccessToken as SanctumToken;
  * La tabla users tiene RLS: solo deja ver al propio usuario (app.user_id).
  * Al encontrar un token válido fijamos app.user_id con su dueño para que
  * Sanctum pueda cargar el usuario.
+ *
+ * Inactividad: si el token no se usó en los últimos escudo.auth.idle_minutes, se borra y la sesión se cierra (la
+ * persona vuelve a ingresar con contraseña y verificación). Así un navegador olvidado abierto no deja el panel abierto.
  */
 class PersonalAccessToken extends SanctumToken
 {
@@ -20,6 +23,14 @@ class PersonalAccessToken extends SanctumToken
     public static function findToken($token)
     {
         $found = parent::findToken($token);
+
+        $idle = (int) config('escudo.auth.idle_minutes');
+        $lastUse = $found?->last_used_at ?? $found?->created_at;
+        if ($found !== null && $idle > 0 && $lastUse !== null && $lastUse->lt(now()->subMinutes($idle))) {
+            $found->delete();
+
+            return null;
+        }
 
         if ($found !== null) {
             DbContext::setUser($found->tokenable_id);

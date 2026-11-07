@@ -27,7 +27,10 @@ class PublicSiteController extends Controller
         if ($bar && (empty($bar['active']) || (! empty($bar['until']) && $bar['until'] < now('America/Lima')->toDateString()))) {
             $settings['announcement_bar'] = null;
         }
-        // Analítica: se carga solo con consentimiento (Parte 2). Correo de ventas: interno, recibe los avisos de solicitudes.
+        // Google: la verificación va como meta en el HTML y el ID de Analytics se carga solo si la persona aceptó las
+        // cookies analíticas. Correo de ventas: interno, recibe los avisos de solicitudes.
+        $ids = is_array($settings['analytics_ids'] ?? null) ? $settings['analytics_ids'] : (json_decode((string) ($settings['analytics_ids'] ?? ''), true) ?: []);
+        $settings['google'] = ['verification' => $settings['search_console_verification'] ?? null, 'ga4' => $ids['ga4'] ?? null];
         unset($settings['analytics_ids'], $settings['search_console_verification'], $settings['sales_email']);
 
         $menu = SiteMenuController::headerItems();

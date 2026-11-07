@@ -23,7 +23,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * Reglas (RN-WEB-41, máquina de estados 40): borrador → aprobado → publicado ⇄ oculto.
  * Aprobar exige la autorización escrita del cliente (archivo) o la marca «Ejemplo». Retirar la autorización lo
  * oculta al momento. La autorización nunca sale por la web pública.
- * La galería de imágenes (success_story_media) llega con la biblioteca de medios.
+ * Galería (portafolio, RN-WEB-83): imágenes de la biblioteca de medios con leyenda y orden (success_story_media).
+ *  GET/PUT /internal/site/success-stories/{id}/gallery
  */
 class SuccessStoriesController extends Controller
 {
@@ -66,7 +67,63 @@ class SuccessStoriesController extends Controller
             [$slug]
         ) ?? throw ApiProblem::notFound('El caso no existe o aún no se publica.');
 
-        return response()->json(['data' => $this->decode($row)])->header('Cache-Control', 'public, max-age=60');
+        $data = $this->decode($row);
+        $id = DB::connection('platform')->selectOne('select id from success_stories where slug = ? and deleted_at is null', [$slug])->id;
+        $data['gallery'] = array_map(fn ($g) => (array) $g, DB::connection('platform')->select(
+            "select m.file_id, m.alt_text, m.width, m.height, g.caption, m.is_example
+               from success_story_media g join site_media m on m.id = g.media_id and m.deleted_at is null and m.kind = 'image'
+              where g.success_story_id = ? and g.deleted_at is null order by g.sort_order",
+            [$id]
+        ));
+
+        return response()->json(['data' => $data])->header('Cache-Control', 'public, max-age=60');
+    }
+
+    // ---------------------------------------------------------------- Galería
+
+    public function gallery(string $id): JsonResponse
+    {
+        $this->find($id);
+
+        return response()->json(['data' => DB::connection('platform')->select(
+            "select g.media_id, g.caption, m.file_id, m.title, m.alt_text, m.width, m.height
+               from success_story_media g join site_media m on m.id = g.media_id and m.deleted_at is null
+              where g.success_story_id = ? and g.deleted_at is null order by g.sort_order",
+            [$id]
+        )]);
+    }
+
+    /** Reemplaza la galería completa (en el orden enviado). Solo imágenes de la biblioteca, con texto alternativo. */
+    public function saveGallery(Request $request, string $id, AccountsService $accounts): Response
+    {
+        $this->find($id);
+        $d = $request->validate([
+            'items' => ['present', 'array', 'max:12'],
+            'items.*.media_id' => ['required', 'uuid', 'distinct'],
+            'items.*.caption' => ['nullable', 'string', 'max:200'],
+        ], self::MESSAGES + ['items.max' => 'Hasta 12 imágenes por caso.', 'items.*.media_id.distinct' => 'La imagen está repetida.']);
+        $ids = array_column($d['items'], 'media_id');
+        $ok = $ids ? DB::connection('platform')->select("select id from site_media where id = any(?::uuid[]) and kind = 'image' and deleted_at is null", ['{'.implode(',', $ids).'}']) : [];
+        if (count($ok) !== count($ids)) {
+            $this->fail('items', 'Solo se pueden agregar imágenes de la biblioteca de medios.');
+        }
+        $db = DB::connection('platform');
+        $actor = $request->user()->id;
+        $db->transaction(function () use ($db, $id, $d, $actor) {
+            $db->update('update success_story_media set deleted_at = now(), updated_by = ? where success_story_id = ? and deleted_at is null', [$actor, $id]);
+            foreach ($d['items'] as $i => $it) {
+                $db->insert(
+                    'insert into success_story_media (success_story_id, media_id, caption, sort_order, created_by, updated_by) values (?, ?, ?, ?, ?, ?)',
+                    [$id, $it['media_id'], ($it['caption'] ?? null) ?: null, $i, $actor, $actor]
+                );
+            }
+        });
+        foreach ($ids as $m) {
+            $db->select('select web_media_usages(?)', [$m]);   // actualiza «dónde se usa»
+        }
+        $accounts->audit($actor, 'success_story_gallery_updated', 'success_stories', $id, ['images' => count($ids)]);
+
+        return response()->noContent();
     }
 
     // ---------------------------------------------------------------- Panel

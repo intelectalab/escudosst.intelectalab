@@ -88,3 +88,26 @@ function authHeaders(string $token, ?string $companyId = null): array
         'X-Company-Id' => $companyId,
     ]);
 }
+
+// ---------------------------------------------------------------- Agenda de demos (varias pruebas)
+
+/** Un anfitrión que atiende todos los días de 09:00 a 12:00 y la agenda pública activa. */
+function demoSetup(): string
+{
+    $h = authHeaders(tokenFor(ADMIN_EMAIL));
+    $rules = array_map(fn ($d) => ['weekday' => $d, 'start_time' => '09:00', 'end_time' => '12:00'], range(1, 7));
+    $me = DB::connection('platform')->selectOne('select id from users where email = ?', [ADMIN_EMAIL])->id;
+    $host = test()->postJson('/api/v1/internal/site/demos/hosts', ['user_id' => $me, 'display_name' => 'Asesora Comercial', 'email' => 'asesora@escudo.test', 'rules' => $rules, 'max_per_day' => 5], $h)->assertCreated()->json('data.id');
+    test()->patchJson('/api/v1/internal/site/demos/settings', [
+        'public_booking_enabled' => true, 'duration_minutes' => 30, 'buffer_minutes' => 15, 'min_notice_hours' => 24, 'max_days_ahead' => 30,
+        'default_meeting_provider' => 'meet', 'reminder_24h' => true, 'reminder_1h' => true,
+    ], $h)->assertNoContent();
+
+    return $host;
+}
+
+function bookingForm(string $startsAt, array $extra = []): array
+{
+    return $extra + ['starts_at' => $startsAt, 'full_name' => 'Ana Visitante', 'email' => 'ana@visita.test', 'company_name' => 'Obras Ejemplo SAC',
+        'meeting_provider' => 'meet', 'privacy_consent' => true, 'recording_consent' => false];
+}

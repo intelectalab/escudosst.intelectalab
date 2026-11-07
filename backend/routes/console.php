@@ -93,3 +93,57 @@ Schedule::call(fn () => SystemPulse::schedulerBeat())->everyMinute()->name('escu
 
 // Accesos de soporte vencidos: se cierran solos (docs/05 §4.6).
 Schedule::call(fn () => app(SupportAccessService::class)->expire())->everyFifteenMinutes()->name('escudo:support-access-expire');
+
+/*
+| Copias de seguridad lógicas cifradas (docs/15 §9): base principal y médica, todos los días, y limpieza por retención.
+| Uso: php artisan escudo:backup [--target=main|medical]
+|      php artisan escudo:backup:decrypt archivo.dump.enc salida.dump --target=main   (para restaurar con pg_restore)
+*/
+Artisan::command('escudo:backup {--target=all : main, medical o all}', function (\App\Modules\SUS\Services\BackupService $backups) {
+    $target = (string) $this->option('target');
+    $targets = $target === 'all' ? array_keys(\App\Modules\SUS\Services\BackupService::TARGETS) : [$target];
+    foreach ($targets as $t) {
+        $id = $backups->run($t, 'schedule');
+        $run = \Illuminate\Support\Facades\DB::connection('platform')->selectOne('select status, size_bytes, error from backup_runs where id = ?', [$id]);
+        $run->status === 'ok' ? $this->info("{$t}: copia lista (".number_format($run->size_bytes / 1024, 1).' KB)') : $this->error("{$t}: falló — {$run->error}");
+    }
+    if ($target === 'all') {
+        $this->info('Copias vencidas borradas: '.$backups->prune());
+    }
+})->purpose('Copia de seguridad cifrada de las bases de datos');
+
+Artisan::command('escudo:backup:decrypt {input} {output} {--target=main}', function (\App\Modules\SUS\Services\BackupService $backups) {
+    $backups->decrypt($this->argument('input'), $this->argument('output'), (string) $this->option('target'));
+    $this->info('Descifrado. Restaura con: pg_restore --clean --if-exists -d <base> '.$this->argument('output'));
+})->purpose('Descifra un archivo de copia de seguridad para restaurarlo');
+
+Schedule::command('escudo:backup')
+    ->dailyAt(config('escudo.backups.daily_at'))
+    ->timezone('America/Lima')
+    ->withoutOverlapping()
+    ->name('escudo:backup');
+
+
+Artisan::command('escudo:newsletter:send', function (\App\Modules\WEB\Services\NewsletterService $newsletter) {
+    $this->info('Correos del boletín enviados: '.$newsletter->sendDue());
+})->purpose('Envía las ediciones del boletín programadas cuya hora ya llegó');
+
+Schedule::command('escudo:newsletter:send')->everyMinute()->withoutOverlapping()->name('escudo:newsletter:send');
+
+Artisan::command('escudo:analytics:daily', function () {
+    $this->info(\App\Modules\WEB\Http\Controllers\AnalyticsController::dailyMaintenance());
+})->purpose('Resume las métricas del día anterior');
+
+Schedule::command('escudo:analytics:daily')->dailyAt('00:15')->timezone('America/Lima')->withoutOverlapping()->name('escudo:analytics:daily');
+
+Artisan::command('escudo:demos:reminders', function (\App\Modules\WEB\Services\DemoService $demos) {
+    $this->info('Recordatorios de demo enviados: '.$demos->sendReminders());
+})->purpose('Envía los recordatorios del día anterior y de la hora previa de las demos confirmadas');
+
+Schedule::command('escudo:demos:reminders')->everyFiveMinutes()->withoutOverlapping()->name('escudo:demos:reminders');
+
+Artisan::command('escudo:crm:sync', function (\App\Modules\WEB\Services\CrmService $crm) {
+    $this->info('Envíos al CRM procesados: '.$crm->processDue());
+})->purpose('Envía al CRM los registros pendientes y reintenta los fallidos');
+
+Schedule::command('escudo:crm:sync')->everyMinute()->withoutOverlapping()->name('escudo:crm:sync');
