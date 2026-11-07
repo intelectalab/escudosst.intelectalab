@@ -55,6 +55,8 @@ export default function PaginasPage() {
         <p className="mt-3 text-xs text-muted">Las páginas iniciales vienen con un texto base tomado de la documentación. Revísalo antes de publicar.</p>
       </section>
 
+      {rows && <ComparisonCard rows={rows} />}
+
       <div className="flex justify-end">
         <Button variant="primary" icon="plus" onClick={() => setCreating(true)}>
           Nueva página
@@ -97,6 +99,72 @@ export default function PaginasPage() {
 
       {creating && <NewPageModal onClose={() => setCreating(false)} />}
     </div>
+  );
+}
+
+/** Comparativa «EscudoSST vs Excel y papel» (SCR-WEB-31): qué es, dónde sale y crearla con la estructura sugerida. */
+function ComparisonCard({ rows }: { rows: Row[] }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const page = rows.find((r) => r.page_type === "comparison" && r.slug === "comparativa");
+  if (page?.status === "published") return null;
+
+  // Tareas que pide la documentación (M-WEB, SCR-WEB-31). Las dos columnas las escribe el equipo.
+  const TASKS = ["IPERC", "Capacitaciones", "Entrega de EPP", "Inspecciones", "Expediente para SUNAFIL", "Alertas de vencimiento"];
+  async function create() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api<{ data: { id: string } }>("/internal/site/pages", {
+        method: "POST",
+        body: {
+          page_type: "comparison",
+          slug: "comparativa",
+          title: "EscudoSST vs Excel y papel",
+          summary: "Cómo cambia la gestión de SST al pasar de Excel y papel a EscudoSST, tarea por tarea.",
+          blocks: [
+            { type: "hero", eyebrow: "Comparativa", title: "EscudoSST vs Excel y papel", text: "" },
+            { type: "compare", title: "Tarea por tarea", manual_label: "Con Excel y papel", escudo_label: "Con EscudoSST", items: TASKS.map((task) => ({ task, manual: "", escudo: "" })) },
+            { type: "cta", title: "Pruébalo con tu propia empresa", text: "", button: "trial" },
+          ],
+        },
+      });
+      router.push(`/plataforma/sitio/paginas/${r.data.id}`);
+    } catch (e) {
+      setError(e instanceof ApiError ? (e.errors ? Object.values(e.errors)[0]?.[0] : e.message) ?? e.message : "No se pudo crear.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-4 rounded-2xl border border-brand/30 bg-brand-soft/40 p-5 sm:flex-row sm:items-start">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand text-white">
+        <Icon name="swap" size={20} />
+      </span>
+      <div className="min-w-0 flex-1 space-y-1.5 text-sm">
+        <b className="block font-display text-[15px]">Comparativa «EscudoSST vs Excel y papel» · {page ? "en borrador" : "aún no creada"}</b>
+        <p className="text-muted">
+          Una página en <b>/comparativa</b> que muestra, tarea por tarea, cómo se lleva hoy la SST con Excel y papel y cómo se hace con EscudoSST. Sirve para que una empresa entienda rápido
+          el cambio. No lleva precios ni nombra a otras empresas.
+        </p>
+        <p className="text-muted">
+          {page
+            ? "Ábrela, completa las dos columnas de cada tarea, mira la vista previa y publícala. Al publicarla, el pie del sitio la enlaza solo."
+            : "Al crearla viene armada con un encabezado, una tabla con 6 tareas (IPERC, capacitaciones, EPP, inspecciones, expediente SUNAFIL y alertas) y un botón final. Tú escribes el texto de cada columna."}
+        </p>
+        {error && <p className="font-semibold text-bad">{error}</p>}
+      </div>
+      {page ? (
+        <Link href={`/plataforma/sitio/paginas/${page.id}`} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-strong">
+          <Icon name="pen" size={16} /> Completar y publicar
+        </Link>
+      ) : (
+        <Button variant="primary" icon="plus" loading={busy} onClick={create}>
+          Crear la comparativa
+        </Button>
+      )}
+    </section>
   );
 }
 

@@ -83,6 +83,44 @@ export default function CalculadoraAhorroPage() {
           ["people", "3. Interesados", "Quien deja su correo recibe el resultado y entra a «Interesados»."],
         ]}
       />
+      <section className="form-section space-y-3 text-sm">
+        <h2 className="font-display text-base font-bold">¿Para qué sirve y cómo la ve el visitante?</h2>
+        <p className="text-muted">
+          Es una herramienta gratuita del sitio para atraer empresas: la persona escribe cuántos trabajadores y sedes tiene, cuántos registros de SST hace al mes (capacitaciones,
+          entregas de EPP, inspecciones, charlas) y cuántas horas le dedica a armar todo a mano. Al presionar «Calcular» ve cuántas horas al mes podría ahorrar con EscudoSST y, si
+          quieres, cuánto equivale en soles. Junto al resultado se muestran tus supuestos y el aviso «estimación referencial». Si deja su correo, le llega el detalle y entra a{" "}
+          <b>Interesados</b>.
+        </p>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <div className="rounded-xl bg-bg p-3">
+            <b className="block">Minutos ahorrados por registro</b>
+            <span className="text-muted">
+              Cuánto tiempo menos toma un registro en el sistema que en papel/Excel. Para sacarlo: mide cuánto demora hoy llenar, firmar, escanear y archivar un registro, y cuánto en
+              EscudoSST; la diferencia es el valor. Ej.: si a mano son 15 min y en el sistema 5, pon 10.
+            </span>
+          </div>
+          <div className="rounded-xl bg-bg p-3">
+            <b className="block">Reducción de horas manuales (%)</b>
+            <span className="text-muted">
+              Qué parte del tiempo que hoy se va en buscar papeles, consolidar Excel y armar reportes deja de hacerse. Usa un valor prudente que puedas explicar (por ejemplo, el de una
+              prueba con un cliente). Si no lo tienes medido, no publiques todavía.
+            </span>
+          </div>
+          <div className="rounded-xl bg-bg p-3">
+            <b className="block">Costo por hora (opcional)</b>
+            <span className="text-muted">
+              Un costo referencial de la hora del responsable de SST, para mostrar el ahorro en soles. Si lo dejas vacío, la calculadora muestra solo horas (más seguro si no tienes un
+              dato de respaldo).
+            </span>
+          </div>
+        </div>
+        <p className="text-muted">
+          Mientras no la publiques, la página pública dice «disponible pronto» y no aparece en el pie del sitio. Al publicarla, el pie la enlaza solo.{" "}
+          <a href="/herramientas/calculadora-ahorro" target="_blank" className="font-semibold text-brand-strong hover:underline">
+            Ver la página pública
+          </a>
+        </p>
+      </section>
       {error && <p className="rounded-lg bg-bad-soft px-4 py-3 text-sm font-semibold text-bad">{error}</p>}
       {d && (
         <>

@@ -151,7 +151,15 @@ class SitePagesController extends Controller
 
     public function publish(Request $request, string $id, AccountsService $accounts): Response
     {
-        $this->find($id);
+        $p = $this->find($id);
+        // Tabla comparativa: cada fila publicada necesita sus dos columnas escritas.
+        foreach (json_decode($p->blocks ?? '[]', true) as $i => $b) {
+            foreach (($b['type'] ?? '') === 'compare' ? ($b['items'] ?? []) : [] as $row) {
+                if (trim((string) ($row['manual'] ?? '')) === '' || trim((string) ($row['escudo'] ?? '')) === '') {
+                    $this->fail("blocks.{$i}.items", "Completa las dos columnas de «{$row['task']}» (o quita la fila) antes de publicar.");
+                }
+            }
+        }
         $this->asUser($request->user()->id, function ($db) use ($id) {
             try {
                 $db->select('select web_publish_page(?)', [$id]);
@@ -260,7 +268,7 @@ class SitePagesController extends Controller
                     'task' => mb_substr(trim((string) ($x['task'] ?? '')), 0, 80),
                     'manual' => mb_substr(trim((string) ($x['manual'] ?? '')), 0, 200),
                     'escudo' => mb_substr(trim((string) ($x['escudo'] ?? '')), 0, 200),
-                ], $b['items'] ?? []), fn ($x) => $x['task'] !== '' && $x['manual'] !== '' && $x['escudo'] !== '')), 0, 15);
+                ], $b['items'] ?? []), fn ($x) => $x['task'] !== '')), 0, 15);   // en borrador se guardan aunque falte texto
             }
             if ($type === 'faq') {
                 $clean['items'] = array_values(array_filter(array_map(fn ($x) => [

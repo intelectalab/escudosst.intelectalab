@@ -34,8 +34,16 @@ class PublicSiteController extends Controller
         unset($settings['analytics_ids'], $settings['search_console_verification'], $settings['sales_email']);
 
         $menu = SiteMenuController::headerItems();
+        // Páginas opcionales que el pie enlaza solo cuando ya están publicadas.
+        $optional = [
+            'comparison' => (bool) DB::connection('platform')->selectOne("select 1 as x from site_pages where slug = 'comparativa' and page_type = 'comparison' and status = 'published' and deleted_at is null"),
+            'savings_calculator' => (bool) DB::connection('platform')->selectOne(
+                "select 1 as x from savings_calculator_settings where singleton and status = 'published' and deleted_at is null
+                    and assumptions_json ->> 'minutes_saved_per_record' is not null and assumptions_json ->> 'manual_hours_reduction_pct' is not null"
+            ),
+        ];
 
-        return response()->json(['data' => ['settings' => $settings, 'products' => $products, 'menu' => $menu]])
+        return response()->json(['data' => ['settings' => $settings, 'products' => $products, 'menu' => $menu, 'optional' => $optional]])
             ->header('Cache-Control', 'public, max-age=60');
     }
 

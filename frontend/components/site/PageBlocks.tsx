@@ -134,7 +134,7 @@ function BlockView({ b, modules, alt }: { b: Block; modules: Mod[]; alt: boolean
               <span className="px-5 py-3 text-[var(--site-text-2)]">{b.manual_label}</span>
               <span className="px-5 py-3 text-[var(--site-navy-title)]">{b.escudo_label}</span>
             </div>
-            {b.items.map((r) => (
+            {b.items.filter((r) => r.manual && r.escudo).map((r) => (
               <div key={r.task} className="grid grid-cols-1 gap-2 border-t border-[var(--site-border)] p-4 first:border-t-0 @3xl:grid-cols-[1fr_1.3fr_1.3fr] @3xl:gap-0 @3xl:p-0">
                 <b className="text-[var(--site-navy-title)] @3xl:px-5 @3xl:py-4">{r.task}</b>
                 <p className="flex items-start gap-2 text-[15px] text-[var(--site-text-2)] @3xl:px-5 @3xl:py-4">

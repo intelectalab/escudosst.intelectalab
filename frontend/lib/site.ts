@@ -27,7 +27,13 @@ export type SiteSettings = {
 
 export type MenuItem = { label: string; url: string };
 
-export type SiteData = { settings: SiteSettings; products: { name: string; description: string | null; url: string | null }[]; menu?: MenuItem[] };
+export type SiteData = {
+  settings: SiteSettings;
+  products: { name: string; description: string | null; url: string | null }[];
+  menu?: MenuItem[];
+  /** Páginas opcionales ya publicadas (el pie las enlaza solo entonces). */
+  optional?: { comparison: boolean; savings_calculator: boolean };
+};
 
 /** Dirección pública (para el navegador) de un archivo de marca subido en el panel: logo o favicon. */
 export function assetUrl(id: string | null | undefined): string | null {

@@ -104,7 +104,14 @@ export function SiteFooter({ site }: { site: SiteData }) {
           </div>
         </div>
 
-        {LINK_GROUPS.map((g) => (
+        {LINK_GROUPS.map((g) => ({
+          ...g,
+          links: [
+            ...g.links,
+            ...((g.title === "Producto" && site.optional?.comparison ? [["/comparativa", "EscudoSST vs Excel y papel"]] : []) as [string, string][]),
+            ...((g.title === "Recursos" && site.optional?.savings_calculator ? [["/herramientas/calculadora-ahorro", "Calculadora de ahorro"]] : []) as [string, string][]),
+          ],
+        })).map((g) => (
           <div key={g.title}>
             <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-white/60">{g.title}</h2>
             <ul className="space-y-2 text-sm">

@@ -61,6 +61,38 @@ export default function ResenasPage() {
           ["star", "3. Actívala", "Elige la calificación mínima y cuántas mostrar. Se actualizan solas."],
         ]}
       />
+      <section className="form-section space-y-3 text-sm">
+        <h2 className="font-display text-base font-bold">¿Para qué sirve y qué necesito?</h2>
+        <p className="text-muted">
+          Muestra en el sitio las opiniones que tus clientes dejaron en el perfil de Google de la empresa (el que sale en Google Maps). Generan confianza porque son reales y llevan el
+          sello «Reseñas de Google». Se ven en la <b>portada</b> y en <b>Casos de éxito</b>; si no hay reseñas, ese bloque simplemente no aparece.
+        </p>
+        <ol className="list-inside list-decimal space-y-2 text-muted">
+          <li>
+            <b className="text-fg">Tener un perfil de Google Business</b> con reseñas. Si aún no lo tienes, créalo en{" "}
+            <a href="https://business.google.com/" target="_blank" rel="noopener" className="font-semibold text-brand-strong hover:underline">
+              business.google.com
+            </a>{" "}
+            y pide a tus clientes que dejen su opinión.
+          </li>
+          <li>
+            <b className="text-fg">La llave de Google (la hace el equipo técnico, una sola vez):</b> en Google Cloud se crea un proyecto, se activa «Places API (New)» y se genera una
+            clave restringida solo a esa API. Esa clave se guarda en el servidor, nunca en este panel. Google puede cobrar si se pasa del uso gratuito; leer 5 reseñas una vez al día
+            es un uso muy bajo.
+          </li>
+          <li>
+            <b className="text-fg">El ID del lugar:</b> abre el{" "}
+            <a href="https://developers.google.com/maps/documentation/places/web-service/place-id" target="_blank" rel="noopener" className="font-semibold text-brand-strong hover:underline">
+              buscador de Place ID de Google
+            </a>
+            , escribe el nombre de tu empresa como aparece en Google Maps y copia el código que empieza con «ChIJ». Pégalo abajo.
+          </li>
+          <li>
+            <b className="text-fg">Elige qué mostrar y actívalo:</b> calificación mínima (por ejemplo, desde 4 estrellas) y cuántas. No se pueden editar ni elegir una por una: así lo
+            exige Google y así son creíbles.
+          </li>
+        </ol>
+      </section>
       {error && <p className="rounded-lg bg-bad-soft px-4 py-3 text-sm font-semibold text-bad">{error}</p>}
       {res && !res.data.key_ready && (
         <p className="rounded-lg bg-amber-soft px-4 py-3 text-sm text-amber-ink">

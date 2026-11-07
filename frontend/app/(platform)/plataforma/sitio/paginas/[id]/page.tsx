@@ -405,7 +405,14 @@ function BlockEditor({
             {field("manual_label", "Columna de lo manual", 40)}
             {field("escudo_label", "Columna de EscudoSST", 40)}
           </div>
-          <p className="text-xs text-muted">Una fila por tarea. Describe lo que hace el sistema, sin precios, sin cifras que no puedas respaldar y sin nombrar a otras empresas.</p>
+          <div className="rounded-xl bg-brand-soft/50 px-4 py-3 text-xs text-fg">
+            <b className="block">Qué escribir en cada fila</b>
+            <span className="text-muted">
+              <b>Tarea:</b> una obligación de SST (IPERC, capacitaciones, EPP…). <b>Columna manual:</b> cómo se hace hoy con Excel y papel y qué problema trae (ej.: «Listas en papel
+              que se pierden; difícil probar quién asistió»). <b>Columna EscudoSST:</b> cómo lo resuelve el sistema (ej.: «Registro con firma y fecha; se encuentra en segundos»).
+              Sin precios, sin cifras que no puedas probar y sin nombrar a otras empresas. Puedes guardar filas a medias; para publicar, cada fila debe tener sus dos columnas.
+            </span>
+          </div>
           <div className="space-y-3">
             {b.items.map((r, k) => (
               <div key={k} className="space-y-2 rounded-xl bg-bg/60 p-3">
