@@ -1,12 +1,13 @@
 "use client";
 
-// Página de cada módulo. Mientras el módulo no se construye muestra «En preparación»;
-// si no está en el plan, la pantalla «Bloqueado por plan» (docs/07-pantallas-y-ux.md §3.7).
+// Página de cada módulo: sus registros (motor común) o, si no está en el plan, la pantalla
+// «Bloqueado por plan» (docs/07-pantallas-y-ux.md §3.7).
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useApp } from "@/components/AppContext";
 import { availableIn, PLAN_NAMES } from "@/lib/menu";
+import { ModuleRecords } from "@/components/records/ModuleRecords";
 
 export default function ModulePage() {
   const { code } = useParams<{ code: string }>();
@@ -59,20 +60,14 @@ export default function ModulePage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-5">
       {m.mode === "read_only" && (
         <div role="status" className="rounded-lg bg-amber-soft px-4 py-3 text-amber-ink">
           Este módulo está en solo lectura. Tus datos se conservan.
         </div>
       )}
       {header}
-      <Card center>
-        <div className="text-4xl" aria-hidden="true">
-          🛠️
-        </div>
-        <h2 className="text-lg font-semibold">Pantalla en preparación</h2>
-        <p className="text-muted">Este módulo está incluido en tu plan y se construirá en las próximas etapas.</p>
-      </Card>
+      <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
     </div>
   );
 }

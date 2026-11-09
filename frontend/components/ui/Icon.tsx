@@ -29,6 +29,7 @@ const PATHS: Record<string, string> = {
   play: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM10 8.5v7l5.5-3.5z",
   swap: "M7 7h12l-3-3M17 17H5l3 3",
   close: "M6 6l12 12M18 6 6 18",
+  trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
   history: "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2",
   shield: "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z",
   bell: "M6 16V11a6 6 0 1 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0",

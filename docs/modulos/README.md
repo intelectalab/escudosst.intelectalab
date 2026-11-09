@@ -6,6 +6,15 @@ Planes: E Esencial · P Profesional · C Corporativo · + Complemento · K Consu
 
 Verificación: `python3 tools/modulos/verificar_modulos.py`.
 
+## Motor común de registros
+
+Cada módulo de la empresa abre en `/m/<código>` con una pestaña por tabla de su §5: lista con búsqueda y filtros, y un formulario para crear, editar y archivar. No hay una pantalla escrita a mano por tabla:
+
+- `database/tools/build_registry.py` lee `database/catalogs/model.json` (campos, tipos, opciones y referencias), `database/catalogs/labels_es.json` (nombres en español) y el §5 de cada ficha, y genera `backend/resources/registry/registry.json`. Si cambia el modelo o un nombre, se vuelve a ejecutar.
+- La API `/api/v1/records/{módulo}/{tabla}` (`backend/app/Modules/REC`) valida contra ese catálogo, respeta el plan (feature flags), los permisos `{módulo}.{tabla}.{acción}` y RLS, cifra los campos `[CIFRADO EN APLICACIÓN]` y deja cada cambio en `audit_logs`.
+- Las reglas propias de una tabla van en `backend/app/Modules/REC/Rules` (hoy: sedes, áreas, puestos y turnos de TEN; trabajadores y asignaciones de TRB).
+- Los flujos especiales de cada ficha (cálculos, PDF, firmas, plazos y alertas) se agregan encima, módulo por módulo.
+
 ## Grupo 1. Núcleo de la plataforma
 
 | Código | Número | Nombre | Plan | Fase | Especificación |
