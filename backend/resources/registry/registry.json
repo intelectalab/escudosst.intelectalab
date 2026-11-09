@@ -3488,7 +3488,7 @@
    "soft_delete": true,
    "stamps": true,
    "updated_at": true,
-   "label": "code",
+   "label": "description",
    "order": 1,
    "uniques": [],
    "fields": [
@@ -3516,7 +3516,8 @@
      "name": "description",
      "label": "Descripción",
      "type": "longtext",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "goal",
@@ -5358,7 +5359,7 @@
    "soft_delete": true,
    "stamps": true,
    "updated_at": true,
-   "label": "code",
+   "label": "hazard",
    "order": 0,
    "uniques": [
     [
@@ -5668,6 +5669,7 @@
     {
      "name": "current_version_id",
      "label": "Versión vigente",
+     "readonly": true,
      "type": "ref",
      "ref": "iperc_versions"
     },
@@ -5680,6 +5682,7 @@
     {
      "name": "next_review_on",
      "label": "Próxima revisión",
+     "readonly": true,
      "type": "date",
      "list": true
     },
@@ -5734,12 +5737,14 @@
     {
      "name": "version_number",
      "label": "N.º de versión",
+     "readonly": true,
      "type": "int",
      "required": true
     },
     {
      "name": "status",
      "label": "Estado",
+     "readonly": true,
      "type": "enum",
      "options": [
       {
@@ -5778,8 +5783,7 @@
     {
      "name": "participants",
      "label": "Participantes",
-     "type": "json",
-     "readonly": true
+     "type": "json"
     },
     {
      "name": "criteria_snapshot",
@@ -5790,40 +5794,47 @@
     {
      "name": "prepared_by",
      "label": "Elaborado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "prepared_at",
      "label": "Elaborado el",
+     "readonly": true,
      "type": "datetime",
      "list": true
     },
     {
      "name": "reviewed_by",
      "label": "Revisado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "approved_by",
      "label": "Aprobado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "approved_at",
      "label": "Aprobado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
      "name": "effective_on",
      "label": "Vigente desde",
+     "readonly": true,
      "type": "date"
     },
     {
      "name": "obsoleted_at",
      "label": "Obsoleto desde",
+     "readonly": true,
      "type": "datetime"
     }
    ]
@@ -5857,6 +5868,7 @@
     {
      "name": "row_number",
      "label": "N.º de fila",
+     "readonly": true,
      "type": "int",
      "required": true,
      "list": true
@@ -5900,14 +5912,12 @@
      "name": "hazard",
      "label": "Peligro",
      "type": "text",
-     "required": true,
      "list": true
     },
     {
      "name": "risk",
      "label": "Riesgo",
-     "type": "text",
-     "required": true
+     "type": "text"
     },
     {
      "name": "consequence",
@@ -5922,14 +5932,12 @@
     {
      "name": "probability_value",
      "label": "Probabilidad",
-     "type": "int",
-     "required": true
+     "type": "int"
     },
     {
      "name": "probability_detail",
      "label": "Detalle de probabilidad",
-     "type": "json",
-     "readonly": true
+     "type": "json"
     },
     {
      "name": "severity_value",
@@ -5946,12 +5954,14 @@
     {
      "name": "risk_level",
      "label": "Nivel de riesgo",
+     "readonly": true,
      "type": "text",
      "required": true
     },
     {
      "name": "is_significant",
      "label": "Significativo",
+     "readonly": true,
      "type": "bool",
      "default": false
     },
@@ -5974,6 +5984,7 @@
     {
      "name": "residual_level",
      "label": "Nivel residual",
+     "readonly": true,
      "type": "text"
     },
     {
@@ -5985,12 +5996,14 @@
     {
      "name": "ai_assisted",
      "label": "Asistido por IA",
+     "readonly": true,
      "type": "bool",
      "default": false
     },
     {
      "name": "ai_suggestion_id",
      "label": "Sugerencia de IA",
+     "readonly": true,
      "type": "ref",
      "ref": "ai_suggestions"
     },
@@ -6111,6 +6124,7 @@
     {
      "name": "corrective_action_id",
      "label": "Acción correctiva",
+     "readonly": true,
      "type": "ref",
      "ref": "corrective_actions"
     },
@@ -8408,7 +8422,7 @@
    "soft_delete": true,
    "stamps": true,
    "updated_at": true,
-   "label": "code",
+   "label": "description",
    "order": 1,
    "uniques": [],
    "fields": [
@@ -8494,7 +8508,8 @@
      "name": "description",
      "label": "Descripción",
      "type": "longtext",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "location_text",
@@ -15396,7 +15411,7 @@
    "soft_delete": true,
    "stamps": true,
    "updated_at": true,
-   "label": "code",
+   "label": "description",
    "order": 1,
    "uniques": [
     [
@@ -15414,7 +15429,8 @@
     {
      "name": "description",
      "label": "Descripción",
-     "type": "longtext"
+     "type": "longtext",
+     "list": true
     },
     {
      "name": "discount_type",
@@ -16479,7 +16495,7 @@
    "soft_delete": true,
    "stamps": true,
    "updated_at": true,
-   "label": "code",
+   "label": "description",
    "order": 0,
    "uniques": [
     [
@@ -16601,7 +16617,8 @@
      "name": "description",
      "label": "Descripción",
      "type": "longtext",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "activity_at_time",

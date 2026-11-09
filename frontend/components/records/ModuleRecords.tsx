@@ -72,7 +72,7 @@ export function ModuleRecords({ code, readOnly }: { code: string; readOnly: bool
   );
 }
 
-function ResourcePanel({ code, res, readOnly }: { code: string; res: RecordResource; readOnly: boolean }) {
+export function ResourcePanel({ code, res, readOnly }: { code: string; res: RecordResource; readOnly: boolean }) {
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -231,20 +231,23 @@ function Cell({ f, row }: { f: RecordField; row: RecordRow }) {
 
 type Values = Record<string, unknown>;
 
-function RecordForm({
+export function RecordForm({
   code,
   res,
   row,
   readOnly,
   onClose,
   onSaved,
+  hide = [],
 }: {
   code: string;
   res: RecordResource;
   row: RecordRow | null;
   readOnly: boolean;
   onClose: () => void;
-  onSaved: (msg: string) => void;
+  onSaved: (msg: string, saved?: RecordRow) => void;
+  /** Campos que no se muestran en este formulario (los maneja otra pantalla). */
+  hide?: string[];
 }) {
   const [full, setFull] = useState<RecordRow | null>(row);
   const [values, setValues] = useState<Values>(() => initial(res, null));
@@ -265,8 +268,8 @@ function RecordForm({
   const isNew = row === null;
   const foreign = !!full && res.hybrid && !full.own;
   const canEdit = !readOnly && !foreign && (isNew ? res.can.create : res.can.update);
-  const editable = res.fields.filter((f) => !f.readonly && f.type !== "json");
-  const computed = res.fields.filter((f) => (f.readonly || f.type === "json") && !isNew);
+  const editable = res.fields.filter((f) => !f.readonly && f.type !== "json" && !hide.includes(f.name));
+  const computed = res.fields.filter((f) => (f.readonly || f.type === "json") && !isNew && !hide.includes(f.name));
 
   const save = async () => {
     setBusy(true);
@@ -280,9 +283,8 @@ function RecordForm({
         if (!isNew && full && same(f, v, full[f.name])) continue;
         body[f.name] = f.type === "tags" ? String(v ?? "").split(",").map((s) => s.trim()).filter(Boolean) : v === "" ? null : v;
       }
-      if (isNew) await records.create(code, res.table, body);
-      else await records.update(code, res.table, full!.id, body);
-      onSaved(isNew ? "Registro creado." : "Cambios guardados.");
+      const saved = isNew ? await records.create(code, res.table, body) : await records.update(code, res.table, full!.id, body);
+      onSaved(isNew ? "Registro creado." : "Cambios guardados.", saved.data);
     } catch (e) {
       const err = e as ApiError;
       setErrors(err.errors ?? {});
@@ -491,7 +493,7 @@ function Input({
 }
 
 /** Selector con búsqueda para una referencia (sede, área, trabajador…). */
-function RefSelect({
+export function RefSelect({
   code,
   table,
   f,

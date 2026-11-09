@@ -190,6 +190,12 @@ final class RecordsService
             if (Registry::softDelete($target)) {
                 $sql .= ' and r.deleted_at is null';
             }
+            // Catálogo híbrido: si la empresa tiene su propia copia (mismo código), se ofrece solo esa.
+            $targetRes = Registry::data()['resources'][$target] ?? null;
+            if ($targetRes && $targetRes['hybrid'] && Registry::field($targetRes, 'code')) {
+                $sql .= " and not (r.company_id is null and exists (select 1 from \"{$target}\" o where o.company_id is not null and o.code = r.code"
+                    .(Registry::softDelete($target) ? ' and o.deleted_at is null' : '').'))';
+            }
         }
         if ($id !== null) {
             if (! Str::isUuid($id)) {
@@ -453,6 +459,12 @@ final class RecordsService
                 return in_array($v, array_column($f['options'], 'value'), true) ? null : "Elige una opción válida en «{$label}».";
             case 'ref':
                 return is_string($v) && Str::isUuid($v) ? null : "Elige una opción válida en «{$label}».";
+            case 'json':
+                if (! is_array($v)) {
+                    return "«{$label}» tiene un formato no válido.";
+                }
+
+                return strlen((string) json_encode($v)) > 20000 ? "«{$label}» es demasiado grande." : null;
             case 'tags':
                 if (! is_array($v)) {
                     return "«{$label}» debe ser una lista.";
@@ -500,6 +512,7 @@ final class RecordsService
             }
             $parts[] = match ($f['type']) {
                 'bool' => [$c, '?::boolean', [$v ? 'true' : 'false']],
+                'json' => [$c, '?::jsonb', [json_encode($v, JSON_UNESCAPED_UNICODE)]],
                 'tags' => [$c, "array(select json_array_elements_text(?::json))::{$f['item']}[]", [json_encode($v, JSON_UNESCAPED_UNICODE)]],
                 default => [$c, '?', [$v]],
             };

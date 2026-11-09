@@ -25,13 +25,22 @@ SYSTEM = {"id", "company_id", "created_at", "created_by", "updated_at", "updated
 HIDDEN_REFS = {"files", "signature_requests", "signatures", "devices", "sync_batches", "accounts", "companies", "ai_requests", "memberships", "bulk_imports"}
 # Campos que calcula el sistema: se muestran pero no se editan.
 READONLY = {"areas.depth", "workers.document_last4", "workers.activated_at", "workers.whatsapp_opt_in_at",
-            "workers.full_name"}
+            "workers.full_name",
+            # IPERC: lo calcula el sistema o lo fija el flujo de aprobación (M-IPC RN-IPC-01, 02, 06, 08).
+            "iperc_matrices.current_version_id", "iperc_matrices.next_review_on",
+            "iperc_versions.version_number", "iperc_versions.status", "iperc_versions.prepared_by", "iperc_versions.prepared_at",
+            "iperc_versions.reviewed_by", "iperc_versions.approved_by", "iperc_versions.approved_at", "iperc_versions.effective_on",
+            "iperc_versions.obsoleted_at", "iperc_rows.row_number", "iperc_rows.risk_level", "iperc_rows.is_significant",
+            "iperc_rows.residual_level", "iperc_rows.ai_assisted", "iperc_rows.ai_suggestion_id", "iperc_controls.corrective_action_id"}
+# Datos estructurados (jsonb) que sí se editan desde un formulario propio.
+WRITABLE_JSON = {"iperc_rows.probability_detail", "iperc_versions.participants"}
 # Obligatorios en la base pero que calcula una regla si no se envían.
-COMPUTED = {"work_shifts.hours_per_day", "areas.depth"}
+COMPUTED = {"work_shifts.hours_per_day", "areas.depth", "iperc_rows.probability_value",
+            "iperc_rows.hazard", "iperc_rows.risk"}
 LONG_TEXT = re.compile(r"(^|_)(description|notes|note|comment|comments|summary|functions|observations|content|body|"
                        r"details|detail|justification|reason|instructions|scope|recommendations|conclusions|text|"
                        r"statement|commitments|methodology|findings|lessons|answer|explanation|purpose)$")
-LABEL_COLS = ["name", "full_name", "title", "code", "hazard", "question", "description", "subject", "label", "item"]
+LABEL_COLS = ["name", "full_name", "title", "hazard", "question", "subject", "label", "item", "description", "code"]
 
 
 def load(path):
@@ -120,7 +129,8 @@ def main():
                 f["item"] = base[:-2]
             elif base == "jsonb":
                 f["type"] = "json"
-                f["readonly"] = True
+                if f'{t["table"]}.{name}' not in WRITABLE_JSON:
+                    f["readonly"] = True
             else:
                 continue
             if c["encrypted"]:

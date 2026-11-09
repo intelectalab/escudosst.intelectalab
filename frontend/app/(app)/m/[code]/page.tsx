@@ -8,6 +8,7 @@ import { useParams } from "next/navigation";
 import { useApp } from "@/components/AppContext";
 import { availableIn, PLAN_NAMES } from "@/lib/menu";
 import { ModuleRecords } from "@/components/records/ModuleRecords";
+import { IpercModule } from "@/components/ipc/IpercModule";
 
 export default function ModulePage() {
   const { code } = useParams<{ code: string }>();
@@ -67,7 +68,7 @@ export default function ModulePage() {
         </div>
       )}
       {header}
-      <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+      {m.code === "IPC" ? <IpercModule readOnly={m.mode === "read_only"} /> : <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />}
     </div>
   );
 }

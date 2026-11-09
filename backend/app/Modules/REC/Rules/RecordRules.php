@@ -18,6 +18,10 @@ abstract class RecordRules
         'work_shifts' => TenRules::class,
         'workers' => WorkerRules::class,
         'worker_assignments' => WorkerRules::class,
+        'iperc_matrices' => IpercRules::class,
+        'iperc_versions' => IpercRules::class,
+        'iperc_rows' => IpercRules::class,
+        'iperc_controls' => IpercRules::class,
     ];
 
     public static function for(string $table): ?self
