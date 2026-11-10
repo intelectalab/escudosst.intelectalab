@@ -87,6 +87,7 @@ LIST = {
     "program_activities": ["code", "title", "goal_quantity", "executed_quantity", "progress_pct", "status"],
     "baseline_items": ["lineament_name", "item_code", "question", "result"],
     "sst_events": ["code", "event_type", "occurred_at", "site_id", "notification_deadline_at", "status"],
+    "risk_map_markers": ["marker_type", "label", "x_pct", "y_pct", "risk_map_id"],
 }
 # Datos estructurados (jsonb) que sí se editan desde un formulario propio.
 WRITABLE_JSON = {"iperc_rows.probability_detail", "iperc_versions.participants"}

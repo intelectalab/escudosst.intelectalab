@@ -42,8 +42,29 @@ class DocsFieldRules extends RecordRules
             'objective_targets' => $this->target($values, $current, $extra),
             'risst_deliveries' => $this->delivery($values, $current),
             'document_acknowledgements' => $this->ack($values),
+            'risk_map_markers' => $this->marker($values, $current),
             default => null,
         };
+    }
+
+    public function prepareDelete(array $res, object $current): void
+    {
+        if ($res['table'] === 'risk_map_markers') {
+            $this->marker([], $current);
+        }
+    }
+
+    /** Pictogramas del mapa: solo se mueven o cambian mientras el mapa está en borrador o revisión (lo aprobado no cambia). */
+    private function marker(array $values, ?object $current): void
+    {
+        $mapId = $this->value($values, $current, 'risk_map_id');
+        $map = $mapId ? DB::selectOne('select status from risk_maps where id = ? and deleted_at is null', [$mapId]) : null;
+        if (! $map) {
+            $this->fail('risk_map_id', 'El mapa de riesgos no existe.');
+        }
+        if (! in_array($map->status, ['draft', 'in_review'], true)) {
+            $this->conflict('El mapa ya está aprobado o vigente: para cambiar pictogramas crea una nueva versión del mapa.');
+        }
     }
 
     public function after(string $op, array $res, string $id, array $values, ?object $current): void

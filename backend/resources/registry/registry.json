@@ -6732,13 +6732,15 @@
      "name": "x_pct",
      "label": "Posición X (%)",
      "type": "number",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "y_pct",
      "label": "Posición Y (%)",
      "type": "number",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "label",

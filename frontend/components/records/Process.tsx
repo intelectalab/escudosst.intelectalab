@@ -13,6 +13,7 @@ import { FormField } from "@/components/ui/Form";
 import { Modal } from "@/components/ui/Modal";
 import { RefSelect } from "./ModuleRecords";
 import { PsiPanel } from "./PsiPanel";
+import { RiskMapEditor } from "./RiskMapEditor";
 
 /** Texto de un filtro que llegó por enlace (chips «Mostrando solo: …»). */
 export function describeFilter(res: RecordResource, key: string, value: string): string {
@@ -143,6 +144,13 @@ export function RecordActions({
         <span>Imprime o guarda en PDF el certificado con su QR. {row.public_verification_enabled ? "La verificación pública está activa." : "Activa «Verificación pública» para que el QR funcione."}</span>
         <a href={`/imprimir/certificado/${row.id}`} target="_blank" rel="noreferrer" className="rounded-lg bg-brand px-4 py-2 font-semibold text-white">Imprimir certificado</a>
       </section>
+    );
+  if (res.table === "risk_maps")
+    return (
+      <div className="space-y-3">
+        <RiskMapEditor row={row} canEdit={res.can.update} />
+        <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />
+      </div>
     );
   if (res.table === "psychosocial_surveys")
     return (
