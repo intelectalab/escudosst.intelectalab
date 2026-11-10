@@ -9,10 +9,13 @@ import { useApp } from "@/components/AppContext";
 import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/lib/api";
 import { RefSelect } from "./ModuleRecords";
+import { SignaturePad } from "@/components/addons/SignaturePad";
+import { session } from "@/lib/session";
+import { API_URL } from "@/lib/api";
 
 type Req = {
   id: string; role_in_document: string; status: string; signer_user_id: string | null; signer_worker_id: string | null; signer_name: string | null;
-  expires_at: string | null; signed_at: string | null; declined_reason: string | null; method: string | null;
+  expires_at: string | null; signed_at: string | null; declined_reason: string | null; method: string | null; signature_id: string | null; has_image: boolean;
 };
 
 const ROLES: [string, string][] = [
@@ -34,6 +37,7 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
   const [asking, setAsking] = useState(false);
   const [who, setWho] = useState<{ kind: "user" | "worker"; id: string; role: string }>({ kind: "user", id: "", role: "responsible" });
   const [pwd, setPwd] = useState<Record<string, string>>({});
+  const [assist, setAssist] = useState<{ id: string; image: string | null } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -60,7 +64,8 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
   async function sign(r: Req) {
     setMsg(null);
     try {
-      await api(`/fir/requests/${r.id}/sign`, { method: "POST", withCompany: true, body: r.signer_user_id ? { password: pwd[r.id] ?? "" } : { assisted: true } });
+      await api(`/fir/requests/${r.id}/sign`, { method: "POST", withCompany: true, body: r.signer_user_id ? { password: pwd[r.id] ?? "" } : { assisted: true, image: assist?.image ?? null } });
+      setAssist(null);
       load();
     } catch (e) {
       err(e);
@@ -91,11 +96,22 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
                   <Button size="sm" variant="primary" onClick={() => sign(r)}>Firmar</Button>
                 </>
               )}
-              {r.status === "pending" && !r.signer_user_id && (
-                <Button size="sm" variant="secondary" onClick={() => sign(r)} title="El trabajador está presente y está de acuerdo con firmar">Firma asistida (presente)</Button>
+              {r.status === "pending" && !r.signer_user_id && assist?.id !== r.id && (
+                <Button size="sm" variant="secondary" onClick={() => setAssist({ id: r.id, image: null })} title="El trabajador está presente y firma en esta pantalla">Firma del trabajador (presente)</Button>
               )}
+              {r.has_image && r.signature_id && <SignatureThumb id={r.signature_id} />}
               <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${cls}`}>{label}</span>
             </span>
+            {assist?.id === r.id && (
+              <div className="w-full space-y-2 rounded-lg bg-white p-2">
+                <p className="text-xs text-muted">El trabajador firma aquí, en tu pantalla (o en la tablet). Queda como «firma asistida en persona».</p>
+                <SignaturePad height={150} onChange={(image) => setAssist({ id: r.id, image })} />
+                <div className="flex gap-2">
+                  <Button size="sm" variant="primary" disabled={!assist.image} onClick={() => sign(r)}>Confirmar firma</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setAssist(null)}>Cancelar</Button>
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
@@ -127,4 +143,19 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
       {msg && <p className="text-bad">{msg}</p>}
     </section>
   );
+}
+
+/** Imagen de una firma hecha (se pide con la sesión porque es privada de la empresa). */
+function SignatureThumb({ id }: { id: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let url: string | null = null;
+    fetch(`${API_URL}/api/v1/fir/signatures/${id}/image`, { headers: { Authorization: `Bearer ${session.getToken()}`, "X-Company-Id": session.getCompanyId() ?? "" } })
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((b) => { if (b) { url = URL.createObjectURL(b); setSrc(url); } })
+      .catch(() => undefined);
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [id]);
+  // eslint-disable-next-line @next/next/no-img-element
+  return src ? <img src={src} alt="Firma" className="h-8 rounded border border-line bg-white" /> : null;
 }

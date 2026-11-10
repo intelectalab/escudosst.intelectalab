@@ -134,5 +134,8 @@ it('aula virtual: lección vista, examen con nota y curso completado', function 
     $this->postJson("/api/v1/aul/enrollments/{$e}/lessons/{$l1}/done", [], $h)->assertOk()->assertJsonPath('data.progress_pct', 50);
     $this->postJson("/api/v1/aul/enrollments/{$e}/lessons/{$l2}/exam", ['answers' => [$q => '0']], $h)->assertOk()->assertJsonPath('data.passed', false);
     $this->postJson("/api/v1/aul/enrollments/{$e}/lessons/{$l2}/exam", ['answers' => [$q => '1']], $h)->assertOk()
-        ->assertJsonPath('data.passed', true)->assertJsonPath('data.enrollment.status', 'completed');
+        ->assertJsonPath('data.passed', true)->assertJsonPath('data.enrollment.status', 'completed')
+        ->assertJsonPath('data.enrollment.certificate.code', fn ($c) => str_starts_with($c, 'CERT-'));
+    // El certificado queda en Capacitaciones con su código verificable.
+    expect($this->getJson('/api/v1/records/CAP/training_certificates?f[worker_id]='.$w, $h)->json('meta.total'))->toBe(1);
 });

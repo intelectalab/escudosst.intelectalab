@@ -103,3 +103,19 @@ it('firma electrónica: se pide sobre un registro, se firma con contraseña y de
     $this->patchJson("/api/v1/records/ACT/substandard_reports/{$doc}", ['description' => 'RF documento cambiado después'], $h)->assertOk();
     $this->postJson("/api/v1/fir/requests/{$req2}/sign", ['password' => DEMO_PASSWORD], $h)->assertStatus(409);
 });
+
+it('mi firma (dibujada o foto) se guarda y se pega sola al firmar un documento', function () {
+    $h = rf();
+    $png = 'data:image/png;base64,'.base64_encode(base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='));
+    $this->putJson('/api/v1/me/signature', ['image' => 'data:image/png;base64,QUJD', 'kind' => 'drawn'], $h)->assertStatus(422);
+    $this->putJson('/api/v1/me/signature', ['image' => $png, 'kind' => 'drawn'], $h)->assertOk();
+    $this->getJson('/api/v1/me/signature', $h)->assertOk()->assertJsonPath('data.kind', 'drawn');
+
+    $me = collect($this->getJson('/api/v1/records/ACR/corrective_actions/options/responsible_user_id', $h)->json('data'))->first()['id'];
+    $doc = $this->postJson('/api/v1/records/ACT/substandard_reports', ['report_type' => 'suggestion', 'description' => 'RF documento con firma dibujada'], $h)->json('data.id');
+    $req = $this->postJson('/api/v1/fir/requests', ['subject_table' => 'substandard_reports', 'subject_id' => $doc, 'signer_user_id' => $me, 'role_in_document' => 'responsible'], $h)->json('data.id');
+    $this->postJson("/api/v1/fir/requests/{$req}/sign", ['password' => DEMO_PASSWORD], $h)->assertOk();
+    $row = $this->getJson("/api/v1/fir/subject/substandard_reports/{$doc}", $h)->json('data.0');
+    expect($row['has_image'])->toBeTrue();
+    $this->get("/api/v1/fir/signatures/{$row['signature_id']}/image", $h)->assertOk()->assertHeader('Content-Type', 'image/png');
+});

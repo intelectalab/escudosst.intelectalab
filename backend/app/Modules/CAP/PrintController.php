@@ -37,6 +37,9 @@ class PrintController extends Controller
             'score' => $c->score === null ? null : (float) $c->score, 'issued_on' => $c->issued_on, 'expires_on' => $c->expires_on, 'status' => $c->status,
             'public_verification_enabled' => (bool) $c->public_verification_enabled, 'instructor' => $t?->instructor_name ?: $t?->provider_name,
             'company' => $this->company(),
+            // Firma de quien validó el certificado (si guardó su firma en «Mi firma»): se pega sola en el certificado.
+            'signature' => \App\Modules\FIR\SignatureImages::userDataUrl($c->validated_by),
+            'signer_name' => $c->validated_by ? DB::selectOne('select full_name from users where id = ?', [$c->validated_by])?->full_name : null,
             'verify_url' => rtrim((string) config('escudo.frontend_url'), '/').'/verificar/certificado/'.$c->verification_code,
         ]]);
     }

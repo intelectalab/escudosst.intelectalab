@@ -32,7 +32,7 @@ function Toolbar({ hint }: { hint: string }) {
 type Cert = {
   certificate_code: string; holder_name: string; holder_document_masked: string | null; course_title: string; hours: number | null; score: number | null;
   issued_on: string; expires_on: string | null; status: string; public_verification_enabled: boolean; instructor: string | null;
-  company: { name: string; legal_name: string; ruc: string }; verify_url: string;
+  company: { name: string; legal_name: string; ruc: string }; verify_url: string; signature: string | null; signer_name: string | null;
 };
 
 export function CertificateSheet({ id }: { id: string }) {
@@ -66,8 +66,11 @@ export function CertificateSheet({ id }: { id: string }) {
             <p className="text-xs text-gray-500">{c.company.legal_name} · RUC {c.company.ruc}</p>
           </div>
           <div className="text-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {c.signature && <img src={c.signature} alt="Firma" className="mx-auto -mb-1 h-16 max-w-[14rem] object-contain" />}
             <div className="mx-auto h-0 w-56 border-t border-gray-800" />
-            <p className="mt-1">{c.instructor ?? "Capacitador"}</p>
+            <p className="mt-1">{c.signer_name ?? c.instructor ?? "Capacitador"}</p>
+            {c.signer_name && c.instructor && <p className="text-xs text-gray-500">Capacitador: {c.instructor}</p>}
           </div>
           <div className="text-center">
             <QrCode value={c.verify_url} size={110} />

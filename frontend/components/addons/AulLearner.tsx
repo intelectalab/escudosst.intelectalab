@@ -40,7 +40,7 @@ type Lesson = {
   is_required: boolean; done: boolean; best_score: number | null; max_attempts: number | null;
   questions?: { id: string; type: string; statement: string; options: { key: string; text: string }[] }[];
 };
-type Player = { enrollment: { id: string; status: string; progress_pct: number }; course: { title: string; summary: string | null }; lessons: Lesson[] };
+type Player = { enrollment: { id: string; status: string; progress_pct: number; certificate_id: string | null }; course: { title: string; summary: string | null }; lessons: Lesson[] };
 
 export function CoursePlayer({ id }: { id: string }) {
   const [data, setData] = useState<Player | null>(null);
@@ -68,6 +68,11 @@ export function CoursePlayer({ id }: { id: string }) {
         <h1 className="font-display text-lg font-semibold">{data.course.title}</h1>
         <div className="h-2 overflow-hidden rounded-full bg-bg"><div className="h-full bg-brand" style={{ width: `${Number(data.enrollment.progress_pct)}%` }} /></div>
         <p className="text-xs text-muted">{ST[data.enrollment.status] ?? data.enrollment.status} · {Number(data.enrollment.progress_pct)} %</p>
+        {data.enrollment.certificate_id && (
+          <a href={`/imprimir/certificado/${data.enrollment.certificate_id}`} target="_blank" rel="noreferrer" className="block rounded-lg bg-ok-soft px-3 py-2 text-sm font-semibold text-ok">
+            🎓 Curso completado: ver mi certificado
+          </a>
+        )}
         <ol className="space-y-1 text-sm">
           {data.lessons.map((x, i) => (
             <li key={x.id}>

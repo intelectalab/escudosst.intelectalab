@@ -35,7 +35,8 @@ class SignatureController extends Controller
 
         return response()->json(['data' => DB::select(
             "select r.id, r.role_in_document, r.status, r.signer_user_id, r.signer_worker_id, r.expires_at, r.signed_at, r.declined_reason,
-                    coalesce(u.full_name, w.full_name) as signer_name, s.method, s.signer_name as signed_by_name
+                    coalesce(u.full_name, w.full_name) as signer_name, s.method, s.signer_name as signed_by_name, s.id as signature_id,
+                    exists (select 1 from signature_strokes k where k.signature_id = s.id) as has_image
                from signature_requests r left join users u on u.id = r.signer_user_id left join workers w on w.id = r.signer_worker_id
                left join signatures s on s.signature_request_id = r.id
               where r.subject_type = ? and r.subject_id = ? and r.deleted_at is null order by r.sequence_order, r.created_at",
@@ -109,13 +110,15 @@ class SignatureController extends Controller
         }
         $evidence = ['request_id' => $r->id, 'method' => $method, 'signed_by_user_id' => $uid, 'signer' => $name, 'subject' => "{$r->subject_type}/{$r->subject_id}",
             'document_hash' => $current, 'ip' => $request->ip(), 'user_agent' => mb_substr((string) $request->userAgent(), 0, 300), 'at' => now()->toIso8601String()];
-        DB::insert(
+        $sigId = DB::selectOne(
             "insert into signatures (company_id, signature_request_id, subject_type, subject_id, signer_user_id, signer_worker_id, signer_name, signer_document_masked, method,
                 document_hash, evidence_hash, evidence, ip, user_agent, signed_at, created_by)
-             values (?, ?, ?, ?, ?, ?, ?, ?, ?, decode(?, 'hex'), decode(?, 'hex'), ?::jsonb, ?::inet, ?, now(), ?)",
+             values (?, ?, ?, ?, ?, ?, ?, ?, ?, decode(?, 'hex'), decode(?, 'hex'), ?::jsonb, ?::inet, ?, now(), ?) returning id",
             [$r->company_id, $r->id, $r->subject_type, $r->subject_id, $r->signer_user_id, $r->signer_worker_id, $name, $doc, $method, $current,
                 hash('sha256', json_encode($evidence)), json_encode($evidence, JSON_UNESCAPED_UNICODE), $request->ip(), mb_substr((string) $request->userAgent(), 0, 300), $uid]
-        );
+        )->id;
+        // Imagen de la firma en el documento: la guardada del usuario, o la que el trabajador dibujó en la pantalla.
+        SignatureImages::stamp($sigId, $r->company_id, $r->signer_user_id ? $uid : null, $request->input('image') ?: null);
         DB::update("update signature_requests set status = 'signed', signed_at = now(), updated_by = ? where id = ?", [$uid, $r->id]);
         $accounts->audit($uid, 'signature_signed', $r->subject_type, $r->subject_id, ['request' => $r->id, 'method' => $method]);
 
