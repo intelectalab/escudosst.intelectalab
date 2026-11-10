@@ -1,0 +1,102 @@
+<?php
+
+namespace App\Modules\NOT;
+
+use App\Modules\SUS\Services\AccountsService;
+use Illuminate\Database\ConnectionInterface;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Alertas SST diarias (M-NOT): revisa cada empresa y deja avisos en la campana de las personas que deben actuar,
+ * con enlace al registro. No repite el mismo aviso (dedupe por registro y motivo); los vencidos se recuerdan
+ * una vez por semana. Destinatarios: el responsable del registro y los roles SST de la empresa.
+ */
+final class SstAlerts
+{
+    private const SST_ROLES = ['sst_manager', 'sst_supervisor', 'account_admin'];
+
+    private const HEALTH_ROLES = ['occupational_doctor', 'health_staff', 'sst_manager'];
+
+    public function __construct(private AccountsService $accounts) {}
+
+    /** @return int avisos creados */
+    public function run(): int
+    {
+        $companies = DB::connection('platform')->select(
+            "select c.id from companies c join subscriptions s on s.company_id = c.id
+              where c.deleted_at is null and c.status = 'active' and s.deleted_at is null and s.status in ('trialing','active','past_due','grace')"
+        );
+        $total = 0;
+        foreach ($companies as $c) {
+            $total += $this->accounts->withCompany($c->id, fn (ConnectionInterface $db) => $this->forCompany($db, $c->id));
+        }
+
+        return $total;
+    }
+
+    public function forCompany(ConnectionInterface $db, string $company): int
+    {
+        $enabled = array_column($db->select("select module_code from feature_flags where mode = 'enabled' and deleted_at is null"), 'module_code');
+        $week = date('o-W');
+        $created = 0;
+        $checks = [
+            ['ACR', "select id, code as ref, title as name, responsible_user_id as owner, due_on as due, 'overdue' as kind from corrective_actions
+                      where deleted_at is null and status in ('open','in_progress','overdue') and due_on < current_date",
+                'acr.overdue', 'high', 'Acción correctiva vencida', fn ($r) => "{$r->ref} · {$r->name} venció el ".date('d/m/Y', strtotime($r->due)).'.', '/m/acr?t=corrective_actions&open=', self::SST_ROLES, true],
+            ['ACR', "select id, code as ref, title as name, responsible_user_id as owner, due_on as due, 'soon' as kind from corrective_actions
+                      where deleted_at is null and status in ('open','in_progress') and due_on between current_date and current_date + 3",
+                'acr.due_soon', 'normal', 'Acción correctiva por vencer', fn ($r) => "{$r->ref} · {$r->name} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/acr?t=corrective_actions&open=', [], false],
+            ['ACC', "select n.id, e.code as ref, e.description as name, null as owner, n.deadline_at as due, 'deadline' as kind from event_notifications n join sst_events e on e.id = n.event_id
+                      where n.deleted_at is null and n.status = 'pending' and n.deadline_at < now() + interval '24 hours'",
+                'acc.notification', 'critical', 'Notificación obligatoria por vencer', fn ($r) => "El evento {$r->ref} debe notificarse antes del ".date('d/m/Y H:i', strtotime($r->due)).'.', '/m/acc?t=event_notifications&open=', self::SST_ROLES, true],
+            ['IPC', "select id, code as ref, title as name, null as owner, next_review_on as due, 'review' as kind from iperc_matrices
+                      where deleted_at is null and status = 'active' and next_review_on <= current_date + 30",
+                'ipc.review', 'normal', 'IPERC por revisar', fn ($r) => "La matriz {$r->ref} · {$r->name} debe revisarse antes del ".date('d/m/Y', strtotime($r->due)).'.', '/m/ipc?t=matrices&matriz=', self::SST_ROLES, true],
+            ['INS', "select id, code as ref, title as name, inspector_user_id as owner, scheduled_on as due, 'late' as kind from inspections
+                      where deleted_at is null and status = 'scheduled' and scheduled_on < current_date",
+                'ins.late', 'normal', 'Inspección sin ejecutar', fn ($r) => "{$r->ref} · {$r->name} estaba programada para el ".date('d/m/Y', strtotime($r->due)).'.', '/m/ins?t=inspections&open=', self::SST_ROLES, true],
+            ['EMO', "select f.id, w.full_name as ref, '' as name, null as owner, f.valid_until as due, 'emo' as kind from fitness_status f join workers w on w.id = f.worker_id
+                      where f.deleted_at is null and f.is_current and w.status = 'active' and f.valid_until between current_date and current_date + 30",
+                'emo.expiring', 'normal', 'Aptitud médica por vencer', fn ($r) => "La aptitud de {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/emo?t=fitness_status&open=', self::HEALTH_ROLES, false],
+            ['EPP', "select d.id, w.full_name as ref, i.name as name, null as owner, d.expires_on as due, 'ppe' as kind from ppe_deliveries d join workers w on w.id = d.worker_id join ppe_items i on i.id = d.ppe_item_id
+                      where d.deleted_at is null and d.status = 'delivered' and d.expires_on between current_date and current_date + 15",
+                'epp.expiring', 'low', 'EPP por reponer', fn ($r) => "{$r->name} de {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/epp?t=ppe_deliveries&open=', self::SST_ROLES, false],
+            ['FOT', "select c.id, c.credential_number as ref, '' as name, null as owner, c.expires_on as due, 'fot' as kind from credentials c
+                      where c.deleted_at is null and c.status = 'active' and c.expires_on between current_date and current_date + 15",
+                'fot.expiring', 'low', 'Fotocheck por vencer', fn ($r) => "El fotocheck {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/fot?t=credentials&open=', self::SST_ROLES, false],
+            ['ACT', "select id, code as ref, description as name, null as owner, reported_at as due, 'act' as kind from substandard_reports
+                      where deleted_at is null and status = 'received' and reported_at < now() - interval '2 days'",
+                'act.untriaged', 'normal', 'Reporte sin revisar', fn ($r) => "El reporte {$r->ref} lleva más de 2 días sin revisar.", '/m/act?t=substandard_reports&open=', self::SST_ROLES, true],
+        ];
+        foreach ($checks as [$module, $sql, $event, $priority, $title, $body, $link, $roles, $weekly]) {
+            if (! in_array($module, $enabled, true)) {
+                continue;
+            }
+            $rows = $db->select($sql);
+            if ($rows === []) {
+                continue;
+            }
+            $team = $roles ? array_column($db->select(
+                "select m.user_id from memberships m join roles r on r.id = m.role_id where m.company_id = ? and m.status = 'active' and m.deleted_at is null and r.code = any(?::text[])",
+                [$company, '{'.implode(',', $roles).'}']
+            ), 'user_id') : [];
+            foreach ($rows as $r) {
+                $to = array_unique(array_filter([...$team, $r->owner]));
+                $dedupe = $event.':'.$r->id.($weekly ? ':'.$week : '');
+                foreach ($to as $user) {
+                    if ($db->selectOne('select 1 as ok from notifications where company_id = ? and recipient_user_id = ? and dedupe_key = ? and deleted_at is null', [$company, $user, $dedupe])) {
+                        continue;
+                    }
+                    $db->insert(
+                        'insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, due_at, dedupe_key)
+                         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        [$company, $event, $module, $r->id, $user, $title, mb_substr($body($r), 0, 500), $link.$r->id, $priority, $r->due, $dedupe]
+                    );
+                    $created++;
+                }
+            }
+        }
+
+        return $created;
+    }
+}

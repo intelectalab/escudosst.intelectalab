@@ -181,3 +181,14 @@ Artisan::command('escudo:crm:sync', function (\App\Modules\WEB\Services\CrmServi
 })->purpose('Envía al CRM los registros pendientes y reintenta los fallidos');
 
 Schedule::command('escudo:crm:sync')->everyMinute()->withoutOverlapping()->name('escudo:crm:sync');
+
+/*
+| Alertas SST diarias (M-NOT): acciones vencidas o por vencer, notificaciones obligatorias, IPERC por revisar,
+| inspecciones atrasadas, aptitudes, EPP y fotochecks por vencer, reportes sin revisar → campana de quien debe actuar.
+| Uso: php artisan escudo:sst-alerts
+*/
+Artisan::command('escudo:sst-alerts', function (\App\Modules\NOT\SstAlerts $alerts) {
+    $this->info('Avisos creados: '.$alerts->run());
+})->purpose('Genera las alertas SST del día en la campana de cada empresa');
+
+Schedule::command('escudo:sst-alerts')->dailyAt('07:00')->timezone('America/Lima')->withoutOverlapping()->name('escudo:sst-alerts');
