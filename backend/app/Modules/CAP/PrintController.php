@@ -54,13 +54,15 @@ class PrintController extends Controller
             : DB::selectOne("select first_name || ' ' || paternal_last_name as full_name, document_last4, photo_file_id, position_text as position, null as site
                                from contractor_workers where id = ?", [$c->contractor_worker_id]);
         $type = DB::selectOne('select name from credential_types where id = ?', [$c->credential_type_id]);
-        DB::update('update credentials set printed_at = now() where id = ?', [$id]);
+        $token = PeopleRules::credentialToken($c->company_id, $c->credential_number);
+        // Al imprimir, el QR vale con este token (los fotochecks emitidos antes de este cambio quedan al día al reimprimirlos).
+        DB::update("update credentials set printed_at = now(), token_hash = decode(?, 'hex'), token_last4 = ? where id = ?", [hash('sha256', $token), substr($token, -4), $id]);
 
         return response()->json(['data' => [
             'credential_number' => $c->credential_number, 'type' => $type?->name, 'status' => $c->status, 'valid_from' => $c->valid_from, 'expires_on' => $c->expires_on,
             'holder_name' => $p?->full_name, 'document_masked' => $p?->document_last4 ? '****'.$p->document_last4 : null, 'position' => $p?->position, 'site' => $p?->site,
             'photo_file_id' => $p?->photo_file_id, 'company' => $this->company(),
-            'verify_url' => rtrim((string) config('escudo.frontend_url'), '/').'/verificar/fotocheck/'.PeopleRules::credentialToken($c->credential_number),
+            'verify_url' => rtrim((string) config('escudo.frontend_url'), '/').'/verificar/fotocheck/'.$token,
         ]]);
     }
 
@@ -76,8 +78,11 @@ class PrintController extends Controller
     {
         $r = DB::selectOne("select public_verify_credential(?, ?, decode(?, 'hex'), ?) as r",
             [strtoupper($token), 'public_qr', hash_hmac('sha256', (string) $request->ip(), (string) config('app.key')), mb_substr((string) $request->userAgent(), 0, 300)]);
+        $data = json_decode($r->r, true);
+        // Los motivos de bloqueo (p. ej. «aptitud médica») no se muestran a cualquiera que escanee el QR.
+        unset($data['blocking_reasons']);
 
-        return response()->json(['data' => json_decode($r->r, true)]);
+        return response()->json(['data' => $data]);
     }
 
     private function company(): array

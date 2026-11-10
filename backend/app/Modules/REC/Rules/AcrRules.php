@@ -27,6 +27,10 @@ class AcrRules extends RecordRules
         'cancelled' => [],
     ];
 
+    /** Registros de origen que apuntan a su acción con corrective_action_id. */
+    private const ORIGINS = ['findings', 'iperc_controls', 'substandard_reports', 'baseline_gaps', 'meeting_agreements', 'audit_findings',
+        'management_review_outputs', 'investigation_causes', 'behavior_observation_items', 'ergonomic_assessments', 'measurements', 'requirement_evaluations'];
+
     private const STATUS = ['open' => 'Abierta', 'in_progress' => 'En curso', 'overdue' => 'Vencida', 'pending_verification' => 'Por verificar',
         'verified' => 'Verificada', 'cancelled' => 'Anulada'];
 
@@ -37,6 +41,17 @@ class AcrRules extends RecordRules
 
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
     {
+        if ($res['table'] === 'corrective_actions' && ($values['status'] ?? null) === 'cancelled') {
+            // Acción anulada: el origen queda libre para asignarle otra acción.
+            foreach (self::ORIGINS as $t) {
+                DB::update("update \"{$t}\" set corrective_action_id = null where corrective_action_id = ?", [$id]);
+            }
+            DB::update("update findings set status = 'open' where status = 'action_assigned' and corrective_action_id is null and id in (select id from findings where deleted_at is null)");
+            DB::update("update audit_findings set status = 'open' where status = 'action_assigned' and corrective_action_id is null");
+            DB::update("update substandard_reports set status = 'triaged' where status = 'action_assigned' and corrective_action_id is null");
+
+            return;
+        }
         if ($res['table'] !== 'corrective_actions' || ($values['status'] ?? null) !== 'verified') {
             return;
         }
@@ -91,6 +106,10 @@ class AcrRules extends RecordRules
             }
             $values['status'] = 'open';
         }
+        if ($op === 'update' && $current->status === 'pending_verification'
+            && array_intersect(array_keys($values), ['responsible_user_id', 'responsible_worker_id', 'contractor_id']) !== []) {
+            $this->conflict('La acción está por verificar: no se cambia el responsable. Si hace falta, devuélvela a «En curso» primero.');
+        }
         if (! $this->value($values, $current, 'responsible_user_id') && ! $this->value($values, $current, 'responsible_worker_id') && ! $this->value($values, $current, 'contractor_id')) {
             $this->fail('responsible_user_id', 'Indica el responsable (usuario, trabajador o contratista).');
         }
@@ -131,12 +150,17 @@ class AcrRules extends RecordRules
                 if (! in_array('acr.corrective_actions.verify', \App\Core\Auth\Permissions::effective(), true)) {
                     $this->fail('status', 'Tu rol no verifica acciones: lo hace el área SST.');
                 }
-                if ((string) auth()->id() === (string) $current->responsible_user_id) {
+                $workerUser = $current->responsible_worker_id
+                    ? DB::selectOne('select user_id from workers where id = ?', [$current->responsible_worker_id])?->user_id : null;
+                if (in_array((string) auth()->id(), [(string) $current->responsible_user_id, (string) $workerUser], true)) {
                     $this->fail('status', 'El responsable no puede verificar su propia acción: la verifica el área SST u otra persona.');
                 }
                 $eff = $this->value($values, $current, 'effectiveness');
                 if (! in_array($eff, ['effective', 'not_effective'], true)) {
                     $this->fail('effectiveness', 'Indica si la acción fue eficaz o no eficaz.');
+                }
+                if ($eff === 'not_effective' && trim((string) $this->value($values, $current, 'verification_notes')) === '') {
+                    $this->fail('verification_notes', 'Explica por qué no fue eficaz: se usa para la nueva acción que se abre.');
                 }
                 $extra['verified_by'] = ['?', [(string) auth()->id()]];
                 $extra['verified_at'] = ['now()', []];
@@ -160,6 +184,9 @@ class AcrRules extends RecordRules
         if (in_array($st, ['verified', 'cancelled'], true)) {
             $this->conflict('La acción ya está cerrada: no se agregan ni cambian evidencias.');
         }
+        if (trim((string) $this->value($values, $current, 'description')) === '' && ! $this->value($values, $current, 'file_id')) {
+            $this->fail('description', 'Describe lo que se hizo o adjunta un archivo (foto, acta, registro).');
+        }
         if ($op === 'create') {
             $extra['submitted_by'] = ['?', [(string) auth()->id()]];
             $extra['submitted_at'] = ['now()', []];
@@ -174,14 +201,18 @@ class AcrRules extends RecordRules
     {
         $today = DB::selectOne("select (now() at time zone 'America/Lima')::date as d")->d;
         $n = (int) DB::selectOne("select count(*) + 1 as n from corrective_actions where extract(year from created_at) = extract(year from now())")->n;
-        DB::insert(
+        $new = DB::selectOne(
             "insert into corrective_actions (company_id, code, source_type, source_id, action_type, control_hierarchy, title, description, site_id, area_id,
                 responsible_user_id, responsible_worker_id, contractor_id, due_on, priority, status, reopened_count, created_by, updated_by)
-             values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (?::date + 30), ?, 'open', ?, ?, ?)",
+             values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (?::date + 30), ?, 'open', ?, ?, ?) returning id",
             [$a->company_id, sprintf('AC-%s-%04d-R', substr($today, 0, 4), $n), $a->source_type, $a->source_id, $a->action_type, $a->control_hierarchy,
                 mb_substr('Repetir: '.$a->title, 0, 500), "La acción {$a->code} se verificó como no eficaz. ".($a->verification_notes ?? ''), $a->site_id, $a->area_id,
                 $a->responsible_user_id, $a->responsible_worker_id, $a->contractor_id, $today, $a->priority, (int) $a->reopened_count + 1,
                 (string) auth()->id(), (string) auth()->id()]
         );
+        // El origen (hallazgo, causa, no conformidad…) queda esperando la nueva acción: así se cierra cuando esta sea eficaz.
+        foreach (self::ORIGINS as $t) {
+            DB::update("update \"{$t}\" set corrective_action_id = ? where corrective_action_id = ?", [$new->id, $a->id]);
+        }
     }
 }

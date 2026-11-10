@@ -203,6 +203,9 @@ class ProgramRules extends RecordRules
         if ($st === 'cancelled') {
             $this->conflict('La sesión está anulada: no admite asistencias.');
         }
+        if ($st === 'held') {
+            $this->conflict('La sesión ya se marcó como realizada: su lista de asistencia quedó cerrada (RN-CAP-19).');
+        }
     }
 
     private function certificate(string $op, array &$values, ?object $current, array &$extra): void

@@ -70,6 +70,10 @@ class DiagnosticRules extends RecordRules
             $this->conflict('El diagnóstico está aprobado: no se modifica. Para actualizarlo, crea un nuevo diagnóstico.');
         }
         $to = $values['status'] ?? null;
+        $flow = ['draft' => ['in_progress', 'completed', 'approved'], 'in_progress' => ['completed', 'approved', 'draft'], 'completed' => ['approved', 'in_progress'], 'approved' => ['archived'], 'archived' => []];
+        if ($to && $to !== $current->status && ! in_array($to, $flow[$current->status] ?? [], true)) {
+            $this->fail('status', $current->status === 'approved' ? 'El diagnóstico aprobado no se reabre: crea un nuevo diagnóstico para actualizarlo.' : 'Ese cambio de estado no está permitido.');
+        }
         if (in_array($to, ['completed', 'approved'], true)) {
             $pending = (int) DB::selectOne("select count(*) as n from baseline_items where assessment_id = ? and deleted_at is null and result = 'pending'", [$current->id])->n;
             $total = (int) DB::selectOne('select count(*) as n from baseline_items where assessment_id = ? and deleted_at is null', [$current->id])->n;

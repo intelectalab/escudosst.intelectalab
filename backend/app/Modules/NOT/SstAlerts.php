@@ -36,9 +36,25 @@ final class SstAlerts
         return $total;
     }
 
+    /**
+     * Estados que cambian con el paso del tiempo: certificados de capacitación vencidos y fotochecks que dejan de cumplir
+     * (o vuelven a cumplir) sus requisitos. Así el QR de la garita no queda desactualizado.
+     */
+    public function refreshStatuses(ConnectionInterface $db): void
+    {
+        $db->update("update training_certificates set status = 'expired' where deleted_at is null and status = 'validated' and expires_on < current_date");
+        foreach ($db->select("select id, credential_type_id, worker_id, contractor_worker_id, expires_on, status from credentials where deleted_at is null and status in ('active','blocked')") as $c) {
+            $reasons = \App\Modules\REC\Rules\PeopleRules::credentialReasons($c->credential_type_id, $c->worker_id, $c->contractor_worker_id, $c->expires_on);
+            $status = $reasons ? 'blocked' : 'active';
+            $db->update('update credentials set status = ?, blocking_reasons = ?::jsonb, last_evaluated_at = '.($status !== $c->status ? 'now()' : 'last_evaluated_at').' where id = ?',
+                [$status, json_encode($reasons, JSON_UNESCAPED_UNICODE), $c->id]);
+        }
+    }
+
     public function forCompany(ConnectionInterface $db, string $company): int
     {
         $enabled = array_column($db->select("select module_code from feature_flags where mode = 'enabled' and deleted_at is null"), 'module_code');
+        $this->refreshStatuses($db);
         $week = date('o-W');
         $created = 0;
         $byUser = [];
@@ -67,6 +83,12 @@ final class SstAlerts
             ['FOT', "select c.id, c.credential_number as ref, '' as name, null as owner, c.expires_on as due, 'fot' as kind from credentials c
                       where c.deleted_at is null and c.status = 'active' and c.expires_on between current_date and current_date + 15",
                 'fot.expiring', 'low', 'Fotocheck por vencer', fn ($r) => "El fotocheck {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/fot?t=credentials&open=', self::SST_ROLES, false],
+            ['CAP', "select c.id, c.holder_name as ref, c.course_title as name, null as owner, c.expires_on as due, 'cert' as kind from training_certificates c
+                      where c.deleted_at is null and c.status = 'validated' and c.expires_on between current_date and current_date + 30",
+                'cap.expiring', 'normal', 'Capacitación por vencer', fn ($r) => "La capacitación «{$r->name}» de {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/cap?t=training_certificates&open=', self::SST_ROLES, false],
+            ['FOT', "select c.id, c.credential_number as ref, '' as name, null as owner, c.last_evaluated_at as due, 'blocked' as kind from credentials c
+                      where c.deleted_at is null and c.status = 'blocked' and c.last_evaluated_at > now() - interval '1 day'",
+                'fot.blocked', 'normal', 'Fotocheck bloqueado', fn ($r) => "El fotocheck {$r->ref} quedó bloqueado: revisa sus requisitos.", '/m/fot?t=credentials&open=', self::SST_ROLES, true],
             ['ACT', "select id, code as ref, description as name, null as owner, reported_at as due, 'act' as kind from substandard_reports
                       where deleted_at is null and status = 'received' and reported_at < now() - interval '2 days'",
                 'act.untriaged', 'normal', 'Reporte sin revisar', fn ($r) => "El reporte {$r->ref} lleva más de 2 días sin revisar.", '/m/act?t=substandard_reports&open=', self::SST_ROLES, true],

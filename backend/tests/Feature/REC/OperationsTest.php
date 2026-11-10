@@ -40,6 +40,11 @@ it('un accidente incapacitante calcula su plazo, abre la investigación y no se 
     $this->postJson('/api/v1/records/ACC/event_people', ['event_id' => $id, 'worker_id' => $worker, 'person_role' => 'injured', 'lost_days' => 5,
         'injury_type' => 'Corte', 'body_part' => 'Mano'], $h)->assertCreated();
     $this->getJson("/api/v1/records/ACC/sst_events/{$id}", $h)->assertJsonPath('data.lost_days', 5);
+    // Un testigo no suma días perdidos y no se aceptan días negativos.
+    $this->postJson('/api/v1/records/ACC/event_people', ['event_id' => $id, 'worker_id' => $worker, 'person_role' => 'witness', 'lost_days' => -3], $h)
+        ->assertStatus(422)->assertJsonValidationErrors('lost_days');
+    $this->postJson('/api/v1/records/ACC/event_people', ['event_id' => $id, 'worker_id' => $worker, 'person_role' => 'witness', 'lost_days' => 4], $h)->assertCreated();
+    $this->getJson("/api/v1/records/ACC/sst_events/{$id}", $h)->assertJsonPath('data.lost_days', 5);
 
     $this->patchJson("/api/v1/records/ACC/sst_events/{$id}", ['status' => 'closed'], $h)
         ->assertStatus(422)->assertJsonPath('errors.status.0', 'Este evento exige investigación: ciérrala antes de cerrar el evento.');
@@ -50,7 +55,7 @@ it('un accidente incapacitante calcula su plazo, abre la investigación y no se 
 
     // Investigación: sin causas no se aprueba.
     $this->patchJson("/api/v1/records/INV/investigations/{$inv[0]['id']}", ['status' => 'approved'], $h)
-        ->assertStatus(422)->assertJsonPath('errors.status.0', 'Registra las causas (inmediatas y básicas) antes de aprobar la investigación.');
+        ->assertStatus(422)->assertJsonPath('errors.status.0', 'Registra al menos una causa inmediata y una causa básica (o raíz) antes de aprobar la investigación.');
     $cause = $this->postJson('/api/v1/records/INV/investigation_causes', ['investigation_id' => $inv[0]['id'], 'cause_level' => 'basic',
         'cause_category' => 'job_factor', 'description' => 'Procedimiento de cambio de disco inexistente'], $h)->assertCreated()->json('data.id');
 
@@ -63,7 +68,14 @@ it('un accidente incapacitante calcula su plazo, abre la investigación y no se 
     $tr = $this->getJson("/api/v1/records/ACR/corrective_actions/{$action}/trace", $h)->json('data');
     expect(collect($tr['parents'])->pluck('table')->all())->toContain('investigations');
 
-    $this->patchJson("/api/v1/records/INV/investigations/{$inv[0]['id']}", ['status' => 'approved'], $h)->assertOk();
+    // Para aprobar: causa inmediata y básica, líder del equipo y conclusiones.
+    $this->postJson('/api/v1/records/INV/investigation_causes', ['investigation_id' => $inv[0]['id'], 'cause_level' => 'immediate',
+        'cause_category' => 'unsafe_act', 'description' => 'Cambio de disco sin desenergizar'], $h)->assertCreated();
+    $this->patchJson("/api/v1/records/INV/investigations/{$inv[0]['id']}", ['status' => 'approved'], $h)
+        ->assertStatus(422)->assertJsonPath('errors.status.0', 'Indica quién lidera la investigación en el equipo investigador.');
+    $this->postJson('/api/v1/records/INV/investigation_team', ['investigation_id' => $inv[0]['id'], 'worker_id' => $worker, 'role' => 'leader'], $h)->assertCreated();
+    $this->patchJson("/api/v1/records/INV/investigations/{$inv[0]['id']}", ['status' => 'approved'], $h)->assertStatus(422)->assertJsonValidationErrors('conclusions');
+    $this->patchJson("/api/v1/records/INV/investigations/{$inv[0]['id']}", ['status' => 'approved', 'conclusions' => 'Falta de procedimiento y de supervisión.'], $h)->assertOk();
     $this->patchJson("/api/v1/records/INV/investigations/{$inv[0]['id']}", ['status' => 'closed'], $h)
         ->assertStatus(422)->assertJsonPath('errors.status.0', 'Hay acciones correctivas de las causas sin verificar.');
 });
@@ -73,8 +85,14 @@ it('marca fuera de plazo la notificación tardía de un accidente mortal (24 h)'
     $id = $this->postJson('/api/v1/records/ACC/sst_events', ['event_type' => 'fatal_accident', 'occurred_at' => '2026-10-01T08:00:00-05:00', 'site_id' => opSite($this),
         'description' => 'Caída de altura'], $h)->assertCreated()->assertJsonPath('data.notification_deadline_at', '2026-10-02 08:00:00-05')->json('data.id');
     $n = $this->getJson("/api/v1/records/ACC/event_notifications?f[event_id]={$id}", $h)->json('data.0.id');
+    // Sin número ni constancia no se da por notificada; tampoco con fecha anterior al evento.
     $this->patchJson("/api/v1/records/ACC/event_notifications/{$n}", ['status' => 'sent', 'notified_at' => '2026-10-03T10:00:00-05:00'], $h)
+        ->assertStatus(422)->assertJsonValidationErrors('notification_number');
+    $this->patchJson("/api/v1/records/ACC/event_notifications/{$n}", ['status' => 'sent', 'notified_at' => '2026-09-30T10:00:00-05:00', 'notification_number' => 'SAT-9'], $h)
+        ->assertStatus(422)->assertJsonValidationErrors('notified_at');
+    $this->patchJson("/api/v1/records/ACC/event_notifications/{$n}", ['status' => 'sent', 'notified_at' => '2026-10-03T10:00:00-05:00', 'notification_number' => 'SAT-9'], $h)
         ->assertOk()->assertJsonPath('data.notification_overdue', true);
+    $this->getJson("/api/v1/records/ACC/sst_events/{$id}", $h)->assertJsonPath('data.notification_overdue', true);
     $this->patchJson("/api/v1/records/ACC/event_notifications/{$n}", ['notified_at' => '2026-10-01T10:00:00-05:00'], $h)->assertStatus(409);
 });
 
@@ -130,6 +148,8 @@ it('el comité exige titulares pares y mitad por lado, y sin quórum no hay acue
         ->assertCreated();
     $this->getJson("/api/v1/records/COM/meeting_agreements/{$ag}", $h)->assertJsonPath('data.status', 'in_progress');
 
-    $this->patchJson("/api/v1/records/COM/committee_meetings/{$m2}", ['status' => 'minutes_signed'], $h)->assertOk();
+    // El acta se firma con su texto (o el acta escaneada).
+    $this->patchJson("/api/v1/records/COM/committee_meetings/{$m2}", ['status' => 'minutes_signed'], $h)->assertStatus(422)->assertJsonValidationErrors('minutes_html');
+    $this->patchJson("/api/v1/records/COM/committee_meetings/{$m2}", ['status' => 'minutes_signed', 'minutes_html' => '<p>Se acordó comprar extintores.</p>'], $h)->assertOk();
     $this->patchJson("/api/v1/records/COM/committee_meetings/{$m2}", ['location' => 'Otra'], $h)->assertStatus(409);
 });

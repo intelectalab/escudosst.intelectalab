@@ -47,7 +47,9 @@ class FeatureGate
         throw new ApiProblem(403, 'module_not_in_plan', 'El módulo no está incluido en tu plan',
             $mode === 'disabled_by_company'
                 ? "{$flag->name} está desactivado por la empresa."
-                : ($flag ? "{$flag->name} requiere el plan {$planName}." : "El módulo {$module} no existe."),
+                : (! $flag ? "El módulo {$module} no existe."
+                    : (isset(self::PLAN_NAMES[$flag->plan_code]) ? "{$flag->name} requiere el plan {$planName}."
+                        : "{$flag->name} es un complemento: solicítalo a EscudoSST para activarlo en tu empresa.")),
             ['module' => $module, 'required_plan' => $flag?->plan_code, 'mode' => $mode]);
     }
 }

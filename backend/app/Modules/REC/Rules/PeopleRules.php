@@ -24,6 +24,9 @@ class PeopleRules extends RecordRules
 
     public function prepare(string $op, array $res, array &$values, ?object $current, array &$extra): void
     {
+        if (in_array($res['table'], ['notifications', 'notification_deliveries'], true) && $op === 'create') {
+            $this->conflict('Los avisos los genera el sistema: no se crean a mano.');
+        }
         match ($res['table']) {
             'fitness_status' => $this->fitness($op, $values, $current, $extra),
             'medical_exam_orders' => $this->examOrder($op, $values, $current, $extra),
@@ -34,12 +37,65 @@ class PeopleRules extends RecordRules
             'credentials' => $this->credential($op, $values, $current, $extra),
             'work_permits' => $this->permit($op, $values, $current, $extra),
             'budget_executions' => $this->budgetExecution($values, $current, $extra),
+            'budgets' => $this->budget($op, $values, $current, $extra),
+            'permit_approvals' => $this->permitApproval($values, $current, $extra),
+            'permit_checks' => $this->permitCheck($values, $current, $extra),
+            'budget_lines' => $this->budgetLine($values, $current),
             default => null,
         };
     }
 
+    // ── Presupuesto SST ──
+
+    private function budget(string $op, array &$values, ?object $current, array &$extra): void
+    {
+        unset($values['approved_by'], $values['approved_at']);   // los pone la aprobación
+        if ($op === 'create') {
+            $values['status'] = 'draft';
+
+            return;
+        }
+        $to = $values['status'] ?? null;
+        if ($to && $to !== $current->status) {
+            $flow = ['draft' => ['in_review', 'approved'], 'in_review' => ['approved', 'draft'], 'approved' => ['in_execution', 'closed'], 'in_execution' => ['closed'], 'closed' => []];
+            if (! in_array($to, $flow[$current->status] ?? [], true)) {
+                $this->fail('status', in_array($current->status, ['approved', 'in_execution', 'closed'], true)
+                    ? 'El presupuesto ya fue aprobado: no vuelve a borrador. Si cambia, registra un presupuesto nuevo o una línea adicional aprobada.'
+                    : 'Ese cambio de estado no está permitido.');
+            }
+            if ($to === 'approved') {
+                if (! DB::selectOne('select 1 as ok from budget_lines where budget_id = ? and deleted_at is null and planned_amount > 0', [$current->id])) {
+                    $this->fail('status', 'Agrega al menos una línea con monto antes de aprobar el presupuesto.');
+                }
+                $extra['approved_by'] = ['?', [(string) auth()->id()]];
+                $extra['approved_at'] = ['now()', []];
+            }
+        }
+    }
+
+    private function budgetLine(array &$values, ?object $current): void
+    {
+        $st = DB::selectOne('select status from budgets where id = ?', [$this->value($values, $current, 'budget_id')])?->status;
+        if (in_array($st, ['approved', 'in_execution', 'closed'], true) && array_diff(array_keys($values), ['executed_amount']) !== []) {
+            $this->conflict('El presupuesto ya está aprobado: sus líneas no se cambian. Registra los gastos en «Ejecución».');
+        }
+        if ((float) ($values['planned_amount'] ?? 0) < 0) {
+            $this->fail('planned_amount', 'El monto no puede ser negativo.');
+        }
+    }
+
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
     {
+        if ($res['table'] === 'work_permits' && $op === 'create') {
+            $p = DB::selectOne('select w.company_id, t.approval_chain from work_permits w join permit_types t on t.id = w.permit_type_id where w.id = ?', [$id]);
+            foreach (json_decode($p->approval_chain ?? '[]', true) ?: [] as $i => $step) {
+                if (! empty($step['optional']) || empty($step['role'])) {
+                    continue;
+                }
+                DB::insert("insert into permit_approvals (company_id, work_permit_id, step_order, approver_role, decision, created_by, updated_by) values (?, ?, ?, ?, 'pending', ?, ?)",
+                    [$p->company_id, $id, (int) ($step['step'] ?? $i + 1), $step['role'], (string) auth()->id(), (string) auth()->id()]);
+            }
+        }
         if ($res['table'] === 'fitness_status' && ($op === 'create' || ($values['is_current'] ?? false) === true)) {
             $f = DB::selectOne('select worker_id, medical_exam_order_id from fitness_status where id = ?', [$id]);
             DB::update('update fitness_status set is_current = false where worker_id = ? and id <> ? and is_current', [$f->worker_id, $id]);
@@ -103,7 +159,6 @@ class PeopleRules extends RecordRules
             if ($e < $s) {
                 $this->fail('ends_on', 'La fecha de fin no puede ser anterior a la de inicio.');
             }
-            $values['days'] = (int) ((strtotime($e) - strtotime($s)) / 86400) + 1;
         }
         $type = $this->value($values, $current, 'absence_type');
         if (in_array($type, ['occupational_accident', 'occupational_disease'], true)) {
@@ -161,9 +216,18 @@ class PeopleRules extends RecordRules
 
     private function accreditation(array &$values, ?object $current, array &$extra): void
     {
+        if ($current === null && in_array($values['status'] ?? 'draft', ['accredited', 'expiring', 'expired', 'suspended', 'observed', 'rejected', 'under_review'], true)) {
+            $values['status'] = 'draft';   // se acredita después de revisar sus documentos, no al crearla
+        }
         $to = $values['status'] ?? null;
         if ($to === 'submitted') {
             $values['submitted_at'] = now()->toIso8601String();
+        }
+        if ($current && $to === 'accredited' && $current->status === 'suspended' && ! $this->value($values, $current, 'observations')) {
+            $this->fail('observations', 'Para levantar la suspensión indica qué se corrigió.');
+        }
+        if ($to === 'accredited' && $current && (string) $current->reviewed_by === (string) auth()->id() && $current->status === 'observed') {
+            $this->fail('status', 'Tú registraste las observaciones: otra persona del área SST debe aprobar la acreditación (separación de funciones).');
         }
         if ($to === 'accredited' && $current) {
             $missing = DB::select(
@@ -187,8 +251,10 @@ class PeopleRules extends RecordRules
             if (! $this->value($values, $current, $field)) {
                 $this->fail($field, 'Indica el motivo.');
             }
-            $extra['reviewed_by'] = ['?', [(string) auth()->id()]];
-            $extra['reviewed_at'] = ['now()', []];
+            if ($to !== 'suspended') {
+                $extra['reviewed_by'] = ['?', [(string) auth()->id()]];
+                $extra['reviewed_at'] = ['now()', []];
+            }
         }
     }
 
@@ -207,7 +273,7 @@ class PeopleRules extends RecordRules
             } while (DB::selectOne('select 1 as ok from credentials where credential_number = ?', [$num]));
             $extra['credential_number'] = ['?', [$num]];
             // Token del QR derivado del número (se puede volver a imprimir); en la base solo queda su hash.
-            $token = self::credentialToken($num);
+            $token = self::credentialToken(app(\App\Core\Tenancy\CompanyContext::class)->companyId, $num);
             $extra['token_hash'] = ["decode(?, 'hex')", [hash('sha256', $token)]];
             $extra['token_last4'] = ['?', [substr($token, -4)]];
             $extra['qr_payload_version'] = ['?', [1]];
@@ -229,16 +295,38 @@ class PeopleRules extends RecordRules
             $this->conflict('El fotocheck está revocado.');
         }
         // Evaluación de requisitos (RN-FOT): activo si cumple todos los bloqueantes; si no, bloqueado con motivos.
+        $reasons = self::credentialReasons($type, $worker, $cworker, $this->value($values, $current, 'expires_on'));
+        $values['status'] = $reasons ? 'blocked' : 'active';
+        $values['blocking_reasons'] = $reasons;
+        $extra['last_evaluated_at'] = ['now()', []];
+    }
+
+    /** Token del QR: depende de la empresa y del número (dos empresas pueden tener el mismo número). */
+    public static function credentialToken(string $companyId, string $number): string
+    {
+        return strtoupper(substr(hash_hmac('sha256', 'credential|'.$companyId.'|'.$number, (string) config('app.key')), 0, 32));
+    }
+
+    /**
+     * Motivos por los que un fotocheck no habilita (vacío = habilitado). La usan el registro y la revisión diaria.
+     * @return list<string>
+     */
+    public static function credentialReasons(?string $type, ?string $worker, ?string $cworker, ?string $expires): array
+    {
         $reasons = [];
         foreach (DB::select('select * from credential_requirements where credential_type_id = ? and deleted_at is null and is_blocking', [$type]) as $r) {
             $ok = match ($r->requirement_type) {
                 'emo_fitness' => $worker
                     ? (bool) DB::selectOne("select 1 as ok from fitness_status where worker_id = ? and is_current and status in ('fit','fit_with_restrictions') and (valid_until is null or valid_until >= current_date) and deleted_at is null", [$worker])
                     : (bool) DB::selectOne("select 1 as ok from contractor_workers where id = ? and emo_fitness in ('fit','fit_with_restrictions') and (emo_valid_until is null or emo_valid_until >= current_date)", [$cworker]),
-                'training', 'induction' => $r->training_id && $worker
-                    ? (bool) DB::selectOne("select 1 as ok from training_certificates where worker_id = ? and training_id = ? and status = 'validated' and (expires_on is null or expires_on >= current_date) and deleted_at is null", [$worker, $r->training_id])
-                    : false,
-                'sctr' => (bool) DB::selectOne("select 1 as ok from sctr_coverages where (worker_id = ? or contractor_worker_id = ?) and status = 'covered' and (covered_until is null or covered_until >= current_date) and deleted_at is null", [$worker, $cworker]),
+                'training', 'induction' => $r->training_id
+                    && (bool) DB::selectOne("select 1 as ok from training_certificates where (worker_id = ? or contractor_worker_id = ?) and training_id = ? and status = 'validated'
+                                              and (expires_on is null or expires_on >= current_date) and deleted_at is null", [$worker, $cworker, $r->training_id]),
+                'sctr' => (int) DB::selectOne("select count(distinct p.coverage_kind) as n from sctr_coverages c join sctr_policies p on p.id = c.sctr_policy_id
+                                                 where (c.worker_id = ? or c.contractor_worker_id = ?) and c.status = 'covered' and c.deleted_at is null
+                                                   and (c.covered_from is null or c.covered_from <= current_date) and (c.covered_until is null or c.covered_until >= current_date)
+                                                   and p.deleted_at is null and p.status in ('active', 'expiring') and (p.ends_on is null or p.ends_on >= current_date)
+                                                   and p.coverage_kind in ('health', 'pension')", [$worker, $cworker])->n === 2,
                 'accreditation' => $cworker
                     ? (bool) DB::selectOne("select 1 as ok from contractor_accreditations a join contractor_workers w on w.contractor_id = a.contractor_id where w.id = ? and a.status = 'accredited' and (a.expires_on is null or a.expires_on >= current_date) and a.deleted_at is null", [$cworker])
                     : true,
@@ -246,21 +334,14 @@ class PeopleRules extends RecordRules
             };
             if (! $ok) {
                 $reasons[] = $r->description ?: ['emo_fitness' => 'Aptitud médica vigente', 'training' => 'Capacitación vigente', 'induction' => 'Inducción',
-                    'sctr' => 'SCTR vigente', 'accreditation' => 'Contratista acreditado'][$r->requirement_type] ?? $r->requirement_type;
+                    'sctr' => 'SCTR salud y pensión vigentes', 'accreditation' => 'Contratista acreditado'][$r->requirement_type] ?? $r->requirement_type;
             }
         }
-        $expires = $this->value($values, $current, 'expires_on');
         if ($expires && $expires < date('Y-m-d')) {
             $reasons[] = 'Fotocheck vencido';
         }
-        $values['status'] = $reasons ? 'blocked' : 'active';
-        $values['blocking_reasons'] = $reasons;
-        $extra['last_evaluated_at'] = ['now()', []];
-    }
 
-    public static function credentialToken(string $number): string
-    {
-        return strtoupper(substr(hash_hmac('sha256', 'credential|'.$number, (string) config('app.key')), 0, 32));
+        return $reasons;
     }
 
     // ── Permisos de trabajo ──
@@ -294,11 +375,21 @@ class PeopleRules extends RecordRules
             $this->fail('status', 'Ese cambio de estado no está permitido.');
         }
         if ($to === 'approved') {
-            if (DB::selectOne("select 1 as ok from permit_approvals where work_permit_id = ? and decision <> 'approved' and deleted_at is null", [$current->id])) {
-                $this->fail('status', 'Hay aprobaciones pendientes o rechazadas en «Aprobaciones».');
-            }
             if (DB::selectOne("select 1 as ok from permit_checks where work_permit_id = ? and check_phase = 'pre_start' and answer = 'no' and deleted_at is null", [$current->id])) {
                 $this->fail('status', 'Hay verificaciones previas respondidas «No»: corrígelas antes de aprobar.');
+            }
+            $missing = $this->permitChecksMissing($current, 'pre_start');
+            if ($missing) {
+                $this->fail('status', 'Faltan verificaciones previas: '.implode('; ', array_slice($missing, 0, 4)).(count($missing) > 4 ? '…' : '').'.');
+            }
+            if ((string) $current->requested_by === (string) auth()->id()) {
+                $this->fail('status', 'Quien solicita el permiso no lo aprueba: lo aprueban los responsables de «Aprobaciones».');
+            }
+            if (! DB::selectOne("select 1 as ok from permit_approvals where work_permit_id = ? and decision = 'approved' and deleted_at is null", [$current->id])) {
+                $this->fail('status', 'El permiso no tiene ninguna aprobación registrada.');
+            }
+            if (DB::selectOne("select 1 as ok from permit_approvals where work_permit_id = ? and decision <> 'approved' and deleted_at is null", [$current->id])) {
+                $this->fail('status', 'Hay aprobaciones pendientes o rechazadas en «Aprobaciones».');
             }
         }
         if ($to === 'active') {
@@ -306,9 +397,21 @@ class PeopleRules extends RecordRules
             if ($until && strtotime($until) < time()) {
                 $this->fail('status', 'El permiso ya venció: solicita uno nuevo.');
             }
-            $type = DB::selectOne('select requires_ats from permit_types where id = ?', [$current->permit_type_id]);
-            if ($type?->requires_ats && ! $this->value($values, $current, 'ats_form_id')) {
+            $from = $this->value($values, $current, 'valid_from');
+            if ($from && strtotime($from) > time() + 300) {
+                $this->fail('status', 'El permiso todavía no está vigente: empieza el '.date('d/m/Y H:i', strtotime($from)).'.');
+            }
+            $type = DB::selectOne('select requires_ats, requires_gas_test from permit_types where id = ?', [$current->permit_type_id]);
+            $ats = $this->value($values, $current, 'ats_form_id');
+            if ($type?->requires_ats && ! $ats) {
                 $this->fail('ats_form_id', 'Este tipo de permiso exige vincular el ATS de la tarea.');
+            }
+            if ($ats && ! DB::selectOne("select 1 as ok from ats_forms where id = ? and status in ('signed', 'in_execution') and deleted_at is null", [$ats])) {
+                $this->fail('ats_form_id', 'El ATS vinculado debe estar firmado (o en ejecución), no cerrado ni en borrador.');
+            }
+            $gas = $this->value($values, $current, 'gas_measurements');
+            if ($type?->requires_gas_test && (empty($gas) || $gas === '[]' || $gas === '{}')) {
+                $this->fail('gas_measurements', 'Este trabajo exige medición de gases (O₂, LEL, CO, H₂S) antes de iniciarlo.');
             }
             $values['activated_at'] = now()->toIso8601String();
         }
@@ -319,9 +422,63 @@ class PeopleRules extends RecordRules
             if (! $this->value($values, $current, 'area_left_safe')) {
                 $this->fail('area_left_safe', 'Para cerrar el permiso confirma que el área quedó segura.');
             }
+            $missing = $this->permitChecksMissing($current, 'closure');
+            if ($missing) {
+                $this->fail('status', 'Faltan verificaciones de cierre: '.implode('; ', $missing).'.');
+            }
             $values['closed_at'] = now()->toIso8601String();
             $extra['closed_by'] = ['?', [(string) auth()->id()]];
         }
+    }
+
+    /** Preguntas de la lista del tipo de permiso (fase dada) que no tienen respuesta «Sí» o «No aplica». */
+    private function permitChecksMissing(object $permit, string $phase): array
+    {
+        $list = json_decode(DB::selectOne('select checklist from permit_types where id = ?', [$permit->permit_type_id])?->checklist ?? '[]', true) ?: [];
+        $missing = [];
+        foreach ($list as $q) {
+            if (($q['phase'] ?? 'pre_start') !== $phase) {
+                continue;
+            }
+            $ok = DB::selectOne("select 1 as ok from permit_checks where work_permit_id = ? and check_phase = ? and (item_code = ? or question = ?) and answer in ('yes','na') and deleted_at is null",
+                [$permit->id, $phase, (string) ($q['code'] ?? ''), (string) ($q['question'] ?? '')]);
+            if (! $ok) {
+                $missing[] = $q['question'] ?? ($q['code'] ?? '');
+            }
+        }
+
+        return $missing;
+    }
+
+    private function permitApproval(array &$values, ?object $current, array &$extra): void
+    {
+        $permit = DB::selectOne('select status, requested_by from work_permits where id = ?', [$this->value($values, $current, 'work_permit_id')]);
+        if (! in_array($permit?->status, ['draft', 'pending_approval'], true)) {
+            $this->conflict('Las aprobaciones se registran mientras el permiso espera aprobación.');
+        }
+        if (in_array($values['decision'] ?? null, ['approved', 'rejected'], true)) {
+            // Firma quien está conectado, en este momento; no se firma por otra persona.
+            if ((string) $permit->requested_by === (string) auth()->id()) {
+                $this->fail('decision', 'Quien solicita el permiso no puede aprobarlo.');
+            }
+            $role = $this->value($values, $current, 'approver_role');
+            $mine = app(\App\Core\Tenancy\CompanyContext::class)->roleCode;
+            if ($role && $role !== $mine && ! in_array($mine, ['sst_manager', 'account_admin'], true)) {
+                $this->fail('decision', 'Este paso lo aprueba el rol «'.$role.'».');
+            }
+            $values['approver_user_id'] = (string) auth()->id();
+            $values['decided_at'] = now()->toIso8601String();
+        }
+    }
+
+    private function permitCheck(array &$values, ?object $current, array &$extra): void
+    {
+        $st = DB::selectOne('select status from work_permits where id = ?', [$this->value($values, $current, 'work_permit_id')])?->status;
+        if (in_array($st, ['closed', 'rejected', 'expired'], true)) {
+            $this->conflict('El permiso está cerrado: no se agregan verificaciones.');
+        }
+        $values['checked_by'] = (string) auth()->id();
+        $values['checked_at'] = now()->toIso8601String();
     }
 
     private function budgetExecution(array &$values, ?object $current, array &$extra): void

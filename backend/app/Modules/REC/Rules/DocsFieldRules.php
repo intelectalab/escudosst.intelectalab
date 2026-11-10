@@ -189,6 +189,10 @@ class DocsFieldRules extends RecordRules
             return;
         }
         $to = $values['status'] ?? null;
+        $flow = ['received' => ['triaged', 'rejected'], 'triaged' => ['action_assigned', 'closed', 'rejected'], 'action_assigned' => ['closed'], 'rejected' => [], 'closed' => []];
+        if ($to && $to !== $current->status && ! in_array($to, $flow[$current->status] ?? [], true)) {
+            $this->fail('status', $current->status === 'received' ? 'Primero revisa el reporte (nivel de riesgo) o descártalo con su motivo.' : 'Ese cambio de estado no está permitido.');
+        }
         if ($to === 'triaged') {
             if (! $this->value($values, $current, 'risk_level')) {
                 $this->fail('risk_level', 'Para revisar el reporte indica su nivel de riesgo.');
@@ -206,6 +210,12 @@ class DocsFieldRules extends RecordRules
 
     private function talk(array &$values, ?object $current): void
     {
+        if ($current === null) {
+            if (($values['status'] ?? 'scheduled') === 'held') {
+                $values['status'] = 'scheduled';   // se marca «realizada» después de registrar la asistencia
+            }
+            $values['status'] ??= 'scheduled';
+        }
         if (($values['status'] ?? null) === 'held' && $current
             && ! DB::selectOne('select 1 as ok from talk_attendances where safety_talk_id = ? and deleted_at is null', [$current->id])) {
             $this->fail('status', 'Registra la asistencia de la charla antes de marcarla como realizada.');
@@ -221,6 +231,16 @@ class DocsFieldRules extends RecordRules
             } while (DB::selectOne('select 1 as ok from ats_forms where code = ? and deleted_at is null', [$values['code']]));
         }
         $to = $values['status'] ?? null;
+        $flow = ['draft' => ['signed', 'cancelled'], 'signed' => ['in_execution', 'draft', 'cancelled'], 'in_execution' => ['closed'], 'closed' => [], 'cancelled' => []];
+        if ($current && $to && $to !== $current->status && ! in_array($to, $flow[$current->status] ?? [], true)) {
+            $this->fail('status', $current->status === 'draft' ? 'Primero firma el ATS con todos los participantes.' : 'Ese cambio de estado no está permitido.');
+        }
+        if ($to === 'signed' && $current) {
+            $unsigned = (int) DB::selectOne('select count(*) as n from ats_participants where ats_form_id = ? and deleted_at is null and signed_at is null', [$current->id])->n;
+            if ($unsigned > 0) {
+                $this->fail('status', "Faltan firmar {$unsigned} participante(s): cada trabajador firma que conoce los peligros y controles de la tarea.");
+            }
+        }
         if (in_array($to, ['signed', 'in_execution'], true) && $current) {
             if (! DB::selectOne('select 1 as ok from ats_steps where ats_form_id = ? and deleted_at is null', [$current->id])) {
                 $this->fail('status', 'Registra los pasos de la tarea con sus peligros y controles antes de firmar el ATS.');

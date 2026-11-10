@@ -25,6 +25,42 @@ final class RecordsService
 {
     public const PER_PAGE = 25;
 
+    /**
+     * Rol «trabajador»: en estos módulos solo ve sus propios registros (salud, capacitaciones, EPP, fotocheck, legajo).
+     * Ley 29733 y Ley 29783 art. 71: los datos de salud y personales de un trabajador no se muestran a sus compañeros.
+     */
+    private const SELF_ONLY_MODULES = ['EMO', 'DES', 'VUL', 'VMD', 'CAP', 'FOT', 'EPP', 'TRB', 'CH5', 'AUL', 'SCT'];
+
+    /** Tablas que el trabajador solo consulta: no registra su propia asistencia ni su nota. */
+    private const WORKER_READ_ONLY = ['training_attendances', 'training_evaluations', 'training_certificates', 'fitness_status', 'medical_exam_orders', 'credentials', 'ppe_deliveries'];
+
+    /** Etiquetas compuestas para tablas cuya columna de nombre no identifica a la persona o registro ({a} = alias). */
+    private const LABEL_SQL = [
+        'contractor_workers' => "concat_ws(' ', {a}.first_name, {a}.paternal_last_name, case when {a}.document_last4 is not null then '· ****' || {a}.document_last4 end)",
+        'sctr_policies' => "concat_ws(' · ', case {a}.coverage_kind when 'health' then 'Salud' when 'pension' then 'Pensión' end, {a}.insurer_name, {a}.policy_number)",
+        'committee_meetings' => "concat('Sesión N.° ', {a}.number, ' · ', case {a}.meeting_type when 'ordinary' then 'Ordinaria' when 'extraordinary' then 'Extraordinaria' else {a}.meeting_type end)",
+        'iperc_versions' => "concat('Versión ', {a}.version_number, case {a}.status when 'current' then ' (vigente)' when 'draft' then ' (borrador)' when 'obsolete' then ' (obsoleta)' else '' end)",
+        'access_events' => "concat(to_char({a}.occurred_at at time zone 'America/Lima', 'DD/MM/YYYY HH24:MI'), ' · ', case {a}.direction when 'in' then 'Ingreso' when 'out' then 'Salida' else {a}.direction end)",
+    ];
+
+    public static function labelSql(string $table, string $alias): ?string
+    {
+        return isset(self::LABEL_SQL[$table]) ? str_replace('{a}', $alias, self::LABEL_SQL[$table]) : null;
+    }
+
+    /** Condición «solo lo suyo» para el rol trabajador, o null si no aplica. */
+    private function selfScope(array $res): ?array
+    {
+        $ctx = app(\App\Core\Tenancy\CompanyContext::class);
+        if ($ctx->roleCode !== 'worker' || ! in_array($res['module'], self::SELF_ONLY_MODULES, true)
+            || ! in_array('worker_id', array_column($res['fields'], 'name'), true)) {
+            return null;
+        }
+        $worker = DB::selectOne('select worker_id from memberships where id = ?', [$ctx->membershipId])?->worker_id;
+
+        return $worker ? ['t.worker_id = ?', [$worker]] : ['false', []];
+    }
+
     /** Permisos del usuario sobre una tabla: read, create, update, delete. */
     public function abilities(array $res): array
     {
@@ -32,12 +68,14 @@ final class RecordsService
         $p = strtolower($res['module']).'.'.$res['table'].'.';
         $can = fn (string $a) => in_array($p.$a, $effective, true);
 
+        $workerReadOnly = app(\App\Core\Tenancy\CompanyContext::class)->roleCode === 'worker' && in_array($res['table'], self::WORKER_READ_ONLY, true);
+
         return [
             'read' => $can('read'),
-            'create' => $can('create'),
-            'update' => $can('update') && ! $res['immutable'],
-            'delete' => $can('delete') && ! $res['immutable'],
-            'export' => $can('export'),
+            'create' => $can('create') && ! $workerReadOnly,
+            'update' => $can('update') && ! $res['immutable'] && ! $workerReadOnly,
+            'delete' => $can('delete') && ! $res['immutable'] && ! $workerReadOnly,
+            'export' => $can('export') && ! $workerReadOnly,
         ];
     }
 
@@ -189,6 +227,7 @@ final class RecordsService
             if ($code) {
                 $labelExpr = "concat_ws(' · ', r.\"code\", r.\"{$label}\")";
             }
+            $labelExpr = self::labelSql($target, 'r') ?? $labelExpr;
             $sql = "select r.id, {$labelExpr} as label from \"{$target}\" r where true";
             $bind = [];
             $alias = 'r';
@@ -225,7 +264,9 @@ final class RecordsService
             throw ApiProblem::notFound('El registro no existe.');
         }
         [$select, $from] = $this->selectSql($res, forList: false);
-        $row = DB::selectOne("select {$select} {$from} where t.id = ?".($res['soft_delete'] ? ' and t.deleted_at is null' : ''), [$id]);
+        $scope = $this->selfScope($res);
+        $row = DB::selectOne("select {$select} {$from} where t.id = ?".($res['soft_delete'] ? ' and t.deleted_at is null' : '').($scope ? " and {$scope[0]}" : ''),
+            array_merge([$id], $scope[1] ?? []));
         if ($row === null) {
             throw ApiProblem::notFound('El registro no existe o es de otra empresa.');
         }
@@ -258,7 +299,8 @@ final class RecordsService
             if ($f['type'] === 'ref' && (! $forList || ! empty($f['list']))) {
                 $target = $f['ref'];
                 $label = $target === 'users' ? 'full_name' : (Registry::labelColumn($target) ?? 'id');
-                $parts[] = "(select r.\"{$label}\"::text from \"{$target}\" r where r.id = t.\"{$c}\") as \"{$c}__label\"";
+                $expr = self::labelSql($target, 'r') ?? "r.\"{$label}\"::text";
+                $parts[] = "(select {$expr} from \"{$target}\" r where r.id = t.\"{$c}\") as \"{$c}__label\"";
             }
         }
 
@@ -290,6 +332,10 @@ final class RecordsService
         }
         if (($query['own'] ?? null) === '1' && $res['hybrid']) {
             $where[] = 't.company_id is not null';
+        }
+        if ($scope = $this->selfScope($res)) {
+            $where[] = $scope[0];
+            array_push($bind, ...$scope[1]);
         }
 
         return [$where ? 'where '.implode(' and ', $where) : '', $bind];
@@ -596,6 +642,10 @@ final class RecordsService
             if (! array_filter($cols, fn ($c) => array_key_exists($c, $values))) {
                 continue;
             }
+            // Índice parcial con otra condición (p. ej. «una sola versión vigente», «una asignación abierta»): lo valida la base.
+            if ($this->isPartialUnique($res['table'], $cols)) {
+                continue;
+            }
             $where = [];
             $bind = [];
             foreach ($cols as $c) {
@@ -624,6 +674,30 @@ final class RecordsService
                     ['errors' => [$last['name'] => ["Ya existe un registro con ese mismo {$names}."]]]);
             }
         }
+    }
+
+    /** ¿El único de esas columnas es un índice parcial con una condición distinta de «no archivado»? */
+    private function isPartialUnique(string $table, array $cols): bool
+    {
+        static $cache = [];
+        $cache[$table] ??= DB::select(
+            "select array_to_string(array(select a.attname from unnest(i.indkey) k join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k where a.attname <> 'company_id' order by a.attname), ',') as cols,
+                    coalesce(pg_get_expr(i.indpred, i.indrelid), '') as pred
+               from pg_index i where i.indisunique and i.indrelid = ?::regclass",
+            ['public.'.$table]
+        );
+        $want = $cols;
+        sort($want);
+        foreach ($cache[$table] as $ix) {
+            if ($ix->cols === implode(',', $want)) {
+                $pred = trim(preg_replace('/\(?\s*deleted_at IS NULL\s*\)?/i', '', $ix->pred), " ()\t\n");
+                if ($pred !== '' && ! preg_match('/^(AND\s*)?$/i', $pred)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /** Traduce los rechazos de la base (reglas, únicos, referencias) a mensajes claros. */

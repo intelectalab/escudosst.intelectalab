@@ -45,12 +45,18 @@ class CertificatesController extends Controller
         $issued = 0;
         $skipped = [];
         foreach ($people as $p) {
-            if ($t->passing_score !== null && ! $p->passed) {
-                $skipped[] = "{$p->full_name} (sin evaluación aprobada)";
+            // Aprobado: si hay nota, se compara con la nota mínima de la capacitación (misma escala); si no, vale «aprobó» de la evaluación.
+            $passed = $p->score !== null && $t->passing_score !== null ? (float) $p->score >= (float) $t->passing_score : (bool) $p->passed;
+            if ($t->passing_score !== null && ! $passed) {
+                $skipped[] = "{$p->full_name} (".($p->score !== null ? "nota {$p->score}, mínimo {$t->passing_score}" : 'sin evaluación aprobada').')';
 
                 continue;
             }
-            if (DB::selectOne("select 1 as ok from training_certificates where training_id = ? and worker_id = ? and status <> 'voided' and deleted_at is null", [$training, $p->worker_id])) {
+            // Solo se omite a quien ya tiene un certificado vigente: si venció, la nueva sesión lo vuelve a certificar.
+            if (DB::selectOne("select 1 as ok from training_certificates where training_id = ? and worker_id = ? and deleted_at is null
+                                 and status in ('validated', 'pending_validation') and (expires_on is null or expires_on >= ?)", [$training, $p->worker_id, $today])) {
+                $skipped[] = "{$p->full_name} (ya tiene un certificado vigente)";
+
                 continue;
             }
             $n = (int) DB::selectOne("select count(*) + 1 as n from training_certificates where certificate_code like ?", ["CERT-{$year}-%"])->n;

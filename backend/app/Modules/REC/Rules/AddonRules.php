@@ -62,23 +62,54 @@ class AddonRules extends RecordRules
         $values['occurred_at'] ??= now()->toIso8601String();
         $extra['guard_user_id'] = ['?', [(string) auth()->id()]];
         $type = $values['subject_type'] ?? 'worker';
+        $reasons = [];
+        $point = ($values['access_point_id'] ?? null) ? DB::selectOne('select is_active, allows_visitors, requires_credential from access_points where id = ?', [$values['access_point_id']]) : null;
+        if ($point && ! $point->is_active) {
+            $reasons[] = 'Punto de acceso inactivo';
+        }
         if ($type === 'visitor' || $type === 'vehicle') {
-            $values['result'] ??= 'granted';
+            if ($point && $type === 'visitor' && ! $point->allows_visitors) {
+                $reasons[] = 'Este punto no admite visitas';
+            }
+            if (($values['result'] ?? null) === 'overridden') {
+                if (empty($values['override_reason'])) {
+                    $this->fail('override_reason', 'Para autorizar por excepción indica el motivo.');
+                }
+            } else {
+                $values['result'] = $reasons ? 'denied' : 'granted';
+            }
+            $values['deny_reasons'] = $reasons;
 
             return;
         }
-        $reasons = [];
         $col = $type === 'contractor_worker' ? 'contractor_worker_id' : 'worker_id';
         $person = $values[$col] ?? null;
         if (! $person) {
             $this->fail($col, 'Elige a la persona que ingresa.');
         }
-        $cred = DB::selectOne("select id, status, expires_on, blocking_reasons from credentials where {$col} = ? and deleted_at is null and status <> 'revoked'
+        if ($type === 'contractor_worker') {
+            $cw = DB::selectOne('select w.status, w.access_enabled, c.status as contractor_status from contractor_workers w join contractors c on c.id = w.contractor_id where w.id = ?', [$person]);
+            if ($cw && ($cw->status !== 'active' || ! $cw->access_enabled)) {
+                $reasons[] = 'Trabajador del contratista bloqueado o sin acceso';
+            }
+            if ($cw && $cw->contractor_status !== 'active') {
+                $reasons[] = 'Contratista '.($cw->contractor_status === 'suspended' ? 'suspendido' : 'bloqueado');
+            }
+        }
+        $cred = DB::selectOne("select id, status, credential_type_id, worker_id, contractor_worker_id, expires_on from credentials where {$col} = ? and deleted_at is null and status <> 'revoked'
                                 order by issued_at desc nulls last limit 1", [$person]);
         if (! $cred) {
-            $reasons[] = 'Sin fotocheck';
-        } elseif ($cred->status !== 'active' || ($cred->expires_on && $cred->expires_on < date('Y-m-d'))) {
-            $reasons[] = 'Fotocheck no habilitado'.($cred->blocking_reasons ? ': '.implode(', ', json_decode($cred->blocking_reasons, true) ?? []) : '');
+            if (! $point || $point->requires_credential) {
+                $reasons[] = 'Sin fotocheck';
+            }
+        } else {
+            // Se evalúan los requisitos en este momento (un SCTR o una aptitud pudo vencer desde la última revisión).
+            $live = PeopleRules::credentialReasons($cred->credential_type_id, $cred->worker_id, $cred->contractor_worker_id, $cred->expires_on);
+            if ($live) {
+                $reasons[] = 'Fotocheck no habilitado: '.implode(', ', $live);
+            }
+            DB::update('update credentials set status = ?, blocking_reasons = ?::jsonb, last_evaluated_at = now() where id = ?',
+                [$live ? 'blocked' : 'active', json_encode($live, JSON_UNESCAPED_UNICODE), $cred->id]);
         }
         $values['credential_id'] ??= $cred?->id;
         if (($values['result'] ?? null) === 'overridden') {
@@ -114,11 +145,7 @@ class AddonRules extends RecordRules
 
     private function aspect(array &$values, ?object $current, array &$extra): void
     {
-        $s = $this->value($values, $current, 'severity_value');
-        $p = $this->value($values, $current, 'probability_value');
-        if ($s !== null && $p !== null) {
-            $values['significance_score'] = (int) $s * (int) $p;
-        }
+        unset($values['significance_score']);   // columna calculada por la base (severidad × probabilidad)
     }
 
     private function signature(string $op, array &$values, ?object $current, array &$extra): void

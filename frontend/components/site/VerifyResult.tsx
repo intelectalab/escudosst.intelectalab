@@ -56,9 +56,7 @@ export function VerifyResult({ kind, code }: { kind: "certificate" | "credential
           ))}
         </dl>
       )}
-      {Array.isArray(r.blocking_reasons) && r.blocking_reasons.length > 0 && (
-        <p className="text-sm">Motivo: {(r.blocking_reasons as string[]).join(", ")}.</p>
-      )}
+      {r.result === "not_enabled" && <p className="text-sm">Consulta el motivo con el área de Seguridad y Salud en el Trabajo de la empresa.</p>}
       {r.result === "not_public" && <p className="text-sm">La empresa {String(r.company ?? "")} no habilitó la verificación pública de este certificado.</p>}
       <p className="text-xs text-[var(--site-text-2)]">Verificación hecha en EscudoSST el {new Date().toLocaleString("es-PE")} · Cada consulta queda registrada.</p>
     </div>

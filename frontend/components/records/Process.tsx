@@ -133,6 +133,13 @@ export function RecordActions({
   if (readOnly) return null;
   if (res.table === "corrective_actions") return <CorrectiveFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "inspections") return <InspectionRun row={row} onChanged={onChanged} />;
+  if (ACTION_SOURCES[res.table] && STEPS[res.table])
+    return (
+      <div className="space-y-3">
+        <FindingAction table={res.table} row={row} onChanged={onChanged} />
+        <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />
+      </div>
+    );
   if (ACTION_SOURCES[res.table]) return <FindingAction table={res.table} row={row} onChanged={onChanged} />;
   if (res.table === "baseline_assessments") return <BaselineFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "monthly_statistics") return <CloseMonth row={row} onChanged={onChanged} />;
@@ -780,7 +787,7 @@ function MeetingFlow({ row, canEdit, onChanged }: { row: RecordRow; canEdit: boo
 
 
 /** Tablas cuyos registros los crea un flujo (no el botón «Nuevo»). */
-export const NO_CREATE = new Set(["monthly_statistics", "training_certificates", "iperc_versions", "event_notifications", "investigations", "register_exports"]);
+export const NO_CREATE = new Set(["monthly_statistics", "training_certificates", "iperc_versions", "event_notifications", "register_exports"]);
 
 /** Acciones de la lista completa (arriba, junto a «Nuevo»). */
 export function PanelActions({ table, onDone }: { table: string; onDone: () => void }) {
@@ -919,7 +926,7 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
     steps: [{ from: ["scheduled"], label: "Marcar realizada", body: { status: "held" }, primary: true }],
   },
   ats_forms: {
-    help: "Completa pasos (peligros y controles) y participantes; luego firma, ejecuta y cierra.",
+    help: "Completa los pasos (peligros y controles) y los participantes; cada participante firma (fecha de firma) y luego firmas el ATS, inicias el trabajo y lo cierras.",
     steps: [
       { from: ["draft"], label: "Firmar ATS", body: { status: "signed" }, primary: true },
       { from: ["signed"], label: "Iniciar trabajo", body: { status: "in_execution" }, primary: true },
@@ -935,9 +942,12 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
     ],
   },
   investigations: {
-    help: "Registra las causas y sus acciones; apruébala y ciérrala cuando las acciones estén verificadas.",
+    help: "Arma el equipo (con su líder), registra las causas inmediatas y básicas y las conclusiones; pásala al comité, apruébala y ciérrala cuando sus acciones estén verificadas.",
     steps: [
+      { from: ["open"], label: "Empezar el análisis", body: { status: "analysis" } },
+      { from: ["open", "analysis"], label: "Enviar al comité", body: { status: "committee_review" } },
       { from: ["open", "analysis", "committee_review"], label: "Aprobar investigación", body: { status: "approved" }, primary: true },
+      { from: ["approved"], label: "Acciones en curso", body: { status: "actions_in_progress" } },
       { from: ["approved", "actions_in_progress"], label: "Cerrar investigación", body: { status: "closed" } },
     ],
   },
@@ -945,7 +955,7 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
     help: "El evento se cierra cuando su investigación está cerrada, tiene afectados y no quedan notificaciones pendientes.",
     steps: [
       { from: ["reported", "registered", "notified", "under_investigation"], label: "Cerrar evento", body: { status: "closed" }, primary: true },
-      { from: ["reported", "registered"], label: "Descartar", body: { status: "discarded" }, ask: "discarded_reason" },
+      { from: ["reported", "registered", "under_investigation"], label: "Descartar", body: { status: "discarded" }, ask: "discarded_reason" },
     ],
   },
   annual_plans: {

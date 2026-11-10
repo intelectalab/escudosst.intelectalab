@@ -6,7 +6,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useApp } from "@/components/AppContext";
-import { availableIn, PLAN_NAMES } from "@/lib/menu";
+import { availableIn } from "@/lib/menu";
 import { ModuleRecords } from "@/components/records/ModuleRecords";
 import { IpercModule } from "@/components/ipc/IpercModule";
 import { Dashboard } from "@/components/dsh/Dashboard";
@@ -54,9 +54,9 @@ export default function ModulePage() {
             Tu empresa no tiene este módulo en su plan.{" "}
             {isAdmin ? "Para agregarlo, contacta al equipo de EscudoSST." : "Si lo necesitas, pídelo al administrador de tu cuenta."}
           </p>
-          {m.required_plan in PLAN_NAMES && m.required_plan !== "+" && (
-            <p className="text-sm text-muted">Precio: S/ —</p>
-          )}
+          <a href={m.required_plan === "+" ? "/complementos" : "/planes"} target="_blank" rel="noreferrer" className="inline-block font-semibold text-brand hover:underline">
+            {m.required_plan === "+" ? "Ver complementos y precios ↗" : "Comparar planes y precios ↗"}
+          </a>
           <p className="rounded-lg bg-bg px-4 py-2 text-sm text-muted">Si un día bajas de plan, tus datos no se borran: quedan en solo lectura.</p>
         </Card>
       </div>

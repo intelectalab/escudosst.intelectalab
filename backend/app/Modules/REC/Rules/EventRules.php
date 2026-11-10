@@ -23,19 +23,78 @@ class EventRules extends RecordRules
         'reported' => ['registered', 'notified', 'under_investigation', 'closed', 'discarded'],
         'registered' => ['notified', 'under_investigation', 'closed', 'discarded'],
         'notified' => ['under_investigation', 'closed'],
-        'under_investigation' => ['closed'],
+        'under_investigation' => ['closed', 'discarded'],
         'closed' => [],
         'discarded' => [],
+    ];
+
+    /** Personas que cuentan como afectadas (los testigos e involucrados no suman días perdidos). */
+    private const AFFECTED = "('injured','affected','ill')";
+
+    private const INV_FLOW = [
+        'open' => ['analysis', 'committee_review', 'approved'],
+        'analysis' => ['committee_review', 'approved', 'open'],
+        'committee_review' => ['approved', 'analysis'],
+        'approved' => ['actions_in_progress', 'closed', 'analysis'],
+        'actions_in_progress' => ['closed'],
+        'closed' => [],
     ];
 
     public function prepare(string $op, array $res, array &$values, ?object $current, array &$extra): void
     {
         match ($res['table']) {
             'sst_events' => $this->event($op, $values, $current, $extra),
+            'event_people' => $this->person($values, $current),
             'event_notifications' => $this->notification($values, $current, $extra),
             'investigations' => $this->investigation($op, $values, $current, $extra),
+            'investigation_causes', 'investigation_team' => $this->investigationChild($values, $current),
             default => null,
         };
+    }
+
+    public function prepareDelete(array $res, object $current): void
+    {
+        if (in_array($res['table'], ['event_people', 'event_notifications'], true)) {
+            $this->eventOpen($current->event_id);
+        }
+        if (in_array($res['table'], ['investigation_causes', 'investigation_team'], true)) {
+            $this->investigationOpen($current->investigation_id);
+        }
+        if ($res['table'] === 'event_people') {
+            // Al quitar a una persona se recalculan los días perdidos y los afectados del evento.
+            DB::update('update sst_events set lost_days = (select coalesce(sum(greatest(lost_days, 0)), 0) from event_people where event_id = ? and id <> ? and deleted_at is null and person_role in '.self::AFFECTED.'),
+                        injured_count = (select count(*) from event_people where event_id = ? and id <> ? and deleted_at is null and person_role in '.self::AFFECTED.')
+                        where id = ?', [$current->event_id, $current->id, $current->event_id, $current->id, $current->event_id]);
+        }
+    }
+
+    /** Un evento cerrado o descartado no cambia (ni sus personas ni sus notificaciones): cambiaría las estadísticas y los registros. */
+    private function eventOpen(?string $eventId): void
+    {
+        $st = $eventId ? DB::selectOne('select status from sst_events where id = ?', [$eventId])?->status : null;
+        if (in_array($st, ['closed', 'discarded'], true)) {
+            $this->conflict('El evento está '.($st === 'closed' ? 'cerrado' : 'descartado').': no se agregan ni cambian sus datos.');
+        }
+    }
+
+    private function investigationOpen(?string $invId): void
+    {
+        if ($invId && DB::selectOne("select 1 as ok from investigations where id = ? and status = 'closed'", [$invId])) {
+            $this->conflict('La investigación está cerrada: no se agregan ni cambian sus causas ni su equipo.');
+        }
+    }
+
+    private function person(array &$values, ?object $current): void
+    {
+        $this->eventOpen($this->value($values, $current, 'event_id'));
+        if (($d = $values['lost_days'] ?? null) !== null && (int) $d < 0) {
+            $this->fail('lost_days', 'Los días perdidos no pueden ser negativos.');
+        }
+    }
+
+    private function investigationChild(array &$values, ?object $current): void
+    {
+        $this->investigationOpen($this->value($values, $current, 'investigation_id'));
     }
 
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
@@ -45,14 +104,22 @@ class EventRules extends RecordRules
         }
         if ($res['table'] === 'event_people') {
             $event = DB::selectOne('select event_id from event_people where id = ?', [$id])->event_id;
-            DB::update("update sst_events set lost_days = (select coalesce(sum(lost_days), 0) from event_people where event_id = ? and deleted_at is null),
-                        injured_count = (select count(*) from event_people where event_id = ? and deleted_at is null and person_role in ('injured','affected','ill'))
-                        where id = ?", [$event, $event, $event]);
+            DB::update('update sst_events set lost_days = (select coalesce(sum(greatest(lost_days, 0)), 0) from event_people where event_id = ? and deleted_at is null and person_role in '.self::AFFECTED.'),
+                        injured_count = (select count(*) from event_people where event_id = ? and deleted_at is null and person_role in '.self::AFFECTED.')
+                        where id = ?', [$event, $event, $event]);
         }
         if ($res['table'] === 'event_notifications' && in_array($values['status'] ?? null, ['sent', 'acknowledged'], true)) {
             $n = DB::selectOne('select event_id from event_notifications where id = ?', [$id]);
             DB::update("update sst_events set status = 'notified' where id = ? and status in ('reported','registered')
                          and not exists (select 1 from event_notifications where event_id = ? and status = 'pending' and deleted_at is null)", [$n->event_id, $n->event_id]);
+            DB::update('update sst_events set notification_overdue = exists (select 1 from event_notifications where event_id = ? and notification_overdue and deleted_at is null) where id = ?',
+                [$n->event_id, $n->event_id]);
+        }
+        // Evento descartado: su investigación automática (sin causas) se archiva y las notificaciones pendientes dejan de exigirse.
+        if ($res['table'] === 'sst_events' && ($values['status'] ?? null) === 'discarded') {
+            DB::update("update investigations set deleted_at = now() where event_id = ? and deleted_at is null
+                          and not exists (select 1 from investigation_causes c where c.investigation_id = investigations.id and c.deleted_at is null)", [$id]);
+            DB::update("update event_notifications set status = 'not_required', notes = concat_ws(' ', notes, '(evento descartado)') where event_id = ? and status = 'pending' and deleted_at is null", [$id]);
         }
         if ($res['table'] === 'investigations' && $op === 'create') {
             DB::update("update sst_events set status = 'under_investigation' where id = (select event_id from investigations where id = ?) and status not in ('closed','discarded')", [$id]);
@@ -83,6 +150,10 @@ class EventRules extends RecordRules
             if ($to === 'discarded' && ! $this->value($values, $current, 'discarded_reason')) {
                 $this->fail('discarded_reason', 'Para descartar el evento indica el motivo.');
             }
+            if ($to === 'discarded' && DB::selectOne("select 1 as ok from investigation_causes c join investigations i on i.id = c.investigation_id
+                    where i.event_id = ? and i.deleted_at is null and c.deleted_at is null", [$current->id])) {
+                $this->fail('status', 'La investigación ya tiene causas registradas: no se puede descartar el evento. Si no corresponde, ciérrala con sus conclusiones.');
+            }
             if ($to === 'closed') {
                 $type = $this->value($values, $current, 'event_type');
                 if (in_array($type, self::NEEDS_INVESTIGATION, true)
@@ -106,10 +177,22 @@ class EventRules extends RecordRules
 
     private function notification(array &$values, ?object $current, array &$extra): void
     {
+        $eventId = $this->value($values, $current, 'event_id');
+        $this->eventOpen($eventId);
         $to = $values['status'] ?? null;
         if (in_array($to, ['sent', 'acknowledged'], true)) {
             $at = $this->value($values, $current, 'notified_at') ?? now()->toIso8601String();
             $values['notified_at'] = $at;
+            $occurred = DB::selectOne('select occurred_at from sst_events where id = ?', [$eventId])?->occurred_at;
+            if ($occurred && strtotime($at) < strtotime($occurred)) {
+                $this->fail('notified_at', 'La fecha de notificación no puede ser anterior al evento.');
+            }
+            if (strtotime($at) > time() + 300) {
+                $this->fail('notified_at', 'La fecha de notificación no puede ser futura.');
+            }
+            if (! $this->value($values, $current, 'notification_number') && ! $this->value($values, $current, 'receipt_file_id')) {
+                $this->fail('notification_number', 'Indica el número de la notificación o adjunta la constancia: es la prueba de que se notificó.');
+            }
             $deadline = $this->value($values, $current, 'deadline_at');
             $extra['notified_by'] = ['?', [(string) auth()->id()]];
             $extra['notification_overdue'] = ['?::boolean', [$deadline && strtotime($at) > strtotime($deadline) ? 'true' : 'false']];
@@ -133,9 +216,20 @@ class EventRules extends RecordRules
         }
         $to = $values['status'] ?? null;
         if ($to && $current && $to !== $current->status) {
-            if (in_array($to, ['approved', 'actions_in_progress', 'closed'], true)
-                && ! DB::selectOne('select 1 as ok from investigation_causes where investigation_id = ? and deleted_at is null', [$current->id])) {
-                $this->fail('status', 'Registra las causas (inmediatas y básicas) antes de aprobar la investigación.');
+            if (! in_array($to, self::INV_FLOW[$current->status] ?? [], true)) {
+                $this->fail('status', $current->status === 'closed' ? 'La investigación ya está cerrada.' : 'Ese cambio de estado no está permitido: apruébala antes de cerrarla.');
+            }
+            if ($to === 'approved') {
+                $levels = array_column(DB::select('select distinct cause_level from investigation_causes where investigation_id = ? and deleted_at is null', [$current->id]), 'cause_level');
+                if (! in_array('immediate', $levels, true) || ! array_intersect(['basic', 'root', 'lack_of_control'], $levels)) {
+                    $this->fail('status', 'Registra al menos una causa inmediata y una causa básica (o raíz) antes de aprobar la investigación.');
+                }
+                if (! DB::selectOne("select 1 as ok from investigation_team where investigation_id = ? and role = 'leader' and deleted_at is null", [$current->id])) {
+                    $this->fail('status', 'Indica quién lidera la investigación en el equipo investigador.');
+                }
+                if (trim((string) $this->value($values, $current, 'conclusions')) === '') {
+                    $this->fail('conclusions', 'Escribe las conclusiones de la investigación antes de aprobarla.');
+                }
             }
             if ($to === 'approved') {
                 $extra['approved_by'] = ['?', [(string) auth()->id()]];

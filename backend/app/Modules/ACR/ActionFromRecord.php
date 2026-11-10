@@ -31,6 +31,7 @@ class ActionFromRecord extends Controller
         'management_review_outputs' => ['management_review', 'review_id', 'in_progress'],
         'measurements' => ['monitoring', 'id', null],
         'behavior_observations' => ['observation', 'id', null],
+        'behavior_observation_items' => ['observation', 'observation_id', null],
         'change_requests' => ['change', 'id', null],
     ];
 
@@ -49,7 +50,12 @@ class ActionFromRecord extends Controller
         if (! $row) {
             throw ApiProblem::notFound('El registro no existe o es de otra empresa.');
         }
-        if (! empty($row->corrective_action_id)) {
+        // Tablas sin columna de vínculo (observaciones, solicitudes de cambio): la acción se reconoce por su origen.
+        $linkable = property_exists($row, 'corrective_action_id');
+        $existing = $linkable
+            ? ($row->corrective_action_id ? DB::selectOne("select status from corrective_actions where id = ? and deleted_at is null", [$row->corrective_action_id]) : null)
+            : DB::selectOne("select status from corrective_actions where source_type = ? and source_id = ? and deleted_at is null and status <> 'cancelled' limit 1", [$src[0], $id]);
+        if ($existing && $existing->status !== 'cancelled') {
             throw new ApiProblem(409, 'conflict', 'Ya tiene acción', 'Este registro ya tiene su acción correctiva.');
         }
 
@@ -84,8 +90,10 @@ class ActionFromRecord extends Controller
             [$row->company_id, $code, $type, $row->{$sourceCol}, mb_substr($title, 0, 500), $row->description ?? null, $row->site_id ?? null, $row->area_id ?? null,
                 $user, $due, in_array($severity, ['high', 'critical'], true) ? 'high' : 'medium', (string) auth()->id(), (string) auth()->id()]
         )->id;
-        DB::update("update \"{$table}\" set corrective_action_id = ?".($newStatus ? ', status = ?' : '').' where id = ?',
-            $newStatus ? [$actionId, $newStatus, $id] : [$actionId, $id]);
+        if ($linkable) {
+            DB::update("update \"{$table}\" set corrective_action_id = ?".($newStatus ? ', status = ?' : '').' where id = ?',
+                $newStatus ? [$actionId, $newStatus, $id] : [$actionId, $id]);
+        }
 
         return response()->json(['data' => ['id' => $actionId, 'code' => $code]], 201);
     }

@@ -87,15 +87,15 @@ export function Dashboard() {
               <>
                 {" · "}
                 <Link className="font-semibold text-brand hover:underline" href={recordsHref("TRB", "workers", { filters: { status: "active,on_leave", ...(site ? { current_site_id: site } : {}) } })}>
-                  {data.counts.workers} trabajadores
+                  {data.counts.workers} {data.counts.workers === 1 ? "trabajador" : "trabajadores"}
                 </Link>
                 {" · "}
                 <Link className="font-semibold text-brand hover:underline" href={recordsHref("TEN", "sites", { filters: { status: "active" } })}>
-                  {data.counts.sites} sede(s)
+                  {data.counts.sites} {data.counts.sites === 1 ? "sede" : "sedes"}
                 </Link>
                 {" · "}
                 <Link className="font-semibold text-brand hover:underline" href={recordsHref("TEN", "positions", { filters: { status: "active" } })}>
-                  {data.counts.positions} puestos
+                  {data.counts.positions} {data.counts.positions === 1 ? "puesto" : "puestos"}
                 </Link>
               </>
             )}

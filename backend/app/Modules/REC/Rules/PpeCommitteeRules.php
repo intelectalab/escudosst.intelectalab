@@ -143,6 +143,16 @@ class PpeCommitteeRules extends RecordRules
         if ($current && $current->status === 'minutes_signed' && $values !== []) {
             $this->conflict('El acta está firmada: la sesión no se modifica.');
         }
+        $to = $values['status'] ?? null;
+        if ($current && $to && $to !== $current->status) {
+            $flow = ['scheduled' => ['held', 'cancelled'], 'held' => ['minutes_draft', 'minutes_signed'], 'minutes_draft' => ['minutes_signed', 'held'], 'cancelled' => []];
+            if (! in_array($to, $flow[$current->status] ?? [], true)) {
+                $this->fail('status', $current->status === 'scheduled' ? 'Primero marca la sesión como realizada.' : 'Ese cambio de estado no está permitido.');
+            }
+            if ($to === 'minutes_signed' && ! $this->value($values, $current, 'minutes_html') && ! $this->value($values, $current, 'minutes_file_id')) {
+                $this->fail('minutes_html', 'Escribe el acta o adjunta el acta firmada antes de marcarla como firmada.');
+            }
+        }
         if (in_array($values['status'] ?? null, ['held', 'minutes_draft', 'minutes_signed'], true)) {
             $values['held_at'] = $this->value($values, $current, 'held_at') ?? now()->toIso8601String();
         }
