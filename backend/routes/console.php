@@ -108,7 +108,8 @@ Artisan::command('escudo:subscriptions-daily', function (RenewalService $renewal
 Schedule::command('escudo:subscriptions-daily')
     ->dailyAt(config('escudo.subscriptions.daily_at'))
     ->timezone('America/Lima')
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    ->runInBackground();
 
 // Latido del programador de tareas: «Salud del sistema» avisa si deja de correr.
 Schedule::call(fn () => SystemPulse::schedulerBeat())->everyMinute()->name('escudo:heartbeat');
@@ -143,6 +144,7 @@ Schedule::command('escudo:backup')
     ->dailyAt(config('escudo.backups.daily_at'))
     ->timezone('America/Lima')
     ->withoutOverlapping()
+    ->runInBackground()   // la copia puede tardar más de un minuto: no detiene al programador
     ->name('escudo:backup');
 
 
@@ -150,37 +152,37 @@ Artisan::command('escudo:newsletter:send', function (\App\Modules\WEB\Services\N
     $this->info('Correos del boletín enviados: '.$newsletter->sendDue());
 })->purpose('Envía las ediciones del boletín programadas cuya hora ya llegó');
 
-Schedule::command('escudo:newsletter:send')->everyMinute()->withoutOverlapping()->name('escudo:newsletter:send');
+Schedule::command('escudo:newsletter:send')->everyMinute()->withoutOverlapping()->runInBackground()->name('escudo:newsletter:send');
 
 Artisan::command('escudo:analytics:daily', function () {
     $this->info(\App\Modules\WEB\Http\Controllers\AnalyticsController::dailyMaintenance());
 })->purpose('Resume las métricas del día anterior');
 
-Schedule::command('escudo:analytics:daily')->dailyAt('00:15')->timezone('America/Lima')->withoutOverlapping()->name('escudo:analytics:daily');
+Schedule::command('escudo:analytics:daily')->dailyAt('00:15')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:analytics:daily');
 
 Artisan::command('escudo:demos:reminders', function (\App\Modules\WEB\Services\DemoService $demos) {
     $this->info('Recordatorios de demo enviados: '.$demos->sendReminders());
 })->purpose('Envía los recordatorios del día anterior y de la hora previa de las demos confirmadas');
 
-Schedule::command('escudo:demos:reminders')->everyFiveMinutes()->withoutOverlapping()->name('escudo:demos:reminders');
+Schedule::command('escudo:demos:reminders')->everyFiveMinutes()->withoutOverlapping()->runInBackground()->name('escudo:demos:reminders');
 
 Artisan::command('escudo:webinars:reminders', function (\App\Modules\WEB\Services\WebinarsService $webinars) {
     $this->info('Recordatorios de webinar enviados: '.$webinars->sendReminders());
 })->purpose('Envía a los inscritos el recordatorio del día anterior y de la hora previa de cada webinar');
 
-Schedule::command('escudo:webinars:reminders')->everyFiveMinutes()->withoutOverlapping()->name('escudo:webinars:reminders');
+Schedule::command('escudo:webinars:reminders')->everyFiveMinutes()->withoutOverlapping()->runInBackground()->name('escudo:webinars:reminders');
 
 Artisan::command('escudo:reviews:refresh', function () {
     $this->info('Reseñas actualizadas: '.\App\Modules\WEB\Http\Controllers\ReviewsController::refreshDue());
 })->purpose('Renueva la copia de las reseñas de Google cuando vence');
 
-Schedule::command('escudo:reviews:refresh')->hourly()->withoutOverlapping()->name('escudo:reviews:refresh');
+Schedule::command('escudo:reviews:refresh')->hourly()->withoutOverlapping()->runInBackground()->name('escudo:reviews:refresh');
 
 Artisan::command('escudo:crm:sync', function (\App\Modules\WEB\Services\CrmService $crm) {
     $this->info('Envíos al CRM procesados: '.$crm->processDue());
 })->purpose('Envía al CRM los registros pendientes y reintenta los fallidos');
 
-Schedule::command('escudo:crm:sync')->everyMinute()->withoutOverlapping()->name('escudo:crm:sync');
+Schedule::command('escudo:crm:sync')->everyMinute()->withoutOverlapping()->runInBackground()->name('escudo:crm:sync');
 
 /*
 | Alertas SST diarias (M-NOT): acciones vencidas o por vencer, notificaciones obligatorias, IPERC por revisar,
@@ -191,7 +193,7 @@ Artisan::command('escudo:sst-alerts', function (\App\Modules\NOT\SstAlerts $aler
     $this->info('Avisos creados: '.$alerts->run());
 })->purpose('Genera las alertas SST del día en la campana de cada empresa');
 
-Schedule::command('escudo:sst-alerts')->dailyAt('07:00')->timezone('America/Lima')->withoutOverlapping()->name('escudo:sst-alerts');
+Schedule::command('escudo:sst-alerts')->dailyAt('07:00')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:sst-alerts');
 
 /*
 | Webhooks del complemento API: envía los eventos pendientes firmados y reintenta los fallidos.
@@ -201,4 +203,4 @@ Artisan::command('escudo:webhooks', function (\App\Modules\SUS\Services\Accounts
     $this->info('Envíos: '.\App\Modules\API\Webhooks::dispatch($accounts));
 })->purpose('Envía los webhooks pendientes de las empresas con el complemento API');
 
-Schedule::command('escudo:webhooks')->everyMinute()->withoutOverlapping()->name('escudo:webhooks');
+Schedule::command('escudo:webhooks')->everyMinute()->withoutOverlapping()->runInBackground()->name('escudo:webhooks');

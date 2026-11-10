@@ -108,6 +108,7 @@ services:
     container_name: escudo_scheduler
     working_dir: /var/www/backend
     command: ["php", "artisan", "schedule:work"]
+    restart: unless-stopped   # si el programador se cae, Docker lo vuelve a levantar (copias y avisos no se detienen)
     environment:
       TZ: America/Lima
     volumes:
