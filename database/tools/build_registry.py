@@ -65,7 +65,16 @@ READONLY = {"areas.depth", "workers.document_last4", "workers.activated_at", "wo
             "substandard_reports.closed_at", "substandard_reports.reporter_user_id", "objective_targets.achievement_pct",
             "annual_plans.approved_by", "annual_plans.approved_at", "management_reviews.approved_by", "management_reviews.approved_at",
             "audit_findings.corrective_action_id", "management_review_outputs.corrective_action_id", "measurements.corrective_action_id",
-            "change_requests.decision_at", "change_requests.implemented_at"}
+            "change_requests.decision_at", "change_requests.implemented_at",
+            # Salud, contratistas, fotocheck, permisos y presupuesto.
+            "credentials.credential_number", "credentials.token_last4", "credentials.issued_at", "credentials.issued_by", "credentials.last_evaluated_at",
+            "credentials.blocking_reasons", "credentials.revoked_at", "credentials.qr_payload_version", "work_permits.requested_by", "work_permits.activated_at",
+            "work_permits.closed_at", "work_permits.closed_by", "contractor_documents.reviewed_by", "contractor_documents.reviewed_at",
+            "contractor_documents.uploaded_by", "contractor_accreditations.approved_by", "contractor_accreditations.approved_at",
+            "contractor_accreditations.reviewed_by", "contractor_accreditations.reviewed_at", "contractor_accreditations.submitted_at",
+            "contractor_workers.document_last4", "fitness_status.issued_by", "fitness_status.issued_at", "medical_exam_orders.requested_by",
+            "absences.days", "absences.registered_by", "budgets.total_planned", "budgets.total_executed", "budget_lines.executed_amount",
+            "budget_executions.recorded_by"}
 # Columnas de la lista elegidas a mano donde las automáticas no dicen lo importante.
 LIST = {
     "monthly_statistics": ["period_year", "period_month", "site_id", "hours_worked", "frequency_index", "severity_index", "accident_rate_index", "is_closed"],
@@ -78,13 +87,14 @@ LIST = {
 WRITABLE_JSON = {"iperc_rows.probability_detail", "iperc_versions.participants"}
 # Obligatorios en la base pero que calcula una regla si no se envían.
 COMPUTED = {"work_shifts.hours_per_day", "areas.depth", "iperc_rows.probability_value",
-            "iperc_rows.hazard", "iperc_rows.risk", "measurements.result", "corrective_actions.code", "inspections.code", "trainings.code",
+            "iperc_rows.hazard", "iperc_rows.risk", "measurements.result", "work_permits.valid_until", "corrective_actions.code", "inspections.code", "trainings.code",
             "sst_events.code", "sst_events.reported_at", "investigations.code", "investigations.started_on", "committee_meetings.number",
             "meeting_agreements.number", "ppe_deliveries.delivered_at", "ppe_stock_movements.moved_at",
             "requirement_evaluations.evaluated_on", "requirement_evaluations.evaluator_user_id", "requirement_evaluations.next_evaluation_on",
             "baseline_assessments.assessment_on", "substandard_reports.code", "substandard_reports.reported_at", "substandard_reports.origin",
             "ats_forms.code", "drills.code", "risst_deliveries.delivered_on", "document_acknowledgements.acknowledged_at",
-            "audits.code", "change_requests.code", "change_requests.requested_on", "change_reviews.reviewed_at"}
+            "audits.code", "change_requests.code", "change_requests.requested_on", "change_reviews.reviewed_at",
+            "work_permits.code", "budget_executions.executed_on", "fitness_status.valid_from"}
 LONG_TEXT = re.compile(r"(^|_)(description|notes|note|comment|comments|summary|functions|observations|content|body|"
                        r"details|detail|justification|reason|instructions|scope|recommendations|conclusions|text|"
                        r"statement|commitments|methodology|findings|lessons|answer|explanation|purpose)$")

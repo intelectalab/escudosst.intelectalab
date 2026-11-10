@@ -5174,12 +5174,14 @@
     {
      "name": "total_planned",
      "label": "Total planificado",
+     "readonly": true,
      "type": "number",
      "default": 0
     },
     {
      "name": "total_executed",
      "label": "Total ejecutado",
+     "readonly": true,
      "type": "number",
      "default": 0
     },
@@ -5329,6 +5331,7 @@
     {
      "name": "executed_amount",
      "label": "Monto ejecutado",
+     "readonly": true,
      "type": "number",
      "default": 0
     }
@@ -5359,7 +5362,6 @@
      "name": "executed_on",
      "label": "Fecha de ejecución",
      "type": "date",
-     "required": true,
      "list": true
     },
     {
@@ -5387,6 +5389,7 @@
     {
      "name": "recorded_by",
      "label": "Registrado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     }
@@ -9321,7 +9324,6 @@
      "name": "code",
      "label": "Código",
      "type": "text",
-     "required": true,
      "list": true
     },
     {
@@ -9394,6 +9396,7 @@
     {
      "name": "requested_by",
      "label": "Solicitado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
@@ -9407,8 +9410,7 @@
     {
      "name": "valid_until",
      "label": "Válido hasta",
-     "type": "datetime",
-     "required": true
+     "type": "datetime"
     },
     {
      "name": "ats_form_id",
@@ -9478,6 +9480,7 @@
     {
      "name": "activated_at",
      "label": "Activado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
@@ -9494,11 +9497,13 @@
     {
      "name": "closed_at",
      "label": "Cerrado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
      "name": "closed_by",
      "label": "Cerrado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
@@ -14561,6 +14566,7 @@
     {
      "name": "credential_number",
      "label": "Número de credencial",
+     "readonly": true,
      "type": "text",
      "required": true,
      "list": true
@@ -14568,23 +14574,27 @@
     {
      "name": "token_last4",
      "label": "Últimos 4 del token",
+     "readonly": true,
      "type": "text"
     },
     {
      "name": "qr_payload_version",
      "label": "Versión del código QR",
+     "readonly": true,
      "type": "int",
      "default": 1
     },
     {
      "name": "issued_at",
      "label": "Emitido el",
+     "readonly": true,
      "type": "datetime",
      "list": true
     },
     {
      "name": "issued_by",
      "label": "Emitido por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
@@ -14634,17 +14644,19 @@
     {
      "name": "blocking_reasons",
      "label": "Motivos de bloqueo",
-     "type": "json",
-     "readonly": true
+     "readonly": true,
+     "type": "json"
     },
     {
      "name": "last_evaluated_at",
      "label": "Última evaluación",
+     "readonly": true,
      "type": "datetime"
     },
     {
      "name": "revoked_at",
      "label": "Revocado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
@@ -14787,6 +14799,7 @@
     {
      "name": "requested_by",
      "label": "Solicitado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     }
@@ -14871,12 +14884,14 @@
     {
      "name": "issued_by",
      "label": "Emitido por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "issued_at",
      "label": "Emitido el",
+     "readonly": true,
      "type": "datetime"
     },
     {
@@ -14989,6 +15004,7 @@
     {
      "name": "registered_by",
      "label": "Registrado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
@@ -19082,6 +19098,7 @@
     {
      "name": "document_last4",
      "label": "Últimos 4 dígitos del documento",
+     "readonly": true,
      "type": "text"
     },
     {
@@ -19317,18 +19334,21 @@
     {
      "name": "uploaded_by",
      "label": "Subido por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "reviewed_by",
      "label": "Revisado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "reviewed_at",
      "label": "Revisado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
@@ -19473,28 +19493,33 @@
     {
      "name": "submitted_at",
      "label": "Enviado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
      "name": "reviewed_by",
      "label": "Revisado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "reviewed_at",
      "label": "Revisado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
      "name": "approved_by",
      "label": "Aprobado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "approved_at",
      "label": "Aprobado el",
+     "readonly": true,
      "type": "datetime"
     },
     {

@@ -68,6 +68,16 @@ abstract class RecordRules
         'measurements' => ImprovementRules::class,
         'change_requests' => ImprovementRules::class,
         'change_reviews' => ImprovementRules::class,
+        'fitness_status' => PeopleRules::class,
+        'medical_exam_orders' => PeopleRules::class,
+        'absences' => PeopleRules::class,
+        'contractor_workers' => PeopleRules::class,
+        'contractor_documents' => PeopleRules::class,
+        'contractor_accreditations' => PeopleRules::class,
+        'credentials' => PeopleRules::class,
+        'work_permits' => PeopleRules::class,
+        'budget_lines' => PeopleRules::class,
+        'budget_executions' => PeopleRules::class,
     ];
 
     public static function for(string $table): ?self

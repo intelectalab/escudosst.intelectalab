@@ -937,6 +937,55 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
       { from: ["implemented"], label: "Cerrar", body: { status: "closed" } },
     ],
   },
+  work_permits: {
+    help: "Borrador → solicitado → aprobado (sin aprobaciones pendientes ni verificaciones previas en «No») → activo (vigente y con ATS si el tipo lo exige) → cerrado con el área segura.",
+    steps: [
+      { from: ["draft"], label: "Solicitar aprobación", body: { status: "pending_approval" }, primary: true },
+      { from: ["pending_approval"], label: "Aprobar", body: { status: "approved" }, primary: true },
+      { from: ["pending_approval", "approved"], label: "Rechazar", body: { status: "rejected" } },
+      { from: ["approved", "suspended"], label: "Activar trabajo", body: { status: "active" }, primary: true },
+      { from: ["active"], label: "Suspender", body: { status: "suspended" }, ask: "suspended_reason" },
+      { from: ["active", "suspended"], label: "Cerrar (área segura)", body: { status: "closed", area_left_safe: true } },
+    ],
+  },
+  contractor_accreditations: {
+    help: "Se acredita solo con todos los requisitos obligatorios aprobados y vigentes; vence con el primer documento que venza.",
+    steps: [
+      { from: ["draft", "observed"], label: "Enviar a revisión", body: { status: "submitted" } },
+      { from: ["submitted", "under_review", "observed"], label: "Acreditar", body: { status: "accredited" }, primary: true },
+      { from: ["submitted", "under_review"], label: "Observar", body: { status: "observed" }, ask: "observations" },
+      { from: ["accredited", "expiring"], label: "Suspender", body: { status: "suspended" }, ask: "suspended_reason" },
+    ],
+  },
+  contractor_documents: {
+    help: "Revisa el documento: apruébalo (si no está vencido) u obsérvalo con comentarios.",
+    steps: [
+      { from: ["pending", "submitted", "observed"], label: "Aprobar", body: { status: "approved" }, primary: true },
+      { from: ["pending", "submitted"], label: "Observar", body: { status: "observed" }, ask: "review_comments" },
+    ],
+  },
+  budgets: {
+    help: "Aprobado, se registran los gastos en «Ejecuciones»; los totales se calculan solos.",
+    steps: [
+      { from: ["draft", "in_review"], label: "Aprobar", body: { status: "approved" }, primary: true },
+      { from: ["approved", "in_execution"], label: "Cerrar", body: { status: "closed" } },
+    ],
+  },
+  credentials: {
+    help: "Se evalúa contra los requisitos de su tipo (aptitud médica, capacitación, SCTR, acreditación): activo si cumple todo, bloqueado con los motivos si falta algo.",
+    steps: [
+      { from: ["draft", "issued", "active", "blocked", "expired"], label: "Reevaluar requisitos", body: {}, primary: true },
+      { from: ["draft", "issued", "active", "blocked"], label: "Revocar", body: { status: "revoked" }, ask: "revoked_reason" },
+    ],
+  },
+  medical_exam_orders: {
+    help: "Programado → atendido → resultados recibidos → aptitud emitida (al registrar la aptitud del trabajador).",
+    steps: [
+      { from: ["scheduled"], label: "Marcar atendido", body: { status: "attended" }, primary: true },
+      { from: ["attended"], label: "Resultados recibidos", body: { status: "results_received" } },
+      { from: ["scheduled"], label: "Anular", body: { status: "cancelled" }, ask: "cancel_reason" },
+    ],
+  },
   committees: {
     help: "Para activarlo, los titulares deben ser pares y mitad por cada lado.",
     steps: [{ from: ["forming"], label: "Activar comité", body: { status: "active" }, primary: true }],
@@ -966,6 +1015,9 @@ function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; t
       {table === "sst_events" && <EventDeadline row={row} />}
       <section className="space-y-2 rounded-xl border border-line px-4 py-3 text-sm">
         <p className="text-muted">{cfg.help}</p>
+        {table === "credentials" && Array.isArray(row.blocking_reasons) && row.blocking_reasons.length > 0 && (
+          <p className="rounded-lg bg-bad-soft px-3 py-2 text-bad">Bloqueado por: {(row.blocking_reasons as string[]).join(", ")}.</p>
+        )}
         {canEdit && options.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {options.map((x) => (
