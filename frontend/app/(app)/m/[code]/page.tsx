@@ -10,6 +10,7 @@ import { availableIn, PLAN_NAMES } from "@/lib/menu";
 import { ModuleRecords } from "@/components/records/ModuleRecords";
 import { IpercModule } from "@/components/ipc/IpercModule";
 import { Dashboard } from "@/components/dsh/Dashboard";
+import { CompanyAudit, CompanyUsers } from "@/components/usr/CompanyAdmin";
 
 export default function ModulePage() {
   const { code } = useParams<{ code: string }>();
@@ -73,6 +74,10 @@ export default function ModulePage() {
         <IpercModule readOnly={m.mode === "read_only"} />
       ) : m.code === "DSH" ? (
         <Dashboard />
+      ) : m.code === "USR" ? (
+        <CompanyUsers readOnly={m.mode === "read_only"} />
+      ) : m.code === "AUD" ? (
+        <CompanyAudit />
       ) : (
         <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
       )}

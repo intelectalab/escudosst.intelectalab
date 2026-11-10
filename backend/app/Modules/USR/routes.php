@@ -2,6 +2,7 @@
 
 use App\Modules\USR\Http\Controllers\AccountSecurityController;
 use App\Modules\USR\Http\Controllers\AuthController;
+use App\Modules\USR\Http\Controllers\CompanyUsersController;
 use App\Modules\USR\Http\Controllers\InvitationController;
 use App\Modules\USR\Http\Controllers\MeController;
 use App\Modules\USR\Http\Controllers\MfaController;
@@ -46,6 +47,15 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware(['auth:sanctum', 'company'])->group(function () {
     Route::get('me/permissions', [MeController::class, 'permissions']);
     Route::get('me/modules', [MeController::class, 'modules']);
+});
+
+// Usuarios de la empresa (invitar, cambiar rol, suspender)
+Route::middleware(['auth:sanctum', 'company', 'module:USR'])->prefix('company')->group(function () {
+    Route::get('users', [CompanyUsersController::class, 'index']);
+    Route::get('roles', [CompanyUsersController::class, 'roles']);
+    Route::post('users', [CompanyUsersController::class, 'store'])->middleware('throttle:login');
+    Route::patch('users/{membership}', [CompanyUsersController::class, 'update'])->whereUuid('membership');
+    Route::post('users/{membership}/resend', [CompanyUsersController::class, 'resend'])->whereUuid('membership')->middleware('throttle:login');
 });
 
 // Accesos de soporte (docs/05 §4.6): lado de la plataforma

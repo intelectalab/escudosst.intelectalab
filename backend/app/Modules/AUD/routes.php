@@ -8,3 +8,8 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal')->group(funct
     Route::get('audit', [PlatformAuditController::class, 'index']);
     Route::get('audit/verify', [PlatformAuditController::class, 'verify']);
 });
+
+// Bitácora de la empresa activa (M-AUD).
+Route::middleware(['auth:sanctum', 'company', 'module:AUD'])->group(function () {
+    Route::get('company/audit', \App\Modules\AUD\Http\Controllers\CompanyAuditController::class);
+});
