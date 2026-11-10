@@ -31,7 +31,11 @@ it('cierra la auditoría solo con sus hallazgos atendidos', function () {
     expect($a->json('data.code'))->toStartWith('AUD-');
     $id = $a->json('data.id');
     $f = $this->postJson('/api/v1/records/AUI/audit_findings', ['audit_id' => $id, 'finding_type' => 'minor_nc', 'description' => 'Registros incompletos'], $h)->assertCreated()->json('data.id');
+    // Planificada → en curso → completada (con conclusiones) → cerrada (sin hallazgos pendientes).
+    $this->patchJson("/api/v1/records/AUI/audits/{$id}", ['status' => 'closed'], $h)->assertStatus(422);
+    $this->patchJson("/api/v1/records/AUI/audits/{$id}", ['status' => 'in_progress'], $h)->assertOk();
     $this->patchJson("/api/v1/records/AUI/audits/{$id}", ['status' => 'completed'], $h)->assertStatus(422);
+    $this->patchJson("/api/v1/records/AUI/audit_findings/{$f}", ['status' => 'resolved'], $h)->assertStatus(422);
     $this->patchJson("/api/v1/records/AUI/audits/{$id}", ['status' => 'completed', 'conclusions' => 'Sistema implementado con observaciones'], $h)->assertOk();
     $this->patchJson("/api/v1/records/AUI/audits/{$id}", ['status' => 'closed'], $h)->assertStatus(422);
     $me = collect($this->getJson('/api/v1/records/ACR/corrective_actions/options/responsible_user_id', $h)->json('data'))->first()['id'];

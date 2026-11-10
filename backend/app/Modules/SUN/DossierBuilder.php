@@ -6,6 +6,7 @@ use App\Core\Http\ApiProblem;
 use App\Core\Support\LegalParams;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -13,21 +14,33 @@ use Illuminate\Support\Str;
  * POST /sun/dossiers/{id}/build — arma el expediente para una inspección (M-SUN): revisa con los datos reales de la
  * empresa si cada documento o registro clave existe y está vigente en el periodo, y deja una fila por punto
  * (incluido / falta / vencido) con el registro de origen para abrirlo. El expediente queda «listo» o «listo con brechas».
+ * Con {worker_id} agrega el expediente del trabajador (inducción, capacitaciones, aptitud, EPP, RISST, IPERC de su puesto
+ * y fotocheck), como lo pide SUNAFIL cuando inspecciona a una persona.
  */
 class DossierBuilder extends Controller
 {
-    public function __invoke(string $dossier): JsonResponse
+    public function __invoke(Request $request, string $dossier): JsonResponse
     {
         $d = Str::isUuid($dossier) ? DB::selectOne('select * from inspection_dossiers where id = ? and deleted_at is null', [$dossier]) : null;
         if (! $d) {
             throw ApiProblem::notFound('El expediente no existe o es de otra empresa.');
         }
+        // Trabajador del expediente: el que se envía ahora o el que quedó guardado; «null» explícito lo quita.
+        $scope = json_decode($d->scope ?? '{}', true) ?: [];
+        $workerId = $request->has('worker_id') ? $request->input('worker_id') : ($scope['worker_id'] ?? null);
+        $worker = $workerId && Str::isUuid((string) $workerId)
+            ? DB::selectOne('select id, full_name, current_position_id, current_area_id from workers where id = ? and deleted_at is null', [$workerId]) : null;
+        if ($workerId && ! $worker) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'El trabajador no existe en esta empresa.', ['errors' => ['worker_id' => ['El trabajador no existe en esta empresa.']]]);
+        }
+        $scope['worker_id'] = $worker?->id;
+        DB::update('update inspection_dossiers set scope = ?::jsonb, requested_by = coalesce(requested_by, ?) where id = ?', [json_encode($scope), (string) auth()->id(), $dossier]);
         $from = $d->period_from ?? date('Y').'-01-01';
         $to = $d->period_to ?? date('Y-m-d');
         $workers = (int) DB::selectOne("select count(*) as n from workers where deleted_at is null and status in ('active','on_leave')")->n;
         $items = [];
-        $add = function (string $code, string $title, string $module, ?string $table, ?string $id, string $status, ?string $gap = null) use (&$items) {
-            $items[] = compact('code', 'title', 'module', 'table', 'id', 'status', 'gap');
+        $add = function (string $code, string $title, string $module, ?string $table, ?string $id, string $status, ?string $gap = null, ?string $workerId = null) use (&$items) {
+            $items[] = compact('code', 'title', 'module', 'table', 'id', 'status', 'gap') + ['worker_id' => $workerId];
         };
         $one = fn (string $sql, array $b = []) => DB::selectOne($sql, $b);
 
@@ -97,12 +110,45 @@ class DossierBuilder extends Controller
         $acr = (int) $one("select count(*) as n from corrective_actions where deleted_at is null and status in ('open','in_progress','overdue') and due_on < current_date")->n;
         $add('15', 'Acciones correctivas sin vencer', 'ACR', 'corrective_actions', null, $acr === 0 ? 'included' : 'expired', $acr === 0 ? null : "{$acr} acción(es) vencida(s).");
 
+        // Registros obligatorios (R.M. 050-2013-TR) e investigaciones del periodo.
+        $acc = (int) $one("select count(*) as n from sst_events where deleted_at is null and status <> 'discarded' and (occurred_at at time zone 'America/Lima')::date between ? and ?", [$from, $to])->n;
+        $openInv = (int) $one("select count(*) as n from investigations i join sst_events e on e.id = i.event_id where i.deleted_at is null and i.status <> 'closed'
+                                 and (e.occurred_at at time zone 'America/Lima')::date between ? and ?", [$from, $to])->n;
+        $add('16', "Registros obligatorios del periodo (accidentes e incidentes: {$acc}) e investigaciones", 'REG', 'register_exports', null, $openInv === 0 ? 'included' : 'missing',
+            $openInv === 0 ? null : "{$openInv} investigación(es) del periodo sin cerrar.");
+
+        if ($worker) {
+            $w = $worker->id;
+            $n = $worker->full_name;
+            $ind = $one("select c.id from training_certificates c join trainings t on t.id = c.training_id where c.worker_id = ? and t.training_type = 'induction'
+                           and c.status in ('validated','expired') and c.deleted_at is null order by c.issued_on desc limit 1", [$w]);
+            $add('W1', "{$n}: inducción en SST", 'CAP', 'training_certificates', $ind?->id, $ind ? 'included' : 'missing', $ind ? null : 'No tiene certificado de inducción.', $w);
+            $tr = (int) $one("select count(distinct s.training_id) as n from training_attendances a join training_sessions s on s.id = a.session_id
+                                where a.worker_id = ? and a.attended and a.deleted_at is null and s.status = 'held' and (s.starts_at at time zone 'America/Lima')::date between ? and ?", [$w, $from, $to])->n;
+            $add('W2', "{$n}: capacitaciones recibidas en el periodo ({$tr})", 'CAP', 'training_attendances', null, $tr > 0 ? 'included' : 'missing', $tr > 0 ? null : 'No registra capacitaciones en el periodo.', $w);
+            $fit = $one("select id, valid_until from fitness_status where worker_id = ? and is_current and status in ('fit','fit_with_restrictions') and deleted_at is null limit 1", [$w]);
+            $add('W3', "{$n}: aptitud médica (EMO)", 'EMO', 'fitness_status', $fit?->id, ! $fit ? 'missing' : ($fit->valid_until && $fit->valid_until < date('Y-m-d') ? 'expired' : 'included'),
+                ! $fit ? 'No tiene aptitud médica registrada.' : ($fit->valid_until && $fit->valid_until < date('Y-m-d') ? 'La aptitud médica venció.' : null), $w);
+            $ppe = (int) $one("select count(*) as n from ppe_deliveries where worker_id = ? and deleted_at is null and (delivered_at at time zone 'America/Lima')::date <= ?", [$w, $to])->n;
+            $add('W4', "{$n}: entregas de EPP ({$ppe})", 'EPP', 'ppe_deliveries', null, $ppe > 0 ? 'included' : 'missing', $ppe > 0 ? null : 'No registra entregas de EPP.', $w);
+            $ris = $one("select id from risst_deliveries where worker_id = ? and deleted_at is null limit 1", [$w]);
+            $add('W5', "{$n}: entrega del RISST", 'RIS', 'risst_deliveries', $ris?->id, $ris ? 'included' : ($workers >= $risstMin ? 'missing' : 'not_applicable'),
+                $ris || $workers < $risstMin ? null : 'No consta la entrega del RISST.', $w);
+            $ip = $one("select id from iperc_matrices where status = 'active' and current_version_id is not null and deleted_at is null and (position_id = ? or (position_id is null and area_id = ?)) limit 1",
+                [$worker->current_position_id, $worker->current_area_id]);
+            $add('W6', "{$n}: IPERC de su puesto o área", 'IPC', 'iperc_matrices', $ip?->id, $ip ? 'included' : 'missing', $ip ? null : 'Su puesto o área no tiene una matriz IPERC aprobada.', $w);
+            $cr = $one("select id, status from credentials where worker_id = ? and deleted_at is null and status <> 'revoked' order by issued_at desc nulls last limit 1", [$w]);
+            if ($cr) {
+                $add('W7', "{$n}: fotocheck SST", 'FOT', 'credentials', $cr->id, $cr->status === 'active' ? 'included' : 'expired', $cr->status === 'active' ? null : 'El fotocheck está bloqueado o vencido.', $w);
+            }
+        }
+
         DB::update('update dossier_items set deleted_at = now() where dossier_id = ? and deleted_at is null', [$dossier]);
         foreach ($items as $k => $it) {
             DB::insert(
-                "insert into dossier_items (company_id, dossier_id, section_code, title, source_module, source_type, source_id, status, gap_description, sort_order, created_by, updated_by)
-                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [$d->company_id, $dossier, $it['code'], mb_substr($it['title'], 0, 300), $it['module'], $it['table'], $it['id'], $it['status'], $it['gap'], $k + 1,
+                "insert into dossier_items (company_id, dossier_id, worker_id, section_code, title, source_module, source_type, source_id, status, gap_description, sort_order, created_by, updated_by)
+                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [$d->company_id, $dossier, $it['worker_id'], $it['code'], mb_substr($it['title'], 0, 300), $it['module'], $it['table'], $it['id'], $it['status'], $it['gap'], $k + 1,
                     (string) auth()->id(), (string) auth()->id()]
             );
         }
@@ -110,6 +156,6 @@ class DossierBuilder extends Controller
         DB::update('update inspection_dossiers set status = ?, gaps = ?::jsonb, built_at = now() where id = ?',
             [$gaps ? 'ready_with_gaps' : 'ready', json_encode(array_map(fn ($g) => ['code' => $g['code'], 'title' => $g['title'], 'gap' => $g['gap']], $gaps), JSON_UNESCAPED_UNICODE), $dossier]);
 
-        return response()->json(['data' => ['items' => $items, 'gaps' => count($gaps), 'total' => count($items)]]);
+        return response()->json(['data' => ['items' => $items, 'gaps' => count($gaps), 'total' => count($items), 'worker' => $worker ? ['id' => $worker->id, 'name' => $worker->full_name] : null]]);
     }
 }

@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
+import { QrCode } from "@/components/mfa/QrCode";
 import { downloadFile, uploadFile, recordsHref, traceOf, type RecordResource, type RecordRow, type TraceGroup, type TraceNode, records } from "@/lib/records";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/Form";
@@ -145,6 +146,8 @@ export function RecordActions({
   if (res.table === "monthly_statistics") return <CloseMonth row={row} onChanged={onChanged} />;
   if (res.table === "inspection_dossiers") return <DossierBuild row={row} onChanged={onChanged} />;
   if (res.table === "api_clients") return <ApiSecret row={row} canEdit={res.can.update} onChanged={onChanged} />;
+  if (res.table === "report_points") return <ReportPointQr row={row} />;
+  if (res.table === "dossier_share_links") return <ShareLinkRevoke row={row} onChanged={onChanged} />;
   if (res.table === "training_certificates")
     return (
       <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line px-4 py-3 text-sm">
@@ -176,6 +179,37 @@ export function RecordActions({
   if (res.table === "trainings") return <IssueCertificates row={row} onChanged={onChanged} />;
   void code;
   return null;
+}
+
+// ─────────────── ACT: QR del punto de reporte ───────────────
+
+function ReportPointQr({ row }: { row: RecordRow }) {
+  const [link, setLink] = useState<{ url: string; active: boolean } | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    api<{ data: { url: string; active: boolean } }>(`/act/report-points/${row.id}/link`, { withCompany: true })
+      .then((r) => setLink(r.data))
+      .catch((e: ApiError) => setMsg(e.detail ?? e.title));
+  }, [row.id]);
+  if (msg) return <p className="text-sm text-bad">{msg}</p>;
+  if (!link) return null;
+  return (
+    <section className="flex flex-wrap items-center gap-4 rounded-xl border border-line px-4 py-3 text-sm">
+      <div className="rounded-lg bg-white p-2 ring-1 ring-line">
+        <QrCode value={link.url} size={120} />
+      </div>
+      <div className="min-w-0 flex-1 space-y-2">
+        <p>
+          {link.active ? "Imprime este QR y pégalo en el lugar. Quien lo escanee reporta desde su celular, sin instalar nada." : "El punto está desactivado: el QR muestra que ya no está activo."}
+        </p>
+        <p className="break-all text-xs text-muted">{link.url}</p>
+        <div className="flex flex-wrap gap-2">
+          <a href={`/imprimir/punto-reporte/${row.id}`} target="_blank" rel="noreferrer" className="rounded-lg bg-brand px-3 py-1.5 font-semibold text-white">Imprimir cartel con QR</a>
+          <a href={link.url} target="_blank" rel="noreferrer" className="rounded-lg border border-line px-3 py-1.5 font-semibold text-brand hover:border-brand">Probar el formulario</a>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 // ─────────────── ACR: ciclo de la acción correctiva ───────────────
@@ -787,7 +821,7 @@ function MeetingFlow({ row, canEdit, onChanged }: { row: RecordRow; canEdit: boo
 
 
 /** Tablas cuyos registros los crea un flujo (no el botón «Nuevo»). */
-export const NO_CREATE = new Set(["monthly_statistics", "training_certificates", "iperc_versions", "event_notifications", "register_exports"]);
+export const NO_CREATE = new Set(["monthly_statistics", "training_certificates", "iperc_versions", "event_notifications", "register_exports", "dossier_share_links", "signature_requests"]);
 
 /** Acciones de la lista completa (arriba, junto a «Nuevo»). */
 export function PanelActions({ table, onDone }: { table: string; onDone: () => void }) {
@@ -968,7 +1002,7 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
     ],
   },
   audits: {
-    help: "Registra los hallazgos y sus acciones; complétala con conclusiones y ciérrala cuando los hallazgos estén atendidos.",
+    help: "Registra los hallazgos y sus acciones; complétala con conclusiones (y el registro MTPE del auditor si es la auditoría obligatoria) y ciérrala cuando las no conformidades tengan su acción verificada.",
     steps: [
       { from: ["planned"], label: "Iniciar auditoría", body: { status: "in_progress" }, primary: true },
       { from: ["in_progress", "report_draft"], label: "Completar", body: { status: "completed" }, primary: true },
@@ -985,7 +1019,7 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
     ],
   },
   management_reviews: {
-    help: "Registra entradas, conclusiones y salidas (decisiones); cada salida puede generar su acción correctiva.",
+    help: "Al iniciarla se cargan solas las entradas del año (estadísticas, auditorías, acciones, eventos y plan). Registra participantes, conclusiones y salidas (decisiones); se cierra cuando las salidas están cumplidas.",
     steps: [
       { from: ["planned"], label: "Iniciar", body: { status: "in_progress" }, primary: true },
       { from: ["in_progress"], label: "Completar", body: { status: "completed" }, primary: true },
@@ -1049,7 +1083,9 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
     steps: [
       { from: ["scheduled"], label: "Marcar atendido", body: { status: "attended" }, primary: true },
       { from: ["attended"], label: "Resultados recibidos", body: { status: "results_received" } },
-      { from: ["scheduled"], label: "Anular", body: { status: "cancelled" }, ask: "cancel_reason" },
+      { from: ["scheduled"], label: "No asistió", body: { status: "no_show" } },
+      { from: ["no_show"], label: "Reprogramar", body: { status: "scheduled" } },
+      { from: ["scheduled", "no_show", "attended"], label: "Anular", body: { status: "cancelled" }, ask: "cancel_reason" },
     ],
   },
   committees: {
@@ -1186,11 +1222,29 @@ function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => voi
   const [items, setItems] = useState<DossierItem[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const scope = typeof row.scope === "string" ? (JSON.parse(row.scope || "{}") as { worker_id?: string }) : (row.scope as { worker_id?: string } | null);
+  const savedWorker = scope?.worker_id ?? "";
+  const [worker, setWorker] = useState<string>(savedWorker);
+  const [share, setShare] = useState<{ days: string; name: string; views: string; url: string | null; busy: boolean; msg: string | null }>({ days: "7", name: "", views: "", url: null, busy: false, msg: null });
+  const canShare = ["ready", "ready_with_gaps"].includes(String(row.status)) || items !== null;
+  const doShare = async () => {
+    setShare((x) => ({ ...x, busy: true, msg: null }));
+    try {
+      const r = await api<{ data: { url: string } }>(`/sun/dossiers/${row.id}/share`, {
+        method: "POST", withCompany: true, body: { days: Number(share.days), recipient_name: share.name || null, max_views: share.views ? Number(share.views) : null },
+      });
+      setShare((x) => ({ ...x, busy: false, url: r.data.url }));
+      onChanged();
+    } catch (e) {
+      const ae = e as ApiError;
+      setShare((x) => ({ ...x, busy: false, msg: Object.values(ae.errors ?? {})[0]?.[0] ?? ae.detail ?? ae.title }));
+    }
+  };
   const build = async () => {
     setBusy(true);
     setMsg(null);
     try {
-      const r = await api<{ data: { items: DossierItem[]; gaps: number; total: number } }>(`/sun/dossiers/${row.id}/build`, { method: "POST", withCompany: true });
+      const r = await api<{ data: { items: DossierItem[]; gaps: number; total: number } }>(`/sun/dossiers/${row.id}/build`, { method: "POST", withCompany: true, body: { worker_id: worker || null } });
       setItems(r.data.items);
       setMsg(r.data.gaps === 0 ? "Expediente completo: todos los puntos están incluidos." : `${r.data.gaps} de ${r.data.total} puntos con brechas. Toca cada uno para resolverlo.`);
       onChanged();
@@ -1205,6 +1259,12 @@ function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => voi
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span>Revisa con los datos reales de la empresa si cada documento y registro clave existe y está vigente en el periodo.</span>
         <Button variant="primary" loading={busy} onClick={build}>{items ? "Volver a armar" : "Armar expediente"}</Button>
+      </div>
+      <div className="max-w-md">
+        <FormField label="Trabajador inspeccionado (opcional)" hint="Agrega su inducción, capacitaciones, aptitud médica, EPP, RISST, IPERC de su puesto y fotocheck.">
+          <RefSelect code="SUN" table="dossier_items" f={{ name: "worker_id", type: "ref", ref: "workers", label: "Trabajador" } as never} value={worker}
+            disabled={busy} invalid={false} onChange={(v) => setWorker(String(v ?? ""))} />
+        </FormField>
       </div>
       {msg && <p className="font-semibold text-brand-strong">{msg}</p>}
       {items && (
@@ -1226,6 +1286,38 @@ function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => voi
           })}
         </ul>
       )}
+      {canShare && (
+        <div className="space-y-2 rounded-lg border border-dashed border-line p-3">
+          <p className="font-semibold">Compartir con el inspector</p>
+          <p className="text-xs text-muted">Crea un enlace que vence solo. El inspector ve el índice del expediente sin iniciar sesión. Puedes anularlo en «Enlaces compartidos».</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="text-xs">Para<input className="input mt-1 !w-48" placeholder="Nombre del inspector" value={share.name} onChange={(e) => setShare({ ...share, name: e.target.value })} /></label>
+            <label className="text-xs">Días<input className="input mt-1 !w-20" inputMode="numeric" value={share.days} onChange={(e) => setShare({ ...share, days: e.target.value.replace(/\D/g, "") })} /></label>
+            <label className="text-xs">Visitas máx.<input className="input mt-1 !w-24" inputMode="numeric" placeholder="sin límite" value={share.views} onChange={(e) => setShare({ ...share, views: e.target.value.replace(/\D/g, "") })} /></label>
+            <Button variant="secondary" loading={share.busy} onClick={doShare}>Crear enlace</Button>
+          </div>
+          {share.msg && <p className="text-bad">{share.msg}</p>}
+          {share.url && (
+            <div className="rounded-lg bg-ok-soft px-3 py-2">
+              <p className="font-semibold text-ok">Copia este enlace ahora: no se vuelve a mostrar.</p>
+              <p className="break-all text-xs">{share.url}</p>
+              <button type="button" className="mt-1 text-xs font-semibold text-brand underline" onClick={() => navigator.clipboard?.writeText(share.url ?? "")}>Copiar</button>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ShareLinkRevoke({ row, onChanged }: { row: RecordRow; onChanged: () => void }) {
+  const [msg, setMsg] = useState<string | null>(null);
+  if (row.status !== "active") return <p className="rounded-xl bg-bg px-4 py-3 text-sm text-muted">El enlace ya no está activo ({String(row.status)}).</p>;
+  return (
+    <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line px-4 py-3 text-sm">
+      <span>Enlace activo · {String(row.view_count ?? 0)} visita(s). Anúlalo si ya no debe verse.</span>
+      <Button variant="danger-ghost" onClick={() => api(`/sun/share-links/${row.id}/revoke`, { method: "POST", withCompany: true }).then(onChanged).catch((e: ApiError) => setMsg(e.detail ?? e.title))}>Anular enlace</Button>
+      {msg && <p className="w-full text-bad">{msg}</p>}
     </section>
   );
 }

@@ -64,3 +64,42 @@ it('una evidencia vacía no cuenta y «no eficaz» exige explicar por qué', fun
         'responsible_user_id' => $me, 'due_on' => now()->addDays(3)->toDateString()], $h)->assertCreated()->json('data.id');
     $this->postJson('/api/v1/records/ACR/action_evidences', ['corrective_action_id' => $a], $h)->assertStatus(422)->assertJsonValidationErrors('description');
 });
+
+it('un trabajador reporta por el QR del punto sin sesión y el reporte llega al área SST', function () {
+    $h = rf();
+    $site = $this->postJson('/api/v1/records/TEN/sites', ['code' => 'RF-QR', 'name' => 'Planta QR'], $h)->json('data.id');
+    $point = $this->postJson('/api/v1/records/ACT/report_points', ['code' => 'P-01', 'name' => 'Almacén central', 'site_id' => $site], $h)->assertCreated()->json('data.id');
+    $url = $this->getJson("/api/v1/act/report-points/{$point}/link", $h)->assertOk()->json('data.url');
+    [$company, $token] = array_slice(explode('/', $url), -2);
+
+    $this->getJson("/api/v1/public/report/{$company}/{$token}")->assertOk()->assertJsonPath('data.point', 'Almacén central');
+    $this->postJson("/api/v1/public/report/{$company}/{$token}", ['report_type' => 'unsafe_condition', 'description' => 'corto'])->assertStatus(422);
+    $this->postJson("/api/v1/public/report/{$company}/{$token}", ['report_type' => 'unsafe_condition', 'description' => 'Cable pelado junto a la máquina 3'])
+        ->assertStatus(422)->assertJsonValidationErrors('reporter_name');
+    $code = $this->postJson("/api/v1/public/report/{$company}/{$token}", ['report_type' => 'unsafe_condition', 'description' => 'Cable pelado junto a la máquina 3', 'is_anonymous' => true])
+        ->assertCreated()->json('data.code');
+    $rep = $this->getJson("/api/v1/records/ACT/substandard_reports?f[report_point_id]={$point}", rf())->json('data.0');
+    expect($rep)->toMatchArray(['code' => $code, 'origin' => 'qr', 'status' => 'received', 'is_anonymous' => true]);
+
+    $this->getJson("/api/v1/public/report/{$company}/".str_repeat('A', 32))->assertNotFound();
+    $this->patchJson("/api/v1/records/ACT/report_points/{$point}", ['is_active' => false], rf())->assertOk();
+    $this->getJson("/api/v1/public/report/{$company}/{$token}")->assertStatus(410);
+});
+
+it('firma electrónica: se pide sobre un registro, se firma con contraseña y deja evidencia; si el registro cambia, no procede', function () {
+    $h = rf();
+    $me = collect($this->getJson('/api/v1/records/ACR/corrective_actions/options/responsible_user_id', $h)->json('data'))->first()['id'];
+    $doc = $this->postJson('/api/v1/records/ACT/substandard_reports', ['report_type' => 'suggestion', 'description' => 'RF documento para firmar'], $h)->json('data.id');
+
+    $this->postJson('/api/v1/records/FIR/signature_requests', ['subject_type' => 'substandard_reports', 'role_in_document' => 'approver', 'signer_user_id' => $me], $h)->assertStatus(409);
+    $req = $this->postJson('/api/v1/fir/requests', ['subject_table' => 'substandard_reports', 'subject_id' => $doc, 'signer_user_id' => $me, 'role_in_document' => 'approver'], $h)
+        ->assertCreated()->json('data.id');
+    $this->postJson("/api/v1/fir/requests/{$req}/sign", ['password' => 'incorrecta'], $h)->assertStatus(422)->assertJsonValidationErrors('password');
+    $this->postJson("/api/v1/fir/requests/{$req}/sign", ['password' => DEMO_PASSWORD], $h)->assertOk()->assertJsonPath('data.method', 'pin');
+    $this->getJson("/api/v1/fir/subject/substandard_reports/{$doc}", $h)->assertJsonPath('data.0.status', 'signed')->assertJsonPath('data.0.method', 'pin');
+
+    // Se pide otra firma y luego cambia el registro: la firma ya no procede.
+    $req2 = $this->postJson('/api/v1/fir/requests', ['subject_table' => 'substandard_reports', 'subject_id' => $doc, 'signer_user_id' => $me, 'role_in_document' => 'reviewer'], $h)->json('data.id');
+    $this->patchJson("/api/v1/records/ACT/substandard_reports/{$doc}", ['description' => 'RF documento cambiado después'], $h)->assertOk();
+    $this->postJson("/api/v1/fir/requests/{$req2}/sign", ['password' => DEMO_PASSWORD], $h)->assertStatus(409);
+});

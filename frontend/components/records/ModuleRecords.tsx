@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { NO_CREATE, PanelActions, RecordActions, TraceStrip, describeFilter, lockedReason } from "./Process";
+import { SignaturePanel } from "./SignaturePanel";
 import { ApiError } from "@/lib/api";
 import { displayValue, downloadFile, records, statusTone, toLocalInput, uploadFile, type ModuleSchema, type RecordField, type RecordPage, type RecordResource, type RecordRow } from "@/lib/records";
 import { Button } from "@/components/ui/Button";
@@ -426,6 +427,7 @@ export function RecordForm({
       <div className="space-y-4">
         {full && !isNew && <TraceStrip table={res.table} module={code} id={full.id} version={version} />}
         {full && !isNew && <RecordActions code={code} res={res} row={full} readOnly={readOnly} onChanged={() => setVersion((v) => v + 1)} />}
+        {full && !isNew && !["signature_requests", "signatures"].includes(res.table) && <SignaturePanel table={res.table} id={full.id} version={version} />}
         {locked && <p className="rounded-lg bg-bg px-4 py-3 text-sm text-muted">{locked}</p>}
         {foreign && <p className="rounded-lg bg-bg px-4 py-3 text-sm text-muted">Es parte del catálogo general de EscudoSST: puedes consultarlo, pero no editarlo. Crea uno propio si necesitas cambiarlo.</p>}
         {detail && (

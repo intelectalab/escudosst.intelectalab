@@ -151,10 +151,10 @@ class AddonRules extends RecordRules
     private function signature(string $op, array &$values, ?object $current, array &$extra): void
     {
         if ($op === 'create') {
-            $values['status'] = 'pending';
-            $extra['requested_by'] = ['?', [(string) auth()->id()]];
-
-            return;
+            $this->conflict('Las firmas se piden desde el registro que se firma, con «Pedir firma».');
+        }
+        if (in_array($values['status'] ?? null, ['signed', 'declined'], true)) {
+            $this->conflict('Para firmar o rechazar usa el botón «Firmar» de la solicitud: deja la evidencia de la firma.');
         }
         if (in_array($current->status, ['signed', 'declined', 'expired', 'cancelled'], true) && $values !== []) {
             $this->conflict('La solicitud de firma ya está cerrada.');

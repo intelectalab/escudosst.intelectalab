@@ -128,6 +128,10 @@ class PeopleRules extends RecordRules
         if ($status === 'fit_with_restrictions' && ! $this->value($values, $current, 'work_restrictions')) {
             $this->fail('work_restrictions', 'Describe las restricciones de trabajo.');
         }
+        $order = $this->value($values, $current, 'medical_exam_order_id');
+        if ($order && in_array(DB::selectOne('select status from medical_exam_orders where id = ?', [$order])?->status, ['scheduled', 'no_show', 'cancelled'], true)) {
+            $this->fail('medical_exam_order_id', 'La orden aún no figura como atendida: registra la atención del examen antes de emitir la aptitud.');
+        }
         if ($op === 'create') {
             $values['is_current'] ??= true;
             $values['valid_from'] ??= date('Y-m-d');
@@ -143,11 +147,23 @@ class PeopleRules extends RecordRules
             $extra['requested_by'] = ['?', [(string) auth()->id()]];
         }
         $to = $values['status'] ?? null;
+        if ($current && $to && $to !== $current->status) {
+            $flow = ['scheduled' => ['attended', 'no_show', 'cancelled'], 'no_show' => ['scheduled', 'cancelled'], 'attended' => ['results_received', 'fitness_issued', 'cancelled'],
+                'results_received' => ['fitness_issued'], 'fitness_issued' => [], 'cancelled' => []];
+            if (! in_array($to, $flow[$current->status] ?? [], true)) {
+                $this->fail('status', 'Ese cambio de estado no está permitido para la orden de examen.');
+            }
+        }
         if ($to === 'cancelled' && ! $this->value($values, $current, 'cancel_reason')) {
             $this->fail('cancel_reason', 'Indica el motivo de la anulación.');
         }
         if ($to === 'attended') {
-            $values['attended_at'] = $this->value($values, $current, 'attended_at') ?? now()->toIso8601String();
+            $at = $this->value($values, $current, 'attended_at') ?? now()->toIso8601String();
+            $sched = $this->value($values, $current, 'scheduled_at');
+            if ($sched && strtotime($sched) > time() + 12 * 3600) {
+                $this->fail('status', 'El examen está programado para el '.date('d/m/Y', strtotime($sched)).': márcalo como atendido ese día.');
+            }
+            $values['attended_at'] = $at;
         }
     }
 

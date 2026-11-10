@@ -7,6 +7,7 @@ use App\Core\Http\ApiProblem;
 use App\Core\Support\Xlsx;
 use App\Core\Tenancy\CompanyContext;
 use App\Http\Controllers\Controller;
+use App\Modules\REC\Registry;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
@@ -92,16 +93,33 @@ class RegistersController extends Controller
                                from event_people p left join workers w on w.id = p.worker_id where p.event_id = e.id and p.deleted_at is null) as people,
                             (select string_agg(n.notification_number || ' ' || to_char(n.notified_at at time zone 'America/Lima', 'DD/MM/YYYY'), '; ')
                                from event_notifications n where n.event_id = e.id and n.status in ('sent','acknowledged') and n.deleted_at is null) as notified,
-                            (select i.code from investigations i where i.event_id = e.id and i.deleted_at is null limit 1) as investigation
+                            (select i.code from investigations i where i.event_id = e.id and i.deleted_at is null limit 1) as investigation,
+                            (select string_agg(concat_ws(' · ', w.full_name, '****' || w.document_last4, ps.name, p.disability_type), '; ')
+                               from event_people p join workers w on w.id = p.worker_id left join positions ps on ps.id = w.current_position_id
+                              where p.event_id = e.id and p.deleted_at is null and p.person_role in ('injured','affected','ill')) as workers,
+                            (select string_agg(c.cause_level || ': ' || c.description, '; ' order by c.cause_level)
+                               from investigation_causes c join investigations i on i.id = c.investigation_id
+                              where i.event_id = e.id and i.deleted_at is null and c.deleted_at is null) as causes,
+                            (select string_agg(concat_ws(' · ', ca.code, ca.title, coalesce(u.full_name, wr.full_name), to_char(ca.due_on, 'DD/MM/YYYY'), ca.status), '; ')
+                               from corrective_actions ca left join users u on u.id = ca.responsible_user_id left join workers wr on wr.id = ca.responsible_worker_id
+                              where ca.deleted_at is null and ca.status <> 'cancelled' and (ca.source_id = e.id or ca.source_id in (select i.id from investigations i where i.event_id = e.id))) as actions
                        from sst_events e left join sites s on s.id = e.site_id left join areas a on a.id = e.area_id
                       where e.deleted_at is null and e.status <> 'discarded' and e.event_type = any(?::text[])
                         and (e.occurred_at at time zone 'America/Lima')::date between ? and ? order by e.occurred_at",
                     ['{'.implode(',', $types).'}', ...$range]
                 );
 
-                return [['Código', 'Tipo', 'Fecha y hora', 'Sede', 'Área', 'Descripción', 'Personas', 'Días perdidos', 'Lesionados', 'Plazo de notificación', 'Notificado (n.° y fecha)', 'Investigación', 'Estado'],
-                    array_map(fn ($r) => [$r->code, $r->event_type, $dt($r->occurred_at), $r->site, $r->area, $r->description, $r->people, (int) $r->lost_days, (int) $r->injured_count,
-                        $dt($r->notification_deadline_at), $r->notified, $r->investigation, $r->status], $rows)];
+                $causeLevels = fn (?string $t) => $t ? strtr($t, ['immediate:' => 'Inmediata:', 'basic:' => 'Básica:', 'root:' => 'Raíz:', 'lack_of_control:' => 'Falta de control:']) : '';
+                $disability = fn (?string $t) => $t ? strtr($t, ['total_temporary' => 'Total temporal', 'partial_temporary' => 'Parcial temporal', 'partial_permanent' => 'Parcial permanente',
+                    'total_permanent' => 'Total permanente', ' · none' => '']) : '';
+                $status = ['pending_verification' => 'por verificar', 'in_progress' => 'en curso', 'verified' => 'verificada', 'open' => 'abierta', 'overdue' => 'vencida'];
+
+                return [['Código', 'Tipo', 'Fecha y hora', 'Sede', 'Área', 'Descripción', 'Trabajador(es) afectado(s) (DNI, puesto, incapacidad)', 'Personas involucradas',
+                    'Días perdidos', 'Lesionados', 'Plazo de notificación', 'Notificado (n.° y fecha)', 'Investigación', 'Causas', 'Medidas correctivas (responsable, fecha, estado)', 'Estado'],
+                    array_map(fn ($r) => [$r->code, $this->label('sst_events', 'event_type', $r->event_type).($r->event_type === 'fatal_accident' ? ' (MORTAL)' : ''), $dt($r->occurred_at),
+                        $r->site, $r->area, $r->description, $disability($r->workers), $this->roles($r->people), (int) $r->lost_days, (int) $r->injured_count,
+                        $dt($r->notification_deadline_at), $r->notified, $r->investigation, $causeLevels($r->causes), $r->actions ? strtr($r->actions, $status) : '',
+                        $this->label('sst_events', 'status', $r->status)], $rows)];
             case 'emo':
                 $rows = DB::select(
                     "select w.full_name, w.document_last4, p.name as position, f.status, f.valid_from, f.valid_until, f.issued_at
@@ -109,7 +127,7 @@ class RegistersController extends Controller
                       where f.deleted_at is null and coalesce(f.valid_from, f.issued_at::date) between ? and ? order by w.full_name", $range);
 
                 return [['Trabajador', 'Documento (últimos 4)', 'Puesto', 'Aptitud', 'Vigente desde', 'Vigente hasta', 'Emitido'],
-                    array_map(fn ($r) => [$r->full_name, $r->document_last4, $r->position, $r->status, $d($r->valid_from), $d($r->valid_until), $dt($r->issued_at)], $rows)];
+                    array_map(fn ($r) => [$r->full_name, $r->document_last4, $r->position, $this->label('fitness_status', 'status', $r->status), $d($r->valid_from), $d($r->valid_until), $dt($r->issued_at)], $rows)];
             case 'monitoring':
                 $rows = DB::select(
                     "select m.measured_at, t.name as agent, pt.name as point, m.value, m.unit, l.limit_value, l.unit as limit_unit, m.result, m.equipment, m.equipment_calibration_on
@@ -119,7 +137,7 @@ class RegistersController extends Controller
 
                 return [['Fecha', 'Agente', 'Punto', 'Valor', 'Unidad', 'Límite', 'Unidad del límite', 'Resultado', 'Equipo', 'Calibración'],
                     array_map(fn ($r) => [$dt($r->measured_at), $r->agent, $r->point, $r->value === null ? null : (float) $r->value, $r->unit,
-                        $r->limit_value === null ? null : (float) $r->limit_value, $r->limit_unit, $r->result, $r->equipment, $d($r->equipment_calibration_on)], $rows)];
+                        $r->limit_value === null ? null : (float) $r->limit_value, $r->limit_unit, $this->label('measurements', 'result', $r->result), $r->equipment, $d($r->equipment_calibration_on)], $rows)];
             case 'inspections':
                 $rows = DB::select(
                     "select i.code, i.title, i.inspection_type, s.name as site, i.scheduled_on, i.completed_at, i.score_pct, i.status,
@@ -128,8 +146,8 @@ class RegistersController extends Controller
                       where i.deleted_at is null and i.scheduled_on between ? and ? order by i.scheduled_on", $range);
 
                 return [['Código', 'Título', 'Tipo', 'Sede', 'Programada', 'Realizada', 'Puntaje (%)', 'Hallazgos', 'Estado', 'Resumen'],
-                    array_map(fn ($r) => [$r->code, $r->title, $r->inspection_type, $r->site, $d($r->scheduled_on), $dt($r->completed_at),
-                        $r->score_pct === null ? null : (float) $r->score_pct, (int) $r->findings, $r->status, $r->summary], $rows)];
+                    array_map(fn ($r) => [$r->code, $r->title, $this->label('inspections', 'inspection_type', $r->inspection_type), $r->site, $d($r->scheduled_on), $dt($r->completed_at),
+                        $r->score_pct === null ? null : (float) $r->score_pct, (int) $r->findings, $this->label('inspections', 'status', $r->status), $r->summary], $rows)];
             case 'statistics':
                 $rows = DB::select(
                     "select m.period_year, m.period_month, coalesce(s.name, 'Toda la empresa') as site, m.worker_count, m.hours_worked, m.accidents_fatal, m.accidents_disabling,
@@ -151,7 +169,8 @@ class RegistersController extends Controller
                       where c.deleted_at is null and (c.checked_at at time zone 'America/Lima')::date between ? and ? order by c.checked_at", $range);
 
                 return [['Equipo', 'Tipo', 'Sede', 'Ubicación', 'Fecha de revisión', 'Revisión', 'Resultado', 'Próxima', 'Proveedor', 'Comentarios'],
-                    array_map(fn ($r) => [$r->code, $r->equipment_type, $r->site, $r->location_text, $dt($r->checked_at), $r->check_type, $r->result, $d($r->next_due_on),
+                    array_map(fn ($r) => [$r->code, $this->label('emergency_equipment', 'equipment_type', $r->equipment_type), $r->site, $r->location_text, $dt($r->checked_at),
+                        $this->label('equipment_checks', 'check_type', $r->check_type), $this->label('equipment_checks', 'result', $r->result), $d($r->next_due_on),
                         $r->provider_name, $r->comments], $rows)];
             case 'training':
                 $rows = DB::select(
@@ -164,21 +183,48 @@ class RegistersController extends Controller
                      order by 4", [...$range, ...$range]);
 
                 return [['Código', 'Tema', 'Tipo', 'Fecha', 'Capacitador / entidad', 'Participante', 'Documento (últimos 4)', 'Horas', 'Asistió'],
-                    array_map(fn ($r) => [$r->code, $r->title, $r->training_type, $dt($r->starts_at), $r->instructor, $r->full_name, $r->document_last4,
+                    array_map(fn ($r) => [$r->code, $r->title, $r->training_type === 'drill' ? 'Simulacro' : $this->label('trainings', 'training_type', $r->training_type), $dt($r->starts_at), $r->instructor, $r->full_name, $r->document_last4,
                         $r->hours === null ? null : (float) $r->hours, $r->attended ? 'Sí' : 'No'], $rows)];
             case 'audits':
                 $rows = DB::select(
                     "select a.code, a.audit_type, a.standard, a.starts_on, a.ends_on, a.lead_auditor_name, a.auditor_registration, a.status,
-                            count(f.*) filter (where f.finding_type in ('major_nc','minor_nc')) as ncs, count(f.*) as findings, a.conclusions
+                            count(f.*) filter (where f.finding_type in ('major_nc','minor_nc')) as ncs, count(f.*) as findings, a.conclusions,
+                            string_agg(case when f.finding_type in ('major_nc','minor_nc') then
+                              (case f.finding_type when 'major_nc' then 'NC mayor: ' else 'NC menor: ' end) || f.description
+                              || coalesce(' → ' || (select ca.code || ' ' || ca.title || ' (' || to_char(ca.due_on, 'DD/MM/YYYY') || ')' from corrective_actions ca where ca.id = f.corrective_action_id), '')
+                            end, '; ') as nc_detail
                        from audits a left join audit_findings f on f.audit_id = a.id and f.deleted_at is null
                       where a.deleted_at is null and a.starts_on between ? and ? group by a.id order by a.starts_on", $range);
 
-                return [['Código', 'Tipo', 'Norma', 'Inicio', 'Fin', 'Auditor líder', 'Registro del auditor', 'Estado', 'No conformidades', 'Hallazgos', 'Conclusiones'],
-                    array_map(fn ($r) => [$r->code, $r->audit_type, $r->standard, $d($r->starts_on), $d($r->ends_on), $r->lead_auditor_name, $r->auditor_registration, $r->status,
-                        (int) $r->ncs, (int) $r->findings, $r->conclusions], $rows)];
+                return [['Código', 'Tipo', 'Norma', 'Inicio', 'Fin', 'Auditor líder', 'Registro del auditor', 'Estado', 'No conformidades', 'Hallazgos',
+                    'No conformidades y medidas correctivas', 'Conclusiones'],
+                    array_map(fn ($r) => [$r->code, $this->label('audits', 'audit_type', $r->audit_type), $this->label('audits', 'standard', $r->standard), $d($r->starts_on), $d($r->ends_on),
+                        $r->lead_auditor_name, $r->auditor_registration, $this->label('audits', 'status', $r->status), (int) $r->ncs, (int) $r->findings, $r->nc_detail, $r->conclusions], $rows)];
         }
 
         return [[], []];
+    }
+
+    /** Texto en español de una opción (p. ej. disabling_accident → «Accidente incapacitante»). */
+    private function label(string $table, string $field, ?string $value): string
+    {
+        static $maps = [];
+        if ($value === null || $value === '') {
+            return '';
+        }
+        $key = "{$table}.{$field}";
+        if (! isset($maps[$key])) {
+            $f = Registry::has($table) ? Registry::field(Registry::data()['resources'][$table], $field) : null;
+            $maps[$key] = array_column($f['options'] ?? [], 'label', 'value');
+        }
+
+        return $maps[$key][$value] ?? $value;
+    }
+
+    /** Reemplaza códigos de rol de persona dentro de un texto armado en SQL («… (injured, Mano)»). */
+    private function roles(?string $text): string
+    {
+        return $text ? preg_replace_callback('/\((injured|affected|ill|witness|involved)/', fn ($m) => '('.$this->label('event_people', 'person_role', $m[1]), $text) : '';
     }
 
     private function can(string $p): void

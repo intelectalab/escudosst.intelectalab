@@ -29,6 +29,8 @@ export const PRIVATE_PATHS = [
   "/webinars/gestionar/",
   "/cotizacion/",
   "/verificar/",
+  "/reportar/",
+  "/expediente/",
   "/encuesta/",
   "/imprimir/",
   "/l/",

@@ -3,6 +3,7 @@
 namespace App\Modules\REC\Rules;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Documentos con versiones (POL política, RIS RISST, PET procedimientos, DOC documentos) y registros de campo
@@ -29,6 +30,16 @@ class DocsFieldRules extends RecordRules
     public function prepare(string $op, array $res, array &$values, ?object $current, array &$extra): void
     {
         $t = $res['table'];
+        if ($t === 'report_points') {
+            if ($op === 'create') {
+                // Hash provisional (la columna es obligatoria); el definitivo depende del id y se pone después de crear.
+                $extra['token_hash'] = ["decode(?, 'hex')", [hash('sha256', Str::random(40))]];
+                $values['is_active'] ??= true;
+                $values['allow_anonymous'] ??= true;
+            }
+
+            return;
+        }
         if (isset(self::VERSIONED[$t])) {
             $this->version($t, $op, $values, $current, $extra);
 
@@ -70,6 +81,12 @@ class DocsFieldRules extends RecordRules
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
     {
         $t = $res['table'];
+        if ($t === 'report_points' && $op === 'create') {
+            $token = \App\Modules\ACT\ReportPointController::token(app(\App\Core\Tenancy\CompanyContext::class)->companyId, $id);
+            DB::update("update report_points set token_hash = decode(?, 'hex'), token_last4 = ? where id = ?", [hash('sha256', $token), substr($token, -4), $id]);
+
+            return;
+        }
         if (isset(self::VERSIONED[$t]) && ($values['status'] ?? null) === 'current') {
             [$col, $parent] = self::VERSIONED[$t];
             $row = DB::selectOne("select * from \"{$t}\" where id = ?", [$id]);
