@@ -53,12 +53,13 @@ final class KpiService
                 'unit' => $d->unit, 'direction' => $d->direction,
             ];
             if (! in_array($d->mode, ['enabled', 'read_only'], true)) {
-                $out[] = $kpi + ['locked' => true, 'required_plan' => self::PLAN_NAMES[$d->plan_code] ?? $d->plan_code];
+                $out[] = $kpi + ['locked' => true, 'required_plan' => self::PLAN_NAMES[$d->plan_code] ?? $d->plan_code,
+                    'link' => ['module' => $d->feature, 'table' => null, 'filters' => []]];
 
                 continue;
             }
             $r = $this->compute($d->formula_key);
-            $out[] = $kpi + ['locked' => false] + $r + ['color' => $this->color($d, $r)];
+            $out[] = $kpi + ['locked' => false] + $r + ['color' => $this->color($d, $r), 'link' => $this->link($d->code)];
         }
 
         return $out;
@@ -70,26 +71,37 @@ final class KpiService
         $enabled = array_column(DB::select("select module_code from feature_flags where mode in ('enabled', 'read_only') and deleted_at is null"), 'module_code');
         $soon = DB::selectOne("select (?::date + 30) as d", [$this->today])->d;
         $site = fn (string $col) => $this->site ? " and {$col} = '".addslashes($this->site)."'" : '';
+        $f = fn (array $x) => $this->site ? $x + ['site_id' => $this->site] : $x;
         $checks = [
-            ['ACR', 'bad', 'acciones correctivas vencidas', "select count(*) as n from corrective_actions where deleted_at is null and status in ('open','in_progress','overdue') and due_on < ?".$site('site_id'), [$this->today]],
-            ['IPC', 'bad', 'matrices IPERC con revisión vencida', 'select count(*) as n from iperc_matrices where deleted_at is null and status = \'active\' and next_review_on < ?'.$site('site_id'), [$this->today]],
-            ['IPC', 'amber', 'matrices IPERC sin versión aprobada', "select count(*) as n from iperc_matrices where deleted_at is null and status = 'active' and current_version_id is null".$site('site_id'), []],
-            ['ACC', 'bad', 'notificaciones de accidentes fuera de plazo', "select count(*) as n from event_notifications n join sst_events e on e.id = n.event_id where n.deleted_at is null and n.status = 'pending' and n.deadline_at < now()".$site('e.site_id'), []],
-            ['INS', 'amber', 'inspecciones programadas sin ejecutar', "select count(*) as n from inspections where deleted_at is null and status = 'scheduled' and scheduled_on < ?".$site('site_id'), [$this->today]],
-            ['EMO', 'amber', 'aptitudes médicas que vencen en 30 días', "select count(*) as n from fitness_status f join workers w on w.id = f.worker_id where f.deleted_at is null and f.is_current and f.valid_until between ? and ? and w.status = 'active'".$site('w.current_site_id'), [$this->today, $soon]],
-            ['EPP', 'amber', 'EPP entregados que vencen en 30 días', "select count(*) as n from ppe_deliveries where deleted_at is null and status = 'delivered' and expires_on between ? and ?".$site('site_id'), [$this->today, $soon]],
-            ['FOT', 'amber', 'fotochecks que vencen en 30 días', "select count(*) as n from credentials where deleted_at is null and status = 'active' and expires_on between ? and ?", [$this->today, $soon]],
-            ['ACT', 'amber', 'reportes de actos o condiciones sin revisar', "select count(*) as n from substandard_reports where deleted_at is null and status = 'received'".$site('site_id'), []],
-            ['SCT', 'bad', 'pólizas SCTR vencidas', "select count(*) as n from sctr_policies where deleted_at is null and status = 'active' and ends_on < ?", [$this->today]],
+            ['ACR', 'bad', 'acciones correctivas vencidas', "select count(*) as n from corrective_actions where deleted_at is null and status in ('open','in_progress','overdue') and due_on < ?".$site('site_id'), [$this->today],
+                ['corrective_actions', $f(['status' => 'open,in_progress,overdue', 'due_on__lt' => 'today'])]],
+            ['IPC', 'bad', 'matrices IPERC con revisión vencida', 'select count(*) as n from iperc_matrices where deleted_at is null and status = \'active\' and next_review_on < ?'.$site('site_id'), [$this->today],
+                ['iperc_matrices', $f(['status' => 'active', 'next_review_on__lt' => 'today'])]],
+            ['IPC', 'amber', 'matrices IPERC sin versión aprobada', "select count(*) as n from iperc_matrices where deleted_at is null and status = 'active' and current_version_id is null".$site('site_id'), [],
+                ['iperc_matrices', $f(['status' => 'active', 'current_version_id__null' => '1'])]],
+            ['ACC', 'bad', 'notificaciones de accidentes fuera de plazo', "select count(*) as n from event_notifications n join sst_events e on e.id = n.event_id where n.deleted_at is null and n.status = 'pending' and n.deadline_at < now()".$site('e.site_id'), [],
+                ['event_notifications', ['status' => 'pending', 'deadline_at__lt' => 'today']]],
+            ['INS', 'amber', 'inspecciones programadas sin ejecutar', "select count(*) as n from inspections where deleted_at is null and status = 'scheduled' and scheduled_on < ?".$site('site_id'), [$this->today],
+                ['inspections', $f(['status' => 'scheduled', 'scheduled_on__lt' => 'today'])]],
+            ['EMO', 'amber', 'aptitudes médicas que vencen en 30 días', "select count(*) as n from fitness_status f join workers w on w.id = f.worker_id where f.deleted_at is null and f.is_current and f.valid_until between ? and ? and w.status = 'active'".$site('w.current_site_id'), [$this->today, $soon],
+                ['fitness_status', ['is_current' => 'true', 'valid_until__gte' => 'today', 'valid_until__lte' => $soon]]],
+            ['EPP', 'amber', 'EPP entregados que vencen en 30 días', "select count(*) as n from ppe_deliveries where deleted_at is null and status = 'delivered' and expires_on between ? and ?".$site('site_id'), [$this->today, $soon],
+                ['ppe_deliveries', $f(['status' => 'delivered', 'expires_on__gte' => 'today', 'expires_on__lte' => $soon])]],
+            ['FOT', 'amber', 'fotochecks que vencen en 30 días', "select count(*) as n from credentials where deleted_at is null and status = 'active' and expires_on between ? and ?", [$this->today, $soon],
+                ['credentials', ['status' => 'active', 'expires_on__gte' => 'today', 'expires_on__lte' => $soon]]],
+            ['ACT', 'amber', 'reportes de actos o condiciones sin revisar', "select count(*) as n from substandard_reports where deleted_at is null and status = 'received'".$site('site_id'), [],
+                ['substandard_reports', $f(['status' => 'received'])]],
+            ['SCT', 'bad', 'pólizas SCTR vencidas', "select count(*) as n from sctr_policies where deleted_at is null and status = 'active' and ends_on < ?", [$this->today],
+                ['sctr_policies', ['status' => 'active', 'ends_on__lt' => 'today']]],
         ];
         $out = [];
-        foreach ($checks as [$module, $tone, $text, $sql, $bind]) {
+        foreach ($checks as [$module, $tone, $text, $sql, $bind, [$table, $filters]]) {
             if (! in_array($module, $enabled, true)) {
                 continue;
             }
             $n = (int) DB::selectOne($sql, $bind)->n;
             if ($n > 0) {
-                $out[] = ['module' => $module, 'tone' => $tone, 'count' => $n, 'text' => $text];
+                $out[] = ['module' => $module, 'tone' => $tone, 'count' => $n, 'text' => $text, 'link' => ['module' => $module, 'table' => $table, 'filters' => $filters]];
             }
         }
 
@@ -106,6 +118,31 @@ final class KpiService
             'sites' => (int) DB::selectOne("select count(*) as n from sites where deleted_at is null and status = 'active'")->n,
             'positions' => (int) DB::selectOne("select count(*) as n from positions where deleted_at is null and status = 'active'")->n,
         ];
+    }
+
+    /** RN-DSH-03: la lista de registros que compone cada KPI, ya filtrada por periodo y sede. */
+    private function link(string $code): array
+    {
+        $site = $this->site ? ['site_id' => $this->site] : [];
+        $period = fn (string $field) => [$field.'__gte' => $this->from, $field.'__lte' => $this->to];
+        [$module, $table, $filters] = match ($code) {
+            'passt_progress' => ['PAS', 'program_activities', []],
+            'training_compliance' => ['PCA', 'training_program_items', []],
+            'inspection_compliance' => ['INS', 'inspections', $period('scheduled_on') + $site],
+            'corrective_actions_overdue' => ['ACR', 'corrective_actions', ['status' => 'open,in_progress,overdue', 'due_on__lt' => 'today'] + $site],
+            'corrective_actions_closed' => ['ACR', 'corrective_actions', $period('due_on') + $site],
+            'legal_compliance' => ['MRL', 'legal_requirements', ['status' => 'active']],
+            'baseline_score' => ['LBA', 'baseline_assessments', ['status' => 'completed,approved']],
+            'ppe_compliance' => ['EPP', 'ppe_deliveries', ['status' => 'delivered'] + $site],
+            'emo_valid' => ['EMO', 'fitness_status', ['is_current' => 'true']],
+            'events_notified_on_time' => ['ACC', 'event_notifications', $period('deadline_at')],
+            'frequency_index', 'severity_index', 'accident_rate' => ['ACC', 'sst_events', ['event_type' => 'disabling_accident,fatal_accident'] + $period('occurred_at') + $site],
+            'substandard_reports' => ['ACT', 'substandard_reports', $period('reported_at') + $site],
+            'credentials_enabled' => ['FOT', 'credentials', ['status' => 'active']],
+            default => [null, null, []],
+        };
+
+        return ['module' => $module, 'table' => $table, 'filters' => $filters];
     }
 
     // ── Fórmulas ──────────────────────────────────────────────────────────────

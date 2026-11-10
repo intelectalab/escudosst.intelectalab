@@ -3,7 +3,7 @@
 
 import { api } from "./api";
 
-export type FieldType = "text" | "longtext" | "int" | "number" | "date" | "datetime" | "time" | "bool" | "enum" | "ref" | "tags" | "json";
+export type FieldType = "text" | "longtext" | "int" | "number" | "date" | "datetime" | "time" | "bool" | "enum" | "ref" | "tags" | "json" | "source";
 
 export type RecordField = {
   name: string;
@@ -110,4 +110,19 @@ export function statusTone(value: string): "ok" | "na" | "amber" | "brand" | "ba
   if (/^(overdue|expired|rejected|cancelled|failed|unfit|non_compliant|suspended|blocked|terminated|critical|high|very_high)$/.test(value)) return "bad";
   if (/^(in_progress|pending|scheduled|draft|under_review|open|planned|on_leave|partial|medium|requested|submitted|observed)$/.test(value)) return "amber";
   return "na";
+}
+
+export type TraceNode = { module: string; table: string; tab: string; id: string; label: string; via: string };
+export type TraceGroup = { module: string; table: string; tab: string; count: number; filter: Record<string, string> };
+
+/** Trazabilidad de un registro: de dónde viene y qué generó (en cualquier módulo). */
+export const traceOf = (code: string, table: string, id: string) =>
+  api<{ data: { parents: TraceNode[]; children: TraceGroup[] } }>(`/records/${code.toUpperCase()}/${table}/${id}/trace`, { withCompany: true });
+
+/** Enlace a una lista filtrada o a un registro de cualquier módulo. */
+export function recordsHref(module: string, table: string, opts: { filters?: Record<string, string>; open?: string } = {}): string {
+  const q = new URLSearchParams({ t: table });
+  Object.entries(opts.filters ?? {}).forEach(([k, v]) => q.set(`f[${k}]`, v));
+  if (opts.open) q.set("open", opts.open);
+  return `/m/${module.toLowerCase()}?${q}`;
 }

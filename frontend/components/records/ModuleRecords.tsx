@@ -4,6 +4,8 @@
 // filtros y un formulario que se arma con la descripción que envía el backend (/records/{módulo}).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { RecordActions, TraceStrip, describeFilter, lockedReason } from "./Process";
 import { ApiError } from "@/lib/api";
 import { displayValue, records, statusTone, toLocalInput, type ModuleSchema, type RecordField, type RecordPage, type RecordResource, type RecordRow } from "@/lib/records";
 import { Button } from "@/components/ui/Button";
@@ -18,25 +20,31 @@ export function ModuleRecords({ code, readOnly }: { code: string; readOnly: bool
   const [schema, setSchema] = useState<ModuleSchema | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<string | null>(null);
+  const params = useSearchParams();
+  const urlTab = params.get("t");
+  const urlFilters = useMemo(() => filtersFromUrl(params), [params]);
+  const urlOpen = params.get("open");
 
   useEffect(() => {
     setSchema(null);
     setError(null);
     records
       .schema(code)
-      .then((s) => {
-        setSchema(s);
-        const fromUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("t") : null;
-        setTab(s.resources.find((r) => r.table === fromUrl)?.table ?? s.resources[0]?.table ?? null);
-      })
+      .then(setSchema)
       .catch((e: ApiError) =>
         setError(e.status === 404 ? "Este módulo se gestiona desde su propia pantalla, que se habilitará en las próximas etapas." : (e.detail ?? e.title)),
       );
   }, [code]);
 
+  // La pestaña sigue a la URL (un enlace de otra pantalla puede cambiarla sin recargar).
+  useEffect(() => {
+    if (schema) setTab(schema.resources.find((r) => r.table === urlTab)?.table ?? schema.resources[0]?.table ?? null);
+  }, [schema, urlTab]);
+
   const choose = (t: string) => {
     setTab(t);
     const url = new URL(window.location.href);
+    url.search = "";
     url.searchParams.set("t", t);
     window.history.replaceState(null, "", url);
   };
@@ -67,20 +75,54 @@ export function ModuleRecords({ code, readOnly }: { code: string; readOnly: bool
           ))}
         </div>
       )}
-      <ResourcePanel key={current.table} code={code} res={current} readOnly={readOnly} />
+      <ResourcePanel
+        key={`${current.table}|${params.toString()}`}
+        code={code}
+        res={current}
+        readOnly={readOnly}
+        initialFilters={current.table === urlTab ? urlFilters : {}}
+        openId={current.table === urlTab ? urlOpen : null}
+      />
     </div>
   );
 }
 
-export function ResourcePanel({ code, res, readOnly }: { code: string; res: RecordResource; readOnly: boolean }) {
+/** Filtros en la URL: f[campo]=valor, f[campo__lt]=today… (los usan el tablero y la trazabilidad). */
+export function filtersFromUrl(params: URLSearchParams): Record<string, string> {
+  const out: Record<string, string> = {};
+  params.forEach((v, k) => {
+    const m = k.match(/^f\[([a-z0-9_]+)\]$/);
+    if (m && v) out[m[1]] = v;
+  });
+  return out;
+}
+
+export function ResourcePanel({
+  code,
+  res,
+  readOnly,
+  initialFilters = {},
+  openId = null,
+}: {
+  code: string;
+  res: RecordResource;
+  readOnly: boolean;
+  initialFilters?: Record<string, string>;
+  openId?: string | null;
+}) {
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [filters, setFilters] = useState<Record<string, string>>(initialFilters);
   const [data, setData] = useState<RecordPage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<RecordRow | "new" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Un enlace puede pedir abrir un registro concreto (?open=id).
+  useEffect(() => {
+    if (openId) setEditing({ id: openId, own: true } as RecordRow);
+  }, [openId]);
 
   const columns = res.fields.filter((f) => f.list);
   // Filtros: el estado y hasta dos opciones más (tipo, nivel…).
@@ -109,6 +151,10 @@ export function ResourcePanel({ code, res, readOnly }: { code: string; res: Reco
   useEffect(load, [load]);
 
   const canCreate = res.can.create && !readOnly;
+  // Filtros que no se ven en los selectores (vienen de un enlace): se muestran como chips que se pueden quitar.
+  const extraFilters = Object.entries(filters).filter(
+    ([k, v]) => v && !filterFields.some((f) => f.name === k && (f.options ?? []).some((o) => o.value === v)),
+  );
   const active = query !== "" || Object.values(filters).some(Boolean);
 
   return (
@@ -145,6 +191,22 @@ export function ResourcePanel({ code, res, readOnly }: { code: string; res: Reco
           />
         ))}
       </FilterBar>
+
+      {extraFilters.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-brand-soft px-4 py-2 text-sm text-brand-strong" role="status">
+          <span className="font-semibold">Mostrando solo:</span>
+          {extraFilters.map(([k, v]) => (
+            <button
+              key={k}
+              onClick={() => setFilters((x) => ({ ...x, [k]: "" }))}
+              className="inline-flex items-center gap-1 rounded-full bg-surface px-3 py-1 text-xs font-semibold shadow-sm hover:bg-bg"
+              title="Quitar este filtro"
+            >
+              {describeFilter(res, k, v)} <span aria-hidden="true">×</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && <p className="rounded-lg bg-bad-soft px-4 py-3 text-bad">{error}</p>}
 
@@ -210,7 +272,10 @@ export function ResourcePanel({ code, res, readOnly }: { code: string; res: Reco
           res={res}
           row={editing === "new" ? null : editing}
           readOnly={readOnly}
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            setEditing(null);
+            load();
+          }}
           onSaved={(msg) => {
             setEditing(null);
             setToast(msg);
@@ -256,19 +321,25 @@ export function RecordForm({
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // El detalle trae todos los campos (la lista solo los visibles).
+  const [version, setVersion] = useState(0);
+
+  // El detalle trae todos los campos (la lista solo los visibles). Se vuelve a leer tras una acción del proceso.
   useEffect(() => {
     if (!row) return;
-    records.get(code, res.table, row.id).then((r) => {
-      setFull(r.data);
-      setValues(initial(res, r.data));
-    });
-  }, [code, res, row]);
+    records
+      .get(code, res.table, row.id)
+      .then((r) => {
+        setFull(r.data);
+        setValues(initial(res, r.data));
+      })
+      .catch((e: ApiError) => setDetail(e.detail ?? e.title));
+  }, [code, res, row, version]);
 
   const isNew = row === null;
   const foreign = !!full && res.hybrid && !full.own;
-  const canEdit = !readOnly && !foreign && (isNew ? res.can.create : res.can.update);
-  const editable = res.fields.filter((f) => !f.readonly && f.type !== "json" && !hide.includes(f.name));
+  const locked = !isNew && full ? lockedReason(res.table, full) : null;
+  const canEdit = !readOnly && !foreign && !locked && (isNew ? res.can.create : res.can.update);
+  const editable = res.fields.filter((f) => !f.readonly && f.type !== "json" && f.type !== "source" && !hide.includes(f.name));
   const computed = res.fields.filter((f) => (f.readonly || f.type === "json") && !isNew && !hide.includes(f.name));
 
   const save = async () => {
@@ -350,6 +421,9 @@ export function RecordForm({
       }
     >
       <div className="space-y-4">
+        {full && !isNew && <TraceStrip table={res.table} module={code} id={full.id} version={version} />}
+        {full && !isNew && <RecordActions code={code} res={res} row={full} readOnly={readOnly} onChanged={() => setVersion((v) => v + 1)} />}
+        {locked && <p className="rounded-lg bg-bg px-4 py-3 text-sm text-muted">{locked}</p>}
         {foreign && <p className="rounded-lg bg-bg px-4 py-3 text-sm text-muted">Es parte del catálogo general de EscudoSST: puedes consultarlo, pero no editarlo. Crea uno propio si necesitas cambiarlo.</p>}
         {detail && (
           <p role="alert" className="rounded-lg bg-bad-soft px-4 py-3 text-sm text-bad">
@@ -520,7 +594,7 @@ export function RefSelect({
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (initialLabel !== undefined) {
+    if (initialLabel != null) {
       setLabel(initialLabel);
       setText(initialLabel);
     } else if (value && !label) {

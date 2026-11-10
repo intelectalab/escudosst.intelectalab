@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useApp } from "@/components/AppContext";
+import { recordsHref } from "@/lib/records";
 import { Modal } from "@/components/ui/Modal";
 
 type Kpi = {
@@ -25,13 +26,19 @@ type Kpi = {
   label?: string;
   basis?: string;
   color?: "green" | "amber" | "red" | null;
+  link: Link_;
 };
+
+type Link_ = { module: string | null; table: string | null; filters: Record<string, string> };
+
+/** A dónde lleva una tarjeta: la lista ya filtrada de los registros que la componen. */
+const hrefOf = (l: Link_) => (l.module && l.table ? recordsHref(l.module, l.table, { filters: l.filters }) : l.module ? `/m/${l.module.toLowerCase()}` : "/inicio");
 
 type Overview = {
   year: number;
   site_id: string | null;
   kpis: Kpi[];
-  alerts: { module: string; tone: "bad" | "amber"; count: number; text: string }[];
+  alerts: { module: string; tone: "bad" | "amber"; count: number; text: string; link: Link_ }[];
   counts: { workers: number; sites: number; positions: number };
   sites: { id: string; name: string }[];
 };
@@ -76,7 +83,22 @@ export function Dashboard() {
           <h1 className="text-2xl font-semibold">Hola, {first}</h1>
           <p className="text-muted">
             {company.name}
-            {data && ` · ${data.counts.workers} trabajadores · ${data.counts.sites} sede(s) · ${data.counts.positions} puestos`}
+            {data && (
+              <>
+                {" · "}
+                <Link className="font-semibold text-brand hover:underline" href={recordsHref("TRB", "workers", { filters: { status: "active,on_leave", ...(site ? { current_site_id: site } : {}) } })}>
+                  {data.counts.workers} trabajadores
+                </Link>
+                {" · "}
+                <Link className="font-semibold text-brand hover:underline" href={recordsHref("TEN", "sites", { filters: { status: "active" } })}>
+                  {data.counts.sites} sede(s)
+                </Link>
+                {" · "}
+                <Link className="font-semibold text-brand hover:underline" href={recordsHref("TEN", "positions", { filters: { status: "active" } })}>
+                  {data.counts.positions} puestos
+                </Link>
+              </>
+            )}
           </p>
         </div>
         {canSee && data && (
@@ -124,7 +146,7 @@ export function Dashboard() {
                 {data.alerts.map((a, i) => (
                   <li key={i}>
                     <Link
-                      href={`/m/${a.module.toLowerCase()}`}
+                      href={hrefOf(a.link)}
                       className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:brightness-95 ${a.tone === "bad" ? "bg-bad-soft text-bad" : "bg-amber-soft text-amber-ink"}`}
                     >
                       <span className="text-lg font-bold tabular-nums">{a.count}</span>
@@ -148,23 +170,30 @@ export function Dashboard() {
               {active.map((k) => {
                 const c = k.color ? COLORS[k.color] : null;
                 return (
-                  <button
-                    key={k.code}
-                    onClick={() => setOpen(k)}
-                    className={`space-y-2 rounded-2xl border bg-surface p-5 text-left shadow-sm transition hover:shadow-md ${c ? c.card : "border-line"}`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-semibold">{k.name}</p>
-                      {c && (
-                        <span className={`inline-flex items-center gap-1 text-xs font-semibold ${c.text}`}>
-                          <span className={`h-2 w-2 rounded-full ${c.dot}`} aria-hidden="true" />
-                          {c.label}
-                        </span>
-                      )}
-                    </div>
-                    <p className={`font-display text-3xl font-semibold ${k.value === null ? "text-muted" : c ? c.text : ""}`}>{k.label}</p>
-                    <p className="line-clamp-2 text-xs text-muted">{k.basis}</p>
-                  </button>
+                  <div key={k.code} className={`relative rounded-2xl border bg-surface shadow-sm transition hover:shadow-md ${c ? c.card : "border-line"}`}>
+                    <Link href={hrefOf(k.link)} className="block space-y-2 p-5 pr-12" title="Ver los registros de este indicador">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-semibold">{k.name}</p>
+                        {c && (
+                          <span className={`inline-flex shrink-0 items-center gap-1 text-xs font-semibold ${c.text}`}>
+                            <span className={`h-2 w-2 rounded-full ${c.dot}`} aria-hidden="true" />
+                            {c.label}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`font-display text-3xl font-semibold ${k.value === null ? "text-muted" : c ? c.text : ""}`}>{k.label}</p>
+                      <p className="line-clamp-2 text-xs text-muted">{k.basis}</p>
+                      <p className="text-xs font-semibold text-brand">Ver registros →</p>
+                    </Link>
+                    <button
+                      onClick={() => setOpen(k)}
+                      className="absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-full border border-line text-xs font-bold text-muted hover:border-brand hover:text-brand"
+                      aria-label={`Cómo se calcula: ${k.name}`}
+                      title="¿Cómo se calcula?"
+                    >
+                      ?
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -175,10 +204,10 @@ export function Dashboard() {
               <h2 className="font-semibold text-muted">Disponibles en otros planes</h2>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {locked.map((k) => (
-                  <div key={k.code} className="rounded-xl border border-dashed border-line bg-bg p-4 text-sm">
+                  <Link key={k.code} href={hrefOf(k.link)} className="rounded-xl border border-dashed border-line bg-bg p-4 text-sm hover:border-brand">
                     <p className="font-semibold text-muted">🔒 {k.name}</p>
-                    <p className="text-xs text-muted">Incluido en el plan {k.required_plan}.</p>
-                  </div>
+                    <p className="text-xs text-muted">Incluido en el plan {k.required_plan}. Toca para ver qué incluye.</p>
+                  </Link>
                 ))}
               </div>
             </section>
@@ -190,7 +219,7 @@ export function Dashboard() {
         <Modal title={open.name} subtitle={`Módulo: ${open.module_name}`} icon="chart" onClose={() => setOpen(null)} size="sm"
           footer={
             <div className="flex w-full justify-end">
-              <Link href={`/m/${open.module.toLowerCase()}`} className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-strong">
+              <Link href={hrefOf(open.link)} className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-strong">
                 Ver registros
               </Link>
             </div>

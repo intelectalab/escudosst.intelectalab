@@ -277,27 +277,75 @@ final class RecordsService
                 $where[] = '('.implode(' or ', $or).')';
             }
         }
-        foreach ((array) ($query['f'] ?? []) as $name => $value) {
-            $f = Registry::field($res, (string) $name);
-            if (! $f || $value === '' || $value === null) {
-                continue;
-            }
-            if ($f['type'] === 'enum' && in_array($value, array_column($f['options'], 'value'), true)) {
-                $where[] = "t.\"{$f['name']}\" = ?";
-                $bind[] = $value;
-            } elseif ($f['type'] === 'ref' && Str::isUuid((string) $value)) {
-                $where[] = "t.\"{$f['name']}\" = ?";
-                $bind[] = $value;
-            } elseif ($f['type'] === 'bool' && in_array($value, ['true', 'false', '1', '0'], true)) {
-                $where[] = "t.\"{$f['name']}\" = ?";
-                $bind[] = in_array($value, ['true', '1'], true) ? 'true' : 'false';
-            }
+        foreach ((array) ($query['f'] ?? []) as $key => $value) {
+            [$where, $bind] = $this->filter($res, (string) $key, $value, $where, $bind);
         }
         if (($query['own'] ?? null) === '1' && $res['hybrid']) {
             $where[] = 't.company_id is not null';
         }
 
         return [$where ? 'where '.implode(' and ', $where) : '', $bind];
+    }
+
+    /**
+     * Un filtro de la lista. Formas (llegan como f[clave]=valor, p. ej. desde el tablero):
+     *  - campo=valor             igualdad (opción, referencia, sí/no); «a,b» en opciones = cualquiera de ellas
+     *  - campo__lt / __lte / __gt / __gte = valor   comparación en fechas y números; «today» es la fecha de hoy (Lima)
+     *  - campo__null = 1 | 0     vacío o con valor
+     *  - source_id=uuid          registros generados desde otro (acciones correctivas y similares)
+     */
+    private function filter(array $res, string $key, mixed $value, array $where, array $bind): array
+    {
+        if ($value === '' || $value === null || is_array($value)) {
+            return [$where, $bind];
+        }
+        $value = (string) $value;
+        [$name, $op] = array_pad(explode('__', $key, 2), 2, null);
+        if ($name === 'source_id' && $op === null && Registry::field($res, 'source_type') && Str::isUuid($value)) {
+            $where[] = 't.source_id = ?';
+            $bind[] = $value;
+
+            return [$where, $bind];
+        }
+        $f = Registry::field($res, $name);
+        if (! $f) {
+            return [$where, $bind];
+        }
+        $col = "t.\"{$f['name']}\"";
+        if ($op === 'null' && in_array($value, ['1', '0'], true)) {
+            $where[] = $col.($value === '1' ? ' is null' : ' is not null');
+
+            return [$where, $bind];
+        }
+        if (in_array($op, ['lt', 'lte', 'gt', 'gte'], true) && in_array($f['type'], ['date', 'datetime', 'int', 'number'], true)) {
+            $sym = ['lt' => '<', 'lte' => '<=', 'gt' => '>', 'gte' => '>='][$op];
+            if ($value === 'today' && in_array($f['type'], ['date', 'datetime'], true)) {
+                $where[] = "{$col} {$sym} (now() at time zone 'America/Lima')::date";
+            } elseif (in_array($f['type'], ['date', 'datetime'], true) ? (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) : is_numeric($value)) {
+                $where[] = "{$col} {$sym} ?";
+                $bind[] = $value;
+            }
+
+            return [$where, $bind];
+        }
+        if ($op !== null) {
+            return [$where, $bind];
+        }
+        if ($f['type'] === 'enum') {
+            $vals = array_values(array_intersect(explode(',', $value), array_column($f['options'], 'value')));
+            if ($vals !== []) {
+                $where[] = "{$col} in (".implode(',', array_fill(0, count($vals), '?')).')';
+                array_push($bind, ...$vals);
+            }
+        } elseif ($f['type'] === 'ref' && Str::isUuid($value)) {
+            $where[] = "{$col} = ?";
+            $bind[] = $value;
+        } elseif ($f['type'] === 'bool' && in_array($value, ['true', 'false', '1', '0'], true)) {
+            $where[] = "{$col} = ?";
+            $bind[] = in_array($value, ['true', '1'], true) ? 'true' : 'false';
+        }
+
+        return [$where, $bind];
     }
 
     private function present(array $res, object $row, bool $forList = false, bool $decrypt = false): array
@@ -458,6 +506,7 @@ final class RecordsService
             case 'enum':
                 return in_array($v, array_column($f['options'], 'value'), true) ? null : "Elige una opción válida en «{$label}».";
             case 'ref':
+            case 'source':
                 return is_string($v) && Str::isUuid($v) ? null : "Elige una opción válida en «{$label}».";
             case 'json':
                 if (! is_array($v)) {

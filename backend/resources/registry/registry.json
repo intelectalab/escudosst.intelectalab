@@ -7985,11 +7985,13 @@
     {
      "name": "started_at",
      "label": "Iniciado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
      "name": "completed_at",
      "label": "Completado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
@@ -8019,6 +8021,7 @@
     {
      "name": "score_pct",
      "label": "Puntaje (%)",
+     "readonly": true,
      "type": "number"
     },
     {
@@ -8118,6 +8121,7 @@
     {
      "name": "question_snapshot",
      "label": "Pregunta registrada",
+     "readonly": true,
      "type": "text",
      "required": true,
      "list": true
@@ -8135,11 +8139,13 @@
     {
      "name": "is_compliant",
      "label": "Cumple",
+     "readonly": true,
      "type": "bool"
     },
     {
      "name": "is_critical",
      "label": "Crítico",
+     "readonly": true,
      "type": "bool",
      "default": false
     },
@@ -8314,6 +8320,7 @@
     {
      "name": "corrective_action_id",
      "label": "Acción correctiva",
+     "readonly": true,
      "type": "ref",
      "ref": "corrective_actions"
     }
@@ -17472,7 +17479,6 @@
      "name": "code",
      "label": "Código",
      "type": "text",
-     "required": true,
      "list": true
     },
     {
@@ -17546,6 +17552,11 @@
       }
      ],
      "required": true
+    },
+    {
+     "name": "source_id",
+     "label": "Origen",
+     "type": "source"
     },
     {
      "name": "action_type",
@@ -17707,17 +17718,20 @@
     {
      "name": "completed_at",
      "label": "Completado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
      "name": "verified_by",
      "label": "Verificado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "verified_at",
      "label": "Verificado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
@@ -17752,6 +17766,7 @@
     {
      "name": "reopened_count",
      "label": "Veces reabierto",
+     "readonly": true,
      "type": "int",
      "default": 0
     }
@@ -17812,12 +17827,14 @@
     {
      "name": "submitted_by",
      "label": "Enviado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "submitted_at",
      "label": "Enviado el",
+     "readonly": true,
      "type": "datetime",
      "list": true
     }
@@ -20173,6 +20190,11 @@
      "type": "text"
     },
     {
+     "name": "source_id",
+     "label": "Origen",
+     "type": "source"
+    },
+    {
      "name": "status",
      "label": "Estado",
      "type": "enum",
@@ -21170,6 +21192,11 @@
      "name": "source_type",
      "label": "Tipo de origen",
      "type": "text"
+    },
+    {
+     "name": "source_id",
+     "label": "Origen",
+     "type": "source"
     },
     {
      "name": "document_id",

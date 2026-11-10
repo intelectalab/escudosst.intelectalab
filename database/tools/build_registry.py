@@ -31,12 +31,17 @@ READONLY = {"areas.depth", "workers.document_last4", "workers.activated_at", "wo
             "iperc_versions.version_number", "iperc_versions.status", "iperc_versions.prepared_by", "iperc_versions.prepared_at",
             "iperc_versions.reviewed_by", "iperc_versions.approved_by", "iperc_versions.approved_at", "iperc_versions.effective_on",
             "iperc_versions.obsoleted_at", "iperc_rows.row_number", "iperc_rows.risk_level", "iperc_rows.is_significant",
-            "iperc_rows.residual_level", "iperc_rows.ai_assisted", "iperc_rows.ai_suggestion_id", "iperc_controls.corrective_action_id"}
+            "iperc_rows.residual_level", "iperc_rows.ai_assisted", "iperc_rows.ai_suggestion_id", "iperc_controls.corrective_action_id",
+            # ACR / INS: los fija el flujo (verificación, evidencias, checklist).
+            "corrective_actions.completed_at", "corrective_actions.verified_by", "corrective_actions.verified_at", "corrective_actions.reopened_count",
+            "action_evidences.submitted_by", "action_evidences.submitted_at", "inspections.score_pct", "inspections.started_at",
+            "inspections.completed_at", "findings.corrective_action_id", "inspection_answers.is_compliant", "inspection_answers.is_critical",
+            "inspection_answers.question_snapshot"}
 # Datos estructurados (jsonb) que sí se editan desde un formulario propio.
 WRITABLE_JSON = {"iperc_rows.probability_detail", "iperc_versions.participants"}
 # Obligatorios en la base pero que calcula una regla si no se envían.
 COMPUTED = {"work_shifts.hours_per_day", "areas.depth", "iperc_rows.probability_value",
-            "iperc_rows.hazard", "iperc_rows.risk"}
+            "iperc_rows.hazard", "iperc_rows.risk", "corrective_actions.code", "inspections.code"}
 LONG_TEXT = re.compile(r"(^|_)(description|notes|note|comment|comments|summary|functions|observations|content|body|"
                        r"details|detail|justification|reason|instructions|scope|recommendations|conclusions|text|"
                        r"statement|commitments|methodology|findings|lessons|answer|explanation|purpose)$")
@@ -105,6 +110,8 @@ def main():
                     continue
                 f["type"] = "ref"
                 f["ref"] = ref
+            elif name == "source_id" and any(x["name"] == "source_type" for x in t["columns"]):
+                f["type"] = "source"  # registro de origen (según source_type); lo fija el flujo que crea el registro
             elif base == "uuid" or base == "uuid[]" or base.startswith("inet"):
                 continue
             elif base == "text":

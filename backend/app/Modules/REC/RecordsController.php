@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\DB;
  *  PATCH  /records/{module}/{table}/{id}            edición
  *  DELETE /records/{module}/{table}/{id}            archivo (borrado lógico)
  *  GET    /records/{module}/{table}/options/{field} opciones de una referencia (q, id)
+ *  GET    /records/{module}/{table}/{id}/trace      trazabilidad: de dónde viene y qué generó
  *
  * Plan: el módulo debe estar habilitado (en solo lectura, solo se lee). Permisos: {módulo}.{tabla}.{acción}.
  */
@@ -87,6 +88,14 @@ class RecordsController extends Controller
         $this->records->delete($res, $id);
 
         return response()->noContent();
+    }
+
+    public function trace(Request $request, string $module, string $table, string $id): JsonResponse
+    {
+        $res = $this->resource($request, $module, $table, 'read');
+        $this->records->find($res, $id);
+
+        return response()->json(['data' => app(TraceService::class)->trace($res, $id)]);
     }
 
     public function options(Request $request, string $module, string $table, string $field): JsonResponse

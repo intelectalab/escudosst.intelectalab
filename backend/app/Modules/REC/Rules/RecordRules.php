@@ -22,6 +22,10 @@ abstract class RecordRules
         'iperc_versions' => IpercRules::class,
         'iperc_rows' => IpercRules::class,
         'iperc_controls' => IpercRules::class,
+        'corrective_actions' => AcrRules::class,
+        'action_evidences' => AcrRules::class,
+        'inspections' => InsRules::class,
+        'findings' => InsRules::class,
     ];
 
     public static function for(string $table): ?self

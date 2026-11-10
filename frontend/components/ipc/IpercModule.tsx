@@ -23,7 +23,8 @@ import {
   type IpercRow,
   type Workspace,
 } from "@/lib/ipc";
-import { RecordForm, RefSelect, ResourcePanel } from "@/components/records/ModuleRecords";
+import { filtersFromUrl, RecordForm, RefSelect, ResourcePanel } from "@/components/records/ModuleRecords";
+import { describeFilter } from "@/components/records/Process";
 import { Button } from "@/components/ui/Button";
 import { Chip, EmptyState } from "@/components/ui/Display";
 import { FormField } from "@/components/ui/Form";
@@ -44,7 +45,7 @@ export function IpercModule({ readOnly }: { readOnly: boolean }) {
     records.schema("IPC").then(setSchema).catch((e: ApiError) => setError(e.detail ?? e.title));
     const q = new URLSearchParams(window.location.search);
     if (q.get("matriz")) setOpen(q.get("matriz"));
-    if (q.get("t")) setTab(q.get("t")!);
+    if (q.get("t")) setTab(q.get("t") === "iperc_matrices" ? "matrices" : q.get("t")!);
   }, []);
 
   const go = (t: string, matrix: string | null = null) => {
@@ -97,10 +98,14 @@ function MatrixList({ schema, readOnly, onOpen }: { schema: ModuleSchema; readOn
   const res = schema.resources.find((r) => r.table === "iperc_matrices");
   const [rows, setRows] = useState<RecordRow[] | null>(null);
   const [creating, setCreating] = useState(false);
+  // Filtros que llegan por enlace (p. ej. desde «Para atender» del Inicio).
+  const [linkFilters, setLinkFilters] = useState<Record<string, string>>(() =>
+    typeof window === "undefined" ? {} : filtersFromUrl(new URLSearchParams(window.location.search)),
+  );
 
   useEffect(() => {
-    records.list("IPC", "iperc_matrices", { filters: { status: "active" } }).then((r) => setRows(r.data));
-  }, []);
+    records.list("IPC", "iperc_matrices", { filters: { status: "active", ...linkFilters } }).then((r) => setRows(r.data));
+  }, [linkFilters]);
 
   if (!res) return <p className="text-muted">Tu rol no puede ver las matrices.</p>;
   const today = new Date().toISOString().slice(0, 10);
@@ -119,7 +124,20 @@ function MatrixList({ schema, readOnly, onOpen }: { schema: ModuleSchema; readOn
           </Button>
         )}
       </div>
-      {rows && rows.length === 0 && <EmptyState icon="clipboard" text="Aún no hay matrices. Crea la primera con «Nueva matriz»." />}
+      {Object.keys(linkFilters).filter((k) => k !== "status").length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-brand-soft px-4 py-2 text-sm text-brand-strong" role="status">
+          <span className="font-semibold">Mostrando solo:</span>
+          {Object.entries(linkFilters)
+            .filter(([k]) => k !== "status")
+            .map(([k, v]) => (
+              <button key={k} onClick={() => setLinkFilters((x) => Object.fromEntries(Object.entries(x).filter(([y]) => y !== k)))}
+                className="rounded-full bg-surface px-3 py-1 text-xs font-semibold shadow-sm hover:bg-bg" title="Quitar este filtro">
+                {describeFilter(res, k, v)} ×
+              </button>
+            ))}
+        </div>
+      )}
+      {rows && rows.length === 0 && <EmptyState icon="clipboard" text={Object.keys(linkFilters).length ? "No hay matrices con ese filtro." : "Aún no hay matrices. Crea la primera con «Nueva matriz»."} />}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {rows?.map((m) => {
           const next = m.next_review_on as string | null;

@@ -56,12 +56,15 @@ it('calcula el cumplimiento de inspecciones con su numerador y denominador (RN-D
 it('cuenta acciones correctivas vencidas', function () {
     $h = dsh();
     $user = collect($this->getJson('/api/v1/records/ACR/corrective_actions/options/responsible_user_id', $h)->json('data'))->first()['id'];
-    $this->postJson('/api/v1/records/ACR/corrective_actions', ['code' => 'AC-DSH-1', 'source_type' => 'other', 'title' => 'Reparar baranda',
-        'responsible_user_id' => $user, 'due_on' => now('America/Lima')->subDays(3)->toDateString()], $h)->assertCreated();
+    $id = $this->postJson('/api/v1/records/ACR/corrective_actions', ['code' => 'AC-DSH-1', 'source_type' => 'other', 'description' => 'Pedido del comité',
+        'title' => 'Reparar baranda', 'responsible_user_id' => $user, 'due_on' => now('America/Lima')->toDateString()], $h)->assertCreated()->json('data.id');
+    \Illuminate\Support\Facades\DB::update("update corrective_actions set due_on = due_on - 3 where id = ?", [$id]);
 
     $res = $this->getJson('/api/v1/dsh/overview', $h)->json('data');
     expect(kpi($res['kpis'], 'corrective_actions_overdue')['value'])->toBeGreaterThanOrEqual(1)
-        ->and(collect($res['alerts'])->firstWhere('module', 'ACR')['count'])->toBeGreaterThanOrEqual(1);
+        ->and(collect($res['alerts'])->firstWhere('module', 'ACR')['count'])->toBeGreaterThanOrEqual(1)
+        ->and(collect($res['alerts'])->firstWhere('module', 'ACR')['link']['filters'])->toBe(['status' => 'open,in_progress,overdue', 'due_on__lt' => 'today'])
+        ->and(kpi($res['kpis'], 'corrective_actions_overdue')['link']['table'])->toBe('corrective_actions');
 });
 
 it('no muestra la aptitud médica con grupos pequeños (criterio 5, RN-DSH-05)', function () {
