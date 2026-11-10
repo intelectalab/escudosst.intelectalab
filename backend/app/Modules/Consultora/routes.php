@@ -1,6 +1,6 @@
 <?php
 
-use App\Modules\CON\WhiteLabelController;
+use App\Modules\Consultora\WhiteLabelController;
 use Illuminate\Support\Facades\Route;
 
 // Marca blanca de la consultora (M-CON): la configura la consultora; sus empresas cliente la ven.

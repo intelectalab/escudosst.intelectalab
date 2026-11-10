@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Modules\CON;
+namespace App\Modules\Consultora;
 
 use App\Core\Auth\Permissions;
 use App\Core\Http\ApiProblem;
