@@ -136,6 +136,13 @@ export function RecordActions({
   if (res.table === "monthly_statistics") return <CloseMonth row={row} onChanged={onChanged} />;
   if (res.table === "inspection_dossiers") return <DossierBuild row={row} onChanged={onChanged} />;
   if (res.table === "api_clients") return <ApiSecret row={row} canEdit={res.can.update} onChanged={onChanged} />;
+  if (res.table === "training_certificates")
+    return (
+      <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line px-4 py-3 text-sm">
+        <span>Imprime o guarda en PDF el certificado con su QR. {row.public_verification_enabled ? "La verificación pública está activa." : "Activa «Verificación pública» para que el QR funcione."}</span>
+        <a href={`/imprimir/certificado/${row.id}`} target="_blank" rel="noreferrer" className="rounded-lg bg-brand px-4 py-2 font-semibold text-white">Imprimir certificado</a>
+      </section>
+    );
   if (STEPS[res.table]) return <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "event_notifications") return <NotifyNow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "committee_meetings") return <MeetingFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
@@ -1039,6 +1046,9 @@ function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; t
       {table === "sst_events" && <EventDeadline row={row} />}
       <section className="space-y-2 rounded-xl border border-line px-4 py-3 text-sm">
         <p className="text-muted">{cfg.help}</p>
+        {table === "credentials" && (
+          <a href={`/imprimir/fotocheck/${row.id}`} target="_blank" rel="noreferrer" className="inline-block rounded-lg border border-line px-3 py-1.5 font-semibold text-brand hover:border-brand">Imprimir fotocheck con QR</a>
+        )}
         {table === "credentials" && Array.isArray(row.blocking_reasons) && row.blocking_reasons.length > 0 && (
           <p className="rounded-lg bg-bad-soft px-3 py-2 text-bad">Bloqueado por: {(row.blocking_reasons as string[]).join(", ")}.</p>
         )}

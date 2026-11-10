@@ -28,6 +28,8 @@ export const PRIVATE_PATHS = [
   "/demo/gestionar/",
   "/webinars/gestionar/",
   "/cotizacion/",
+  "/verificar/",
+  "/imprimir/",
   "/l/",
   "/api/",
 ];

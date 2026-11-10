@@ -206,7 +206,8 @@ class PeopleRules extends RecordRules
                 $num = sprintf('FOT-%s-%05d', date('Y'), $n++);
             } while (DB::selectOne('select 1 as ok from credentials where credential_number = ?', [$num]));
             $extra['credential_number'] = ['?', [$num]];
-            $token = Str::random(32);
+            // Token del QR derivado del número (se puede volver a imprimir); en la base solo queda su hash.
+            $token = self::credentialToken($num);
             $extra['token_hash'] = ["decode(?, 'hex')", [hash('sha256', $token)]];
             $extra['token_last4'] = ['?', [substr($token, -4)]];
             $extra['qr_payload_version'] = ['?', [1]];
@@ -255,6 +256,11 @@ class PeopleRules extends RecordRules
         $values['status'] = $reasons ? 'blocked' : 'active';
         $values['blocking_reasons'] = $reasons;
         $extra['last_evaluated_at'] = ['now()', []];
+    }
+
+    public static function credentialToken(string $number): string
+    {
+        return strtoupper(substr(hash_hmac('sha256', 'credential|'.$number, (string) config('app.key')), 0, 32));
     }
 
     // ── Permisos de trabajo ──
