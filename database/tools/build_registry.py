@@ -24,7 +24,7 @@ SYSTEM = {"id", "company_id", "created_at", "created_by", "updated_at", "updated
           "idempotency_key", "device_id", "client_created_at", "sync_batch_id", "version"}
 HIDDEN_REFS = {"signature_requests", "signatures", "devices", "sync_batches", "accounts", "companies", "ai_requests", "memberships", "bulk_imports"}
 # Campos que calcula el sistema: se muestran pero no se editan.
-READONLY = {"areas.depth", "workers.document_last4", "workers.activated_at", "workers.whatsapp_opt_in_at",
+READONLY = {"psychosocial_surveys.is_anonymous", "psychosocial_surveys.min_responses_param", "psychosocial_responses.worker_id", "areas.depth", "workers.document_last4", "workers.activated_at", "workers.whatsapp_opt_in_at",
             "workers.full_name",
             # IPERC: lo calcula el sistema o lo fija el flujo de aprobación (M-IPC RN-IPC-01, 02, 06, 08).
             "iperc_matrices.current_version_id", "iperc_matrices.next_review_on",
@@ -166,7 +166,7 @@ def main():
                 f["readonly"] = True
             if c["values"]:
                 f["type"] = "enum"
-                f["options"] = [{"value": v, "label": val_labels.get(v, v)} for v in c["values"]]
+                f["options"] = [{"value": v, "label": val_labels.get(f'{t["table"]}.{name}.{v}') or val_labels.get(v, v)} for v in c["values"]]
             elif ref == "files":
                 f["type"] = "file"  # se sube con /files y se guarda su id
             elif ref:

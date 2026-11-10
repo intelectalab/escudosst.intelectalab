@@ -7377,15 +7377,15 @@
      "options": [
       {
        "value": "istas21",
-       "label": "ISTAS21"
+       "label": "ISTAS21 (requiere licencia)"
       },
       {
        "value": "copsoq",
-       "label": "COPSOQ"
+       "label": "CoPsoQ (requiere licencia)"
       },
       {
        "value": "custom",
-       "label": "Personalizado"
+       "label": "Cuestionario base EscudoSST"
       }
      ],
      "required": true
@@ -7409,12 +7409,14 @@
     {
      "name": "is_anonymous",
      "label": "Anónimo",
+     "readonly": true,
      "type": "bool",
      "default": true
     },
     {
      "name": "min_responses_param",
      "label": "Respuestas mínimas",
+     "readonly": true,
      "type": "text",
      "default": "psychosocial_min_responses_report"
     },
@@ -7499,6 +7501,7 @@
     {
      "name": "worker_id",
      "label": "Trabajador",
+     "readonly": true,
      "type": "ref",
      "ref": "workers",
      "list": true

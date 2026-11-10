@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/Form";
 import { Modal } from "@/components/ui/Modal";
 import { RefSelect } from "./ModuleRecords";
+import { PsiPanel } from "./PsiPanel";
 
 /** Texto de un filtro que llegó por enlace (chips «Mostrando solo: …»). */
 export function describeFilter(res: RecordResource, key: string, value: string): string {
@@ -142,6 +143,13 @@ export function RecordActions({
         <span>Imprime o guarda en PDF el certificado con su QR. {row.public_verification_enabled ? "La verificación pública está activa." : "Activa «Verificación pública» para que el QR funcione."}</span>
         <a href={`/imprimir/certificado/${row.id}`} target="_blank" rel="noreferrer" className="rounded-lg bg-brand px-4 py-2 font-semibold text-white">Imprimir certificado</a>
       </section>
+    );
+  if (res.table === "psychosocial_surveys")
+    return (
+      <div className="space-y-3">
+        <PsiPanel row={row} />
+        <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />
+      </div>
     );
   if (STEPS[res.table]) return <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "event_notifications") return <NotifyNow row={row} canEdit={res.can.update} onChanged={onChanged} />;
@@ -947,6 +955,15 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
       { from: ["planned"], label: "Iniciar auditoría", body: { status: "in_progress" }, primary: true },
       { from: ["in_progress", "report_draft"], label: "Completar", body: { status: "completed" }, primary: true },
       { from: ["completed"], label: "Cerrar", body: { status: "closed" } },
+    ],
+  },
+  psychosocial_surveys: {
+    help: "Borrador → abierta (los trabajadores responden con el enlace) → cerrada (se calculan los resultados) → informada.",
+    steps: [
+      { from: ["draft"], label: "Abrir encuesta", body: { status: "open" }, primary: true },
+      { from: ["open"], label: "Cerrar y calcular resultados", body: { status: "closed" }, primary: true },
+      { from: ["closed"], label: "Marcar como informada", body: { status: "reported" }, primary: true },
+      { from: ["closed"], label: "Reabrir", body: { status: "open" } },
     ],
   },
   management_reviews: {
