@@ -5,6 +5,8 @@ namespace App\Modules\NOT;
 use App\Modules\SUS\Services\AccountsService;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use Throwable;
 
 /**
  * Alertas SST diarias (M-NOT): revisa cada empresa y deja avisos en la campana de las personas que deben actuar,
@@ -39,6 +41,7 @@ final class SstAlerts
         $enabled = array_column($db->select("select module_code from feature_flags where mode = 'enabled' and deleted_at is null"), 'module_code');
         $week = date('o-W');
         $created = 0;
+        $byUser = [];
         $checks = [
             ['ACR', "select id, code as ref, title as name, responsible_user_id as owner, due_on as due, 'overdue' as kind from corrective_actions
                       where deleted_at is null and status in ('open','in_progress','overdue') and due_on < current_date",
@@ -87,16 +90,60 @@ final class SstAlerts
                     if ($db->selectOne('select 1 as ok from notifications where company_id = ? and recipient_user_id = ? and dedupe_key = ? and deleted_at is null', [$company, $user, $dedupe])) {
                         continue;
                     }
-                    $db->insert(
+                    $nid = $db->selectOne(
                         'insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, due_at, dedupe_key)
-                         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id',
                         [$company, $event, $module, $r->id, $user, $title, mb_substr($body($r), 0, 500), $link.$r->id, $priority, $r->due, $dedupe]
-                    );
+                    )->id;
+                    $byUser[$user][] = ['id' => $nid, 'module' => strtolower($module), 'title' => $title, 'body' => mb_substr($body($r), 0, 500), 'link' => $link.$r->id, 'priority' => $priority];
                     $created++;
                 }
             }
         }
 
+        $this->email($db, $company, $byUser);
+
         return $created;
+    }
+
+    /**
+     * Un correo por persona con todos sus avisos nuevos del día. Respeta sus preferencias (canal correo
+     * desactivado para ese módulo o para todo) y deja constancia de cada envío en notification_deliveries.
+     */
+    private function email(\Illuminate\Database\ConnectionInterface $db, string $company, array $byUser): void
+    {
+        if ($byUser === []) {
+            return;
+        }
+        $companyName = $db->selectOne('select coalesce(trade_name, legal_name) as n from companies where id = ?', [$company])?->n ?? 'tu empresa';
+        $front = rtrim((string) config('escudo.frontend_url'), '/');
+        foreach ($byUser as $userId => $items) {
+            $user = $db->selectOne('select full_name, email from users where id = ? and deleted_at is null', [$userId]);
+            if (! $user) {
+                continue;
+            }
+            $off = array_column($db->select("select event_category from user_notification_prefs where company_id = ? and user_id = ? and channel = 'email'
+                                               and not enabled and deleted_at is null", [$company, $userId]), 'event_category');
+            $items = array_values(array_filter($items, fn ($i) => ! in_array('*', $off, true) && ! in_array($i['module'], $off, true)));
+            if ($items === []) {
+                continue;
+            }
+            $status = 'sent';
+            $error = null;
+            try {
+                Mail::to($user->email)->send(new SstDigestMail(explode(' ', $user->full_name)[0], $companyName,
+                    array_map(fn ($i) => ['title' => $i['title'], 'body' => $i['body'], 'url' => $front.$i['link'], 'priority' => $i['priority']], $items), $front.'/inicio'));
+            } catch (Throwable $e) {
+                $status = 'failed';
+                $error = mb_substr($e->getMessage(), 0, 300);
+            }
+            foreach ($items as $i) {
+                $db->insert(
+                    "insert into notification_deliveries (company_id, notification_id, channel, provider, status, attempt, error_message, attempted_at)
+                     values (?, ?, 'email', ?, ?, 1, ?, now())",
+                    [$company, $i['id'], (string) config('mail.default'), $status, $error]
+                );
+            }
+        }
     }
 }
