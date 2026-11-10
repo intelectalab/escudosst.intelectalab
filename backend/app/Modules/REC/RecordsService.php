@@ -252,6 +252,9 @@ final class RecordsService
                 'time' => "to_char(t.\"{$c}\", 'HH24:MI') as \"{$c}\"",
                 default => "t.\"{$c}\"",
             };
+            if ($f['type'] === 'file') {
+                $parts[] = "(select r.original_name from files r where r.id = t.\"{$c}\") as \"{$c}__label\"";
+            }
             if ($f['type'] === 'ref' && (! $forList || ! empty($f['list']))) {
                 $target = $f['ref'];
                 $label = $target === 'users' ? 'full_name' : (Registry::labelColumn($target) ?? 'id');
@@ -510,6 +513,9 @@ final class RecordsService
                 return is_string($v) && preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $v) ? null : "«{$label}» debe ser una hora (HH:MM).";
             case 'enum':
                 return in_array($v, array_column($f['options'], 'value'), true) ? null : "Elige una opción válida en «{$label}».";
+            case 'file':
+                return is_string($v) && Str::isUuid($v) && DB::selectOne("select 1 as ok from files where id = ? and deleted_at is null", [$v])
+                    ? null : "El archivo de «{$label}» no existe; vuelve a subirlo.";
             case 'ref':
             case 'source':
                 return is_string($v) && Str::isUuid($v) ? null : "Elige una opción válida en «{$label}».";

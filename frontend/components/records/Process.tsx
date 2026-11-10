@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { downloadFile, recordsHref, traceOf, type RecordResource, type RecordRow, type TraceGroup, type TraceNode, records } from "@/lib/records";
+import { downloadFile, uploadFile, recordsHref, traceOf, type RecordResource, type RecordRow, type TraceGroup, type TraceNode, records } from "@/lib/records";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/Form";
 import { Modal } from "@/components/ui/Modal";
@@ -160,6 +160,7 @@ function CorrectiveFlow({ row, canEdit, onChanged }: { row: RecordRow; canEdit: 
   const status = String(row.status);
   const [evidences, setEvidences] = useState<RecordRow[]>([]);
   const [desc, setDesc] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [dialog, setDialog] = useState<"verify" | "cancel" | null>(null);
@@ -213,11 +214,17 @@ function CorrectiveFlow({ row, canEdit, onChanged }: { row: RecordRow; canEdit: 
         {evidences.map((e) => (
           <p key={e.id} className="rounded-lg bg-bg px-3 py-2 text-sm">
             {String(e.description ?? "Evidencia")} <span className="text-xs text-muted">· {String(e.evidence_type ?? "")}</span>
+            {e.file_id ? (
+              <button type="button" className="ml-2 text-xs font-semibold text-brand hover:underline" onClick={() => downloadFile(`/files/${e.file_id}`, String(e.file_id__label ?? "evidencia"))}>
+                📎 {String(e.file_id__label ?? "archivo")}
+              </button>
+            ) : null}
           </p>
         ))}
         {!closed && canEdit && (
           <div className="flex gap-2">
             <input className="input" placeholder="Qué se hizo (p. ej. «Se instaló la baranda»)" aria-label="Nueva evidencia" value={desc} onChange={(e) => setDesc(e.target.value)} />
+            <input type="file" aria-label="Foto o documento de la evidencia" accept=".pdf,.jpg,.jpeg,.png,.webp" className="input !w-56 text-xs" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             <Button
               variant="soft"
               icon="plus"
@@ -225,8 +232,15 @@ function CorrectiveFlow({ row, canEdit, onChanged }: { row: RecordRow; canEdit: 
               loading={busy}
               onClick={() =>
                 act(async () => {
-                  await records.create("ACR", "action_evidences", { corrective_action_id: row.id, evidence_type: "record", description: desc });
+                  const up = file ? await uploadFile(file, "ACR") : null;
+                  await records.create("ACR", "action_evidences", {
+                    corrective_action_id: row.id,
+                    evidence_type: up ? (file!.type.startsWith("image/") ? "photo" : "document") : "record",
+                    description: desc,
+                    ...(up ? { file_id: up.id } : {}),
+                  });
                   setDesc("");
+                  setFile(null);
                 })
               }
             >

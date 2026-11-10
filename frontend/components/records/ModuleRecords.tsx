@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { NO_CREATE, PanelActions, RecordActions, TraceStrip, describeFilter, lockedReason } from "./Process";
 import { ApiError } from "@/lib/api";
-import { displayValue, records, statusTone, toLocalInput, type ModuleSchema, type RecordField, type RecordPage, type RecordResource, type RecordRow } from "@/lib/records";
+import { displayValue, downloadFile, records, statusTone, toLocalInput, uploadFile, type ModuleSchema, type RecordField, type RecordPage, type RecordResource, type RecordRow } from "@/lib/records";
 import { Button } from "@/components/ui/Button";
 import { Chip, EmptyState } from "@/components/ui/Display";
 import { FilterBar, FilterSelect, SearchInput } from "@/components/ui/FilterBar";
@@ -538,6 +538,9 @@ function Input({
     case "ref":
       control = <RefSelect code={code} table={table} f={f} value={str} initialLabel={initialLabel} disabled={disabled} invalid={!!error} onChange={onChange} />;
       break;
+    case "file":
+      control = <FileInput code={code} value={str} initialLabel={initialLabel} disabled={disabled} onChange={onChange} />;
+      break;
     case "longtext":
       control = <textarea {...common} rows={3} value={str} onChange={(e) => onChange(e.target.value)} className="input min-h-[5rem] py-2" />;
       break;
@@ -562,7 +565,7 @@ function Input({
     <FormField
       label={label}
       error={error}
-      hint={f.type === "tags" ? "Separa los valores con comas." : f.encrypted ? "Se guarda cifrado." : undefined}
+      hint={f.type === "tags" ? "Separa los valores con comas." : f.encrypted ? "Se guarda cifrado." : f.type === "file" ? "PDF, imagen, Word o Excel; hasta 15 MB." : undefined}
     >
       {control}
     </FormField>
@@ -692,6 +695,59 @@ export function RefSelect({
             ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+
+/** Campo de archivo: sube a la empresa y guarda el id; muestra el nombre y permite abrirlo. */
+function FileInput({ code, value, initialLabel, disabled, onChange }: { code: string; value: string; initialLabel?: string; disabled: boolean; onChange: (v: unknown) => void }) {
+  const [name, setName] = useState(initialLabel ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (initialLabel) setName(initialLabel);
+  }, [initialLabel]);
+  return (
+    <div className="space-y-1">
+      {value && (
+        <div className="flex items-center gap-2 text-sm">
+          <button type="button" className="font-semibold text-brand hover:underline" onClick={() => downloadFile(`/files/${value}`, name || "archivo").catch((e: ApiError) => setError(e.detail ?? e.title))}>
+            📎 {name || "Ver archivo"}
+          </button>
+          {!disabled && (
+            <button type="button" className="text-xs text-muted hover:text-bad" onClick={() => { onChange(null); setName(""); }}>
+              Quitar
+            </button>
+          )}
+        </div>
+      )}
+      {!disabled && (
+        <input
+          type="file"
+          className="input file:mr-3 file:rounded-lg file:border-0 file:bg-bg file:px-3 file:py-1.5 file:font-semibold"
+          accept=".pdf,.jpg,.jpeg,.png,.webp,.docx,.xlsx"
+          disabled={busy}
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            setBusy(true);
+            setError(null);
+            try {
+              const r = await uploadFile(file, code);
+              onChange(r.id);
+              setName(r.original_name);
+            } catch (err) {
+              setError((err as ApiError).detail ?? (err as ApiError).title);
+            } finally {
+              setBusy(false);
+              e.target.value = "";
+            }
+          }}
+        />
+      )}
+      {busy && <p className="text-xs text-muted">Subiendo…</p>}
+      {error && <p className="text-xs text-bad">{error}</p>}
     </div>
   );
 }

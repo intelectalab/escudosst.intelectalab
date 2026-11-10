@@ -22,7 +22,7 @@ SKIP_MODULES = {"WEB", "SUS", "USR", "AUD"}
 SKIP_TABLES = {"accounts", "companies", "files", "worker_consents", "arco_requests", "bulk_imports", "bulk_import_rows"}
 SYSTEM = {"id", "company_id", "created_at", "created_by", "updated_at", "updated_by", "deleted_at",
           "idempotency_key", "device_id", "client_created_at", "sync_batch_id", "version"}
-HIDDEN_REFS = {"files", "signature_requests", "signatures", "devices", "sync_batches", "accounts", "companies", "ai_requests", "memberships", "bulk_imports"}
+HIDDEN_REFS = {"signature_requests", "signatures", "devices", "sync_batches", "accounts", "companies", "ai_requests", "memberships", "bulk_imports"}
 # Campos que calcula el sistema: se muestran pero no se editan.
 READONLY = {"areas.depth", "workers.document_last4", "workers.activated_at", "workers.whatsapp_opt_in_at",
             "workers.full_name",
@@ -166,6 +166,8 @@ def main():
             if c["values"]:
                 f["type"] = "enum"
                 f["options"] = [{"value": v, "label": val_labels.get(v, v)} for v in c["values"]]
+            elif ref == "files":
+                f["type"] = "file"  # se sube con /files y se guarda su id
             elif ref:
                 if ref in HIDDEN_REFS or ref not in by_table or by_table[ref]["db"] != "main":
                     continue

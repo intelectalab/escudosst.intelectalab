@@ -3,7 +3,7 @@
 
 import { api } from "./api";
 
-export type FieldType = "text" | "longtext" | "int" | "number" | "date" | "datetime" | "time" | "bool" | "enum" | "ref" | "tags" | "json" | "source";
+export type FieldType = "text" | "longtext" | "int" | "number" | "date" | "datetime" | "time" | "bool" | "enum" | "ref" | "tags" | "json" | "source" | "file";
 
 export type RecordField = {
   name: string;
@@ -76,6 +76,7 @@ export function displayValue(f: RecordField, row: RecordRow): string {
     case "bool":
       return v ? "Sí" : "No";
     case "ref":
+    case "file":
       return (row[`${f.name}__label`] as string) || "—";
     case "date": {
       const [y, m, d] = String(v).slice(0, 10).split("-");
@@ -147,4 +148,22 @@ export async function downloadFile(path: string, filename: string) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/** Sube un archivo de la empresa; devuelve su id para guardarlo en el campo. */
+export async function uploadFile(file: File, module?: string): Promise<{ id: string; original_name: string }> {
+  const { session } = await import("./session");
+  const { API_URL, ApiError } = await import("./api");
+  const body = new FormData();
+  body.append("file", file);
+  if (module) body.append("module", module);
+  const headers: Record<string, string> = { Accept: "application/json" };
+  const token = session.getToken();
+  const company = session.getCompanyId();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (company) headers["X-Company-Id"] = company;
+  const res = await fetch(`${API_URL}/api/v1/files`, { method: "POST", headers, body });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.type ?? "error", data.title ?? "Error", data.detail, data.errors);
+  return data.data;
 }

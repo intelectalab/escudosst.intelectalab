@@ -956,6 +956,11 @@
      "ref": "positions"
     },
     {
+     "name": "photo_file_id",
+     "label": "Foto",
+     "type": "file"
+    },
+    {
      "name": "whatsapp_opt_in",
      "label": "Acepta WhatsApp",
      "type": "bool",
@@ -1150,6 +1155,11 @@
      "label": "Título",
      "type": "text",
      "list": true
+    },
+    {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
     },
     {
      "name": "issued_on",
@@ -1486,6 +1496,11 @@
      "label": "Etiqueta de versión",
      "type": "text",
      "list": true
+    },
+    {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
     },
     {
      "name": "content_html",
@@ -2766,6 +2781,11 @@
      "label": "Aprobado el",
      "readonly": true,
      "type": "datetime"
+    },
+    {
+     "name": "report_file_id",
+     "label": "Archivo del informe",
+     "type": "file"
     }
    ]
   },
@@ -2865,6 +2885,11 @@
      "name": "evidence_notes",
      "label": "Notas de evidencia",
      "type": "longtext"
+    },
+    {
+     "name": "evidence_file_id",
+     "label": "Evidencia (archivo)",
+     "type": "file"
     },
     {
      "name": "sort_order",
@@ -3037,6 +3062,11 @@
      "name": "content_html",
      "label": "Contenido (HTML)",
      "type": "text"
+    },
+    {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
     },
     {
      "name": "status",
@@ -3628,6 +3658,11 @@
      "type": "longtext"
     },
     {
+     "name": "evidence_file_id",
+     "label": "Evidencia (archivo)",
+     "type": "file"
+    },
+    {
      "name": "corrective_action_id",
      "label": "Acción correctiva",
      "readonly": true,
@@ -3736,6 +3771,11 @@
      "readonly": true,
      "type": "datetime",
      "list": true
+    },
+    {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
     }
    ]
   },
@@ -4160,6 +4200,11 @@
      "list": true
     },
     {
+     "name": "evidence_file_id",
+     "label": "Evidencia (archivo)",
+     "type": "file"
+    },
+    {
      "name": "source_module",
      "label": "Módulo de origen",
      "type": "text",
@@ -4476,6 +4521,11 @@
      "type": "text"
     },
     {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
+    },
+    {
      "name": "change_summary",
      "label": "Resumen del cambio",
      "type": "longtext"
@@ -4616,6 +4666,11 @@
      "list": true
     },
     {
+     "name": "acknowledgement_file_id",
+     "label": "Cargo de recepción",
+     "type": "file"
+    },
+    {
      "name": "delivered_by",
      "label": "Entregado por",
      "type": "ref",
@@ -4708,6 +4763,11 @@
      "name": "installation_on",
      "label": "Fecha de instalación",
      "type": "date"
+    },
+    {
+     "name": "installation_minutes_file_id",
+     "label": "Acta de instalación",
+     "type": "file"
     },
     {
      "name": "members_required",
@@ -5045,6 +5105,11 @@
      "type": "datetime"
     },
     {
+     "name": "minutes_file_id",
+     "label": "Acta",
+     "type": "file"
+    },
+    {
      "name": "annulled_reason",
      "label": "Motivo de anulación",
      "type": "longtext"
@@ -5258,6 +5323,11 @@
      "type": "text"
     },
     {
+     "name": "minutes_file_id",
+     "label": "Acta",
+     "type": "file"
+    },
+    {
      "name": "status",
      "label": "Estado",
      "type": "enum",
@@ -5374,6 +5444,11 @@
      "label": "Cumplido el",
      "readonly": true,
      "type": "datetime"
+    },
+    {
+     "name": "evidence_file_id",
+     "label": "Evidencia (archivo)",
+     "type": "file"
     },
     {
      "name": "corrective_action_id",
@@ -5638,6 +5713,11 @@
      "name": "document_reference",
      "label": "Referencia del documento",
      "type": "text"
+    },
+    {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
     },
     {
      "name": "recorded_by",
@@ -6138,6 +6218,11 @@
      "label": "Obsoleto desde",
      "readonly": true,
      "type": "datetime"
+    },
+    {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
     }
    ]
   },
@@ -6504,6 +6589,12 @@
      "readonly": true,
      "type": "int",
      "default": 1
+    },
+    {
+     "name": "plan_file_id",
+     "label": "Plano",
+     "type": "file",
+     "required": true
     },
     {
      "name": "image_width",
@@ -6947,6 +7038,11 @@
      "ref": "users"
     },
     {
+     "name": "report_file_id",
+     "label": "Archivo del informe",
+     "type": "file"
+    },
+    {
      "name": "status",
      "label": "Estado",
      "type": "enum",
@@ -7220,6 +7316,11 @@
      "type": "longtext"
     },
     {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
+    },
+    {
      "name": "corrective_action_id",
      "label": "Acción correctiva",
      "type": "ref",
@@ -7335,6 +7436,11 @@
      "label": "Resultados",
      "type": "json",
      "readonly": true
+    },
+    {
+     "name": "report_file_id",
+     "label": "Archivo del informe",
+     "type": "file"
     },
     {
      "name": "status",
@@ -7594,6 +7700,11 @@
      "label": "Contenido (HTML)",
      "type": "text",
      "list": true
+    },
+    {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
     },
     {
      "name": "required_ppe",
@@ -8484,6 +8595,11 @@
      "name": "comment",
      "label": "Comentario",
      "type": "longtext"
+    },
+    {
+     "name": "photo_file_id",
+     "label": "Foto",
+     "type": "file"
     }
    ]
   },
@@ -8610,6 +8726,11 @@
      "ref": "areas"
     },
     {
+     "name": "photo_file_id",
+     "label": "Foto",
+     "type": "file"
+    },
+    {
      "name": "latitude",
      "label": "Latitud",
      "type": "number"
@@ -8716,6 +8837,11 @@
      "name": "token_last4",
      "label": "Últimos 4 del token",
      "type": "text"
+    },
+    {
+     "name": "qr_file_id",
+     "label": "Archivo QR",
+     "type": "file"
     },
     {
      "name": "whatsapp_keyword",
@@ -8865,6 +8991,11 @@
      "name": "longitude",
      "label": "Longitud",
      "type": "number"
+    },
+    {
+     "name": "photo_file_id",
+     "label": "Foto",
+     "type": "file"
     },
     {
      "name": "occurred_at",
@@ -9080,6 +9211,11 @@
      "label": "Documento de material",
      "type": "ref",
      "ref": "documents"
+    },
+    {
+     "name": "photo_file_id",
+     "label": "Foto",
+     "type": "file"
     },
     {
      "name": "latitude",
@@ -9894,6 +10030,11 @@
      "type": "longtext"
     },
     {
+     "name": "photo_file_id",
+     "label": "Foto",
+     "type": "file"
+    },
+    {
      "name": "checked_by",
      "label": "Verificado por",
      "type": "ref",
@@ -10321,6 +10462,11 @@
      "label": "Requiere capacitación",
      "type": "bool",
      "default": false
+    },
+    {
+     "name": "photo_file_id",
+     "label": "Foto",
+     "type": "file"
     },
     {
      "name": "is_active",
@@ -10893,6 +11039,11 @@
      "type": "text"
     },
     {
+     "name": "certificate_file_id",
+     "label": "Certificado (archivo)",
+     "type": "file"
+    },
+    {
      "name": "next_due_on",
      "label": "Próximo vencimiento",
      "type": "date"
@@ -11227,6 +11378,11 @@
      "label": "Actividad del programa",
      "type": "ref",
      "ref": "program_activities"
+    },
+    {
+     "name": "report_file_id",
+     "label": "Archivo del informe",
+     "type": "file"
     },
     {
      "name": "status",
@@ -12126,6 +12282,11 @@
      "ref": "grading_scales"
     },
     {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
+    },
+    {
      "name": "public_verification_enabled",
      "label": "Verificación pública habilitada",
      "type": "bool",
@@ -12281,6 +12442,16 @@
      "item": "text"
     },
     {
+     "name": "logo_file_id",
+     "label": "Logo",
+     "type": "file"
+    },
+    {
+     "name": "background_file_id",
+     "label": "Archivo de fondo",
+     "type": "file"
+    },
+    {
      "name": "signatory_name",
      "label": "Nombre del firmante",
      "type": "text"
@@ -12291,6 +12462,11 @@
      "type": "text"
     },
     {
+     "name": "signature_file_id",
+     "label": "Archivo de firma",
+     "type": "file"
+    },
+    {
      "name": "second_signatory_name",
      "label": "Nombre del segundo firmante",
      "type": "text"
@@ -12299,6 +12475,11 @@
      "name": "second_signatory_title",
      "label": "Cargo del segundo firmante",
      "type": "text"
+    },
+    {
+     "name": "second_signature_file_id",
+     "label": "Firma del segundo firmante",
+     "type": "file"
     },
     {
      "name": "code_prefix",
@@ -12646,6 +12827,11 @@
      "type": "text"
     },
     {
+     "name": "cover_file_id",
+     "label": "Imagen de portada",
+     "type": "file"
+    },
+    {
      "name": "promo_video_provider",
      "label": "Proveedor del video",
      "type": "enum",
@@ -12979,6 +13165,11 @@
      "name": "content_html",
      "label": "Contenido (HTML)",
      "type": "text"
+    },
+    {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
     },
     {
      "name": "video_provider",
@@ -13575,6 +13766,11 @@
      "label": "Enunciado",
      "type": "longtext",
      "required": true
+    },
+    {
+     "name": "statement_file_id",
+     "label": "Archivo del enunciado",
+     "type": "file"
     },
     {
      "name": "options",
@@ -15092,6 +15288,11 @@
      "type": "longtext"
     },
     {
+     "name": "pdf_file_id",
+     "label": "Archivo PDF",
+     "type": "file"
+    },
+    {
      "name": "printed_at",
      "label": "Impreso el",
      "type": "datetime"
@@ -15343,6 +15544,11 @@
      "readonly": true,
      "type": "ref",
      "ref": "users"
+    },
+    {
+     "name": "order_file_id",
+     "label": "Archivo de la orden",
+     "type": "file"
     }
    ]
   },
@@ -17108,6 +17314,21 @@
      "type": "text"
     },
     {
+     "name": "xml_file_id",
+     "label": "Archivo XML",
+     "type": "file"
+    },
+    {
+     "name": "cdr_file_id",
+     "label": "Archivo CDR",
+     "type": "file"
+    },
+    {
+     "name": "pdf_file_id",
+     "label": "Archivo PDF",
+     "type": "file"
+    },
+    {
      "name": "status",
      "label": "Estado",
      "type": "enum",
@@ -17719,6 +17940,11 @@
      ]
     },
     {
+     "name": "receipt_file_id",
+     "label": "Archivo del cargo",
+     "type": "file"
+    },
+    {
      "name": "notified_by",
      "label": "Notificado por",
      "readonly": true,
@@ -17859,6 +18085,11 @@
      "name": "lessons_learned",
      "label": "Lecciones aprendidas",
      "type": "text"
+    },
+    {
+     "name": "report_file_id",
+     "label": "Archivo del informe",
+     "type": "file"
     },
     {
      "name": "committee_meeting_id",
@@ -18483,6 +18714,11 @@
      "list": true
     },
     {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
+    },
+    {
      "name": "submitted_by",
      "label": "Enviado por",
      "readonly": true,
@@ -18631,6 +18867,11 @@
      "readonly": true
     },
     {
+     "name": "report_file_id",
+     "label": "Archivo del informe",
+     "type": "file"
+    },
+    {
      "name": "conclusions",
      "label": "Conclusiones",
      "type": "longtext"
@@ -18745,6 +18986,11 @@
      "name": "evidence",
      "label": "Evidencia",
      "type": "text"
+    },
+    {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
     },
     {
      "name": "sort_order",
@@ -19178,6 +19424,11 @@
      "default": false
     },
     {
+     "name": "report_file_id",
+     "label": "Archivo del informe",
+     "type": "file"
+    },
+    {
      "name": "approved_by",
      "label": "Aprobado por",
      "readonly": true,
@@ -19467,6 +19718,11 @@
      "list": true
     },
     {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
+    },
+    {
      "name": "rows_count",
      "label": "Cantidad de filas",
      "type": "int"
@@ -19702,6 +19958,11 @@
      "encrypted": true
     },
     {
+     "name": "photo_file_id",
+     "label": "Foto",
+     "type": "file"
+    },
+    {
      "name": "emo_fitness",
      "label": "Aptitud médica (EMO)",
      "type": "enum",
@@ -19893,6 +20154,11 @@
      "label": "Clase de documento",
      "type": "text",
      "list": true
+    },
+    {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
     },
     {
      "name": "issued_on",
@@ -20207,6 +20473,11 @@
      "required": true
     },
     {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
+    },
+    {
      "name": "status",
      "label": "Estado",
      "type": "enum",
@@ -20285,6 +20556,11 @@
      "label": "Número de constancia",
      "type": "text",
      "list": true
+    },
+    {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
     },
     {
      "name": "status",
@@ -20713,6 +20989,11 @@
      "type": "date"
     },
     {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
+    },
+    {
      "name": "status",
      "label": "Estado",
      "type": "enum",
@@ -20878,6 +21159,11 @@
      "type": "text"
     },
     {
+     "name": "requirement_file_id",
+     "label": "Archivo del requisito",
+     "type": "file"
+    },
+    {
      "name": "appearance_at",
      "label": "Fecha de comparecencia",
      "type": "datetime",
@@ -20958,6 +21244,16 @@
      "type": "datetime"
     },
     {
+     "name": "zip_file_id",
+     "label": "Archivo ZIP",
+     "type": "file"
+    },
+    {
+     "name": "index_file_id",
+     "label": "Archivo de índice",
+     "type": "file"
+    },
+    {
      "name": "requested_by",
      "label": "Solicitado por",
      "type": "ref",
@@ -21031,6 +21327,11 @@
      "name": "source_id",
      "label": "Origen",
      "type": "source"
+    },
+    {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
     },
     {
      "name": "status",
@@ -21376,6 +21677,11 @@
      "label": "Versión de la app",
      "type": "text",
      "list": true
+    },
+    {
+     "name": "payload_file_id",
+     "label": "Archivo de datos",
+     "type": "file"
     },
     {
      "name": "operations_count",
@@ -22052,6 +22358,11 @@
      "ref": "documents"
     },
     {
+     "name": "file_id",
+     "label": "Archivo",
+     "type": "file"
+    },
+    {
      "name": "responsible_user_id",
      "label": "Responsable (usuario)",
      "type": "ref",
@@ -22337,6 +22648,11 @@
      "name": "manifest_number",
      "label": "N.º de manifiesto",
      "type": "text"
+    },
+    {
+     "name": "manifest_file_id",
+     "label": "Manifiesto",
+     "type": "file"
     },
     {
      "name": "status",
