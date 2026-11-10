@@ -82,6 +82,8 @@ async function get<T>(path: string, fallback: T): Promise<T> {
 
 export const getSite = () =>
   get<SiteData>("site", { settings: { legal_name: "GRUPO DE SOLUCIONES CREATIVAS SAC", trade_name: "EscudoSST", ruc: "20607431117" } as SiteSettings, products: [] });
+/** Lo que el dueño cambió en la portada (Sitio web › Portada). */
+export const getHome = () => get<{ sections: import("@/lib/home").HomeSection[] }>("home", { sections: [] });
 export const getPricing = () => get<Pricing>("pricing", { annual_discount_pct: 0, plans: [], addons: [], comparison: [] });
 
 export type BillingPeriod = "monthly" | "annual";

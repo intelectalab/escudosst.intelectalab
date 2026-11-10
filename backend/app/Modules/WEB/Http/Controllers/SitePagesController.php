@@ -60,7 +60,8 @@ class SitePagesController extends Controller
     public function publicShow(string $slug): JsonResponse
     {
         $r = json_decode(DB::connection('platform')->selectOne('select public_site_page(?) as r', [$slug])->r, true);
-        if (($r['result'] ?? '') !== 'ok') {
+        // La portada (tipo «home») se lee por /public/home; no es una página suelta en /{slug}.
+        if (($r['result'] ?? '') !== 'ok' || ($r['page_type'] ?? '') === 'home') {
             throw ApiProblem::notFound('La página no existe o aún no se publica.');
         }
         unset($r['result']);

@@ -1,42 +1,44 @@
 <?php
 
+use App\Core\Http\Middleware\FlushChatbotIndex;
 use App\Modules\WEB\Http\Controllers\AnalyticsController;
+use App\Modules\WEB\Http\Controllers\CampaignsController;
 use App\Modules\WEB\Http\Controllers\ChatbotController;
 use App\Modules\WEB\Http\Controllers\ComplaintsController;
+use App\Modules\WEB\Http\Controllers\ContentGuidelinesController;
 use App\Modules\WEB\Http\Controllers\CookieConsentController;
 use App\Modules\WEB\Http\Controllers\CrmController;
 use App\Modules\WEB\Http\Controllers\DemoBookingController;
 use App\Modules\WEB\Http\Controllers\DemoRequestsController;
 use App\Modules\WEB\Http\Controllers\FineCalculatorController;
 use App\Modules\WEB\Http\Controllers\HelpCenterController;
+use App\Modules\WEB\Http\Controllers\HomeEditorController;
+use App\Modules\WEB\Http\Controllers\IntegrationsController;
 use App\Modules\WEB\Http\Controllers\LeadsController;
 use App\Modules\WEB\Http\Controllers\LegalAcceptanceController;
 use App\Modules\WEB\Http\Controllers\LegalDocumentsController;
 use App\Modules\WEB\Http\Controllers\MediaController;
 use App\Modules\WEB\Http\Controllers\NewsletterController;
 use App\Modules\WEB\Http\Controllers\PartnersController;
+use App\Modules\WEB\Http\Controllers\PopupsController;
+use App\Modules\WEB\Http\Controllers\ProductUpdatesController;
 use App\Modules\WEB\Http\Controllers\PublicFormsController;
 use App\Modules\WEB\Http\Controllers\PublicSiteController;
 use App\Modules\WEB\Http\Controllers\ResourcesController;
-use App\Modules\WEB\Http\Controllers\SeoController;
+use App\Modules\WEB\Http\Controllers\ReviewsController;
+use App\Modules\WEB\Http\Controllers\SalesQuotesController;
+use App\Modules\WEB\Http\Controllers\SavingsCalculatorController;
 use App\Modules\WEB\Http\Controllers\SelfAssessmentController;
+use App\Modules\WEB\Http\Controllers\SeoController;
 use App\Modules\WEB\Http\Controllers\SiteAssetsController;
 use App\Modules\WEB\Http\Controllers\SiteContentController;
 use App\Modules\WEB\Http\Controllers\SiteMenuController;
 use App\Modules\WEB\Http\Controllers\SitePagesController;
 use App\Modules\WEB\Http\Controllers\SiteSettingsController;
-use App\Modules\WEB\Http\Controllers\CampaignsController;
-use App\Modules\WEB\Http\Controllers\ContentGuidelinesController;
-use App\Modules\WEB\Http\Controllers\IntegrationsController;
-use App\Modules\WEB\Http\Controllers\PopupsController;
-use App\Modules\WEB\Http\Controllers\ProductUpdatesController;
-use App\Modules\WEB\Http\Controllers\ReviewsController;
-use App\Modules\WEB\Http\Controllers\SalesQuotesController;
-use App\Modules\WEB\Http\Controllers\SavingsCalculatorController;
-use App\Modules\WEB\Http\Controllers\WebinarsController;
 use App\Modules\WEB\Http\Controllers\SuccessStoriesController;
 use App\Modules\WEB\Http\Controllers\SuccessStoryInvitesController;
 use App\Modules\WEB\Http\Controllers\TrustStatusController;
+use App\Modules\WEB\Http\Controllers\WebinarsController;
 use Illuminate\Support\Facades\Route;
 
 // Métricas propias: solo llegan si el visitante aceptó cookies analíticas (lo controla el sitio).
@@ -56,6 +58,7 @@ Route::middleware('throttle:web-chat')->prefix('public/chatbot')->group(function
 // Sitio web público (sin sesión). Límite de uso por IP.
 Route::middleware('throttle:web-read')->prefix('public')->group(function () {
     Route::get('site', [PublicSiteController::class, 'site']);
+    Route::get('home', [HomeEditorController::class, 'publicShow']);
     Route::get('pricing', [PublicSiteController::class, 'pricing']);
     Route::get('modules', [PublicSiteController::class, 'modules']);
     Route::get('legal/{slug}', [LegalDocumentsController::class, 'publicPage'])->where('slug', '[a-z0-9-]+');
@@ -152,7 +155,7 @@ Route::middleware('throttle:web-quote-write')->prefix('public/quotes')->group(fu
 });
 
 // Panel del dueño · Sitio web (SCR-WEB-21 y SCR-WEB-24)
-Route::middleware(['auth:sanctum', 'platform', \App\Core\Http\Middleware\FlushChatbotIndex::class])->prefix('internal/site')->group(function () {
+Route::middleware(['auth:sanctum', 'platform', FlushChatbotIndex::class])->prefix('internal/site')->group(function () {
     Route::get('settings', [SiteSettingsController::class, 'show']);
     Route::get('quotes', [SalesQuotesController::class, 'index']);
     // Campañas, ventanas, integraciones, novedades, webinars, reseñas, calculadora de ahorro y lineamientos.
@@ -199,6 +202,8 @@ Route::middleware(['auth:sanctum', 'platform', \App\Core\Http\Middleware\FlushCh
     Route::get('quotes/{id}/file/{kind}', [SalesQuotesController::class, 'file'])->whereUuid('id')->whereIn('kind', ['pdf', 'evidence']);
     Route::patch('settings', [SiteSettingsController::class, 'update']);
     Route::put('settings/home-video', [SiteSettingsController::class, 'saveHomeVideo']);
+    Route::get('home', [HomeEditorController::class, 'show']);
+    Route::put('home', [HomeEditorController::class, 'update']);
     Route::delete('settings/home-video', [SiteSettingsController::class, 'removeHomeVideo']);
     Route::get('legal', [LegalDocumentsController::class, 'index']);
     Route::patch('legal/versions/{version}', [LegalDocumentsController::class, 'saveDraft'])->whereUuid('version');

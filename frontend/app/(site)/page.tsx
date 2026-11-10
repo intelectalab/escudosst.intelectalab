@@ -9,7 +9,9 @@ import { FaqJsonLd, FaqList, TestimonialCards } from "@/components/site/FaqTesti
 import { Reveal } from "@/components/site/Reveal";
 import { ReviewsBlock } from "@/components/site/ReviewsBlock";
 import { Icon } from "@/components/ui/Icon";
-import { contactHref, getFaqs, getModules, getPricing, getSite, getTestimonials, homeVideo, whatsappLink } from "@/lib/site";
+import { contactHref, getFaqs, getHome, getModules, getPricing, getSite, getTestimonials, homeVideo, whatsappLink } from "@/lib/site";
+import { highlightParts, homeSection, type HomeKey } from "@/lib/home";
+import { ModuleTabs } from "@/components/site/ModuleTabs";
 import { DemoVideoPlayer } from "@/components/site/DemoVideoPlayer";
 
 export const metadata: Metadata = {
@@ -43,7 +45,9 @@ const STEPS = [
 ];
 
 export default async function HomePage() {
-  const [site, pricing, modules, faqs, testimonials] = await Promise.all([getSite(), getPricing(), getModules(), getFaqs(), getTestimonials()]);
+  const [site, pricing, modules, faqs, testimonials, home] = await Promise.all([getSite(), getPricing(), getModules(), getFaqs(), getTestimonials(), getHome()]);
+  // Textos y secciones visibles según Sitio web › Portada (lo no cambiado es el texto de fábrica).
+  const sec = (k: HomeKey) => homeSection(home.sections, k);
   const s = site.settings;
   const planOf = (code: string) => modules.find((m) => m.code === code)?.from_plan;
   const planName = (code?: string | null) => pricing.plans.find((p) => p.code === code)?.name;
@@ -85,20 +89,24 @@ export default async function HomePage() {
         <div className="relative mx-auto grid max-w-[1360px] grid-cols-1 items-center gap-12 px-4 py-14 sm:py-20 lg:grid-cols-[1.05fr_1fr] lg:px-8 lg:py-24">
           <div className="space-y-6">
             <p className="inline-flex items-center gap-2 rounded-full bg-white px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-[var(--site-action)] shadow-sm ring-1 ring-[var(--site-border)]">
-              <Icon name="shield" size={14} /> Seguridad y salud en el trabajo · Perú
+              <Icon name="shield" size={14} /> {sec("hero").eyebrow}
             </p>
             <h1 className="font-display text-[34px] font-bold leading-[1.12] text-[var(--site-navy-title)] sm:text-[50px]">
-              Cumple la Ley 29783 y{" "}
-              <span className="relative text-[var(--site-action)]">
-                llega preparado
-                <svg className="absolute -bottom-2 left-0 w-full" viewBox="0 0 200 12" preserveAspectRatio="none" aria-hidden="true">
-                  <path d="M2 9c40-6 120-8 196-3" stroke="#F4B90F" strokeWidth="5" fill="none" strokeLinecap="round" />
-                </svg>
-              </span>{" "}
-              a SUNAFIL
+              {highlightParts(sec("hero").title).map((p, i) =>
+                p.hl ? (
+                  <span key={i} className="relative text-[var(--site-action)]">
+                    {p.t}
+                    <svg className="absolute -bottom-2 left-0 w-full" viewBox="0 0 200 12" preserveAspectRatio="none" aria-hidden="true">
+                      <path d="M2 9c40-6 120-8 196-3" stroke="#F4B90F" strokeWidth="5" fill="none" strokeLinecap="round" />
+                    </svg>
+                  </span>
+                ) : (
+                  <span key={i}>{p.t}</span>
+                ),
+              )}
             </h1>
             <p className="max-w-xl text-[18px] leading-relaxed text-[var(--site-text-2)]">
-              IPERC, inspecciones, capacitaciones, EPP, accidentes y el expediente para SUNAFIL en un solo lugar. Para empresas peruanas y consultoras SST.
+              {sec("hero").text}
             </p>
             <ul className="grid grid-cols-1 gap-2.5 text-[15px] text-[var(--site-text)] sm:grid-cols-2">
               {["Registros obligatorios ordenados", "Avisos antes de cada vencimiento", "Reportes de tu equipo sin instalar apps", "Datos médicos en una base separada"].map((b) => (
@@ -149,10 +157,11 @@ export default async function HomePage() {
       </section>
 
       {/* Problema */}
+      {sec("problem").visible && (
       <section className="bg-[var(--site-surface)] px-4 py-16 lg:px-8">
         <div className="mx-auto max-w-[1360px] space-y-10">
           <Reveal>
-            <SectionTitle eyebrow="El problema" title="La SST no debería vivir en Excel, Word y papel" text="Así se gestiona hoy en muchas empresas. Con EscudoSST cambia así:" />
+            <SectionTitle eyebrow={sec("problem").eyebrow} title={sec("problem").title} text={sec("problem").text} />
           </Reveal>
           <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {PAINS.map(([icon, before, after], i) => (
@@ -180,10 +189,13 @@ export default async function HomePage() {
         </div>
       </section>
 
+      )}
+
       {/* Pilares */}
+      {sec("pillars").visible && (
       <section className="px-4 py-20 lg:px-8">
         <div className="mx-auto max-w-[1360px] space-y-12">
-          <SectionTitle eyebrow="El producto" title="Todo el ciclo de tu sistema de gestión SST" text={`${totalModules} módulos agrupados en seis frentes. Contratas el plan que necesitas y creces cuando lo necesites.`} />
+          <SectionTitle eyebrow={sec("pillars").eyebrow} title={sec("pillars").title} text={sec("pillars").text.replaceAll("{modulos}", String(totalModules))} />
           <div className="grid-cols-1 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {PILLARS.map(([icon, title, text], i) => (
               <article key={title} className="site-card site-card-hover group relative overflow-hidden p-6">
@@ -204,7 +216,20 @@ export default async function HomePage() {
         </div>
       </section>
 
+      )}
+
+      {/* Pestañas de módulos: al tocar una cambian la imagen y lo que hace */}
+      {sec("modules").visible && (
+        <section className="px-4 pb-20 lg:px-8">
+          <div className="mx-auto max-w-[1200px] space-y-10">
+            <SectionTitle eyebrow={sec("modules").eyebrow} title={sec("modules").title} text={sec("modules").text} />
+            <ModuleTabs plans={Object.fromEntries(["IPC", "INS", "CAP", "EPP", "ACC"].map((c) => [c, planName(planOf(c))]))} />
+          </div>
+        </section>
+      )}
+
       {/* Diferenciadores con maqueta */}
+      {sec("features").visible && (
       <section className="bg-[var(--site-surface)] px-4 py-20 lg:px-8">
         <div className="mx-auto max-w-[1360px] space-y-24">
           {FEATURES.map((f, i) => {
@@ -246,10 +271,13 @@ export default async function HomePage() {
         </div>
       </section>
 
+      )}
+
       {/* Cómo funciona */}
+      {sec("how").visible && (
       <section className="px-4 py-20 lg:px-8">
         <div className="mx-auto max-w-[1360px] space-y-12">
-          <SectionTitle eyebrow="Cómo funciona" title="De cero a tu SST ordenada, paso a paso" />
+          <SectionTitle eyebrow={sec("how").eyebrow} title={sec("how").title} />
           <ol className="grid-cols-1 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
             {STEPS.map(([title, text], i) => (
               <li key={title} className="site-card relative flex flex-col items-center p-5 text-center">
@@ -266,17 +294,18 @@ export default async function HomePage() {
         </div>
       </section>
 
+      )}
+
       {/* Demostración */}
+      {sec("demo").visible && (
       <section className="px-4 pb-20 lg:px-8">
         <Reveal className="mx-auto max-w-[1360px]">
           <div className="relative grid grid-cols-1 items-center gap-8 overflow-hidden rounded-3xl border border-[var(--site-border)] bg-gradient-to-br from-[#EAF3FC] to-white p-8 shadow-sm sm:p-12 lg:grid-cols-[1fr_1.15fr] lg:gap-12">
             <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-[#F4B90F]/20 blur-2xl" aria-hidden="true" />
             <div className="relative space-y-4">
-              <p className="site-eyebrow">Demostración</p>
-              <h2 className="font-display text-[28px] font-bold leading-tight text-[var(--site-navy-title)] sm:text-[34px]">¿Quieres verlo con un caso como el tuyo?</h2>
-              <p className="text-[17px] leading-relaxed text-[var(--site-text-2)]">
-                Agenda una demo y te mostramos EscudoSST con ejemplos de tu sector. Si prefieres explorar solo, crea tu cuenta de prueba.
-              </p>
+              <p className="site-eyebrow">{sec("demo").eyebrow}</p>
+              <h2 className="font-display text-[28px] font-bold leading-tight text-[var(--site-navy-title)] sm:text-[34px]">{sec("demo").title}</h2>
+              <p className="text-[17px] leading-relaxed text-[var(--site-text-2)]">{sec("demo").text}</p>
               <div className="flex flex-col gap-3 pt-1 sm:flex-row">
                 <a href={contactHref(s, "demo")} data-track="portada-demo-5" className="site-btn site-btn-primary">
                   Agenda una demo <Icon name="chevron" size={16} />
@@ -323,11 +352,13 @@ export default async function HomePage() {
         </Reveal>
       </section>
 
+      )}
+
       {/* Planes */}
-      {pricing.plans.length > 0 && (
+      {sec("plans").visible && pricing.plans.length > 0 && (
         <section className="bg-[var(--site-surface)] px-4 py-20 lg:px-8">
           <div className="mx-auto max-w-[1360px] space-y-12">
-            <SectionTitle eyebrow="Planes" title="Un plan para cada etapa de tu empresa" text="Cada plan incluye todo lo del anterior. Los rangos son referenciales." />
+            <SectionTitle eyebrow={sec("plans").eyebrow} title={sec("plans").title} text={sec("plans").text} />
             <PlanCards plans={pricing.plans} s={s} compact />
             <p className="text-center">
               <TextLink href="/planes">Comparar planes módulo por módulo</TextLink>
@@ -337,11 +368,11 @@ export default async function HomePage() {
       )}
 
       {/* Testimonios (solo los aprobados con permiso del autor o rotulados «Ejemplo») */}
-      {testimonials.length > 0 && (
+      {sec("testimonials").visible && testimonials.length > 0 && (
         <section className="px-4 py-20 lg:px-8">
           <div className="mx-auto max-w-[1360px] space-y-10">
             <Reveal>
-              <SectionTitle eyebrow="Testimonios" title="Lo que dicen quienes ya ordenaron su SST" />
+              <SectionTitle eyebrow={sec("testimonials").eyebrow} title={sec("testimonials").title} />
             </Reveal>
             <Reveal>
               <TestimonialCards items={testimonials.slice(0, 6)} />
@@ -351,16 +382,16 @@ export default async function HomePage() {
       )}
 
       {/* Reseñas de Google: solo si hay una copia vigente (Sitio web › Reseñas de Google) */}
-      <ReviewsBlock />
+      {sec("reviews").visible && <ReviewsBlock />}
 
       {/* Preguntas frecuentes */}
-      {faqs.length > 0 && (
+      {sec("faq").visible && faqs.length > 0 && (
         <section className="bg-[var(--site-surface)] px-4 py-20 lg:px-8">
           <FaqJsonLd faqs={faqs} />
           <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-10 lg:grid-cols-[1fr_1.6fr]">
             <Reveal className="space-y-4">
-              <SectionTitle eyebrow="Preguntas frecuentes" title="Lo que suelen preguntarnos" center={false} />
-              <p className="text-[var(--site-text-2)]">¿No encuentras tu duda? Escríbenos y te respondemos.</p>
+              <SectionTitle eyebrow={sec("faq").eyebrow} title={sec("faq").title} center={false} />
+              <p className="text-[var(--site-text-2)]">{sec("faq").text}</p>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Link href="/demo?tipo=contacto" className="site-btn site-btn-outline bg-white">
                   Hacer una consulta
@@ -376,11 +407,13 @@ export default async function HomePage() {
       )}
 
       {/* Sellos */}
-      <section className="px-4 py-14 lg:px-8">
-        <div className="mx-auto max-w-[1360px]">
-          <TrustSeals />
-        </div>
-      </section>
+      {sec("seals").visible && (
+        <section className="px-4 py-14 lg:px-8">
+          <div className="mx-auto max-w-[1360px]">
+            <TrustSeals />
+          </div>
+        </section>
+      )}
 
       <FinalCta s={s} />
     </>
