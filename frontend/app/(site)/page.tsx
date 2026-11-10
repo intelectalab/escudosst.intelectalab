@@ -9,7 +9,8 @@ import { FaqJsonLd, FaqList, TestimonialCards } from "@/components/site/FaqTesti
 import { Reveal } from "@/components/site/Reveal";
 import { ReviewsBlock } from "@/components/site/ReviewsBlock";
 import { Icon } from "@/components/ui/Icon";
-import { contactHref, getFaqs, getModules, getPricing, getSite, getTestimonials, whatsappLink } from "@/lib/site";
+import { contactHref, getFaqs, getModules, getPricing, getSite, getTestimonials, homeVideo, whatsappLink } from "@/lib/site";
+import { DemoVideoPlayer } from "@/components/site/DemoVideoPlayer";
 
 export const metadata: Metadata = {
   title: "EscudoSST · Cumple la Ley 29783 y llega preparado a SUNAFIL",
@@ -268,7 +269,7 @@ export default async function HomePage() {
       {/* Demostración */}
       <section className="px-4 pb-20 lg:px-8">
         <Reveal className="mx-auto max-w-[1360px]">
-          <div className="relative grid grid-cols-1 items-center gap-8 overflow-hidden rounded-3xl border border-[var(--site-border)] bg-gradient-to-br from-[#EAF3FC] to-white p-8 shadow-sm sm:p-12 lg:grid-cols-[1.3fr_1fr]">
+          <div className="relative grid grid-cols-1 items-center gap-8 overflow-hidden rounded-3xl border border-[var(--site-border)] bg-gradient-to-br from-[#EAF3FC] to-white p-8 shadow-sm sm:p-12 lg:grid-cols-[1fr_1.15fr] lg:gap-12">
             <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-[#F4B90F]/20 blur-2xl" aria-hidden="true" />
             <div className="relative space-y-4">
               <p className="site-eyebrow">Demostración</p>
@@ -290,31 +291,34 @@ export default async function HomePage() {
                   </a>
                 )}
               </div>
+              <ul className="space-y-3 pt-3">
+                {(
+                  [
+                    ["clock", "Te escribimos para coordinar el día y la hora"],
+                    ["people", "Un asesor te muestra el sistema en vivo"],
+                    ["tag", "Te recomendamos el plan según tu empresa"],
+                  ] as const
+                ).map(([icon, text]) => (
+                  <li key={text} className="flex items-center gap-3 rounded-2xl bg-white p-4 text-[15px] font-semibold text-[var(--site-navy-title)] shadow-sm ring-1 ring-[var(--site-border)]">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--site-surface)] text-[var(--site-action)]">
+                      <Icon name={icon} size={18} />
+                    </span>
+                    {text}
+                  </li>
+                ))}
+                {whatsappLink(s) && (
+                  <li className="text-sm text-[var(--site-text-2)]">
+                    ¿Una duda rápida?{" "}
+                    <a href={whatsappLink(s)!} target="_blank" rel="noopener noreferrer" className="font-bold text-[#167A42] hover:underline">
+                      Escríbenos por WhatsApp
+                    </a>
+                  </li>
+                )}
+              </ul>
             </div>
-            <ul className="relative space-y-3">
-              {(
-                [
-                  ["clock", "Te escribimos para coordinar el día y la hora"],
-                  ["people", "Un asesor te muestra el sistema en vivo"],
-                  ["tag", "Te recomendamos el plan según tu empresa"],
-                ] as const
-              ).map(([icon, text]) => (
-                <li key={text} className="flex items-center gap-3 rounded-2xl bg-white p-4 text-[15px] font-semibold text-[var(--site-navy-title)] shadow-sm ring-1 ring-[var(--site-border)]">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--site-surface)] text-[var(--site-action)]">
-                    <Icon name={icon} size={18} />
-                  </span>
-                  {text}
-                </li>
-              ))}
-              {whatsappLink(s) && (
-                <li className="text-sm text-[var(--site-text-2)]">
-                  ¿Una duda rápida?{" "}
-                  <a href={whatsappLink(s)!} target="_blank" rel="noopener noreferrer" className="font-bold text-[#167A42] hover:underline">
-                    Escríbenos por WhatsApp
-                  </a>
-                </li>
-              )}
-            </ul>
+            <div className="relative min-w-0">
+              <DemoVideoPlayer video={homeVideo(s)} />
+            </div>
           </div>
         </Reveal>
       </section>

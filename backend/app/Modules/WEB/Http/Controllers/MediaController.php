@@ -121,6 +121,8 @@ class MediaController extends Controller
         );
         // Si estaba incrustado por su archivo en páginas o casos, se actualiza la referencia.
         $this->db()->update('update success_stories set logo_file_id = ? where logo_file_id = ?', [$asset['id'], $m->file_id]);
+        $this->db()->update('update site_settings set hero_video_urls = replace(hero_video_urls::text, ?, ?)::jsonb where hero_video_urls::text like ?',
+            [$m->file_id, $asset['id'], '%'.$id.'%']);
         $accounts->audit($request->user()->id, 'site_media_replaced', 'site_media', $id, ['from' => $m->file_id, 'to' => $asset['id']]);
 
         return response()->json(['data' => $this->decode($this->row($id))]);
@@ -151,14 +153,18 @@ class MediaController extends Controller
 
             return ['label' => $labels[$u['table']] ?? $u['table'], 'name' => $name, 'href' => $href];
         }, $r['usages'] ?? []);
+        if ($this->isHomeVideo($id)) {
+            $items[] = ['label' => 'Video de la portada', 'name' => 'Sección Demostración', 'href' => '/plataforma/sitio/video'];
+        }
 
-        return response()->json(['data' => ['count' => $r['usage_count'] ?? 0, 'items' => $items]]);
+        return response()->json(['data' => ['count' => count($items), 'items' => $items]]);
     }
 
     public function destroy(Request $request, string $id, AccountsService $accounts): Response
     {
         $this->find($id);
         $count = json_decode($this->db()->selectOne('select web_media_usages(?) as r', [$id])->r, true)['usage_count'] ?? 0;
+        $count += $this->isHomeVideo($id) ? 1 : 0;
         if ($count > 0) {
             $this->fail('id', "No se puede eliminar: se usa en {$count} ".($count === 1 ? 'lugar' : 'lugares').'. Quítalo de ahí primero o reemplaza el archivo.');
         }
@@ -169,6 +175,12 @@ class MediaController extends Controller
     }
 
     // ---------------------------------------------------------------- Apoyo
+
+    /** ¿Es el video de la sección «Demostración» de la portada? (site_settings.hero_video_urls) */
+    private function isHomeVideo(string $id): bool
+    {
+        return (bool) $this->db()->selectOne("select 1 as x from site_settings where singleton and hero_video_urls @> jsonb_build_array(jsonb_build_object('media_id', ?::text))", [$id]);
+    }
 
     /** [extensión, tipo] según el contenido real del archivo. */
     private function type(UploadedFile $file, bool $asIcon): array

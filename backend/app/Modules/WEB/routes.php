@@ -198,6 +198,8 @@ Route::middleware(['auth:sanctum', 'platform', \App\Core\Http\Middleware\FlushCh
     Route::post('quotes/{id}/{action}', [SalesQuotesController::class, 'act'])->whereUuid('id')->whereIn('action', ['send', 'cancel', 'reject-evidence', 'confirm-payment']);
     Route::get('quotes/{id}/file/{kind}', [SalesQuotesController::class, 'file'])->whereUuid('id')->whereIn('kind', ['pdf', 'evidence']);
     Route::patch('settings', [SiteSettingsController::class, 'update']);
+    Route::put('settings/home-video', [SiteSettingsController::class, 'saveHomeVideo']);
+    Route::delete('settings/home-video', [SiteSettingsController::class, 'removeHomeVideo']);
     Route::get('legal', [LegalDocumentsController::class, 'index']);
     Route::patch('legal/versions/{version}', [LegalDocumentsController::class, 'saveDraft'])->whereUuid('version');
     Route::post('legal/versions/{version}/publish', [LegalDocumentsController::class, 'publish'])->whereUuid('version')->middleware('platform.owner');

@@ -18,12 +18,19 @@ export type SiteSettings = {
   blog_url: string | null;
   interactive_demo_url: string | null;
   complaints_officer_name: string | null;
+  /** Videos del sitio; el de kind «presentation» es el de la sección «Demostración» de la portada. */
+  hero_video_urls?: HomeVideo[];
   announcement_bar: { text?: string; link?: string; active?: boolean; until?: string | null } | null;
   social_links: Record<string, string>;
   logo_file_id: string | null;
   logo_dark_file_id: string | null;
   favicon_file_id: string | null;
 };
+
+export type HomeVideo = { kind: string; provider: "upload" | "youtube" | "vimeo"; url: string | null; media_id: string | null; file_id: string | null; title?: string | null };
+
+/** Video de la sección «Demostración» de la portada (o null si el dueño no eligió ninguno). */
+export const homeVideo = (s: SiteSettings): HomeVideo | null => (s.hero_video_urls ?? []).find((v) => v.kind === "presentation") ?? null;
 
 export type MenuItem = { label: string; url: string };
 

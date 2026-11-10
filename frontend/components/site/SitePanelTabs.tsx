@@ -18,6 +18,7 @@ const GROUPS: { title: string; items: [string, string, string][] }[] = [
     items: [
       ["/plataforma/sitio", "Contacto y WhatsApp", "phone"],
       ["/plataforma/sitio/marca", "Logo y menú", "palette"],
+      ["/plataforma/sitio/video", "Video de la portada", "video"],
       ["/plataforma/sitio/politicas", "Políticas", "file"],
       ["/plataforma/sitio/confianza", "Subencargados", "server"],
       ["/plataforma/sitio/estado", "Estado del servicio", "activity"],
