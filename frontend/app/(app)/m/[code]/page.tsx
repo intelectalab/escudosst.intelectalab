@@ -10,6 +10,7 @@ import { availableIn, PLAN_NAMES } from "@/lib/menu";
 import { ModuleRecords } from "@/components/records/ModuleRecords";
 import { IpercModule } from "@/components/ipc/IpercModule";
 import { Dashboard } from "@/components/dsh/Dashboard";
+import { VmdModule } from "@/components/vmd/VmdModule";
 import { CompanyAudit, CompanyUsers } from "@/components/usr/CompanyAdmin";
 
 export default function ModulePage() {
@@ -76,6 +77,8 @@ export default function ModulePage() {
         <Dashboard />
       ) : m.code === "USR" ? (
         <CompanyUsers readOnly={m.mode === "read_only"} />
+      ) : m.code === "VMD" ? (
+        <VmdModule readOnly={m.mode === "read_only"} />
       ) : m.code === "AUD" ? (
         <CompanyAudit />
       ) : (

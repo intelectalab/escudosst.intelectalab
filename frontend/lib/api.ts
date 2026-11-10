@@ -24,10 +24,12 @@ type Options = {
   body?: unknown;
   /** Enviar X-Company-Id con la empresa activa. */
   withCompany?: boolean;
+  /** Cabeceras extra (p. ej. la clave de re-autenticación médica). */
+  headers?: Record<string, string>;
 };
 
-export async function api<T>(path: string, { method = "GET", body, withCompany = false }: Options = {}): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" };
+export async function api<T>(path: string, { method = "GET", body, withCompany = false, headers: extra }: Options = {}): Promise<T> {
+  const headers: Record<string, string> = { Accept: "application/json", ...extra };
   const token = session.getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers["Content-Type"] = "application/json";
