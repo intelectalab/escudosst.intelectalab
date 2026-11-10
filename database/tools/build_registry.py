@@ -78,7 +78,8 @@ READONLY = {"areas.depth", "workers.document_last4", "workers.activated_at", "wo
             # Complementos: SCTR, ingreso, homologación, ambiente, firma, mapa de riesgos.
             "sctr_coverages.status", "access_events.guard_user_id", "access_events.deny_reasons", "vendor_evaluations.total_score",
             "environmental_aspects.significance_score", "work_adjustments.approved_by", "signature_requests.requested_by", "signature_requests.signed_at",
-            "risk_maps.version_number", "risk_maps.approved_by", "risk_maps.approved_at"}
+            "risk_maps.version_number", "risk_maps.approved_by", "risk_maps.approved_at",
+            "api_clients.client_key", "api_clients.last_used_at", "webhooks.secret", "webhooks.failure_count", "webhooks.disabled_at"}
 # Columnas de la lista elegidas a mano donde las automáticas no dicen lo importante.
 LIST = {
     "monthly_statistics": ["period_year", "period_month", "site_id", "hours_worked", "frequency_index", "severity_index", "accident_rate_index", "is_closed"],
@@ -91,7 +92,7 @@ LIST = {
 WRITABLE_JSON = {"iperc_rows.probability_detail", "iperc_versions.participants"}
 # Obligatorios en la base pero que calcula una regla si no se envían.
 COMPUTED = {"work_shifts.hours_per_day", "areas.depth", "iperc_rows.probability_value",
-            "iperc_rows.hazard", "iperc_rows.risk", "measurements.result", "work_permits.valid_until", "access_events.result", "access_events.occurred_at", "corrective_actions.code", "inspections.code", "trainings.code",
+            "iperc_rows.hazard", "iperc_rows.risk", "measurements.result", "work_permits.valid_until", "access_events.result", "access_events.occurred_at", "api_clients.scopes", "webhooks.event_codes", "corrective_actions.code", "inspections.code", "trainings.code",
             "sst_events.code", "sst_events.reported_at", "investigations.code", "investigations.started_on", "committee_meetings.number",
             "meeting_agreements.number", "ppe_deliveries.delivered_at", "ppe_stock_movements.moved_at",
             "requirement_evaluations.evaluated_on", "requirement_evaluations.evaluator_user_id", "requirement_evaluations.next_evaluation_on",

@@ -135,6 +135,7 @@ export function RecordActions({
   if (res.table === "baseline_assessments") return <BaselineFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "monthly_statistics") return <CloseMonth row={row} onChanged={onChanged} />;
   if (res.table === "inspection_dossiers") return <DossierBuild row={row} onChanged={onChanged} />;
+  if (res.table === "api_clients") return <ApiSecret row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (STEPS[res.table]) return <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "event_notifications") return <NotifyNow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "committee_meetings") return <MeetingFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
@@ -1180,6 +1181,39 @@ function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => voi
           })}
         </ul>
       )}
+    </section>
+  );
+}
+
+
+// ─────────────── API: secreto del cliente (una sola vez) ───────────────
+
+function ApiSecret({ row, canEdit, onChanged }: { row: RecordRow; canEdit: boolean; onChanged: () => void }) {
+  const [secret, setSecret] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  if (row.status === "revoked") return <p className="rounded-xl bg-bg px-4 py-3 text-sm text-muted">Cliente revocado: ya no puede usar la API.</p>;
+  return (
+    <section className="space-y-2 rounded-xl border border-line px-4 py-3 text-sm">
+      <p>
+        Clave pública: <code className="rounded bg-bg px-1">{String(row.client_key ?? "")}</code>. El secreto se muestra una sola vez (10 minutos después de crear el cliente).
+      </p>
+      {secret ? (
+        <p className="rounded-lg bg-amber-soft px-3 py-2 text-amber-ink">
+          Cópialo ahora, no se volverá a mostrar: <code className="select-all break-all">{secret}</code>
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => api<{ data: { secret: string } }>(`/api-clients/${row.id}/secret`, { method: "POST", withCompany: true }).then((r) => setSecret(r.data.secret)).catch((e: ApiError) => setMsg(e.detail ?? e.title))}>
+            Ver secreto
+          </Button>
+          {canEdit && (
+            <Button variant="danger-ghost" onClick={() => records.update("API", "api_clients", row.id, { status: "revoked" }).then(onChanged).catch((e: ApiError) => setMsg(e.detail ?? e.title))}>
+              Revocar
+            </Button>
+          )}
+        </div>
+      )}
+      {msg && <p className="text-bad">{msg}</p>}
     </section>
   );
 }

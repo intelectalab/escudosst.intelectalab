@@ -22705,6 +22705,7 @@
     {
      "name": "client_key",
      "label": "Clave del cliente",
+     "readonly": true,
      "type": "text",
      "required": true
     },
@@ -22712,8 +22713,7 @@
      "name": "scopes",
      "label": "Permisos",
      "type": "tags",
-     "item": "text",
-     "required": true
+     "item": "text"
     },
     {
      "name": "rate_limit_per_minute",
@@ -22729,6 +22729,7 @@
     {
      "name": "last_used_at",
      "label": "Último uso",
+     "readonly": true,
      "type": "datetime"
     },
     {
@@ -22788,12 +22789,12 @@
      "name": "event_codes",
      "label": "Códigos de evento",
      "type": "tags",
-     "item": "text",
-     "required": true
+     "item": "text"
     },
     {
      "name": "secret",
      "label": "Clave secreta",
+     "readonly": true,
      "type": "text",
      "encrypted": true,
      "required": true
@@ -22807,12 +22808,14 @@
     {
      "name": "failure_count",
      "label": "N.º de fallos",
+     "readonly": true,
      "type": "int",
      "default": 0
     },
     {
      "name": "disabled_at",
      "label": "Deshabilitado el",
+     "readonly": true,
      "type": "datetime",
      "list": true
     }

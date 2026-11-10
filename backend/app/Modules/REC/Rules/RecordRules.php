@@ -86,6 +86,8 @@ abstract class RecordRules
         'work_adjustments' => AddonRules::class,
         'signature_requests' => AddonRules::class,
         'risk_maps' => DocsFieldRules::class,
+        'api_clients' => ApiRules::class,
+        'webhooks' => ApiRules::class,
     ];
 
     public static function for(string $table): ?self
