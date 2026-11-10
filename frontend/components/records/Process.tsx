@@ -52,6 +52,10 @@ export function lockedReason(table: string, row: RecordRow): string | null {
     return "Inspección finalizada: no se edita. Sus hallazgos y acciones siguen en la trazabilidad.";
   if (table === "corrective_actions" && ["verified", "cancelled"].includes(st))
     return st === "verified" ? "Acción verificada: queda como registro cerrado." : "Acción anulada: queda como registro cerrado.";
+  if (table === "sst_events" && ["closed", "discarded"].includes(st)) return "Evento cerrado: queda como registro.";
+  if (table === "committee_meetings" && st === "minutes_signed") return "Acta firmada: la sesión no se modifica.";
+  if (table === "ppe_deliveries") return st === "delivered" ? null : "Entrega cerrada: queda como registro.";
+  if ((table === "annual_programs" || table === "training_programs") && st === "closed") return "Programa cerrado.";
   return null;
 }
 
@@ -124,7 +128,10 @@ export function RecordActions({
   if (readOnly) return null;
   if (res.table === "corrective_actions") return <CorrectiveFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "inspections") return <InspectionRun row={row} onChanged={onChanged} />;
-  if (res.table === "findings") return <FindingAction row={row} onChanged={onChanged} />;
+  if (ACTION_SOURCES[res.table]) return <FindingAction table={res.table} row={row} onChanged={onChanged} />;
+  if (res.table === "sst_events") return <EventDeadline row={row} />;
+  if (res.table === "event_notifications") return <NotifyNow row={row} canEdit={res.can.update} onChanged={onChanged} />;
+  if (res.table === "committee_meetings") return <MeetingFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "annual_programs" || res.table === "training_programs")
     return <ProgramFlow code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "program_activities") return <ActivityExecution row={row} onChanged={onChanged} />;
@@ -425,19 +432,30 @@ function InspectionRun({ row, onChanged }: { row: RecordRow; onChanged: () => vo
 
 // ─────────────── INS: del hallazgo a la acción correctiva ───────────────
 
-function FindingAction({ row, onChanged }: { row: RecordRow; onChanged: () => void }) {
+/** Registros desde los que se crea una acción correctiva (su origen queda en la trazabilidad). */
+const ACTION_SOURCES: Record<string, string> = {
+  findings: "Este hallazgo",
+  investigation_causes: "Esta causa",
+  meeting_agreements: "Este acuerdo",
+  baseline_gaps: "Esta brecha",
+  substandard_reports: "Este reporte",
+  requirement_evaluations: "Esta evaluación",
+};
+
+function FindingAction({ table, row, onChanged }: { table: string; row: RecordRow; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", responsible_user_id: "", due_on: "" });
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState(false);
 
-  if (row.corrective_action_id || row.status === "dismissed") return null;
+  if (row.corrective_action_id || ["dismissed", "cancelled", "rejected", "closed"].includes(String(row.status))) return null;
+  if (table === "requirement_evaluations" && row.result === "compliant") return null;
 
   const create = async () => {
     setBusy(true);
     setErrors({});
     try {
-      await api(`/ins/findings/${row.id}/action`, { method: "POST", body: form, withCompany: true });
+      await api(`/acr/from/${table}/${row.id}`, { method: "POST", body: form, withCompany: true });
       setOpen(false);
       onChanged();
     } catch (e) {
@@ -449,10 +467,10 @@ function FindingAction({ row, onChanged }: { row: RecordRow; onChanged: () => vo
 
   return (
     <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-ink/30 bg-amber-soft px-4 py-3 text-sm text-amber-ink">
-      <span>Este hallazgo aún no tiene acción correctiva.</span>
+      <span>{ACTION_SOURCES[table]} aún no tiene acción correctiva.</span>
       <Button variant="primary" icon="plus" onClick={() => setOpen(true)}>Crear acción correctiva</Button>
       {open && (
-        <Modal title="Nueva acción correctiva" subtitle="Queda vinculada a este hallazgo (trazabilidad)." icon="plus" size="sm" z={60} onClose={() => setOpen(false)}
+        <Modal title="Nueva acción correctiva" subtitle="Queda vinculada a este registro (trazabilidad)." icon="plus" size="sm" z={60} onClose={() => setOpen(false)}
           footer={
             <div className="flex w-full justify-end gap-2">
               <Button onClick={() => setOpen(false)}>Cancelar</Button>
@@ -635,6 +653,78 @@ function IssueCertificates({ row, onChanged }: { row: RecordRow; onChanged: () =
       <span>Emite un certificado a cada asistente de una sesión realizada (y con evaluación aprobada si la capacitación exige nota).</span>
       <Button variant="primary" loading={busy} onClick={issue}>Emitir certificados</Button>
       {msg && <p className="w-full text-brand-strong">{msg}</p>}
+    </section>
+  );
+}
+
+
+// ─────────────── ACC: plazo de notificación ───────────────
+
+function EventDeadline({ row }: { row: RecordRow }) {
+  const deadline = row.notification_deadline_at ? new Date(String(row.notification_deadline_at)) : null;
+  if (!deadline || ["closed", "discarded"].includes(String(row.status))) return null;
+  const hours = Math.round((deadline.getTime() - Date.now()) / 3600000);
+  const late = hours < 0;
+  return (
+    <section className={`rounded-xl px-4 py-3 text-sm ${late ? "bg-bad-soft text-bad" : hours <= 24 ? "bg-amber-soft text-amber-ink" : "bg-bg"}`} role="status">
+      <b>Plazo de notificación:</b> {deadline.toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" })}
+      {" · "}
+      {late ? "vencido" : hours < 48 ? `quedan ${hours} h` : `quedan ${Math.floor(hours / 24)} días`}. Regístrala en «Notificaciones» (está en la trazabilidad).
+    </section>
+  );
+}
+
+function NotifyNow({ row, canEdit, onChanged }: { row: RecordRow; canEdit: boolean; onChanged: () => void }) {
+  const [number, setNumber] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  if (row.status !== "pending" || !canEdit) {
+    return row.notification_overdue ? <p className="rounded-xl bg-bad-soft px-4 py-3 text-sm text-bad">Notificada fuera de plazo.</p> : null;
+  }
+  return (
+    <section className="flex flex-wrap items-center gap-2 rounded-xl border border-line px-4 py-3 text-sm">
+      <span className="flex-1">¿Ya la notificaste? Regístrala con su número de constancia; si es después del plazo quedará «fuera de plazo».</span>
+      <input className="input !w-48" placeholder="N.° de constancia" aria-label="Número de constancia" value={number} onChange={(e) => setNumber(e.target.value)} />
+      <Button
+        variant="primary"
+        onClick={() =>
+          records
+            .update("ACC", "event_notifications", row.id, { status: "sent", notification_number: number || null, notified_at: new Date().toISOString() })
+            .then(onChanged)
+            .catch((e: ApiError) => setMsg(e.detail ?? e.title))
+        }
+      >
+        Registrar notificación
+      </Button>
+      {msg && <p className="w-full text-bad">{msg}</p>}
+    </section>
+  );
+}
+
+// ─────────────── COM: sesión y acta ───────────────
+
+function MeetingFlow({ row, canEdit, onChanged }: { row: RecordRow; canEdit: boolean; onChanged: () => void }) {
+  const [msg, setMsg] = useState<string | null>(null);
+  const st = String(row.status);
+  const move = (body: Record<string, unknown>) =>
+    records.update("COM", "committee_meetings", row.id, body).then(onChanged).catch((e: ApiError) => setMsg(Object.values(e.errors ?? {})[0]?.[0] ?? e.detail ?? e.title));
+  if (!canEdit || ["minutes_signed", "cancelled"].includes(st)) {
+    return st === "minutes_signed" ? <p className="rounded-xl bg-ok-soft px-4 py-3 text-sm text-ok">Acta firmada: la sesión queda cerrada.</p> : null;
+  }
+  return (
+    <section className="space-y-2 rounded-xl border border-line px-4 py-3 text-sm">
+      <p>
+        Sesión N.° {String(row.number ?? "")} · {row.quorum_reached ? "con quórum: puede adoptar acuerdos" : "sin quórum marcado: no se registran acuerdos"}.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {st === "scheduled" && (
+          <>
+            <Button onClick={() => move({ status: "held", quorum_reached: true })}>Realizada con quórum</Button>
+            <Button onClick={() => move({ status: "held", quorum_reached: false })}>Realizada sin quórum</Button>
+          </>
+        )}
+        {(st === "held" || st === "minutes_draft") && <Button variant="primary" onClick={() => move({ status: "minutes_signed" })}>Firmar acta</Button>}
+      </div>
+      {msg && <p className="text-bad">{msg}</p>}
     </section>
   );
 }

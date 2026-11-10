@@ -44,12 +44,21 @@ READONLY = {"areas.depth", "workers.document_last4", "workers.activated_at", "wo
             "training_certificates.certificate_code", "training_certificates.verification_code", "training_certificates.holder_name",
             "training_certificates.holder_document_masked", "training_certificates.course_title", "training_certificates.issued_on",
             "training_certificates.expires_on", "training_certificates.hours", "training_certificates.score", "training_certificates.validated_by",
-            "training_certificates.validated_at", "training_certificates.voided_by", "training_certificates.voided_at"}
+            "training_certificates.validated_at", "training_certificates.voided_by", "training_certificates.voided_at",
+            # ACC / INV / EPP / COM: plazos, totales y cierres los fija el sistema.
+            "sst_events.notification_deadline_at", "sst_events.notification_overdue", "sst_events.lost_days", "sst_events.injured_count",
+            "sst_events.reporter_user_id", "sst_events.closed_at", "event_notifications.deadline_at", "event_notifications.notification_overdue",
+            "event_notifications.notified_by", "event_notifications.legal_parameter_key", "investigations.approved_by", "investigations.approved_at",
+            "investigation_causes.corrective_action_id", "meeting_agreements.corrective_action_id", "meeting_agreements.fulfilled_at",
+            "baseline_gaps.corrective_action_id", "substandard_reports.corrective_action_id", "requirement_evaluations.corrective_action_id",
+            "ppe_deliveries.delivered_by", "ppe_stock_movements.ppe_delivery_id"}
 # Datos estructurados (jsonb) que sí se editan desde un formulario propio.
 WRITABLE_JSON = {"iperc_rows.probability_detail", "iperc_versions.participants"}
 # Obligatorios en la base pero que calcula una regla si no se envían.
 COMPUTED = {"work_shifts.hours_per_day", "areas.depth", "iperc_rows.probability_value",
-            "iperc_rows.hazard", "iperc_rows.risk", "corrective_actions.code", "inspections.code", "trainings.code"}
+            "iperc_rows.hazard", "iperc_rows.risk", "corrective_actions.code", "inspections.code", "trainings.code",
+            "sst_events.code", "sst_events.reported_at", "investigations.code", "investigations.started_on", "committee_meetings.number",
+            "meeting_agreements.number", "ppe_deliveries.delivered_at", "ppe_stock_movements.moved_at"}
 LONG_TEXT = re.compile(r"(^|_)(description|notes|note|comment|comments|summary|functions|observations|content|body|"
                        r"details|detail|justification|reason|instructions|scope|recommendations|conclusions|text|"
                        r"statement|commitments|methodology|findings|lessons|answer|explanation|purpose)$")

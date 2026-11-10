@@ -2707,6 +2707,7 @@
     {
      "name": "corrective_action_id",
      "label": "Acción correctiva",
+     "readonly": true,
      "type": "ref",
      "ref": "corrective_actions"
     },
@@ -3374,6 +3375,7 @@
     {
      "name": "corrective_action_id",
      "label": "Acción correctiva",
+     "readonly": true,
      "type": "ref",
      "ref": "corrective_actions"
     },
@@ -5092,11 +5094,13 @@
     {
      "name": "fulfilled_at",
      "label": "Cumplido el",
+     "readonly": true,
      "type": "datetime"
     },
     {
      "name": "corrective_action_id",
      "label": "Acción correctiva",
+     "readonly": true,
      "type": "ref",
      "ref": "corrective_actions"
     }
@@ -8659,6 +8663,7 @@
     {
      "name": "corrective_action_id",
      "label": "Acción correctiva",
+     "readonly": true,
      "type": "ref",
      "ref": "corrective_actions"
     },
@@ -10144,6 +10149,7 @@
     {
      "name": "ppe_delivery_id",
      "label": "Entrega de EPP",
+     "readonly": true,
      "type": "ref",
      "ref": "ppe_deliveries"
     },
@@ -10205,7 +10211,6 @@
      "name": "delivered_at",
      "label": "Entregado el",
      "type": "datetime",
-     "required": true,
      "list": true
     },
     {
@@ -10244,6 +10249,7 @@
     {
      "name": "delivered_by",
      "label": "Entregado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
@@ -16537,7 +16543,6 @@
      "name": "code",
      "label": "Código",
      "type": "text",
-     "required": true,
      "list": true
     },
     {
@@ -16725,12 +16730,14 @@
     {
      "name": "lost_days",
      "label": "Días perdidos",
+     "readonly": true,
      "type": "int",
      "default": 0
     },
     {
      "name": "injured_count",
      "label": "N.º de lesionados",
+     "readonly": true,
      "type": "int",
      "default": 0
     },
@@ -16753,6 +16760,7 @@
     {
      "name": "reporter_user_id",
      "label": "Reportante (usuario)",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
@@ -16764,11 +16772,13 @@
     {
      "name": "notification_deadline_at",
      "label": "Plazo de notificación",
+     "readonly": true,
      "type": "datetime"
     },
     {
      "name": "notification_overdue",
      "label": "Notificación vencida",
+     "readonly": true,
      "type": "bool",
      "default": false
     },
@@ -16813,6 +16823,7 @@
     {
      "name": "closed_at",
      "label": "Cerrado el",
+     "readonly": true,
      "type": "datetime"
     }
    ]
@@ -17052,11 +17063,13 @@
     {
      "name": "legal_parameter_key",
      "label": "Parámetro legal",
+     "readonly": true,
      "type": "text"
     },
     {
      "name": "deadline_at",
      "label": "Fecha límite",
+     "readonly": true,
      "type": "datetime",
      "list": true
     },
@@ -17096,6 +17109,7 @@
     {
      "name": "notified_by",
      "label": "Notificado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
@@ -17127,6 +17141,7 @@
     {
      "name": "notification_overdue",
      "label": "Notificación vencida",
+     "readonly": true,
      "type": "bool",
      "default": false
     },
@@ -17241,12 +17256,14 @@
     {
      "name": "approved_by",
      "label": "Aprobado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "approved_at",
      "label": "Aprobado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
@@ -17470,6 +17487,7 @@
     {
      "name": "corrective_action_id",
      "label": "Acción correctiva",
+     "readonly": true,
      "type": "ref",
      "ref": "corrective_actions"
     },

@@ -35,6 +35,15 @@ abstract class RecordRules
         'training_sessions' => ProgramRules::class,
         'training_attendances' => ProgramRules::class,
         'training_certificates' => ProgramRules::class,
+        'sst_events' => EventRules::class,
+        'event_people' => EventRules::class,
+        'event_notifications' => EventRules::class,
+        'investigations' => EventRules::class,
+        'ppe_deliveries' => PpeCommitteeRules::class,
+        'ppe_stock_movements' => PpeCommitteeRules::class,
+        'committees' => PpeCommitteeRules::class,
+        'committee_meetings' => PpeCommitteeRules::class,
+        'meeting_agreements' => PpeCommitteeRules::class,
     ];
 
     public static function for(string $table): ?self
