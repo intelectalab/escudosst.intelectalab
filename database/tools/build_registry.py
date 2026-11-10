@@ -51,14 +51,27 @@ READONLY = {"areas.depth", "workers.document_last4", "workers.activated_at", "wo
             "event_notifications.notified_by", "event_notifications.legal_parameter_key", "investigations.approved_by", "investigations.approved_at",
             "investigation_causes.corrective_action_id", "meeting_agreements.corrective_action_id", "meeting_agreements.fulfilled_at",
             "baseline_gaps.corrective_action_id", "substandard_reports.corrective_action_id", "requirement_evaluations.corrective_action_id",
-            "ppe_deliveries.delivered_by", "ppe_stock_movements.ppe_delivery_id"}
+            "ppe_deliveries.delivered_by", "ppe_stock_movements.ppe_delivery_id",
+            # LBA / MRL: puntajes y aprobación los calcula el sistema.
+            "baseline_items.score", "baseline_assessments.total_items", "baseline_assessments.compliant_items", "baseline_assessments.score_pct",
+            "baseline_assessments.approved_by", "baseline_assessments.approved_at", "baseline_gaps.closed_at"}
+# Columnas de la lista elegidas a mano donde las automáticas no dicen lo importante.
+LIST = {
+    "monthly_statistics": ["period_year", "period_month", "site_id", "hours_worked", "frequency_index", "severity_index", "accident_rate_index", "is_closed"],
+    "man_hours": ["period_year", "period_month", "site_id", "worker_count", "hours_worked"],
+    "program_activities": ["code", "title", "goal_quantity", "executed_quantity", "progress_pct", "status"],
+    "baseline_items": ["lineament_name", "item_code", "question", "result"],
+    "sst_events": ["code", "event_type", "occurred_at", "site_id", "notification_deadline_at", "status"],
+}
 # Datos estructurados (jsonb) que sí se editan desde un formulario propio.
 WRITABLE_JSON = {"iperc_rows.probability_detail", "iperc_versions.participants"}
 # Obligatorios en la base pero que calcula una regla si no se envían.
 COMPUTED = {"work_shifts.hours_per_day", "areas.depth", "iperc_rows.probability_value",
             "iperc_rows.hazard", "iperc_rows.risk", "corrective_actions.code", "inspections.code", "trainings.code",
             "sst_events.code", "sst_events.reported_at", "investigations.code", "investigations.started_on", "committee_meetings.number",
-            "meeting_agreements.number", "ppe_deliveries.delivered_at", "ppe_stock_movements.moved_at"}
+            "meeting_agreements.number", "ppe_deliveries.delivered_at", "ppe_stock_movements.moved_at",
+            "requirement_evaluations.evaluated_on", "requirement_evaluations.evaluator_user_id", "requirement_evaluations.next_evaluation_on",
+            "baseline_assessments.assessment_on"}
 LONG_TEXT = re.compile(r"(^|_)(description|notes|note|comment|comments|summary|functions|observations|content|body|"
                        r"details|detail|justification|reason|instructions|scope|recommendations|conclusions|text|"
                        r"statement|commitments|methodology|findings|lessons|answer|explanation|purpose)$")
@@ -189,6 +202,8 @@ def main():
         if len(listed) < 3:
             listed += [f["name"] for f in fields if f["name"] not in listed and f["type"] not in ("json", "longtext")][: 3 - len(listed)]
 
+        if t["table"] in LIST:
+            listed = LIST[t["table"]]
         for f in fields:
             if f["name"] in listed:
                 f["list"] = True

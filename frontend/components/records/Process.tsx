@@ -130,6 +130,8 @@ export function RecordActions({
   if (res.table === "inspections") return <InspectionRun row={row} onChanged={onChanged} />;
   if (ACTION_SOURCES[res.table]) return <FindingAction table={res.table} row={row} onChanged={onChanged} />;
   if (res.table === "sst_events") return <EventDeadline row={row} />;
+  if (res.table === "baseline_assessments") return <BaselineFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
+  if (res.table === "monthly_statistics") return <CloseMonth row={row} onChanged={onChanged} />;
   if (res.table === "event_notifications") return <NotifyNow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "committee_meetings") return <MeetingFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "annual_programs" || res.table === "training_programs")
@@ -725,6 +727,107 @@ function MeetingFlow({ row, canEdit, onChanged }: { row: RecordRow; canEdit: boo
         {(st === "held" || st === "minutes_draft") && <Button variant="primary" onClick={() => move({ status: "minutes_signed" })}>Firmar acta</Button>}
       </div>
       {msg && <p className="text-bad">{msg}</p>}
+    </section>
+  );
+}
+
+
+/** Tablas cuyos registros los crea un flujo (no el botón «Nuevo»). */
+export const NO_CREATE = new Set(["monthly_statistics", "training_certificates", "iperc_versions", "event_notifications", "investigations"]);
+
+/** Acciones de la lista completa (arriba, junto a «Nuevo»). */
+export function PanelActions({ table, onDone }: { table: string; onDone: () => void }) {
+  const now = new Date();
+  const [period, setPeriod] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (table !== "monthly_statistics") return null;
+  const run = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const [y, m] = period.split("-").map(Number);
+      await api(`/est/months`, { method: "POST", body: { year: y, month: m }, withCompany: true });
+      setMsg("Mes calculado con las horas-hombre y los eventos registrados.");
+      onDone();
+    } catch (e) {
+      setMsg((e as ApiError).detail ?? (e as ApiError).title);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input className="input !w-40" type="month" aria-label="Mes a calcular" value={period} onChange={(e) => setPeriod(e.target.value)} />
+      <Button variant="primary" loading={busy} onClick={run}>Calcular mes</Button>
+      {msg && <span className="text-sm text-muted">{msg}</span>}
+    </div>
+  );
+}
+
+// ─────────────── LBA: diagnóstico ───────────────
+
+function BaselineFlow({ row, canEdit, onChanged }: { row: RecordRow; canEdit: boolean; onChanged: () => void }) {
+  const [msg, setMsg] = useState<string | null>(null);
+  const st = String(row.status);
+  const done = st === "approved" || st === "archived";
+  const act = (fn: () => Promise<unknown>, ok?: string) =>
+    fn()
+      .then(() => {
+        if (ok) setMsg(ok);
+        onChanged();
+      })
+      .catch((e: ApiError) => setMsg(Object.values(e.errors ?? {})[0]?.[0] ?? e.detail ?? e.title));
+  return (
+    <section className="space-y-2 rounded-xl border border-line px-4 py-3 text-sm">
+      <p>
+        Puntaje: <b>{row.score_pct === null || row.score_pct === undefined ? "—" : `${String(row.score_pct)} %`}</b> · {String(row.compliant_items ?? 0)} de{" "}
+        {String(row.total_items ?? 0)} ítems aplicables cumplen (parcial cuenta 0,5; «no aplica» no cuenta).
+      </p>
+      {!done && canEdit && (
+        <>
+          <p className="text-xs text-muted">Responde cada ítem en «Ítems». Al aprobar se crean las brechas de los ítems parciales o que no cumplen.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() =>
+                act(async () => {
+                  const r = await api<{ data: { added: number } }>(`/lba/assessments/${row.id}/load`, { method: "POST", withCompany: true });
+                  setMsg(`${r.data.added} pregunta(s) base cargada(s). Complétalas con tu lista de verificación (Anexo 3).`);
+                })
+              }
+            >
+              Cargar preguntas base
+            </Button>
+            <Button variant="primary" onClick={() => act(() => records.update("LBA", "baseline_assessments", row.id, { status: "approved" }), "Diagnóstico aprobado: se generaron las brechas.")}>
+              Aprobar diagnóstico
+            </Button>
+          </div>
+        </>
+      )}
+      {msg && <p className="text-brand-strong">{msg}</p>}
+    </section>
+  );
+}
+
+// ─────────────── EST: cerrar el mes ───────────────
+
+function CloseMonth({ row, onChanged }: { row: RecordRow; onChanged: () => void }) {
+  const [msg, setMsg] = useState<string | null>(null);
+  if (row.is_closed) return <p className="rounded-xl bg-ok-soft px-4 py-3 text-sm text-ok">Mes cerrado: sus cifras ya no cambian.</p>;
+  return (
+    <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line px-4 py-3 text-sm">
+      <span>Cierra el mes cuando todas las sedes tengan sus horas-hombre. Cerrado, no se recalcula.</span>
+      <Button
+        variant="primary"
+        onClick={() =>
+          api(`/est/months/${row.id}/close`, { method: "POST", withCompany: true })
+            .then(onChanged)
+            .catch((e: ApiError) => setMsg(e.detail ?? e.title))
+        }
+      >
+        Cerrar mes
+      </Button>
+      {msg && <p role="alert" className="w-full text-bad">{msg}</p>}
     </section>
   );
 }

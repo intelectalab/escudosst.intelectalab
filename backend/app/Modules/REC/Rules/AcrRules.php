@@ -50,6 +50,8 @@ class AcrRules extends RecordRules
         DB::update("update findings set status = 'resolved' where corrective_action_id = ? and status in ('open', 'action_assigned')", [$id]);
         DB::update("update iperc_controls set status = 'verified' where corrective_action_id = ? and status in ('proposed', 'implemented')", [$id]);
         DB::update("update substandard_reports set status = 'closed', closed_at = now() where corrective_action_id = ? and status <> 'closed'", [$id]);
+        DB::update("update baseline_gaps set status = 'closed', closed_at = now() where corrective_action_id = ? and status <> 'closed'", [$id]);
+        DB::update("update meeting_agreements set status = 'fulfilled', fulfilled_at = now() where corrective_action_id = ? and status not in ('fulfilled','cancelled')", [$id]);
         // RN-INS-07: la inspección se cierra cuando todos sus hallazgos están atendidos.
         DB::update(
             "update inspections i set status = 'closed' where i.status = 'completed' and i.id in (select inspection_id from findings where corrective_action_id = ?)

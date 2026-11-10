@@ -44,6 +44,11 @@ abstract class RecordRules
         'committees' => PpeCommitteeRules::class,
         'committee_meetings' => PpeCommitteeRules::class,
         'meeting_agreements' => PpeCommitteeRules::class,
+        'baseline_assessments' => DiagnosticRules::class,
+        'baseline_items' => DiagnosticRules::class,
+        'legal_requirements' => DiagnosticRules::class,
+        'requirement_evaluations' => DiagnosticRules::class,
+        'monthly_statistics' => DiagnosticRules::class,
     ];
 
     public static function for(string $table): ?self

@@ -2446,7 +2446,6 @@
      "name": "assessment_on",
      "label": "Fecha de evaluación",
      "type": "date",
-     "required": true,
      "list": true
     },
     {
@@ -2504,29 +2503,34 @@
     {
      "name": "total_items",
      "label": "Total de ítems",
+     "readonly": true,
      "type": "int",
      "default": 0
     },
     {
      "name": "compliant_items",
      "label": "Ítems conformes",
+     "readonly": true,
      "type": "int",
      "default": 0
     },
     {
      "name": "score_pct",
      "label": "Puntaje (%)",
+     "readonly": true,
      "type": "number"
     },
     {
      "name": "approved_by",
      "label": "Aprobado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "approved_at",
      "label": "Aprobado el",
+     "readonly": true,
      "type": "datetime"
     }
    ]
@@ -2554,8 +2558,7 @@
      "label": "Evaluación",
      "type": "ref",
      "ref": "baseline_assessments",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "lineament_code",
@@ -2566,13 +2569,15 @@
     {
      "name": "lineament_name",
      "label": "Lineamiento",
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "item_code",
      "label": "Código del ítem",
      "type": "text",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "question",
@@ -2618,6 +2623,7 @@
     {
      "name": "score",
      "label": "Puntaje",
+     "readonly": true,
      "type": "number"
     },
     {
@@ -2751,6 +2757,7 @@
     {
      "name": "closed_at",
      "label": "Cerrado el",
+     "readonly": true,
      "type": "datetime"
     }
    ]
@@ -3333,7 +3340,6 @@
      "name": "evaluated_on",
      "label": "Fecha de evaluación",
      "type": "date",
-     "required": true,
      "list": true
     },
     {
@@ -3679,8 +3685,7 @@
      "label": "Programa",
      "type": "ref",
      "ref": "annual_programs",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "annual_plan_item_id",
@@ -3781,8 +3786,7 @@
     {
      "name": "starts_on",
      "label": "Fecha de inicio",
-     "type": "date",
-     "list": true
+     "type": "date"
     },
     {
      "name": "ends_on",
@@ -3798,14 +3802,16 @@
      "name": "goal_quantity",
      "label": "Cantidad meta",
      "type": "int",
-     "default": 1
+     "default": 1,
+     "list": true
     },
     {
      "name": "executed_quantity",
      "label": "Cantidad ejecutada",
      "readonly": true,
      "type": "int",
-     "default": 0
+     "default": 0,
+     "list": true
     },
     {
      "name": "budget_line_id",
@@ -3847,7 +3853,8 @@
      "label": "Avance (%)",
      "readonly": true,
      "type": "number",
-     "default": 0
+     "default": 0,
+     "list": true
     },
     {
      "name": "cancel_reason",
@@ -16575,7 +16582,8 @@
        "label": "Enfermedad ocupacional"
       }
      ],
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "origin",
@@ -16652,8 +16660,7 @@
      "name": "description",
      "label": "Descripción",
      "type": "longtext",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "activity_at_time",
@@ -16773,7 +16780,8 @@
      "name": "notification_deadline_at",
      "label": "Plazo de notificación",
      "readonly": true,
-     "type": "datetime"
+     "type": "datetime",
+     "list": true
     },
     {
      "name": "notification_overdue",
@@ -18280,13 +18288,15 @@
      "name": "site_id",
      "label": "Sede",
      "type": "ref",
-     "ref": "sites"
+     "ref": "sites",
+     "list": true
     },
     {
      "name": "worker_count",
      "label": "Cantidad de trabajadores",
      "type": "number",
-     "default": 0
+     "default": 0,
+     "list": true
     },
     {
      "name": "contractor_worker_count",
@@ -18298,7 +18308,8 @@
      "name": "hours_worked",
      "label": "Horas trabajadas",
      "type": "number",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "contractor_hours",
@@ -18328,8 +18339,7 @@
        "label": "Calculado"
       }
      ],
-     "default": "manual",
-     "list": true
+     "default": "manual"
     },
     {
      "name": "notes",
@@ -18376,7 +18386,8 @@
      "name": "site_id",
      "label": "Sede",
      "type": "ref",
-     "ref": "sites"
+     "ref": "sites",
+     "list": true
     },
     {
      "name": "worker_count",
@@ -18386,7 +18397,8 @@
     {
      "name": "hours_worked",
      "label": "Horas trabajadas",
-     "type": "number"
+     "type": "number",
+     "list": true
     },
     {
      "name": "accidents_fatal",
@@ -18433,17 +18445,20 @@
     {
      "name": "frequency_index",
      "label": "Índice de frecuencia",
-     "type": "number"
+     "type": "number",
+     "list": true
     },
     {
      "name": "severity_index",
      "label": "Índice de severidad",
-     "type": "number"
+     "type": "number",
+     "list": true
     },
     {
      "name": "accident_rate_index",
      "label": "Índice de accidentabilidad",
-     "type": "number"
+     "type": "number",
+     "list": true
     },
     {
      "name": "frequency_factor",
@@ -18469,14 +18484,14 @@
     {
      "name": "computed_at",
      "label": "Calculado el",
-     "type": "datetime",
-     "list": true
+     "type": "datetime"
     },
     {
      "name": "is_closed",
      "label": "Cerrado",
      "type": "bool",
-     "default": false
+     "default": false,
+     "list": true
     },
     {
      "name": "closed_by",

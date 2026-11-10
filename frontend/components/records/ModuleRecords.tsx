@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { RecordActions, TraceStrip, describeFilter, lockedReason } from "./Process";
+import { NO_CREATE, PanelActions, RecordActions, TraceStrip, describeFilter, lockedReason } from "./Process";
 import { ApiError } from "@/lib/api";
 import { displayValue, records, statusTone, toLocalInput, type ModuleSchema, type RecordField, type RecordPage, type RecordResource, type RecordRow } from "@/lib/records";
 import { Button } from "@/components/ui/Button";
@@ -150,7 +150,7 @@ export function ResourcePanel({
 
   useEffect(load, [load]);
 
-  const canCreate = res.can.create && !readOnly;
+  const canCreate = res.can.create && !readOnly && !NO_CREATE.has(res.table);
   // Filtros que no se ven en los selectores (vienen de un enlace): se muestran como chips que se pueden quitar.
   const extraFilters = Object.entries(filters).filter(
     ([k, v]) => v && !filterFields.some((f) => f.name === k && (f.options ?? []).some((o) => o.value === v)),
@@ -166,11 +166,14 @@ export function ResourcePanel({
           {res.hybrid && <p className="text-sm text-muted">Incluye el catálogo general de EscudoSST (solo lectura) y los registros propios de tu empresa.</p>}
           {res.immutable && <p className="text-sm text-muted">Registro inalterable: una vez guardado no se edita ni se borra.</p>}
         </div>
-        {canCreate && (
-          <Button variant="primary" icon="plus" onClick={() => setEditing("new")}>
-            Nuevo
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {!readOnly && <PanelActions table={res.table} onDone={load} />}
+          {canCreate && (
+            <Button variant="primary" icon="plus" onClick={() => setEditing("new")}>
+              Nuevo
+            </Button>
+          )}
+        </div>
       </div>
 
       <FilterBar
