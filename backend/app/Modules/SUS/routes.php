@@ -10,6 +10,7 @@ use App\Modules\SUS\Http\Controllers\MySubscriptionController;
 use App\Modules\SUS\Http\Controllers\PlanCatalogController;
 use App\Modules\SUS\Http\Controllers\PlanModulesController;
 use App\Modules\SUS\Http\Controllers\PlatformNotificationsController;
+use App\Modules\SUS\Http\Controllers\ProvidersController;
 use App\Modules\SUS\Http\Controllers\SubscriptionsController;
 use Illuminate\Support\Facades\Route;
 
@@ -17,6 +18,10 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'platform'])->prefix('internal')->group(function () {
     // Avisos de la campana del panel
     Route::get('notifications', [PlatformNotificationsController::class, 'index']);
+    // Proveedores y claves (IA, pagos, facturación electrónica, WhatsApp, firma digital): solo el dueño cambia claves.
+    Route::get('providers', [ProvidersController::class, 'index']);
+    Route::put('providers/{code}', [ProvidersController::class, 'update'])->whereIn('code', ['ai', 'payments', 'einvoice', 'whatsapp', 'esign'])->middleware('platform.owner');
+    Route::post('providers/{code}/test', [ProvidersController::class, 'test'])->whereIn('code', ['ai', 'payments', 'einvoice', 'whatsapp', 'esign'])->middleware('throttle:10,1');
     // SCR-SUS-01 · Planes y módulos
     Route::get('plans', [PlanModulesController::class, 'index']);
     Route::patch('plans/{plan}', [PlanCatalogController::class, 'updatePlan'])->where('plan', '[A-Za-z]');
@@ -71,3 +76,6 @@ Route::middleware(['auth:sanctum', 'company'])->group(function () {
     Route::post('me/notifications/read-all', [MySubscriptionController::class, 'readAll']);
     Route::post('me/notifications/{notification}/read', [MySubscriptionController::class, 'read'])->whereUuid('notification');
 });
+
+// Estado de los proveedores para la app de la empresa (avisos de «modo de prueba»).
+Route::middleware(['auth:sanctum'])->get('providers/status', [ProvidersController::class, 'status']);

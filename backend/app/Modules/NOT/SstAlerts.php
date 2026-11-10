@@ -43,6 +43,17 @@ final class SstAlerts
     public function refreshStatuses(ConnectionInterface $db): void
     {
         $db->update("update training_certificates set status = 'expired' where deleted_at is null and status = 'validated' and expires_on < current_date");
+        // EMO periódico (R.M. 312-2011-MINSA): a quien su aptitud vence en 30 días (o no tiene) y su puesto exige EMO,
+        // se le deja una orden «programada» sin fecha para que el área de salud la agende. No se duplica.
+        $db->insert(
+            "insert into medical_exam_orders (company_id, worker_id, exam_type, position_id, protocol_code, status)
+             select w.company_id, w.id, case when f.id is null then 'pre_employment' else 'periodic' end, w.current_position_id, p.emo_protocol_code, 'scheduled'
+               from workers w join positions p on p.id = w.current_position_id and p.requires_emo
+               left join fitness_status f on f.worker_id = w.id and f.is_current and f.deleted_at is null
+              where w.deleted_at is null and w.status = 'active'
+                and (f.id is null or f.valid_until <= current_date + 30)
+                and not exists (select 1 from medical_exam_orders o where o.worker_id = w.id and o.deleted_at is null and o.status in ('scheduled', 'attended', 'results_received'))"
+        );
         foreach ($db->select("select id, credential_type_id, worker_id, contractor_worker_id, expires_on, status from credentials where deleted_at is null and status in ('active','blocked')") as $c) {
             $reasons = \App\Modules\REC\Rules\PeopleRules::credentialReasons($c->credential_type_id, $c->worker_id, $c->contractor_worker_id, $c->expires_on);
             $status = $reasons ? 'blocked' : 'active';

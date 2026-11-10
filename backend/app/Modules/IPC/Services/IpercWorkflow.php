@@ -147,7 +147,7 @@ final class IpercWorkflow
         $v = $this->version($versionId, 'in_review', 'Solo se aprueba una versión en revisión.');
         if ($v->prepared_by === (string) auth()->id()) {
             throw new ApiProblem(409, 'conflict', 'Aprueba otra persona',
-                'Quien elaboró y envió la matriz no puede aprobarla. Debe aprobarla el comité o el supervisor SST (otra persona).');
+                'Quien elaboró y envió la matriz no puede aprobarla. Debe aprobarla el comité o el supervisor SST (otra persona).'.\App\Core\Support\Approvers::hint('ipc.iperc_versions.update'));
         }
         $criteria = $this->eval->criteria($v->risk_criteria_id);
         $issues = $this->issues($versionId, $criteria, $this->rows($versionId), json_decode((string) $v->participants, true) ?? []);

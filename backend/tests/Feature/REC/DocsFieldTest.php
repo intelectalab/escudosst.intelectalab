@@ -21,7 +21,7 @@ it('versiona la política: una sola vigente, la anterior queda obsoleta y no se 
     $id1 = $v1->json('data.id');
     $this->patchJson("/api/v1/records/POL/sst_policies/{$id1}", ['status' => 'current'], $h)->assertStatus(422);
     $this->patchJson("/api/v1/records/POL/sst_policies/{$id1}", ['status' => 'approved'], $h)
-        ->assertStatus(422)->assertJsonPath('errors.status.0', 'Quien elaboró la versión no puede aprobarla: la aprueba otra persona (gerencia, comité o supervisor).');
+        ->assertStatus(422)->assertJsonPath('errors.status.0', fn ($m) => str_starts_with($m, 'Quien elaboró la versión no puede aprobarla: la aprueba otra persona (gerencia, comité o supervisor).'));
     DB::update('update sst_policies set prepared_by = ? where id = ?', ['01900000-0000-7000-8000-000000000301', $id1]);
     $this->patchJson("/api/v1/records/POL/sst_policies/{$id1}", ['status' => 'approved'], $h)->assertOk();
     $this->patchJson("/api/v1/records/POL/sst_policies/{$id1}", ['status' => 'current'], $h)->assertOk()->assertJsonPath('data.status', 'current');

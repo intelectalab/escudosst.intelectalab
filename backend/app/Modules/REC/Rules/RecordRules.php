@@ -91,6 +91,8 @@ abstract class RecordRules
         'sctr_coverages' => AddonRules::class,
         'access_events' => AddonRules::class,
         'vendor_evaluations' => AddonRules::class,
+        'vendor_evaluation_templates' => AddonRules::class,
+        'questions' => AddonRules::class,
         'environmental_aspects' => AddonRules::class,
         'work_adjustments' => AddonRules::class,
         'signature_requests' => AddonRules::class,

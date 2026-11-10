@@ -32,6 +32,8 @@ it('arma el expediente de un trabajador y lo comparte con un enlace que vence y 
     expect($r->json('data.worker.name'))->toBe('Pedro Inspeccionado')
         ->and(collect($r->json('data.items'))->pluck('code')->all())->toContain('W1', 'W3', 'W6', '16');
 
+    $zip = $this->get("/api/v1/sun/dossiers/{$d}/zip", $h)->assertOk();
+    expect($zip->headers->get('content-type'))->toContain('zip');
     $this->postJson("/api/v1/sun/dossiers/{$d}/share", ['days' => 999], $h)->assertStatus(422)->assertJsonValidationErrors('days');
     $share = $this->postJson("/api/v1/sun/dossiers/{$d}/share", ['days' => 5, 'max_views' => 2, 'recipient_name' => 'Inspector'], $h)->assertCreated()->json('data');
     [$company, $token] = array_slice(explode('/', $share['url']), -2);

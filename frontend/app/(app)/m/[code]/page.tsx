@@ -11,6 +11,8 @@ import { ModuleRecords } from "@/components/records/ModuleRecords";
 import { IpercModule } from "@/components/ipc/IpercModule";
 import { Dashboard } from "@/components/dsh/Dashboard";
 import { VmdModule } from "@/components/vmd/VmdModule";
+import { IaaModule } from "@/components/addons/IaaModule";
+import { MyCourses } from "@/components/addons/AulLearner";
 import { CompanyAudit, CompanyUsers } from "@/components/usr/CompanyAdmin";
 
 export default function ModulePage() {
@@ -71,7 +73,9 @@ export default function ModulePage() {
         </div>
       )}
       {header}
-      {m.code === "IPC" ? (
+      {m.code === "IAA" ? (
+        <IaaModule />
+      ) : m.code === "IPC" ? (
         <IpercModule readOnly={m.mode === "read_only"} />
       ) : m.code === "DSH" ? (
         <Dashboard />
@@ -81,6 +85,11 @@ export default function ModulePage() {
         <VmdModule readOnly={m.mode === "read_only"} />
       ) : m.code === "AUD" ? (
         <CompanyAudit />
+      ) : m.code === "AUL" ? (
+        <div className="space-y-5">
+          <MyCourses />
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
       ) : (
         <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
       )}

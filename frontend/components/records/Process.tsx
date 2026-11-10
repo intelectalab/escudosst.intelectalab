@@ -14,6 +14,10 @@ import { FormField } from "@/components/ui/Form";
 import { Modal } from "@/components/ui/Modal";
 import { RefSelect } from "./ModuleRecords";
 import { PsiPanel } from "./PsiPanel";
+import { CriteriaEditor, ScoreForm } from "@/components/addons/HomPanels";
+import { IsoAssess, PseApply } from "@/components/addons/IsoPsePanels";
+import { PayOrder, SellOffer } from "@/components/addons/VtaPanels";
+import { QuestionOptions } from "@/components/addons/AulLearner";
 import { RiskMapEditor } from "./RiskMapEditor";
 
 /** Texto de un filtro que llegó por enlace (chips «Mostrando solo: …»). */
@@ -146,7 +150,14 @@ export function RecordActions({
   if (res.table === "monthly_statistics") return <CloseMonth row={row} onChanged={onChanged} />;
   if (res.table === "inspection_dossiers") return <DossierBuild row={row} onChanged={onChanged} />;
   if (res.table === "api_clients") return <ApiSecret row={row} canEdit={res.can.update} onChanged={onChanged} />;
+  if (res.table === "webhooks") return <WebhookSecret row={row} />;
   if (res.table === "report_points") return <ReportPointQr row={row} />;
+  if (res.table === "vendor_evaluation_templates") return <CriteriaEditor row={row} canEdit={res.can.update} onChanged={onChanged} />;
+  if (res.table === "vendor_evaluations") return <ScoreForm row={row} canEdit={res.can.update} onChanged={onChanged} />;
+  if (res.table === "course_offers") return <SellOffer row={row} onChanged={onChanged} />;
+  if (res.table === "questions") return <QuestionOptions row={row} canEdit={res.can.update} onChanged={onChanged} />;
+  if (res.table === "course_enrollments") return <Link href={`/aula/${row.id}`} className="inline-block rounded-lg border border-line px-3 py-1.5 text-sm font-semibold text-brand hover:border-brand">Abrir el curso de esta matrícula</Link>;
+  if (res.table === "orders" && row.status === "pending") return <PayOrder id={row.id} label={`Pedido ${String(row.order_number ?? "")}`} onChanged={onChanged} />;
   if (res.table === "dossier_share_links") return <ShareLinkRevoke row={row} onChanged={onChanged} />;
   if (res.table === "training_certificates")
     return (
@@ -830,6 +841,8 @@ export function PanelActions({ table, onDone }: { table: string; onDone: () => v
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   if (table === "register_exports") return <RegisterDownload onDone={onDone} />;
+  if (table === "iso_evidences") return <IsoAssess onDone={onDone} />;
+  if (table === "company_sector_packs") return <PseApply onDone={onDone} />;
   if (table !== "monthly_statistics") return null;
   const run = async () => {
     setBusy(true);
@@ -1258,7 +1271,10 @@ function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => voi
     <section className="space-y-3 rounded-xl border border-line p-4 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span>Revisa con los datos reales de la empresa si cada documento y registro clave existe y está vigente en el periodo.</span>
-        <Button variant="primary" loading={busy} onClick={build}>{items ? "Volver a armar" : "Armar expediente"}</Button>
+        <span className="flex gap-2">
+          {canShare && <Button variant="secondary" icon="download" onClick={() => downloadFile(`/sun/dossiers/${row.id}/zip`, `expediente-${row.id}.zip`).catch((e: ApiError) => setMsg(e.detail ?? e.title))}>Descargar ZIP</Button>}
+          <Button variant="primary" loading={busy} onClick={build}>{items ? "Volver a armar" : "Armar expediente"}</Button>
+        </span>
       </div>
       <div className="max-w-md">
         <FormField label="Trabajador inspeccionado (opcional)" hint="Agrega su inducción, capacitaciones, aptitud médica, EPP, RISST, IPERC de su puesto y fotocheck.">
@@ -1325,6 +1341,19 @@ function ShareLinkRevoke({ row, onChanged }: { row: RecordRow; onChanged: () => 
 
 // ─────────────── API: secreto del cliente (una sola vez) ───────────────
 
+function WebhookSecret({ row }: { row: RecordRow }) {
+  const [secret, setSecret] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  return (
+    <section className="space-y-2 rounded-xl border border-line px-4 py-3 text-sm">
+      <p>Cada envío llega firmado: la cabecera <code>X-EscudoSST-Signature</code> es <code>sha256=</code> + HMAC-SHA256 del cuerpo con el secreto. Eventos: event.created, action.created, action.verified, inspection.completed, report.received. Se reintenta hasta 6 veces.</p>
+      {secret ? <p className="rounded-lg bg-amber-soft px-3 py-2 text-amber-ink">Secreto de firma: <code className="select-all break-all">{secret}</code></p>
+        : <Button size="sm" onClick={() => api<{ data: { secret: string } }>(`/webhooks/${row.id}/secret`, { method: "POST", withCompany: true }).then((r) => setSecret(r.data.secret)).catch((e: ApiError) => setMsg(e.detail ?? e.title))}>Ver secreto de firma</Button>}
+      {msg && <p className="text-bad">{msg}</p>}
+    </section>
+  );
+}
+
 function ApiSecret({ row, canEdit, onChanged }: { row: RecordRow; canEdit: boolean; onChanged: () => void }) {
   const [secret, setSecret] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -1333,6 +1362,10 @@ function ApiSecret({ row, canEdit, onChanged }: { row: RecordRow; canEdit: boole
     <section className="space-y-2 rounded-xl border border-line px-4 py-3 text-sm">
       <p>
         Clave pública: <code className="rounded bg-bg px-1">{String(row.client_key ?? "")}</code>. El secreto se muestra una sola vez (10 minutos después de crear el cliente).
+      </p>
+      <p className="rounded-lg bg-bg px-3 py-2 text-xs">
+        Para consultar: <code>GET {(process.env.NEXT_PUBLIC_API_URL ?? "")}/api/v1/ext/v1/workers</code> (también <code>events</code>, <code>actions</code>, <code>inspections</code>, <code>trainings</code>; opcional <code>?updated_since=</code>) con las cabeceras
+        <code> X-Company-Id: {String(row.company_id ?? "")}</code>, <code>X-Api-Key</code> (la clave pública) y <code>X-Api-Secret</code> (el secreto). Solo lectura; sin datos de salud.
       </p>
       {secret ? (
         <p className="rounded-lg bg-amber-soft px-3 py-2 text-amber-ink">

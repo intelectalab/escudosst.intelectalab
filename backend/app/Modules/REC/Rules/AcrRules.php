@@ -153,7 +153,7 @@ class AcrRules extends RecordRules
                 $workerUser = $current->responsible_worker_id
                     ? DB::selectOne('select user_id from workers where id = ?', [$current->responsible_worker_id])?->user_id : null;
                 if (in_array((string) auth()->id(), [(string) $current->responsible_user_id, (string) $workerUser], true)) {
-                    $this->fail('status', 'El responsable no puede verificar su propia acción: la verifica el área SST u otra persona.');
+                    $this->fail('status', 'El responsable no puede verificar su propia acción: la verifica el área SST u otra persona.'.\App\Core\Support\Approvers::hint('acr.corrective_actions.verify'));
                 }
                 $eff = $this->value($values, $current, 'effectiveness');
                 if (! in_array($eff, ['effective', 'not_effective'], true)) {

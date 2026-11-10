@@ -192,3 +192,13 @@ Artisan::command('escudo:sst-alerts', function (\App\Modules\NOT\SstAlerts $aler
 })->purpose('Genera las alertas SST del día en la campana de cada empresa');
 
 Schedule::command('escudo:sst-alerts')->dailyAt('07:00')->timezone('America/Lima')->withoutOverlapping()->name('escudo:sst-alerts');
+
+/*
+| Webhooks del complemento API: envía los eventos pendientes firmados y reintenta los fallidos.
+| Uso: php artisan escudo:webhooks
+*/
+Artisan::command('escudo:webhooks', function (\App\Modules\SUS\Services\AccountsService $accounts) {
+    $this->info('Envíos: '.\App\Modules\API\Webhooks::dispatch($accounts));
+})->purpose('Envía los webhooks pendientes de las empresas con el complemento API');
+
+Schedule::command('escudo:webhooks')->everyMinute()->withoutOverlapping()->name('escudo:webhooks');

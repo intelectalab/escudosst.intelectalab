@@ -38,13 +38,13 @@ it('la cotización llega al correo con el plan y los complementos elegidos', fun
     $form['ruc'] = '20100070970';
 
     $this->postJson('/api/v1/public/demo-requests', ['addon_codes' => ['NOEXISTE']] + $form)->assertStatus(422)->assertJsonValidationErrors('addon_codes.0');
-    $this->postJson('/api/v1/public/demo-requests', ['interest_plan_code' => 'P', 'addon_codes' => ['IAA', 'OFF']] + $form)->assertCreated();
+    $this->postJson('/api/v1/public/demo-requests', ['interest_plan_code' => 'P', 'addon_codes' => ['IAA', 'ISO']] + $form)->assertCreated();
 
     Mail::assertSent(SiteRequestMail::class, function ($m) {
         $labels = array_column($m->rows, 0);
 
         return $m->hasTo('rosa@prueba.test') && $m->title === 'Tu cotización de EscudoSST'
-            && in_array('Plan Profesional', $labels, true) && in_array('Asistente IA', $labels, true) && in_array('App móvil offline', $labels, true);
+            && in_array('Plan Profesional', $labels, true) && in_array('Asistente IA', $labels, true) && in_array('Sistema integrado ISO', $labels, true);
     });
 });
 

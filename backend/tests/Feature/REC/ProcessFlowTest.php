@@ -83,7 +83,7 @@ it('sigue el ciclo de la acción correctiva hasta cerrar el hallazgo y la inspec
     $this->getJson("/api/v1/records/ACR/corrective_actions/{$action}", pf())->assertJsonPath('data.status', 'in_progress');
     $this->patchJson("/api/v1/records/ACR/corrective_actions/{$action}", ['status' => 'pending_verification'], pf())->assertOk();
     $this->patchJson("/api/v1/records/ACR/corrective_actions/{$action}", ['status' => 'verified', 'effectiveness' => 'effective'], pf())
-        ->assertStatus(422)->assertJsonPath('errors.status.0', 'El responsable no puede verificar su propia acción: la verifica el área SST u otra persona.');
+        ->assertStatus(422)->assertJsonPath('errors.status.0', fn ($m) => str_starts_with($m, 'El responsable no puede verificar su propia acción: la verifica el área SST u otra persona.'));
 
     // Otra persona como responsable → ahora sí se verifica (eficaz) y el origen se cierra.
     DB::update('update corrective_actions set responsible_user_id = ? where id = ?', ['01900000-0000-7000-8000-000000000301', $action]);

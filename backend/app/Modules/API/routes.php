@@ -19,3 +19,19 @@ Route::middleware(['auth:sanctum', 'company', 'module:API'])->prefix('api-client
         return response()->json(['data' => ['secret' => $secret]]);
     })->whereUuid('id');
 });
+
+// Webhooks: ver el secreto de firma (para validar la firma en el sistema que recibe).
+Route::middleware(['auth:sanctum', 'company', 'module:API'])->post('webhooks/{id}/secret', function (string $id) {
+    if (! in_array('api.webhooks.update', Permissions::effective(), true)) {
+        throw ApiProblem::forbidden();
+    }
+    $w = \Illuminate\Support\Str::isUuid($id) ? \Illuminate\Support\Facades\DB::selectOne('select secret from webhooks where id = ? and deleted_at is null', [$id]) : null;
+    if (! $w) {
+        throw ApiProblem::notFound('El webhook no existe o es de otra empresa.');
+    }
+
+    return response()->json(['data' => ['secret' => \App\Modules\API\Webhooks::secret($w->secret)]]);
+})->whereUuid('id');
+
+// API de solo lectura para integraciones (con clave, secreto y el ID de la empresa).
+Route::get('ext/v1/{resource}', [\App\Modules\API\ExternalApiController::class, 'index'])->where('resource', '[a-z_]{3,30}');

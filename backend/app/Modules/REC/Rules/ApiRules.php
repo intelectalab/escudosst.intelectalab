@@ -38,7 +38,7 @@ class ApiRules extends RecordRules
                 $this->fail('target_url', 'La dirección debe empezar con https://');
             }
             if ($op === 'create') {
-                $extra['secret'] = ['?', ['whsec_'.Str::random(32)]];
+                $extra['secret'] = ['?', [\Illuminate\Support\Facades\Crypt::encryptString('whsec_'.Str::random(32))]];   // cifrado (lo lee «Ver secreto»)
                 $values['event_codes'] ??= [];
             }
         }

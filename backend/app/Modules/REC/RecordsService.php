@@ -149,6 +149,7 @@ final class RecordsService
 
         $rules?->after('create', $res, $id, $values, null);
         $this->audit($res, 'create', $id, $this->auditable($res, $values));
+        \App\Modules\API\Webhooks::queue($res['table'], 'create', $id, $values);
 
         return $this->find($res, $id, decrypt: true);
     }
@@ -183,6 +184,7 @@ final class RecordsService
 
         $rules?->after('update', $res, $id, $values, $current);
         $this->audit($res, 'update', $id, $this->diff($res, $values, $current));
+        \App\Modules\API\Webhooks::queue($res['table'], 'update', $id, $values);
 
         return $this->find($res, $id, decrypt: true);
     }

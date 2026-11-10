@@ -24,6 +24,9 @@ class AddonRules extends RecordRules
             'sctr_coverages' => $this->coverage($values, $current),
             'access_events' => $this->access($values, $extra),
             'vendor_evaluations' => $this->vendor($values, $current, $extra),
+            'vendor_evaluation_templates' => $current === null ? $extra['criteria'] = ["'[]'::jsonb", []] : null,
+            // Pregunta nueva: alternativas vacías; se completan con «Alternativas» (editor del aula virtual).
+            'questions' => $current === null ? $extra[($values['question_type'] ?? '') === 'short_answer' ? 'accepted_answers' : 'options'] = ["'[]'::jsonb", []] : null,
             'environmental_aspects' => $this->aspect($values, $current, $extra),
             'work_adjustments' => ($values['status'] ?? null) === 'active' ? $extra['approved_by'] = ['?', [(string) auth()->id()]] : null,
             'signature_requests' => $this->signature($op, $values, $current, $extra),
@@ -124,6 +127,9 @@ class AddonRules extends RecordRules
 
     private function vendor(array &$values, ?object $current, array &$extra): void
     {
+        if ($current === null) {
+            $extra['scores'] = ["'{}'::jsonb", []];   // se califican después con «Calificar»
+        }
         $scores = $this->value($values, $current, 'scores');
         if (is_string($scores)) {
             $scores = json_decode($scores, true);

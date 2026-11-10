@@ -243,7 +243,7 @@ class PeopleRules extends RecordRules
             $this->fail('observations', 'Para levantar la suspensión indica qué se corrigió.');
         }
         if ($to === 'accredited' && $current && (string) $current->reviewed_by === (string) auth()->id() && $current->status === 'observed') {
-            $this->fail('status', 'Tú registraste las observaciones: otra persona del área SST debe aprobar la acreditación (separación de funciones).');
+            $this->fail('status', 'Tú registraste las observaciones: otra persona del área SST debe aprobar la acreditación (separación de funciones).'.\App\Core\Support\Approvers::hint('ctr.contractor_accreditations.update'));
         }
         if ($to === 'accredited' && $current) {
             $missing = DB::select(
@@ -399,7 +399,7 @@ class PeopleRules extends RecordRules
                 $this->fail('status', 'Faltan verificaciones previas: '.implode('; ', array_slice($missing, 0, 4)).(count($missing) > 4 ? '…' : '').'.');
             }
             if ((string) $current->requested_by === (string) auth()->id()) {
-                $this->fail('status', 'Quien solicita el permiso no lo aprueba: lo aprueban los responsables de «Aprobaciones».');
+                $this->fail('status', 'Quien solicita el permiso no lo aprueba: lo aprueban los responsables de «Aprobaciones».'.\App\Core\Support\Approvers::hint('ptr.work_permits.update'));
             }
             if (! DB::selectOne("select 1 as ok from permit_approvals where work_permit_id = ? and decision = 'approved' and deleted_at is null", [$current->id])) {
                 $this->fail('status', 'El permiso no tiene ninguna aprobación registrada.');

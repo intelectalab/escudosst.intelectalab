@@ -20865,8 +20865,7 @@
      "name": "criteria",
      "label": "Criterios",
      "type": "json",
-     "readonly": true,
-     "required": true
+     "readonly": true
     },
     {
      "name": "passing_score",
@@ -20960,8 +20959,7 @@
      "name": "scores",
      "label": "Puntajes",
      "type": "json",
-     "readonly": true,
-     "required": true
+     "readonly": true
     },
     {
      "name": "total_score",

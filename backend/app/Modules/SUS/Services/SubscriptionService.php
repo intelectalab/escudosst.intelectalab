@@ -103,9 +103,12 @@ class SubscriptionService
 
         $addons = [];
         foreach (array_unique(array_map(Str::upper(...), $addonCodes)) as $code) {
-            $addon = $this->db()->selectOne('select id, code, name from addons where code = ? and is_active and deleted_at is null', [$code]);
+            $addon = $this->db()->selectOne('select id, code, name, available_in_v1 from addons where code = ? and is_active and deleted_at is null', [$code]);
             if (! $addon) {
                 throw $this->validation('addons', "El complemento {$code} no existe o no está activo.");
+            }
+            if (! $addon->available_in_v1) {
+                throw $this->validation('addons', "{$addon->name} aún no está disponible (Próximamente): no se puede vender todavía.");
             }
             if ($this->activeAddon($sub->id, $addon->id)) {
                 throw $this->validation('addons', "La empresa ya tiene {$addon->name}.");

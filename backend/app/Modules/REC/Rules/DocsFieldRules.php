@@ -145,6 +145,9 @@ class DocsFieldRules extends RecordRules
             if (in_array($t, ['sst_policies', 'risst_versions', 'procedure_versions'], true)) {
                 $extra['prepared_by'] = ['?', [(string) auth()->id()]];
             }
+            if ($t === 'document_versions') {
+                $extra['submitted_by'] = ['?', [(string) auth()->id()]];   // autor desde el inicio: no se aprueba a sí mismo
+            }
 
             return;
         }
@@ -158,10 +161,15 @@ class DocsFieldRules extends RecordRules
         if (! in_array($to, self::VFLOW[$current->status] ?? [], true)) {
             $this->fail('status', 'Ese cambio de estado no está permitido.');
         }
+        if (in_array($to, ['in_review', 'approved', 'current'], true) && $t !== 'risk_maps'
+            && trim(strip_tags((string) $this->value($values, $current, 'content_html'))) === '' && ! $this->value($values, $current, 'file_id')) {
+            $this->fail('status', 'La versión está vacía: escribe su contenido o adjunta el documento antes de enviarla o aprobarla.');
+        }
         if ($to === 'approved') {
             $author = $current->prepared_by ?? $current->submitted_by ?? null;
             if ($author && $author === (string) auth()->id()) {
-                $this->fail('status', 'Quien elaboró la versión no puede aprobarla: la aprueba otra persona (gerencia, comité o supervisor).');
+                $perm = strtolower((string) (\App\Modules\REC\Registry::data()['resources'][$t]['module'] ?? 'doc')).".{$t}.update";
+                $this->fail('status', 'Quien elaboró la versión no puede aprobarla: la aprueba otra persona (gerencia, comité o supervisor).'.\App\Core\Support\Approvers::hint($perm));
             }
             if ($t === 'risst_versions') {
                 $model = DB::selectOne('select sst_model from companies where id = ?', [$current->company_id])?->sst_model;
