@@ -9,6 +9,7 @@ import { useApp } from "@/components/AppContext";
 import { availableIn, PLAN_NAMES } from "@/lib/menu";
 import { ModuleRecords } from "@/components/records/ModuleRecords";
 import { IpercModule } from "@/components/ipc/IpercModule";
+import { Dashboard } from "@/components/dsh/Dashboard";
 
 export default function ModulePage() {
   const { code } = useParams<{ code: string }>();
@@ -68,7 +69,13 @@ export default function ModulePage() {
         </div>
       )}
       {header}
-      {m.code === "IPC" ? <IpercModule readOnly={m.mode === "read_only"} /> : <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />}
+      {m.code === "IPC" ? (
+        <IpercModule readOnly={m.mode === "read_only"} />
+      ) : m.code === "DSH" ? (
+        <Dashboard />
+      ) : (
+        <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+      )}
     </div>
   );
 }
