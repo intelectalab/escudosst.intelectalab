@@ -1,13 +1,14 @@
 "use client";
 
 // Venta de cursos (VTA): vender una oferta a una persona o a una empresa (cupos) y cobrar el pedido.
-// Sin pasarela configurada, el cobro se simula («Simular pago aprobado») y el pedido queda marcado como prueba.
+// El pago se registra a mano (Yape, Plin, transferencia, depósito o efectivo, con su número de operación); con la pasarela
+// configurada en Proveedores y claves, el pago en línea se confirma solo.
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/lib/api";
 import type { RecordRow } from "@/lib/records";
-import { TestModeBanner, useProviders } from "./TestModeBanner";
+import { useProviders } from "./TestModeBanner";
 
 const errText = (e: unknown) => Object.values((e as ApiError).errors ?? {})[0]?.[0] ?? (e as ApiError).detail ?? (e as ApiError).title;
 
@@ -28,7 +29,6 @@ export function SellOffer({ row, onChanged }: { row: RecordRow; onChanged: () =>
   );
   return (
     <section className="space-y-3 rounded-xl border border-line px-4 py-3 text-sm">
-      <TestModeBanner code="payments" />
       <p className="font-semibold">Vender esta oferta</p>
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-xs">Comprador
@@ -49,21 +49,32 @@ export function SellOffer({ row, onChanged }: { row: RecordRow; onChanged: () =>
 
 export function PayOrder({ id, label, onChanged }: { id: string; label?: string; onChanged: () => void }) {
   const providers = useProviders();
+  const [f, setF] = useState({ method: "yape", reference: "", paid_on: new Date().toISOString().slice(0, 10) });
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const live = providers?.payments?.live;
   const pay = () =>
-    api<{ data: { delivered: { type: string; code?: string; seats?: number; learner?: string }[] } }>(`/vta/orders/${id}/pay`, { method: "POST", withCompany: true })
+    api<{ data: { delivered: { type: string; code?: string; seats?: number; learner?: string }[] } }>(`/vta/orders/${id}/pay`, { method: "POST", withCompany: true, body: f })
       .then((r) => {
         const d = r.data.delivered.map((x) => (x.type === "license" ? `licencia ${x.code} con ${x.seats} cupos` : `${x.learner} matriculado`)).join("; ");
-        setMsg({ text: `Pago de prueba aprobado: ${d}.`, ok: true });
+        setMsg({ text: `Pago registrado: ${d}.`, ok: true });
         onChanged();
       })
       .catch((e) => setMsg({ text: errText(e), ok: false }));
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-bg px-3 py-2">
-      <span>{label ?? "Pedido pendiente de pago"}</span>
-      {live ? <span className="text-xs text-muted">El cliente paga con el enlace del proveedor de pagos.</span> : <Button size="sm" variant="secondary" onClick={pay}>Simular pago aprobado</Button>}
-      {msg && <p className={`w-full ${msg.ok ? "text-ok" : "text-bad"}`}>{msg.text}</p>}
+    <div className="space-y-2 rounded-lg bg-bg px-3 py-2 text-sm">
+      <p className="font-semibold">{label ?? "Pedido pendiente de pago"}</p>
+      {live && <p className="text-xs text-muted">La pasarela está activa: si el cliente pagó en línea, el pedido se confirma solo. Si pagó por Yape, Plin o transferencia, regístralo aquí.</p>}
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs">Cómo pagó
+          <select className="input mt-1 !w-36" value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })}>
+            <option value="yape">Yape</option><option value="plin">Plin</option><option value="transfer">Transferencia</option><option value="deposit">Depósito</option><option value="cash">Efectivo</option>
+          </select>
+        </label>
+        {f.method !== "cash" && <label className="text-xs">N.° de operación<input className="input mt-1 !w-40" value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} /></label>}
+        <label className="text-xs">Fecha<input type="date" className="input mt-1 !w-40" value={f.paid_on} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setF({ ...f, paid_on: e.target.value })} /></label>
+        <Button size="sm" variant="primary" onClick={pay}>Registrar pago</Button>
+      </div>
+      {msg && <p className={msg.ok ? "text-ok" : "text-bad"}>{msg.text}</p>}
     </div>
   );
 }

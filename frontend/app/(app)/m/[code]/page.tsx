@@ -13,6 +13,7 @@ import { Dashboard } from "@/components/dsh/Dashboard";
 import { VmdModule } from "@/components/vmd/VmdModule";
 import { IaaModule } from "@/components/addons/IaaModule";
 import { MyCourses } from "@/components/addons/AulLearner";
+import { WhiteLabelPanel } from "@/components/addons/WhiteLabel";
 import { CompanyAudit, CompanyUsers } from "@/components/usr/CompanyAdmin";
 
 export default function ModulePage() {
@@ -89,6 +90,11 @@ export default function ModulePage() {
         <VmdModule readOnly={m.mode === "read_only"} />
       ) : m.code === "AUD" ? (
         <CompanyAudit />
+      ) : m.code === "CON" ? (
+        <div className="space-y-5">
+          <WhiteLabelPanel />
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
       ) : m.code === "AUL" ? (
         <div className="space-y-5">
           <MyCourses />

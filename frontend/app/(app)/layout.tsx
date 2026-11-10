@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AppBrand } from "@/components/AppBrand";
+import { CompanyBrand } from "@/components/addons/WhiteLabel";
 import { AppContext, type AppState } from "@/components/AppContext";
 import { HelpButton } from "@/components/HelpButton";
 import { ProductUpdatesButton } from "@/components/ProductUpdatesButton";
@@ -131,7 +131,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <aside className="hidden md:flex w-72 shrink-0 flex-col bg-side text-white/90 sticky top-0 h-screen">
           <div className="p-5 border-b border-white/10">
             <Link href="/inicio">
-              <AppBrand light />
+              <CompanyBrand companyId={state.company.company_id} />
             </Link>
           </div>
           {nav}
@@ -143,7 +143,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <button className="absolute inset-0 bg-black/40" aria-label="Cerrar menú" onClick={() => setDrawer(false)} />
             <aside className="relative flex h-full w-72 flex-col bg-side text-white/90">
               <div className="flex items-center justify-between p-5 border-b border-white/10">
-                <AppBrand light />
+                <CompanyBrand companyId={state.company.company_id} />
                 <button onClick={() => setDrawer(false)} aria-label="Cerrar menú" className="text-xl">
                   ✕
                 </button>

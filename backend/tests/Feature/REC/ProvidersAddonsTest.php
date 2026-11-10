@@ -94,7 +94,7 @@ it('ISO evalúa las cláusulas con los datos de los módulos y PSE aplica el paq
     $this->postJson("/api/v1/pse/packs/{$pack['id']}/apply", [], $h)->assertStatus(409);
 });
 
-it('venta de cursos en modo de prueba: pedido, pago simulado, matrícula de la persona y licencia de la empresa', function () {
+it('venta de cursos con pago manual: pedido, pago con número de operación, matrícula de la persona y licencia de la empresa', function () {
     $h = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
     $course = $this->postJson('/api/v1/records/AUL/courses', ['code' => 'RF-ALT', 'title' => 'Trabajo en altura (virtual)'], $h)->assertCreated()->json('data.id');
     $offer = $this->postJson('/api/v1/records/VTA/course_offers', ['course_id' => $course, 'slug' => 'altura-rf', 'title' => 'Trabajo en altura', 'list_price' => 118, 'status' => 'published'], $h)
@@ -104,12 +104,14 @@ it('venta de cursos en modo de prueba: pedido, pago simulado, matrícula de la p
     $o = $this->postJson('/api/v1/vta/sell', ['course_offer_id' => $offer, 'buyer_type' => 'person', 'document_type' => 'DNI', 'document_number' => '70707070',
         'first_name' => 'Rosa', 'last_name' => 'Vargas', 'email' => 'rosa.rf@example.com'], $h)->assertCreated()->json('data');
     expect((float) $o['total'])->toBe(118.0)->and((float) $o['igv'])->toBe(18.0);
-    $this->postJson("/api/v1/vta/orders/{$o['id']}/pay", [], $h)->assertOk()->assertJsonPath('data.test_mode', true)->assertJsonPath('data.delivered.0.type', 'enrollment');
-    $this->postJson("/api/v1/vta/orders/{$o['id']}/pay", [], $h)->assertStatus(409);
+    $this->postJson("/api/v1/vta/orders/{$o['id']}/pay", ['method' => 'yape'], $h)->assertStatus(422)->assertJsonValidationErrors('reference');
+    $this->postJson("/api/v1/vta/orders/{$o['id']}/pay", ['method' => 'yape', 'reference' => '0012345'], $h)->assertOk()->assertJsonPath('data.manual', true)->assertJsonPath('data.delivered.0.type', 'enrollment');
+    $this->postJson("/api/v1/vta/orders/{$o['id']}/pay", ['method' => 'yape', 'reference' => '0012345'], $h)->assertStatus(409);
 
     $c = $this->postJson('/api/v1/vta/sell', ['course_offer_id' => $offer, 'buyer_type' => 'company', 'document_type' => 'RUC', 'document_number' => '20512345678',
         'legal_name' => 'Constructora Cliente SAC', 'ruc' => '20512345678', 'email' => 'compras@example.com', 'seats' => 5], $h)->assertCreated()->json('data');
-    $this->postJson("/api/v1/vta/orders/{$c['id']}/pay", [], $h)->assertOk()->assertJsonPath('data.delivered.0.type', 'license')->assertJsonPath('data.delivered.0.seats', 5);
+    $this->postJson("/api/v1/vta/orders/{$c['id']}/pay", ['method' => 'yape', 'reference' => '0012345'], $h)->assertStatus(422);
+    $this->postJson("/api/v1/vta/orders/{$c['id']}/pay", ['method' => 'transfer', 'reference' => 'BCP-778899'], $h)->assertOk()->assertJsonPath('data.delivered.0.type', 'license')->assertJsonPath('data.delivered.0.seats', 5);
 });
 
 it('API: lectura con clave, secreto y empresa; webhook encolado al registrar un evento', function () {
@@ -155,4 +157,18 @@ it('aula virtual: lección vista, examen con nota y curso completado', function 
         ->assertJsonPath('data.enrollment.certificate.code', fn ($c) => str_starts_with($c, 'CERT-'));
     // El certificado queda en Capacitaciones con su código verificable.
     expect($this->getJson('/api/v1/records/CAP/training_certificates?f[worker_id]='.$w, $h)->json('meta.total'))->toBe(1);
+});
+
+it('marca blanca: la empresa ve la marca activa de su cuenta; solo el administrador de la consultora la configura', function () {
+    $h = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
+    $this->getJson('/api/v1/brand', $h)->assertOk()->assertJsonPath('data', null);
+    $db = \Illuminate\Support\Facades\DB::connection('platform');
+    $db->beginTransaction();
+    try {
+        $account = $db->selectOne('select account_id from companies where id = ?', [HUAYLAS_ID])->account_id;
+        $db->insert("insert into white_label_settings (account_id, brand_name, primary_color, show_powered_by, status) values (?, 'Consultora RF', '#AA2200', true, 'active')", [$account]);
+        $this->getJson('/api/v1/brand', $h)->assertOk()->assertJsonPath('data.brand_name', 'Consultora RF')->assertJsonPath('data.primary_color', '#AA2200');
+    } finally {
+        $db->rollBack();
+    }
 });

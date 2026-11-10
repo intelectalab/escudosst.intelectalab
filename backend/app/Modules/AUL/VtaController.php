@@ -15,8 +15,8 @@ use Illuminate\Support\Str;
 /**
  * Venta de cursos (VTA), registrada por la empresa vendedora:
  *  POST /vta/sell                 pedido de una oferta para una persona (1 matrícula) o una empresa (cupos)
- *  POST /vta/orders/{id}/pay      cobrar: con pasarela configurada se cobra en línea; en modo de prueba se simula el pago
- *                                 aprobado (sin cobro real, marcado en el pedido)
+ *  POST /vta/orders/{id}/pay      registrar el pago manual {method: yape|plin|transfer|deposit|cash, reference, paid_on}
+ *                                 (con la pasarela configurada en Proveedores y claves, el pago en línea se confirma solo)
  * Al pagarse: persona → participante externo matriculado en el curso; empresa → licencia con sus cupos para asignar.
  * El precio incluye IGV (18 %, parámetro igv_rate).
  */
@@ -92,13 +92,21 @@ class VtaController extends Controller
         if ($order->status !== 'pending') {
             throw new ApiProblem(409, 'conflict', 'Pedido cerrado', 'El pedido ya no está pendiente de pago.');
         }
-        if (Providers::live('payments')) {
-            throw new ApiProblem(409, 'conflict', 'Cobro en línea', 'La pasarela está activa: el cliente paga con el enlace de pago del proveedor y el pedido se confirma solo al recibir el pago.');
+        $p = $request->validate([
+            'method' => ['required', 'in:yape,plin,transfer,deposit,cash'],
+            'reference' => ['required_unless:method,cash', 'nullable', 'string', 'min:3', 'max:60'],
+            'paid_on' => ['nullable', 'date', 'before_or_equal:today'],
+        ], ['method.required' => 'Elige cómo pagó.', 'reference.required_unless' => 'Escribe el número de operación del pago.']);
+        $labels = ['yape' => 'Yape', 'plin' => 'Plin', 'transfer' => 'Transferencia', 'deposit' => 'Depósito', 'cash' => 'Efectivo'];
+        $note = 'Pago manual: '.$labels[$p['method']].(! empty($p['reference']) ? ' · operación '.$p['reference'] : '').' · '.date('d/m/Y', strtotime($p['paid_on'] ?? 'today'))
+            .' · registrado por '.(DB::selectOne('select full_name from users where id = ?', [(string) auth()->id()])?->full_name ?? '');
+        if (! empty($p['reference']) && DB::selectOne("select 1 as ok from orders where status = 'paid' and notes ilike ? and deleted_at is null", ['%operación '.$p['reference'].'%'])) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Ese número de operación ya se registró en otro pedido.', ['errors' => ['reference' => ['Ese número de operación ya se registró en otro pedido.']]]);
         }
         $ctx = app(CompanyContext::class)->companyId;
-        $result = DB::transaction(function () use ($order, $ctx) {
-            DB::update("update orders set status = 'paid', paid_at = now(), notes = concat_ws(' ', notes, 'PAGO DE PRUEBA: simulado en modo de prueba, sin cobro real.'), updated_by = ? where id = ?",
-                [(string) auth()->id(), $order->id]);
+        $result = DB::transaction(function () use ($order, $ctx, $note, $p) {
+            DB::update("update orders set status = 'paid', paid_at = ?::date + (now()::time), notes = concat_ws(' ', notes, ?::text), updated_by = ? where id = ?",
+                [$p['paid_on'] ?? date('Y-m-d'), $note, (string) auth()->id(), $order->id]);
             $out = [];
             foreach (DB::select('select i.*, o.access_days from order_items i join course_offers o on o.id = i.course_offer_id where i.order_id = ? and i.deleted_at is null', [$order->id]) as $it) {
                 DB::update('update course_offers set seats_sold = seats_sold + ? where id = ?', [$it->quantity, $it->course_offer_id]);
@@ -127,7 +135,7 @@ class VtaController extends Controller
             return $out;
         });
 
-        return response()->json(['data' => ['status' => 'paid', 'test_mode' => true, 'delivered' => $result]]);
+        return response()->json(['data' => ['status' => 'paid', 'manual' => true, 'delivered' => $result]]);
     }
 
     /** Participante externo por su documento (se reutiliza si ya existe). */
