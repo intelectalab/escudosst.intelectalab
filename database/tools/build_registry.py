@@ -54,7 +54,15 @@ READONLY = {"areas.depth", "workers.document_last4", "workers.activated_at", "wo
             "ppe_deliveries.delivered_by", "ppe_stock_movements.ppe_delivery_id",
             # LBA / MRL: puntajes y aprobación los calcula el sistema.
             "baseline_items.score", "baseline_assessments.total_items", "baseline_assessments.compliant_items", "baseline_assessments.score_pct",
-            "baseline_assessments.approved_by", "baseline_assessments.approved_at", "baseline_gaps.closed_at"}
+            "baseline_assessments.approved_by", "baseline_assessments.approved_at", "baseline_gaps.closed_at",
+            # Documentos con versiones y registros de campo.
+            "sst_policies.version_number", "sst_policies.prepared_by", "sst_policies.approved_by", "sst_policies.approved_at", "sst_policies.published_at",
+            "sst_policies.obsoleted_at", "risst_versions.version_number", "risst_versions.prepared_by", "risst_versions.approved_by", "risst_versions.approved_at",
+            "risst_versions.obsoleted_at", "procedure_versions.version_number", "procedure_versions.prepared_by", "procedure_versions.approved_by",
+            "procedure_versions.approved_at", "procedure_versions.obsoleted_at", "procedures.current_version_id", "documents.current_version_id",
+            "document_versions.version_number", "document_versions.submitted_by", "document_versions.submitted_at", "document_versions.approved_by",
+            "document_versions.approved_at", "document_versions.obsoleted_at", "substandard_reports.triaged_by", "substandard_reports.triaged_at",
+            "substandard_reports.closed_at", "substandard_reports.reporter_user_id", "objective_targets.achievement_pct"}
 # Columnas de la lista elegidas a mano donde las automáticas no dicen lo importante.
 LIST = {
     "monthly_statistics": ["period_year", "period_month", "site_id", "hours_worked", "frequency_index", "severity_index", "accident_rate_index", "is_closed"],
@@ -71,7 +79,8 @@ COMPUTED = {"work_shifts.hours_per_day", "areas.depth", "iperc_rows.probability_
             "sst_events.code", "sst_events.reported_at", "investigations.code", "investigations.started_on", "committee_meetings.number",
             "meeting_agreements.number", "ppe_deliveries.delivered_at", "ppe_stock_movements.moved_at",
             "requirement_evaluations.evaluated_on", "requirement_evaluations.evaluator_user_id", "requirement_evaluations.next_evaluation_on",
-            "baseline_assessments.assessment_on"}
+            "baseline_assessments.assessment_on", "substandard_reports.code", "substandard_reports.reported_at", "substandard_reports.origin",
+            "ats_forms.code", "drills.code", "risst_deliveries.delivered_on", "document_acknowledgements.acknowledged_at"}
 LONG_TEXT = re.compile(r"(^|_)(description|notes|note|comment|comments|summary|functions|observations|content|body|"
                        r"details|detail|justification|reason|instructions|scope|recommendations|conclusions|text|"
                        r"statement|commitments|methodology|findings|lessons|answer|explanation|purpose)$")

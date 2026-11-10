@@ -578,7 +578,8 @@ final class RecordsService
     {
         foreach ($res['uniques'] as $cols) {
             $fields = array_map(fn ($c) => Registry::field($res, $c), $cols);
-            if (in_array(null, $fields, true) || array_filter($fields, fn ($f) => in_array($f['type'], ['bool', 'json', 'tags'], true) || ! empty($f['encrypted']))) {
+            // Los únicos con estado o sí/no suelen ser índices parciales (p. ej. «una sola vigente»): los valida la base.
+            if (in_array(null, $fields, true) || array_filter($fields, fn ($f) => in_array($f['type'], ['bool', 'json', 'tags'], true) || ! empty($f['encrypted']) || $f['name'] === 'status')) {
                 continue;
             }
             if (! array_filter($cols, fn ($c) => array_key_exists($c, $values))) {

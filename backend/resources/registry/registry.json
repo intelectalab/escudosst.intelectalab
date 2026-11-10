@@ -1381,6 +1381,7 @@
     {
      "name": "current_version_id",
      "label": "Versión vigente",
+     "readonly": true,
      "type": "ref",
      "ref": "document_versions"
     },
@@ -1461,6 +1462,7 @@
     {
      "name": "version_number",
      "label": "N.º de versión",
+     "readonly": true,
      "type": "int",
      "required": true
     },
@@ -1512,12 +1514,14 @@
     {
      "name": "submitted_by",
      "label": "Enviado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "submitted_at",
      "label": "Enviado el",
+     "readonly": true,
      "type": "datetime",
      "list": true
     },
@@ -1535,12 +1539,14 @@
     {
      "name": "approved_by",
      "label": "Aprobado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "approved_at",
      "label": "Aprobado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
@@ -1556,6 +1562,7 @@
     {
      "name": "obsoleted_at",
      "label": "Obsoleto desde",
+     "readonly": true,
      "type": "datetime"
     },
     {
@@ -2785,6 +2792,7 @@
     {
      "name": "version_number",
      "label": "N.º de versión",
+     "readonly": true,
      "type": "int",
      "required": true
     },
@@ -2832,18 +2840,21 @@
     {
      "name": "prepared_by",
      "label": "Elaborado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "approved_by",
      "label": "Aprobado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "approved_at",
      "label": "Aprobado el",
+     "readonly": true,
      "type": "datetime",
      "list": true
     },
@@ -2860,6 +2871,7 @@
     {
      "name": "published_at",
      "label": "Publicado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
@@ -2871,6 +2883,7 @@
     {
      "name": "obsoleted_at",
      "label": "Obsoleto desde",
+     "readonly": true,
      "type": "datetime"
     }
    ]
@@ -3033,6 +3046,7 @@
     {
      "name": "achievement_pct",
      "label": "Logro (%)",
+     "readonly": true,
      "type": "number"
     },
     {
@@ -4200,6 +4214,7 @@
     {
      "name": "version_number",
      "label": "N.º de versión",
+     "readonly": true,
      "type": "int",
      "required": true
     },
@@ -4252,6 +4267,7 @@
     {
      "name": "prepared_by",
      "label": "Elaborado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
@@ -4264,12 +4280,14 @@
     {
      "name": "approved_by",
      "label": "Aprobado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "approved_at",
      "label": "Aprobado el",
+     "readonly": true,
      "type": "datetime",
      "list": true
     },
@@ -4281,6 +4299,7 @@
     {
      "name": "obsoleted_at",
      "label": "Obsoleto desde",
+     "readonly": true,
      "type": "datetime"
     }
    ]
@@ -7227,6 +7246,7 @@
     {
      "name": "current_version_id",
      "label": "Versión vigente",
+     "readonly": true,
      "type": "ref",
      "ref": "procedure_versions"
     },
@@ -7287,6 +7307,7 @@
     {
      "name": "version_number",
      "label": "N.º de versión",
+     "readonly": true,
      "type": "int",
      "required": true
     },
@@ -7345,6 +7366,7 @@
     {
      "name": "prepared_by",
      "label": "Elaborado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
@@ -7357,12 +7379,14 @@
     {
      "name": "approved_by",
      "label": "Aprobado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "approved_at",
      "label": "Aprobado el",
+     "readonly": true,
      "type": "datetime",
      "list": true
     },
@@ -7374,6 +7398,7 @@
     {
      "name": "obsoleted_at",
      "label": "Obsoleto desde",
+     "readonly": true,
      "type": "datetime"
     }
    ]
@@ -8505,8 +8530,7 @@
        "value": "web",
        "label": "Web"
       }
-     ],
-     "required": true
+     ]
     },
     {
      "name": "report_point_id",
@@ -8580,6 +8604,7 @@
     {
      "name": "reporter_user_id",
      "label": "Reportante (usuario)",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
@@ -8654,12 +8679,14 @@
     {
      "name": "triaged_by",
      "label": "Evaluado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "triaged_at",
      "label": "Evaluado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
@@ -8682,6 +8709,7 @@
     {
      "name": "closed_at",
      "label": "Cerrado el",
+     "readonly": true,
      "type": "datetime"
     }
    ]

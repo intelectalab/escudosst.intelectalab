@@ -56,6 +56,9 @@ export function lockedReason(table: string, row: RecordRow): string | null {
   if (table === "committee_meetings" && st === "minutes_signed") return "Acta firmada: la sesión no se modifica.";
   if (table === "ppe_deliveries") return st === "delivered" ? null : "Entrega cerrada: queda como registro.";
   if ((table === "annual_programs" || table === "training_programs") && st === "closed") return "Programa cerrado.";
+  if (["sst_policies", "risst_versions", "procedure_versions", "document_versions"].includes(table) && ["current", "obsolete"].includes(st))
+    return st === "current" ? "Versión vigente: no se edita. Para cambiarla, crea una nueva versión." : "Versión obsoleta: queda como historial.";
+  if (table === "ats_forms" && ["closed", "cancelled"].includes(st)) return "ATS cerrado.";
   return null;
 }
 
@@ -129,9 +132,9 @@ export function RecordActions({
   if (res.table === "corrective_actions") return <CorrectiveFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "inspections") return <InspectionRun row={row} onChanged={onChanged} />;
   if (ACTION_SOURCES[res.table]) return <FindingAction table={res.table} row={row} onChanged={onChanged} />;
-  if (res.table === "sst_events") return <EventDeadline row={row} />;
   if (res.table === "baseline_assessments") return <BaselineFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "monthly_statistics") return <CloseMonth row={row} onChanged={onChanged} />;
+  if (STEPS[res.table]) return <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "event_notifications") return <NotifyNow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "committee_meetings") return <MeetingFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "annual_programs" || res.table === "training_programs")
@@ -829,5 +832,117 @@ function CloseMonth({ row, onChanged }: { row: RecordRow; onChanged: () => void 
       </Button>
       {msg && <p role="alert" className="w-full text-bad">{msg}</p>}
     </section>
+  );
+}
+
+
+// ─────────────── Pasos por estado (documentos con versiones y registros de campo) ───────────────
+
+type Step = { from: string[]; label: string; body: Record<string, unknown>; primary?: boolean; ask?: string };
+
+const VERSION_STEPS: Step[] = [
+  { from: ["draft"], label: "Enviar a revisión", body: { status: "in_review" } },
+  { from: ["draft", "in_review"], label: "Aprobar", body: { status: "approved" }, primary: true },
+  { from: ["in_review", "approved"], label: "Devolver a borrador", body: { status: "draft" } },
+  { from: ["approved"], label: "Poner vigente", body: { status: "current" }, primary: true },
+];
+
+/** Por tabla: el texto que explica el ciclo y los botones disponibles en cada estado. */
+const STEPS: Record<string, { help: string; steps: Step[] }> = {
+  sst_policies: { help: "Borrador → revisión → aprobada (por otra persona) → vigente. Al ponerla vigente, la anterior queda obsoleta.", steps: VERSION_STEPS },
+  risst_versions: { help: "Con Comité, la aprobación pide la sesión. Al ponerla vigente se entrega a los trabajadores desde «Entregas».", steps: VERSION_STEPS },
+  procedure_versions: { help: "La versión vigente queda como la actual del procedimiento.", steps: VERSION_STEPS },
+  document_versions: { help: "La versión vigente queda como la actual del documento; los trabajadores toman conocimiento de ella.", steps: VERSION_STEPS },
+  substandard_reports: {
+    help: "Recibido → revisado (con nivel de riesgo) → acción asignada o descartado (con motivo) → cerrado.",
+    steps: [
+      { from: ["received"], label: "Marcar revisado", body: { status: "triaged" }, primary: true },
+      { from: ["received", "triaged"], label: "Descartar", body: { status: "rejected" }, ask: "rejection_reason" },
+      { from: ["action_assigned", "triaged"], label: "Cerrar", body: { status: "closed" } },
+    ],
+  },
+  safety_talks: {
+    help: "Registra la asistencia en «Asistencias» y luego márcala como realizada.",
+    steps: [{ from: ["scheduled"], label: "Marcar realizada", body: { status: "held" }, primary: true }],
+  },
+  ats_forms: {
+    help: "Completa pasos (peligros y controles) y participantes; luego firma, ejecuta y cierra.",
+    steps: [
+      { from: ["draft"], label: "Firmar ATS", body: { status: "signed" }, primary: true },
+      { from: ["signed"], label: "Iniciar trabajo", body: { status: "in_execution" }, primary: true },
+      { from: ["in_execution"], label: "Cerrar ATS", body: { status: "closed" } },
+    ],
+  },
+  drills: {
+    help: "Planificado → ejecutado → evaluado (con resultado). Si está vinculado a una actividad del PASST, su ejecución se registra sola.",
+    steps: [
+      { from: ["planned"], label: "Marcar ejecutado", body: { status: "executed" }, primary: true },
+      { from: ["executed"], label: "Evaluar: satisfactorio", body: { status: "evaluated", result: "satisfactory" }, primary: true },
+      { from: ["executed"], label: "Evaluar: por mejorar", body: { status: "evaluated", result: "needs_improvement" } },
+    ],
+  },
+  investigations: {
+    help: "Registra las causas y sus acciones; apruébala y ciérrala cuando las acciones estén verificadas.",
+    steps: [
+      { from: ["open", "analysis", "committee_review"], label: "Aprobar investigación", body: { status: "approved" }, primary: true },
+      { from: ["approved", "actions_in_progress"], label: "Cerrar investigación", body: { status: "closed" } },
+    ],
+  },
+  sst_events: {
+    help: "El evento se cierra cuando su investigación está cerrada, tiene afectados y no quedan notificaciones pendientes.",
+    steps: [
+      { from: ["reported", "registered", "notified", "under_investigation"], label: "Cerrar evento", body: { status: "closed" }, primary: true },
+      { from: ["reported", "registered"], label: "Descartar", body: { status: "discarded" }, ask: "discarded_reason" },
+    ],
+  },
+  committees: {
+    help: "Para activarlo, los titulares deben ser pares y mitad por cada lado.",
+    steps: [{ from: ["forming"], label: "Activar comité", body: { status: "active" }, primary: true }],
+  },
+};
+
+function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; table: string; row: RecordRow; canEdit: boolean; onChanged: () => void }) {
+  const cfg = STEPS[table];
+  const st = String(row.status ?? "");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [asking, setAsking] = useState<Step | null>(null);
+  const [text, setText] = useState("");
+  const options = cfg.steps.filter((x) => x.from.includes(st));
+  const run = (x: Step, extra: Record<string, unknown> = {}) =>
+    records
+      .update(code, table, row.id, { ...x.body, ...extra })
+      .then(() => {
+        setAsking(null);
+        setText("");
+        setMsg(null);
+        onChanged();
+      })
+      .catch((e: ApiError) => setMsg(Object.values(e.errors ?? {})[0]?.[0] ?? e.detail ?? e.title));
+  // La sección EventDeadline del evento se muestra junto a los pasos.
+  return (
+    <>
+      {table === "sst_events" && <EventDeadline row={row} />}
+      <section className="space-y-2 rounded-xl border border-line px-4 py-3 text-sm">
+        <p className="text-muted">{cfg.help}</p>
+        {canEdit && options.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {options.map((x) => (
+              <Button key={x.label} variant={x.primary ? "primary" : "secondary"} onClick={() => (x.ask ? setAsking(x) : run(x))}>
+                {x.label}
+              </Button>
+            ))}
+          </div>
+        )}
+        {asking && (
+          <div className="flex flex-wrap gap-2">
+            <input autoFocus className="input flex-1" placeholder="Motivo" aria-label="Motivo" value={text} onChange={(e) => setText(e.target.value)} />
+            <Button variant="danger" disabled={!text.trim()} onClick={() => run(asking, { [asking.ask!]: text })}>
+              {asking.label}
+            </Button>
+          </div>
+        )}
+        {msg && <p role="alert" className="rounded-lg bg-bad-soft px-3 py-2 text-bad">{msg}</p>}
+      </section>
+    </>
   );
 }

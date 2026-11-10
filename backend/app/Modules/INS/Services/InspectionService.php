@@ -123,6 +123,7 @@ final class InspectionService
         DB::update("update inspections set status = 'completed', score_pct = ?, completed_at = now(), started_at = coalesce(started_at, now()),
                     summary = coalesce(?, summary), updated_by = ? where id = ?", [$score, $summary ? mb_substr($summary, 0, 4000) : null, (string) auth()->id(), $id]);
         $this->audit('finish', $id, ['score_pct' => $score, 'findings' => $created, 'critical' => $critical]);
+        \App\Modules\REC\Rules\DocsFieldRules::programExecutionFor('inspections', $id, 'INS');
 
         return ['score_pct' => $score, 'findings_created' => $created, 'critical' => $critical];
     }

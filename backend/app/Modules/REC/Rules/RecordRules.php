@@ -49,6 +49,18 @@ abstract class RecordRules
         'legal_requirements' => DiagnosticRules::class,
         'requirement_evaluations' => DiagnosticRules::class,
         'monthly_statistics' => DiagnosticRules::class,
+        'sst_policies' => DocsFieldRules::class,
+        'risst_versions' => DocsFieldRules::class,
+        'procedure_versions' => DocsFieldRules::class,
+        'document_versions' => DocsFieldRules::class,
+        'substandard_reports' => DocsFieldRules::class,
+        'safety_talks' => DocsFieldRules::class,
+        'ats_forms' => DocsFieldRules::class,
+        'drills' => DocsFieldRules::class,
+        'objective_targets' => DocsFieldRules::class,
+        'risst_deliveries' => DocsFieldRules::class,
+        'document_acknowledgements' => DocsFieldRules::class,
+        'equipment_checks' => DocsFieldRules::class,
     ];
 
     public static function for(string $table): ?self

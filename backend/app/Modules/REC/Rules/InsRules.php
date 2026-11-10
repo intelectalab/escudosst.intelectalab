@@ -45,4 +45,11 @@ class InsRules extends RecordRules
             $extra['completed_at'] = ['now()', []];
         }
     }
+
+    public function after(string $op, array $res, string $id, array $values, ?object $current): void
+    {
+        if ($res['table'] === 'inspections' && ($values['status'] ?? null) === 'completed') {
+            DocsFieldRules::programExecutionFor('inspections', $id, 'INS');
+        }
+    }
 }
