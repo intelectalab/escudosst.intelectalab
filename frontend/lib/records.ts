@@ -126,3 +126,25 @@ export function recordsHref(module: string, table: string, opts: { filters?: Rec
   if (opts.open) q.set("open", opts.open);
   return `/m/${module.toLowerCase()}?${q}`;
 }
+
+/** Descarga un archivo de la API (Excel, PDF) con la sesión y la empresa activas. */
+export async function downloadFile(path: string, filename: string) {
+  const { session } = await import("./session");
+  const { API_URL, ApiError } = await import("./api");
+  const headers: Record<string, string> = { Accept: "*/*" };
+  const token = session.getToken();
+  const company = session.getCompanyId();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (company) headers["X-Company-Id"] = company;
+  const res = await fetch(`${API_URL}/api/v1${path}`, { headers });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, data.type ?? "error", data.title ?? "Error", data.detail);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}

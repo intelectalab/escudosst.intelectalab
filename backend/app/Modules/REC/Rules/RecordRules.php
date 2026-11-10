@@ -61,6 +61,13 @@ abstract class RecordRules
         'risst_deliveries' => DocsFieldRules::class,
         'document_acknowledgements' => DocsFieldRules::class,
         'equipment_checks' => DocsFieldRules::class,
+        'annual_plans' => ImprovementRules::class,
+        'annual_plan_items' => ImprovementRules::class,
+        'audits' => ImprovementRules::class,
+        'management_reviews' => ImprovementRules::class,
+        'measurements' => ImprovementRules::class,
+        'change_requests' => ImprovementRules::class,
+        'change_reviews' => ImprovementRules::class,
     ];
 
     public static function for(string $table): ?self

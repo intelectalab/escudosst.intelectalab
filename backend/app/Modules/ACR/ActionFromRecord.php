@@ -27,6 +27,11 @@ class ActionFromRecord extends Controller
         'baseline_gaps' => ['baseline', 'id', null],
         'substandard_reports' => ['report', 'id', 'action_assigned'],
         'requirement_evaluations' => ['legal_requirement', 'legal_requirement_id', null],
+        'audit_findings' => ['audit', 'id', 'action_assigned'],
+        'management_review_outputs' => ['management_review', 'review_id', 'in_progress'],
+        'measurements' => ['monitoring', 'id', null],
+        'behavior_observations' => ['observation', 'id', null],
+        'change_requests' => ['change', 'id', null],
     ];
 
     public function __invoke(Request $request, string $table, string $id): JsonResponse

@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { recordsHref, traceOf, type RecordResource, type RecordRow, type TraceGroup, type TraceNode, records } from "@/lib/records";
+import { downloadFile, recordsHref, traceOf, type RecordResource, type RecordRow, type TraceGroup, type TraceNode, records } from "@/lib/records";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/Form";
 import { Modal } from "@/components/ui/Modal";
@@ -445,6 +445,11 @@ const ACTION_SOURCES: Record<string, string> = {
   baseline_gaps: "Esta brecha",
   substandard_reports: "Este reporte",
   requirement_evaluations: "Esta evaluación",
+  audit_findings: "Este hallazgo de auditoría",
+  management_review_outputs: "Esta salida de la revisión",
+  measurements: "Esta medición",
+  behavior_observations: "Esta observación",
+  change_requests: "Este cambio",
 };
 
 function FindingAction({ table, row, onChanged }: { table: string; row: RecordRow; onChanged: () => void }) {
@@ -736,7 +741,7 @@ function MeetingFlow({ row, canEdit, onChanged }: { row: RecordRow; canEdit: boo
 
 
 /** Tablas cuyos registros los crea un flujo (no el botón «Nuevo»). */
-export const NO_CREATE = new Set(["monthly_statistics", "training_certificates", "iperc_versions", "event_notifications", "investigations"]);
+export const NO_CREATE = new Set(["monthly_statistics", "training_certificates", "iperc_versions", "event_notifications", "investigations", "register_exports"]);
 
 /** Acciones de la lista completa (arriba, junto a «Nuevo»). */
 export function PanelActions({ table, onDone }: { table: string; onDone: () => void }) {
@@ -744,6 +749,7 @@ export function PanelActions({ table, onDone }: { table: string; onDone: () => v
   const [period, setPeriod] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  if (table === "register_exports") return <RegisterDownload onDone={onDone} />;
   if (table !== "monthly_statistics") return null;
   const run = async () => {
     setBusy(true);
@@ -895,6 +901,42 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
       { from: ["reported", "registered"], label: "Descartar", body: { status: "discarded" }, ask: "discarded_reason" },
     ],
   },
+  annual_plans: {
+    help: "Borrador → revisión → aprobado (con la sesión del comité si la empresa lo tiene) → vigente → cerrado. Aprobado, sus ítems no cambian.",
+    steps: [
+      { from: ["draft"], label: "Enviar a revisión", body: { status: "in_review" } },
+      { from: ["draft", "in_review"], label: "Aprobar", body: { status: "approved" }, primary: true },
+      { from: ["approved"], label: "Poner vigente", body: { status: "current" }, primary: true },
+      { from: ["current"], label: "Cerrar plan", body: { status: "closed" } },
+    ],
+  },
+  audits: {
+    help: "Registra los hallazgos y sus acciones; complétala con conclusiones y ciérrala cuando los hallazgos estén atendidos.",
+    steps: [
+      { from: ["planned"], label: "Iniciar auditoría", body: { status: "in_progress" }, primary: true },
+      { from: ["in_progress", "report_draft"], label: "Completar", body: { status: "completed" }, primary: true },
+      { from: ["completed"], label: "Cerrar", body: { status: "closed" } },
+    ],
+  },
+  management_reviews: {
+    help: "Registra entradas, conclusiones y salidas (decisiones); cada salida puede generar su acción correctiva.",
+    steps: [
+      { from: ["planned"], label: "Iniciar", body: { status: "in_progress" }, primary: true },
+      { from: ["in_progress"], label: "Completar", body: { status: "completed" }, primary: true },
+      { from: ["completed"], label: "Cerrar", body: { status: "closed" } },
+    ],
+  },
+  change_requests: {
+    help: "Borrador → enviado → en revisión → aprobado (con una revisión que lo apruebe) → implementado (con su evaluación de riesgos) → cerrado.",
+    steps: [
+      { from: ["draft"], label: "Enviar", body: { status: "submitted" }, primary: true },
+      { from: ["submitted"], label: "Pasar a revisión", body: { status: "under_review" } },
+      { from: ["under_review"], label: "Aprobar", body: { status: "approved" }, primary: true },
+      { from: ["under_review"], label: "Rechazar", body: { status: "rejected" } },
+      { from: ["approved"], label: "Marcar implementado", body: { status: "implemented" }, primary: true },
+      { from: ["implemented"], label: "Cerrar", body: { status: "closed" } },
+    ],
+  },
   committees: {
     help: "Para activarlo, los titulares deben ser pares y mitad por cada lado.",
     steps: [{ from: ["forming"], label: "Activar comité", body: { status: "active" }, primary: true }],
@@ -944,5 +986,66 @@ function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; t
         {msg && <p role="alert" className="rounded-lg bg-bad-soft px-3 py-2 text-bad">{msg}</p>}
       </section>
     </>
+  );
+}
+
+
+// ─────────────── REG: descargar un registro obligatorio ───────────────
+
+const REGISTERS: [string, string][] = [
+  ["accidents", "Accidentes de trabajo"],
+  ["occupational_diseases", "Enfermedades ocupacionales"],
+  ["incidents", "Incidentes peligrosos e incidentes"],
+  ["emo", "Exámenes médicos (aptitud)"],
+  ["monitoring", "Monitoreo de agentes"],
+  ["inspections", "Inspecciones internas"],
+  ["statistics", "Estadísticas de SST"],
+  ["emergency_equipment", "Equipos de seguridad o emergencia"],
+  ["training", "Inducción, capacitación y simulacros"],
+  ["audits", "Auditorías"],
+];
+
+function RegisterDownload({ onDone }: { onDone: () => void }) {
+  const y = new Date().getFullYear();
+  const [type, setType] = useState("accidents");
+  const [from, setFrom] = useState(`${y}-01-01`);
+  const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await downloadFile(`/reg/${type}.xlsx?from=${from}&to=${to}`, `registro-${type}-${from}-${to}.xlsx`);
+      onDone();
+    } catch (e) {
+      setMsg((e as ApiError).detail ?? (e as ApiError).title);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+        Registro
+        <select className="input !h-10" value={type} onChange={(e) => setType(e.target.value)}>
+          {REGISTERS.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+        Desde
+        <input className="input !h-10" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+        Hasta
+        <input className="input !h-10" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+      </label>
+      <Button variant="primary" icon="download" loading={busy} onClick={run}>Descargar Excel</Button>
+      {msg && <span className="text-sm text-bad">{msg}</span>}
+    </div>
   );
 }

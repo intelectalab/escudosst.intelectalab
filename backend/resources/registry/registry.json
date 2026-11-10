@@ -3490,12 +3490,14 @@
     {
      "name": "approved_by",
      "label": "Aprobado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "approved_at",
      "label": "Aprobado el",
+     "readonly": true,
      "type": "datetime",
      "list": true
     }
@@ -6810,12 +6812,12 @@
        "label": "No evaluable"
       }
      ],
-     "required": true,
      "list": true
     },
     {
      "name": "corrective_action_id",
      "label": "Acción correctiva",
+     "readonly": true,
      "type": "ref",
      "ref": "corrective_actions"
     },
@@ -7424,7 +7426,6 @@
      "name": "code",
      "label": "Código",
      "type": "text",
-     "required": true,
      "list": true
     },
     {
@@ -7576,11 +7577,13 @@
     {
      "name": "decision_at",
      "label": "Fecha de decisión",
+     "readonly": true,
      "type": "datetime"
     },
     {
      "name": "implemented_at",
      "label": "Implementado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
@@ -18248,6 +18251,7 @@
     {
      "name": "corrective_action_id",
      "label": "Acción correctiva",
+     "readonly": true,
      "type": "ref",
      "ref": "corrective_actions"
     },
@@ -18592,12 +18596,14 @@
     {
      "name": "approved_by",
      "label": "Aprobado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "approved_at",
      "label": "Aprobado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
@@ -18702,6 +18708,7 @@
     {
      "name": "corrective_action_id",
      "label": "Acción correctiva",
+     "readonly": true,
      "type": "ref",
      "ref": "corrective_actions"
     },

@@ -62,7 +62,10 @@ READONLY = {"areas.depth", "workers.document_last4", "workers.activated_at", "wo
             "procedure_versions.approved_at", "procedure_versions.obsoleted_at", "procedures.current_version_id", "documents.current_version_id",
             "document_versions.version_number", "document_versions.submitted_by", "document_versions.submitted_at", "document_versions.approved_by",
             "document_versions.approved_at", "document_versions.obsoleted_at", "substandard_reports.triaged_by", "substandard_reports.triaged_at",
-            "substandard_reports.closed_at", "substandard_reports.reporter_user_id", "objective_targets.achievement_pct"}
+            "substandard_reports.closed_at", "substandard_reports.reporter_user_id", "objective_targets.achievement_pct",
+            "annual_plans.approved_by", "annual_plans.approved_at", "management_reviews.approved_by", "management_reviews.approved_at",
+            "audit_findings.corrective_action_id", "management_review_outputs.corrective_action_id", "measurements.corrective_action_id",
+            "change_requests.decision_at", "change_requests.implemented_at"}
 # Columnas de la lista elegidas a mano donde las automáticas no dicen lo importante.
 LIST = {
     "monthly_statistics": ["period_year", "period_month", "site_id", "hours_worked", "frequency_index", "severity_index", "accident_rate_index", "is_closed"],
@@ -75,12 +78,13 @@ LIST = {
 WRITABLE_JSON = {"iperc_rows.probability_detail", "iperc_versions.participants"}
 # Obligatorios en la base pero que calcula una regla si no se envían.
 COMPUTED = {"work_shifts.hours_per_day", "areas.depth", "iperc_rows.probability_value",
-            "iperc_rows.hazard", "iperc_rows.risk", "corrective_actions.code", "inspections.code", "trainings.code",
+            "iperc_rows.hazard", "iperc_rows.risk", "measurements.result", "corrective_actions.code", "inspections.code", "trainings.code",
             "sst_events.code", "sst_events.reported_at", "investigations.code", "investigations.started_on", "committee_meetings.number",
             "meeting_agreements.number", "ppe_deliveries.delivered_at", "ppe_stock_movements.moved_at",
             "requirement_evaluations.evaluated_on", "requirement_evaluations.evaluator_user_id", "requirement_evaluations.next_evaluation_on",
             "baseline_assessments.assessment_on", "substandard_reports.code", "substandard_reports.reported_at", "substandard_reports.origin",
-            "ats_forms.code", "drills.code", "risst_deliveries.delivered_on", "document_acknowledgements.acknowledged_at"}
+            "ats_forms.code", "drills.code", "risst_deliveries.delivered_on", "document_acknowledgements.acknowledged_at",
+            "audits.code", "change_requests.code", "change_requests.requested_on", "change_reviews.reviewed_at"}
 LONG_TEXT = re.compile(r"(^|_)(description|notes|note|comment|comments|summary|functions|observations|content|body|"
                        r"details|detail|justification|reason|instructions|scope|recommendations|conclusions|text|"
                        r"statement|commitments|methodology|findings|lessons|answer|explanation|purpose)$")
