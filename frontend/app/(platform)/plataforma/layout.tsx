@@ -38,6 +38,7 @@ const SECTIONS: { title: string; items: Item[] }[] = [
       { href: "/plataforma/planes", label: "Planes y módulos", icon: "tag", ready: true },
       { href: "/plataforma/catalogos", label: "Catálogos globales", icon: "box", ready: true },
       { href: "/plataforma/proveedores", label: "Proveedores y claves", icon: "plug", ready: true },
+      { href: "/plataforma/asistente", label: "Asistente IA", icon: "sparkle", ready: true },
       { href: "/plataforma/sitio", label: "Sitio web", icon: "globe", ready: true },
     ],
   },

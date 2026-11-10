@@ -30,7 +30,7 @@ afterEach(function () {
 it('el panel guarda proveedores sin devolver las claves y exige claves para pasar a «en vivo»', function () {
     $h = authHeaders(tokenFor(ADMIN_EMAIL));
     $list = $this->getJson('/api/v1/internal/providers', $h)->assertOk()->json('data');
-    expect(collect($list)->pluck('code')->all())->toBe(['ai', 'payments', 'einvoice', 'whatsapp', 'esign']);
+    expect(collect($list)->pluck('code')->all())->toBe(['payments', 'einvoice', 'whatsapp', 'esign']);
 
     $this->putJson('/api/v1/internal/providers/payments', ['provider' => 'culqi', 'mode' => 'live', 'settings' => [], 'secrets' => []], $h)
         ->assertStatus(422)->assertJsonValidationErrors('mode');
@@ -41,16 +41,33 @@ it('el panel guarda proveedores sin devolver las claves y exige claves para pasa
 
     // La app de la empresa solo ve si está en prueba.
     $s = $this->getJson('/api/v1/providers/status', authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID))->assertOk()->json('data');
-    expect($s['payments']['live'])->toBeFalse()->and($s['ai'])->toHaveKey('test_note');
+    expect($s['payments']['live'])->toBeFalse()->and($s['payments'])->toHaveKey('test_note');
 });
 
-it('el asistente IA sin proveedor sugiere desde la biblioteca y no acepta datos de salud', function () {
+it('el asistente IA responde con la biblioteca que entrena el equipo, anota lo que no sabe y no acepta datos de salud', function () {
     $h = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
     $r = $this->postJson('/api/v1/iaa/suggest', ['feature' => 'controls', 'text' => 'Trabajo en altura sobre andamio'], $h)->assertOk();
-    expect($r->json('data.mode'))->toBe('test')->and($r->json('data.items'))->not->toBeEmpty()
+    expect($r->json('data.topic'))->toBe('Trabajo en altura')->and($r->json('data.items'))->not->toBeEmpty()
         ->and(collect($r->json('data.items'))->pluck('group')->implode(' '))->toContain('Ingeniería');
     $this->postJson('/api/v1/iaa/suggest', ['feature' => 'causes', 'text' => 'El trabajador tiene diabetes y se cayó'], $h)->assertStatus(422);
     $this->postJson('/api/v1/iaa/suggest', ['feature' => 'talk', 'text' => 'Orden y limpieza'], $h)->assertOk()->assertJsonCount(4, 'data.items');
+
+    // Sin tema: guía general y la pregunta queda para enseñarle; el equipo agrega el tema y ya responde.
+    $this->postJson('/api/v1/iaa/suggest', ['feature' => 'controls', 'text' => 'Soldadura en taller'], $h)->assertOk()->assertJsonPath('data.topic', null);
+    expect(\Illuminate\Support\Facades\DB::selectOne("select times from assistant_misses where feature = 'controls' and question = 'soldadura en taller'"))->not->toBeNull();
+
+    // El equipo le enseña desde el panel (se prueba con «Probar»; la transacción se revierte).
+    $db = \Illuminate\Support\Facades\DB::connection('platform');
+    $db->beginTransaction();
+    try {
+        $admin = authHeaders(tokenFor(ADMIN_EMAIL));
+        $this->postJson('/api/v1/internal/assistant/topics', ['feature' => 'controls', 'title' => 'Soldadura', 'keywords' => ['soldadura', 'soldar'],
+            'items' => [['group' => 'Ingeniería', 'title' => 'Extracción de humos', 'detail' => 'Extractor localizado']]], $admin)->assertCreated();
+        $this->postJson('/api/v1/internal/assistant/try', ['feature' => 'controls', 'text' => 'Soldadura en taller'], $admin)->assertOk()->assertJsonPath('data.topic', 'Soldadura');
+        expect(collect($this->getJson('/api/v1/internal/assistant', $admin)->json('data.topics'))->pluck('title')->all())->toContain('Soldadura', 'Trabajo en altura');
+    } finally {
+        $db->rollBack();
+    }
 });
 
 it('homologación: criterios que suman 100 y puntaje ponderado con resultado', function () {

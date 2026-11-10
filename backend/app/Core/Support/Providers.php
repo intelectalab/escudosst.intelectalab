@@ -13,9 +13,6 @@ final class Providers
 {
     /** Qué se configura de cada uno: [nombre, proveedores posibles, campos visibles, campos secretos, para qué sirve, qué pasa en modo de prueba]. */
     public const CATALOG = [
-        'ai' => ['Inteligencia artificial', ['anthropic' => 'Anthropic (Claude)', 'openai' => 'OpenAI', 'other' => 'Otro'], ['model' => 'Modelo'], ['api_key' => 'Clave de la API'],
-            'Asistente IA: sugiere controles del IPERC, causas de una investigación y redacta textos.',
-            'Sugiere desde el catálogo de EscudoSST (sin IA) y lo marca como «sugerencia de prueba».'],
         'payments' => ['Pagos en línea', ['culqi' => 'Culqi', 'niubiz' => 'Niubiz', 'izipay' => 'Izipay', 'mercadopago' => 'Mercado Pago', 'other' => 'Otro'],
             ['public_key' => 'Clave pública', 'merchant_id' => 'Código de comercio'], ['secret_key' => 'Clave secreta'],
             'Venta de cursos (VTA) y, más adelante, pago de la suscripción con tarjeta.',

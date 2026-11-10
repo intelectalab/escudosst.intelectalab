@@ -33,12 +33,16 @@ export default function ModulePage() {
   }
 
   const header = (
-    <div className="space-y-1">
-      <p className="text-sm text-muted">
-        {m.number} · {m.code}
-      </p>
-      <h1 className="text-2xl font-semibold">{m.name}</h1>
-      {m.solves && <p className="text-muted">{m.solves}</p>}
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#0d3b6e] to-[#1f7fd1] px-5 py-5 text-white shadow-md sm:px-7">
+      <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" aria-hidden="true" />
+      <div className="relative flex items-center gap-4">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/15 font-display text-sm font-bold ring-1 ring-white/25">{m.code}</span>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wider text-white/70">Módulo {m.number}</p>
+          <h1 className="font-display text-2xl font-bold leading-tight">{m.name}</h1>
+          {m.solves && <p className="mt-0.5 text-sm text-white/80">{m.solves}</p>}
+        </div>
+      </div>
     </div>
   );
 

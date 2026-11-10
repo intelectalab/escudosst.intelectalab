@@ -20,8 +20,8 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal')->group(funct
     Route::get('notifications', [PlatformNotificationsController::class, 'index']);
     // Proveedores y claves (IA, pagos, facturación electrónica, WhatsApp, firma digital): solo el dueño cambia claves.
     Route::get('providers', [ProvidersController::class, 'index']);
-    Route::put('providers/{code}', [ProvidersController::class, 'update'])->whereIn('code', ['ai', 'payments', 'einvoice', 'whatsapp', 'esign'])->middleware('platform.owner');
-    Route::post('providers/{code}/test', [ProvidersController::class, 'test'])->whereIn('code', ['ai', 'payments', 'einvoice', 'whatsapp', 'esign'])->middleware('throttle:10,1');
+    Route::put('providers/{code}', [ProvidersController::class, 'update'])->whereIn('code', ['payments', 'einvoice', 'whatsapp', 'esign'])->middleware('platform.owner');
+    Route::post('providers/{code}/test', [ProvidersController::class, 'test'])->whereIn('code', ['payments', 'einvoice', 'whatsapp', 'esign'])->middleware('throttle:10,1');
     // SCR-SUS-01 · Planes y módulos
     Route::get('plans', [PlanModulesController::class, 'index']);
     Route::patch('plans/{plan}', [PlanCatalogController::class, 'updatePlan'])->where('plan', '[A-Za-z]');

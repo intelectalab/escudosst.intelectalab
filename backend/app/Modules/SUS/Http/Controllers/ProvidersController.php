@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
 /**
- * Panel › Proveedores y claves: IA, pagos, facturación electrónica, WhatsApp y firma digital.
+ * Panel › Proveedores y claves: pagos, facturación electrónica, WhatsApp y firma digital.
  *  GET  /internal/providers               lo configurado (las claves nunca se devuelven: solo sus últimos 4 caracteres)
  *  PUT  /internal/providers/{code}        {provider, mode, settings{}, secrets{}} (un secreto vacío conserva el anterior)
  *  POST /internal/providers/{code}/test   prueba la conexión cuando es posible (IA)

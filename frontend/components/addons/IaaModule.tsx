@@ -1,13 +1,12 @@
 "use client";
 
 // Asistente IA (complemento IAA): controles para un peligro, guía de causas de un accidente y guion de charla de 5 minutos.
-// Son propuestas: la persona revisa y decide qué usar. Sin proveedor de IA trabaja con la biblioteca de EscudoSST.
+// Son propuestas: la persona revisa y decide qué usar. Responde con la biblioteca que entrena el equipo de EscudoSST.
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/Form";
 import { api, ApiError } from "@/lib/api";
-import { TestModeBanner } from "./TestModeBanner";
 
 type Item = { title: string; detail?: string; group?: string };
 const FEATURES: [string, string, string, string][] = [
@@ -19,7 +18,7 @@ const FEATURES: [string, string, string, string][] = [
 export function IaaModule() {
   const [feature, setFeature] = useState("controls");
   const [text, setText] = useState("");
-  const [res, setRes] = useState<{ mode: string; items: Item[]; note: string } | null>(null);
+  const [res, setRes] = useState<{ topic: string | null; items: Item[]; note: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const f = FEATURES.find((x) => x[0] === feature)!;
@@ -28,7 +27,7 @@ export function IaaModule() {
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ data: { mode: string; items: Item[]; note: string } }>("/iaa/suggest", { method: "POST", withCompany: true, body: { feature, text } });
+      const r = await api<{ data: { topic: string | null; items: Item[]; note: string } }>("/iaa/suggest", { method: "POST", withCompany: true, body: { feature, text } });
       setRes(r.data);
     } catch (e) {
       const ae = e as ApiError;
@@ -40,7 +39,6 @@ export function IaaModule() {
 
   return (
     <div className="space-y-4">
-      <TestModeBanner code="ai" />
       <section className="space-y-4 rounded-2xl border border-line bg-surface p-5 shadow-sm">
         <div className="flex flex-wrap gap-2" role="tablist">
           {FEATURES.map(([k, label]) => (
@@ -58,7 +56,7 @@ export function IaaModule() {
       </section>
       {res && (
         <section className="space-y-3 rounded-2xl border border-line bg-surface p-5 shadow-sm">
-          <p className={`text-sm ${res.mode === "live" ? "text-ok" : "text-amber-ink"}`}>{res.mode === "live" ? "Sugerencias con IA. " : "Sugerencias de prueba. "}{res.note}</p>
+          <p className={`text-sm ${res.topic ? "text-ok" : "text-amber-ink"}`}>{res.note}</p>
           <ul className="space-y-2">
             {res.items.map((it, i) => (
               <li key={i} className="rounded-xl bg-bg px-4 py-3 text-sm">
