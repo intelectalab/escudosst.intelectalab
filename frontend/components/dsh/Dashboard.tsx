@@ -50,7 +50,7 @@ const COLORS = {
 } as const;
 
 export function Dashboard() {
-  const { user, company, modules } = useApp();
+  const { user, company, modules, companiesCount } = useApp();
   const now = new Date().getFullYear();
   const [year, setYear] = useState(now);
   const [site, setSite] = useState("");
@@ -100,6 +100,11 @@ export function Dashboard() {
               </>
             )}
           </p>
+          {canSee && companiesCount > 1 && (
+            <Link href="/grupo" className="mt-2 inline-flex items-center gap-1 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-semibold text-brand hover:border-brand">
+              Ver tablero del grupo ({companiesCount} empresas) →
+            </Link>
+          )}
         </div>
         {canSee && data && (
           <div className="flex flex-wrap gap-3">

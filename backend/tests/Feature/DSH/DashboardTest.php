@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Support\Facades\DB;
+
 // Tablero de indicadores (M-DSH): valores reales con numerador/denominador, «No aplica», bloqueo por plan,
 // filtro por sede, protección de datos de salud y alertas.
 
@@ -83,4 +85,31 @@ it('no muestra la aptitud médica con grupos pequeños (criterio 5, RN-DSH-05)',
 it('valida el año y la sede', function () {
     $this->getJson('/api/v1/dsh/overview?year=1990', dsh())->assertStatus(400);
     $this->getJson('/api/v1/dsh/overview?site_id=no-uuid', dsh())->assertNotFound();
+});
+
+it('muestra el tablero consolidado solo con las empresas del usuario, cada una con sus datos (SCR-DSH-04)', function () {
+    // El Jefe SST de Huaylas también trabaja en Andinas (mismo usuario, otra membresía).
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $uid = DB::selectOne('select id from users where email = ?', [CORPORATIVO_EMAIL])->id;
+    DB::select("select set_config('app.company_id', ?, false)", [ANDINAS_ID]);
+    $role = DB::selectOne("select id from roles where account_id is null and code = 'sst_manager'")->id;
+    DB::insert("insert into memberships (company_id, user_id, role_id, status, accepted_at) values (?, ?, ?, 'active', now())", [ANDINAS_ID, $uid, $role]);
+    DB::select("select set_config('app.company_id', '', false)");
+
+    // Una acción vencida en Andinas: debe contarse solo en Andinas.
+    $ha = authHeaders(tokenFor(CORPORATIVO_EMAIL), ANDINAS_ID);
+    $this->postJson('/api/v1/records/ACR/corrective_actions', ['title' => 'Vencida grupo', 'action_type' => 'corrective', 'due_on' => now()->subDays(3)->toDateString()], $ha);
+
+    $h = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
+    $res = $this->getJson('/api/v1/dsh/group', $h)->assertOk();
+    $companies = collect($res->json('data.companies'));
+    expect($companies->pluck('company_id')->sort()->values()->all())->toBe(collect([ANDINAS_ID, HUAYLAS_ID])->sort()->values()->all())
+        ->and($companies->firstWhere('company_id', HUAYLAS_ID)['is_active'])->toBeTrue()
+        ->and($res->json('data.columns'))->not->toBeEmpty();
+    $kpi = collect($companies->first()['kpis'])->firstWhere('locked', false);
+    expect($kpi)->toHaveKeys(['code', 'label', 'link']);
+
+    // Otro usuario sin esa membresía solo ve su empresa.
+    $p = $this->getJson('/api/v1/dsh/group', dsh())->assertOk();
+    expect(collect($p->json('data.companies'))->pluck('company_id')->all())->toBe([ANDINAS_ID]);
 });
