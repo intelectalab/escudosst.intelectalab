@@ -134,6 +134,7 @@ export function RecordActions({
   if (ACTION_SOURCES[res.table]) return <FindingAction table={res.table} row={row} onChanged={onChanged} />;
   if (res.table === "baseline_assessments") return <BaselineFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "monthly_statistics") return <CloseMonth row={row} onChanged={onChanged} />;
+  if (res.table === "inspection_dossiers") return <DossierBuild row={row} onChanged={onChanged} />;
   if (STEPS[res.table]) return <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "event_notifications") return <NotifyNow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "committee_meetings") return <MeetingFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
@@ -1099,5 +1100,64 @@ function RegisterDownload({ onDone }: { onDone: () => void }) {
       <Button variant="primary" icon="download" loading={busy} onClick={run}>Descargar Excel</Button>
       {msg && <span className="text-sm text-bad">{msg}</span>}
     </div>
+  );
+}
+
+
+// ─────────────── SUN: armar el expediente ───────────────
+
+type DossierItem = { code: string; title: string; module: string; table: string | null; id: string | null; status: string; gap: string | null };
+const DOSSIER_STATUS: Record<string, [string, string]> = {
+  included: ["Incluido", "bg-ok-soft text-ok"],
+  missing: ["Falta", "bg-bad-soft text-bad"],
+  expired: ["Vencido", "bg-amber-soft text-amber-ink"],
+  not_applicable: ["No aplica", "bg-bg text-muted"],
+};
+
+function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => void }) {
+  const [items, setItems] = useState<DossierItem[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const build = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api<{ data: { items: DossierItem[]; gaps: number; total: number } }>(`/sun/dossiers/${row.id}/build`, { method: "POST", withCompany: true });
+      setItems(r.data.items);
+      setMsg(r.data.gaps === 0 ? "Expediente completo: todos los puntos están incluidos." : `${r.data.gaps} de ${r.data.total} puntos con brechas. Toca cada uno para resolverlo.`);
+      onChanged();
+    } catch (e) {
+      setMsg((e as ApiError).detail ?? (e as ApiError).title);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="space-y-3 rounded-xl border border-line p-4 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span>Revisa con los datos reales de la empresa si cada documento y registro clave existe y está vigente en el periodo.</span>
+        <Button variant="primary" loading={busy} onClick={build}>{items ? "Volver a armar" : "Armar expediente"}</Button>
+      </div>
+      {msg && <p className="font-semibold text-brand-strong">{msg}</p>}
+      {items && (
+        <ul className="space-y-1">
+          {items.map((it) => {
+            const [label, cls] = DOSSIER_STATUS[it.status] ?? [it.status, "bg-bg"];
+            const href = it.table ? recordsHref(it.module, it.table, it.id ? { open: it.id } : {}) : `/m/${it.module.toLowerCase()}`;
+            return (
+              <li key={it.code}>
+                <Link href={href} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line px-3 py-2 hover:border-brand">
+                  <span>
+                    <b>{it.code}.</b> {it.title}
+                    {it.gap && <span className="block text-xs text-muted">{it.gap}</span>}
+                  </span>
+                  <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${cls}`}>{label}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
