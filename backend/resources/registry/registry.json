@@ -14,11 +14,13 @@
   "DOC": [
    "document_categories",
    "documents",
-   "document_versions"
+   "document_versions",
+   "document_acknowledgements"
   ],
   "NOT": [
    "notification_rules",
    "notifications",
+   "notification_deliveries",
    "user_notification_prefs"
   ],
   "DSH": [
@@ -161,6 +163,7 @@
    "training_evaluations",
    "training_certificates",
    "certificate_templates",
+   "certificate_verifications",
    "position_training_requirements"
   ],
   "AUL": [
@@ -183,7 +186,8 @@
   "FOT": [
    "credential_types",
    "credential_requirements",
-   "credentials"
+   "credentials",
+   "credential_verifications"
   ],
   "EMO": [
    "medical_exam_orders",
@@ -248,7 +252,8 @@
    "sctr_coverages"
   ],
   "ING": [
-   "access_points"
+   "access_points",
+   "access_events"
   ],
   "HOM": [
    "vendor_evaluation_templates",
@@ -297,6 +302,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 2,
@@ -462,6 +468,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 3,
@@ -540,6 +547,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 4,
@@ -634,6 +642,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 5,
@@ -719,6 +728,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "full_name",
    "order": 0,
@@ -998,6 +1008,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "change_reason",
    "order": 1,
@@ -1076,6 +1087,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 2,
@@ -1196,6 +1208,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 0,
@@ -1294,6 +1307,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 1,
@@ -1438,6 +1452,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "version_label",
    "order": 2,
@@ -1573,6 +1588,85 @@
     }
    ]
   },
+  "document_acknowledgements": {
+   "module": "DOC",
+   "tab": "document_acknowledgements",
+   "title": "Cargo de entrega/lectura (inalterable)",
+   "hybrid": false,
+   "immutable": true,
+   "soft_delete": false,
+   "stamps": true,
+   "updated_by": false,
+   "updated_at": false,
+   "label": "method",
+   "order": 3,
+   "uniques": [
+    [
+     "document_version_id",
+     "worker_id"
+    ]
+   ],
+   "fields": [
+    {
+     "name": "document_version_id",
+     "label": "Document version id",
+     "type": "ref",
+     "ref": "document_versions",
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "worker_id",
+     "label": "Trabajador",
+     "type": "ref",
+     "ref": "workers",
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "user_id",
+     "label": "Usuario",
+     "type": "ref",
+     "ref": "users"
+    },
+    {
+     "name": "method",
+     "label": "Método",
+     "type": "enum",
+     "options": [
+      {
+       "value": "app_signature",
+       "label": "Firma en app"
+      },
+      {
+       "value": "scanned_paper",
+       "label": "scanned_paper"
+      },
+      {
+       "value": "qr",
+       "label": "QR"
+      },
+      {
+       "value": "in_person_assisted",
+       "label": "Presencial asistido"
+      }
+     ],
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "acknowledged_at",
+     "label": "Acknowledged at",
+     "type": "datetime",
+     "list": true
+    },
+    {
+     "name": "user_agent",
+     "label": "Navegador",
+     "type": "text"
+    }
+   ]
+  },
   "notification_rules": {
    "module": "NOT",
    "tab": "Reglas de alerta",
@@ -1581,6 +1675,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 0,
@@ -1697,6 +1792,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 1,
@@ -1805,6 +1901,128 @@
     }
    ]
   },
+  "notification_deliveries": {
+   "module": "NOT",
+   "tab": "notification_deliveries",
+   "title": "Intento de entrega por canal (inalterable)",
+   "hybrid": false,
+   "immutable": true,
+   "soft_delete": false,
+   "stamps": true,
+   "updated_by": false,
+   "updated_at": false,
+   "label": "channel",
+   "order": 2,
+   "uniques": [],
+   "fields": [
+    {
+     "name": "notification_id",
+     "label": "Notification id",
+     "type": "ref",
+     "ref": "notifications",
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "channel",
+     "label": "Canal",
+     "type": "enum",
+     "options": [
+      {
+       "value": "email",
+       "label": "Correo electrónico"
+      },
+      {
+       "value": "whatsapp",
+       "label": "WhatsApp"
+      },
+      {
+       "value": "in_app",
+       "label": "En la app"
+      },
+      {
+       "value": "push",
+       "label": "Notificación push"
+      },
+      {
+       "value": "sms",
+       "label": "SMS"
+      }
+     ],
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "provider",
+     "label": "Proveedor",
+     "type": "text"
+    },
+    {
+     "name": "provider_message_id",
+     "label": "Provider message id",
+     "type": "text"
+    },
+    {
+     "name": "status",
+     "label": "Estado",
+     "type": "enum",
+     "options": [
+      {
+       "value": "queued",
+       "label": "En cola"
+      },
+      {
+       "value": "sent",
+       "label": "Enviado"
+      },
+      {
+       "value": "delivered",
+       "label": "Entregado"
+      },
+      {
+       "value": "read",
+       "label": "read"
+      },
+      {
+       "value": "failed",
+       "label": "Fallido"
+      },
+      {
+       "value": "bounced",
+       "label": "bounced"
+      },
+      {
+       "value": "suppressed",
+       "label": "suppressed"
+      }
+     ],
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "attempt",
+     "label": "Intento",
+     "type": "int",
+     "default": 1
+    },
+    {
+     "name": "error_code",
+     "label": "Código de error",
+     "type": "text"
+    },
+    {
+     "name": "error_message",
+     "label": "Mensaje de error",
+     "type": "text"
+    },
+    {
+     "name": "attempted_at",
+     "label": "Attempted at",
+     "type": "datetime",
+     "list": true
+    }
+   ]
+  },
   "user_notification_prefs": {
    "module": "NOT",
    "tab": "Preferencias",
@@ -1813,6 +2031,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "channel",
    "order": 3,
@@ -1904,6 +2123,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 0,
@@ -2032,6 +2252,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "status_color",
    "order": 1,
@@ -2139,6 +2360,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 2,
@@ -2186,6 +2408,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 3,
@@ -2282,6 +2505,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "subject_type",
    "order": 0,
@@ -2402,6 +2626,7 @@
     {
      "name": "requested_by",
      "label": "Solicitado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
@@ -2419,6 +2644,7 @@
     {
      "name": "signed_at",
      "label": "Firmado el",
+     "readonly": true,
      "type": "datetime"
     }
    ]
@@ -2431,6 +2657,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -2550,6 +2777,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "question",
    "order": 1,
@@ -2654,6 +2882,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 2,
@@ -2777,6 +3006,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -2896,6 +3126,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 1,
@@ -3002,6 +3233,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "period_label",
    "order": 2,
@@ -3093,6 +3325,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 99,
@@ -3236,6 +3469,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "article",
    "order": 1,
@@ -3337,6 +3571,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "result",
    "order": 2,
@@ -3414,6 +3649,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -3511,6 +3747,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 1,
@@ -3591,6 +3828,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -3691,6 +3929,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 1,
@@ -3887,6 +4126,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 2,
@@ -3955,6 +4195,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -4046,6 +4287,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "topic",
    "order": 1,
@@ -4201,6 +4443,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -4314,6 +4557,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "method",
    "order": 1,
@@ -4408,6 +4652,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 0,
@@ -4505,6 +4750,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "representation",
    "order": 1,
@@ -4656,6 +4902,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 2,
@@ -4812,6 +5059,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "list_name",
    "order": 3,
@@ -4907,6 +5155,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "meeting_type",
    "order": 5,
@@ -5047,6 +5296,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 6,
@@ -5142,6 +5392,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -5236,6 +5487,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 1,
@@ -5345,6 +5597,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 2,
@@ -5403,6 +5656,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "hazard",
    "order": 0,
@@ -5531,6 +5785,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 1,
@@ -5652,6 +5907,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 2,
@@ -5758,6 +6014,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "status",
    "order": 3,
@@ -5892,6 +6149,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "hazard",
    "order": 4,
@@ -6067,6 +6325,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 5,
@@ -6201,6 +6460,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -6241,6 +6501,7 @@
     {
      "name": "version_number",
      "label": "N.º de versión",
+     "readonly": true,
      "type": "int",
      "default": 1
     },
@@ -6286,12 +6547,14 @@
     {
      "name": "approved_by",
      "label": "Aprobado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "approved_at",
      "label": "Aprobado el",
+     "readonly": true,
      "type": "datetime",
      "list": true
     },
@@ -6310,6 +6573,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "label",
    "order": 1,
@@ -6418,6 +6682,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "substance_name",
    "order": 1,
@@ -6530,6 +6795,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 2,
@@ -6623,6 +6889,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 3,
@@ -6718,6 +6985,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "unit",
    "order": 4,
@@ -6839,6 +7107,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "method",
    "order": 0,
@@ -6987,6 +7256,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 1,
@@ -7101,6 +7371,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "id",
    "order": 2,
@@ -7167,6 +7438,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -7288,6 +7560,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "content_html",
    "order": 1,
@@ -7416,6 +7689,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -7604,6 +7878,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "review_area",
    "order": 1,
@@ -7682,6 +7957,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 0,
@@ -7834,6 +8110,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "question",
    "order": 1,
@@ -7942,6 +8219,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 2,
@@ -8145,6 +8423,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "question_snapshot",
    "order": 3,
@@ -8216,6 +8495,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 4,
@@ -8386,6 +8666,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 0,
@@ -8480,6 +8761,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 1,
@@ -8728,6 +9010,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "topic",
    "order": 0,
@@ -8839,6 +9122,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "method",
    "order": 1,
@@ -8910,6 +9194,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "code",
    "order": 0,
@@ -9053,6 +9338,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 1,
@@ -9117,6 +9403,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "role",
    "order": 2,
@@ -9183,6 +9470,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 0,
@@ -9311,6 +9599,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "code",
    "order": 1,
@@ -9527,6 +9816,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "question",
    "order": 2,
@@ -9625,6 +9915,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "approver_role",
    "order": 3,
@@ -9704,6 +9995,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "task_observed",
    "order": 0,
@@ -9818,6 +10110,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "category",
    "order": 1,
@@ -9916,6 +10209,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 0,
@@ -10044,6 +10338,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "conditions",
    "order": 1,
@@ -10103,6 +10398,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "movement_type",
    "order": 2,
@@ -10211,6 +10507,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "size",
    "order": 3,
@@ -10341,6 +10638,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "code",
    "order": 0,
@@ -10506,6 +10804,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "check_type",
    "order": 1,
@@ -10613,6 +10912,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "code",
    "order": 2,
@@ -10723,6 +11023,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "item_name",
    "order": 3,
@@ -10781,6 +11082,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -10961,6 +11263,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "role",
    "order": 1,
@@ -11028,6 +11331,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 2,
@@ -11124,6 +11428,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "role",
    "order": 3,
@@ -11215,6 +11520,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -11409,6 +11715,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "location",
    "order": 1,
@@ -11504,6 +11811,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "check_in_method",
    "order": 2,
@@ -11590,6 +11898,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "evaluation_type",
    "order": 3,
@@ -11689,6 +11998,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "certificate_code",
    "order": 4,
@@ -11887,6 +12197,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 5,
@@ -12042,6 +12353,103 @@
     }
    ]
   },
+  "certificate_verifications": {
+   "module": "CAP",
+   "tab": "certificate_verifications",
+   "title": "Consulta de verificación de un certificado (solo inserción)",
+   "hybrid": false,
+   "immutable": true,
+   "soft_delete": false,
+   "stamps": true,
+   "updated_by": false,
+   "updated_at": false,
+   "label": "queried_code",
+   "order": 6,
+   "uniques": [],
+   "fields": [
+    {
+     "name": "certificate_id",
+     "label": "Certificado",
+     "type": "ref",
+     "ref": "training_certificates",
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "queried_code",
+     "label": "Queried code",
+     "type": "text",
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "verified_at",
+     "label": "Verificado el",
+     "type": "datetime",
+     "list": true
+    },
+    {
+     "name": "channel",
+     "label": "Canal",
+     "type": "enum",
+     "options": [
+      {
+       "value": "public_web",
+       "label": "public_web"
+      },
+      {
+       "value": "public_qr",
+       "label": "public_qr"
+      },
+      {
+       "value": "app",
+       "label": "App"
+      }
+     ],
+     "default": "public_web",
+     "list": true
+    },
+    {
+     "name": "result",
+     "label": "Resultado",
+     "type": "enum",
+     "options": [
+      {
+       "value": "valid",
+       "label": "Vigente"
+      },
+      {
+       "value": "expired",
+       "label": "Vencido"
+      },
+      {
+       "value": "voided",
+       "label": "Anulado"
+      },
+      {
+       "value": "pending_validation",
+       "label": "Pendiente de validación"
+      },
+      {
+       "value": "not_public",
+       "label": "not_public"
+      }
+     ],
+     "required": true
+    },
+    {
+     "name": "response_snapshot",
+     "label": "Response snapshot",
+     "type": "json",
+     "readonly": true
+    },
+    {
+     "name": "user_agent",
+     "label": "Navegador",
+     "type": "text"
+    }
+   ]
+  },
   "position_training_requirements": {
    "module": "CAP",
    "tab": "Matriz por cargo",
@@ -12050,6 +12458,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "requirement_level",
    "order": 7,
@@ -12150,6 +12559,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -12438,6 +12848,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 1,
@@ -12497,6 +12908,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 2,
@@ -12648,6 +13060,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "source",
    "order": 3,
@@ -12883,6 +13296,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "source",
    "order": 4,
@@ -13040,6 +13454,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 5,
@@ -13106,6 +13521,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "code",
    "order": 6,
@@ -13244,6 +13660,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 7,
@@ -13349,6 +13766,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "notes",
    "order": 8,
@@ -13448,6 +13866,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "kind",
    "order": 9,
@@ -13549,6 +13968,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "client_session_id",
    "order": 10,
@@ -13701,6 +14121,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "commitment_text_snapshot",
    "order": 11,
@@ -13766,6 +14187,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 14,
@@ -13925,6 +14347,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 12,
@@ -14096,6 +14519,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "buyer_company_name",
    "order": 13,
@@ -14347,6 +14771,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 0,
@@ -14435,6 +14860,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 1,
@@ -14531,6 +14957,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "credential_number",
    "order": 2,
@@ -14671,6 +15098,119 @@
     }
    ]
   },
+  "credential_verifications": {
+   "module": "FOT",
+   "tab": "credential_verifications",
+   "title": "Verificación registrada (inalterable)",
+   "hybrid": false,
+   "immutable": true,
+   "soft_delete": false,
+   "stamps": true,
+   "updated_by": false,
+   "updated_at": false,
+   "label": "channel",
+   "order": 3,
+   "uniques": [],
+   "fields": [
+    {
+     "name": "credential_id",
+     "label": "Credential id",
+     "type": "ref",
+     "ref": "credentials",
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "verified_at",
+     "label": "Verificado el",
+     "type": "datetime",
+     "list": true
+    },
+    {
+     "name": "channel",
+     "label": "Canal",
+     "type": "enum",
+     "options": [
+      {
+       "value": "public_qr",
+       "label": "public_qr"
+      },
+      {
+       "value": "app_scan",
+       "label": "app_scan"
+      },
+      {
+       "value": "access_point",
+       "label": "access_point"
+      }
+     ],
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "access_point_id",
+     "label": "Access point id",
+     "type": "ref",
+     "ref": "access_points"
+    },
+    {
+     "name": "verifier_user_id",
+     "label": "Verifier user id",
+     "type": "ref",
+     "ref": "users"
+    },
+    {
+     "name": "result",
+     "label": "Resultado",
+     "type": "enum",
+     "options": [
+      {
+       "value": "enabled",
+       "label": "enabled"
+      },
+      {
+       "value": "not_enabled",
+       "label": "not_enabled"
+      },
+      {
+       "value": "invalid",
+       "label": "invalid"
+      },
+      {
+       "value": "revoked",
+       "label": "Revocado"
+      },
+      {
+       "value": "expired",
+       "label": "Vencido"
+      }
+     ],
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "response_snapshot",
+     "label": "Response snapshot",
+     "type": "json",
+     "readonly": true
+    },
+    {
+     "name": "user_agent",
+     "label": "Navegador",
+     "type": "text"
+    },
+    {
+     "name": "latitude",
+     "label": "Latitud",
+     "type": "number"
+    },
+    {
+     "name": "longitude",
+     "label": "Longitud",
+     "type": "number"
+    }
+   ]
+  },
   "medical_exam_orders": {
    "module": "EMO",
    "tab": "Órdenes de examen",
@@ -14679,6 +15219,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "exam_type",
    "order": 0,
@@ -14813,6 +15354,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "status",
    "order": 3,
@@ -14910,6 +15452,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "absence_type",
    "order": 0,
@@ -15043,6 +15586,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 1,
@@ -15120,6 +15664,7 @@
     {
      "name": "approved_by",
      "label": "Aprobado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
@@ -15158,6 +15703,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "document_type",
    "order": 9,
@@ -15337,6 +15883,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -15500,6 +16047,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 1,
@@ -15617,6 +16165,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "order_number",
    "order": 2,
@@ -15886,6 +16435,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 3,
@@ -15990,6 +16540,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 4,
@@ -16128,6 +16679,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "buyer_legal_name",
    "order": 6,
@@ -16246,6 +16798,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "status",
    "order": 7,
@@ -16331,6 +16884,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "document_type",
    "order": 8,
@@ -16584,6 +17138,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 0,
@@ -16891,6 +17446,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "external_person_name",
    "order": 1,
@@ -17045,6 +17601,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "authority",
    "order": 2,
@@ -17215,6 +17772,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "code",
    "order": 0,
@@ -17376,6 +17934,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "external_name",
    "order": 1,
@@ -17450,6 +18009,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 2,
@@ -17562,6 +18122,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -17876,6 +18437,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 1,
@@ -17944,6 +18506,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "code",
    "order": 0,
@@ -18115,6 +18678,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "clause_code",
    "order": 1,
@@ -18198,6 +18762,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 2,
@@ -18306,6 +18871,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "source",
    "order": 0,
@@ -18404,6 +18970,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "id",
    "order": 1,
@@ -18562,6 +19129,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -18657,6 +19225,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 1,
@@ -18763,6 +19332,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "register_type",
    "order": 0,
@@ -18932,6 +19502,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "legal_name",
    "order": 0,
@@ -19041,6 +19612,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "document_type",
    "order": 1,
@@ -19200,6 +19772,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 2,
@@ -19289,6 +19862,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "document_kind",
    "order": 3,
@@ -19399,6 +19973,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "contract_reference",
    "order": 4,
@@ -19547,6 +20122,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "coverage_kind",
    "order": 0,
@@ -19665,6 +20241,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "constancy_number",
    "order": 1,
@@ -19712,6 +20289,7 @@
     {
      "name": "status",
      "label": "Estado",
+     "readonly": true,
      "type": "enum",
      "options": [
       {
@@ -19740,6 +20318,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 0,
@@ -19830,6 +20409,143 @@
     }
    ]
   },
+  "access_events": {
+   "module": "ING",
+   "tab": "access_events",
+   "title": "Evento de acceso (inalterable)",
+   "hybrid": false,
+   "immutable": true,
+   "soft_delete": false,
+   "stamps": true,
+   "updated_by": false,
+   "updated_at": false,
+   "label": "direction",
+   "order": 1,
+   "uniques": [],
+   "fields": [
+    {
+     "name": "access_point_id",
+     "label": "Access point id",
+     "type": "ref",
+     "ref": "access_points",
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "occurred_at",
+     "label": "Ocurrido el",
+     "type": "datetime",
+     "list": true
+    },
+    {
+     "name": "direction",
+     "label": "Dirección",
+     "type": "enum",
+     "options": [
+      {
+       "value": "in",
+       "label": "Ingreso"
+      },
+      {
+       "value": "out",
+       "label": "Salida"
+      }
+     ],
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "subject_type",
+     "label": "Tipo de asunto",
+     "type": "enum",
+     "options": [
+      {
+       "value": "worker",
+       "label": "Trabajador"
+      },
+      {
+       "value": "contractor_worker",
+       "label": "contractor_worker"
+      },
+      {
+       "value": "visitor",
+       "label": "visitor"
+      },
+      {
+       "value": "vehicle",
+       "label": "Vehículo"
+      }
+     ],
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "worker_id",
+     "label": "Trabajador",
+     "type": "ref",
+     "ref": "workers"
+    },
+    {
+     "name": "contractor_worker_id",
+     "label": "Trabajador contratista",
+     "type": "ref",
+     "ref": "contractor_workers"
+    },
+    {
+     "name": "credential_id",
+     "label": "Credential id",
+     "type": "ref",
+     "ref": "credentials"
+    },
+    {
+     "name": "visitor_name",
+     "label": "Visitor name",
+     "type": "text"
+    },
+    {
+     "name": "visitor_document_masked",
+     "label": "Visitor document masked",
+     "type": "text"
+    },
+    {
+     "name": "result",
+     "label": "Resultado",
+     "type": "enum",
+     "options": [
+      {
+       "value": "granted",
+       "label": "granted"
+      },
+      {
+       "value": "denied",
+       "label": "denied"
+      },
+      {
+       "value": "overridden",
+       "label": "overridden"
+      }
+     ]
+    },
+    {
+     "name": "deny_reasons",
+     "label": "Deny reasons",
+     "readonly": true,
+     "type": "json"
+    },
+    {
+     "name": "guard_user_id",
+     "label": "Guard user id",
+     "readonly": true,
+     "type": "ref",
+     "ref": "users"
+    },
+    {
+     "name": "override_reason",
+     "label": "Override reason",
+     "type": "longtext"
+    }
+   ]
+  },
   "vendor_evaluation_templates": {
    "module": "HOM",
    "tab": "Plantillas",
@@ -19838,6 +20554,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 0,
@@ -19912,6 +20629,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "vendor_name",
    "order": 1,
@@ -19967,6 +20685,7 @@
     {
      "name": "total_score",
      "label": "Puntaje total",
+     "readonly": true,
      "type": "number"
     },
     {
@@ -20028,6 +20747,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 0,
@@ -20110,6 +20830,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 1,
@@ -20257,6 +20978,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "title",
    "order": 2,
@@ -20356,6 +21078,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "token_last4",
    "order": 3,
@@ -20470,6 +21193,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "device_uid",
    "order": 0,
@@ -20615,6 +21339,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "app_version",
    "order": 1,
@@ -20721,6 +21446,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "operation_idempotency_key",
    "order": 2,
@@ -20870,6 +21596,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "feature",
    "order": 0,
@@ -21040,6 +21767,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "suggestion_type",
    "order": 1,
@@ -21141,6 +21869,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "status",
    "order": 1,
@@ -21211,6 +21940,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "status",
    "order": 2,
@@ -21279,6 +22009,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 2,
@@ -21371,6 +22102,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "activity",
    "order": 0,
@@ -21488,6 +22220,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "description",
    "order": 1,
@@ -21636,6 +22369,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 0,
@@ -21708,6 +22442,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "name",
    "order": 1,
@@ -21775,6 +22510,7 @@
    "immutable": false,
    "soft_delete": true,
    "stamps": true,
+   "updated_by": true,
    "updated_at": true,
    "label": "event_code",
    "order": 2,

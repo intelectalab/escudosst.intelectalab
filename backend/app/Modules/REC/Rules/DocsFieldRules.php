@@ -21,6 +21,7 @@ class DocsFieldRules extends RecordRules
         'risst_versions' => [null, null],
         'procedure_versions' => ['procedure_id', 'procedures'],
         'document_versions' => ['document_id', 'documents'],
+        'risk_maps' => ['site_id', null],
     ];
 
     private const VFLOW = ['draft' => ['in_review', 'approved'], 'in_review' => ['approved', 'draft'], 'approved' => ['current', 'draft'], 'current' => ['obsolete'], 'obsolete' => []];
@@ -135,7 +136,7 @@ class DocsFieldRules extends RecordRules
         }
         if ($to === 'current') {
             // Una sola vigente: la anterior pasa a obsoleta antes de publicar esta.
-            DB::update("update \"{$t}\" set status = 'obsolete', obsoleted_at = now() where id <> ? and status = 'current'".($col ? " and {$col} = ?" : ''),
+            DB::update("update \"{$t}\" set status = 'obsolete'".($t === 'risk_maps' ? '' : ', obsoleted_at = now()')." where id <> ? and status = 'current'".($col ? " and {$col} = ?" : ''),
                 $col ? [$current->id, $current->{$col}] : [$current->id]);
             $values['effective_on'] = $this->value($values, $current, 'effective_on') ?? date('Y-m-d');
             if ($t === 'sst_policies') {

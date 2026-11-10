@@ -74,7 +74,11 @@ READONLY = {"areas.depth", "workers.document_last4", "workers.activated_at", "wo
             "contractor_accreditations.reviewed_by", "contractor_accreditations.reviewed_at", "contractor_accreditations.submitted_at",
             "contractor_workers.document_last4", "fitness_status.issued_by", "fitness_status.issued_at", "medical_exam_orders.requested_by",
             "absences.days", "absences.registered_by", "budgets.total_planned", "budgets.total_executed", "budget_lines.executed_amount",
-            "budget_executions.recorded_by"}
+            "budget_executions.recorded_by",
+            # Complementos: SCTR, ingreso, homologación, ambiente, firma, mapa de riesgos.
+            "sctr_coverages.status", "access_events.guard_user_id", "access_events.deny_reasons", "vendor_evaluations.total_score",
+            "environmental_aspects.significance_score", "work_adjustments.approved_by", "signature_requests.requested_by", "signature_requests.signed_at",
+            "risk_maps.version_number", "risk_maps.approved_by", "risk_maps.approved_at"}
 # Columnas de la lista elegidas a mano donde las automáticas no dicen lo importante.
 LIST = {
     "monthly_statistics": ["period_year", "period_month", "site_id", "hours_worked", "frequency_index", "severity_index", "accident_rate_index", "is_closed"],
@@ -87,7 +91,7 @@ LIST = {
 WRITABLE_JSON = {"iperc_rows.probability_detail", "iperc_versions.participants"}
 # Obligatorios en la base pero que calcula una regla si no se envían.
 COMPUTED = {"work_shifts.hours_per_day", "areas.depth", "iperc_rows.probability_value",
-            "iperc_rows.hazard", "iperc_rows.risk", "measurements.result", "work_permits.valid_until", "corrective_actions.code", "inspections.code", "trainings.code",
+            "iperc_rows.hazard", "iperc_rows.risk", "measurements.result", "work_permits.valid_until", "access_events.result", "access_events.occurred_at", "corrective_actions.code", "inspections.code", "trainings.code",
             "sst_events.code", "sst_events.reported_at", "investigations.code", "investigations.started_on", "committee_meetings.number",
             "meeting_agreements.number", "ppe_deliveries.delivered_at", "ppe_stock_movements.moved_at",
             "requirement_evaluations.evaluated_on", "requirement_evaluations.evaluator_user_id", "requirement_evaluations.next_evaluation_on",
@@ -124,9 +128,13 @@ def main():
                     order[mm.group(1)] = n
                     n += 1
 
+    # Registros inalterables de empresa que sí se muestran (constancias y bitácoras de uso). Los votos, las firmas
+    # criptográficas, los accesos a datos sensibles y los pagos tienen su propio flujo y no se exponen aquí.
+    IMMUTABLE_OK = {"document_acknowledgements", "access_events", "certificate_verifications", "credential_verifications", "notification_deliveries"}
+
     def table_ok(t):
         return (t["db"] == "main" and t["module"] not in SKIP_MODULES and t["table"] not in SKIP_TABLES
-                and ("company" in t["kind"] or "hybrid" in t["kind"]))
+                and ("company" in t["kind"] or "hybrid" in t["kind"] or t["table"] in IMMUTABLE_OK))
 
     resources, modules = {}, {}
 
@@ -240,6 +248,7 @@ def main():
             "immutable": immutable,
             "soft_delete": any(c["name"] == "deleted_at" for c in t["columns"]),
             "stamps": any(c["name"] == "created_by" for c in t["columns"]),
+            "updated_by": any(c["name"] == "updated_by" for c in t["columns"]),
             "updated_at": any(c["name"] == "updated_at" for c in t["columns"]),
             "label": lc,
             "order": order.get(t["table"], 99),

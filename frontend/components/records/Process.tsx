@@ -860,6 +860,14 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
   risst_versions: { help: "Con Comité, la aprobación pide la sesión. Al ponerla vigente se entrega a los trabajadores desde «Entregas».", steps: VERSION_STEPS },
   procedure_versions: { help: "La versión vigente queda como la actual del procedimiento.", steps: VERSION_STEPS },
   document_versions: { help: "La versión vigente queda como la actual del documento; los trabajadores toman conocimiento de ella.", steps: VERSION_STEPS },
+  risk_maps: { help: "Una versión vigente por sede: al poner vigente la nueva, la anterior queda obsoleta.", steps: VERSION_STEPS },
+  signature_requests: {
+    help: "Solo la persona a quien se pidió la firma puede firmar o rechazar (con motivo).",
+    steps: [
+      { from: ["pending"], label: "Firmar", body: { status: "signed" }, primary: true },
+      { from: ["pending"], label: "Rechazar", body: { status: "declined" }, ask: "declined_reason" },
+    ],
+  },
   substandard_reports: {
     help: "Recibido → revisado (con nivel de riesgo) → acción asignada o descartado (con motivo) → cerrado.",
     steps: [

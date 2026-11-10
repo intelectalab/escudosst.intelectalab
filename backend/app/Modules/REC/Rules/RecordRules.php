@@ -78,6 +78,14 @@ abstract class RecordRules
         'work_permits' => PeopleRules::class,
         'budget_lines' => PeopleRules::class,
         'budget_executions' => PeopleRules::class,
+        'sctr_policies' => AddonRules::class,
+        'sctr_coverages' => AddonRules::class,
+        'access_events' => AddonRules::class,
+        'vendor_evaluations' => AddonRules::class,
+        'environmental_aspects' => AddonRules::class,
+        'work_adjustments' => AddonRules::class,
+        'signature_requests' => AddonRules::class,
+        'risk_maps' => DocsFieldRules::class,
     ];
 
     public static function for(string $table): ?self

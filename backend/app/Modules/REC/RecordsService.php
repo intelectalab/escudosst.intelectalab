@@ -89,9 +89,14 @@ final class RecordsService
         $exprs = ['?'];
         $bind = [$ctx->companyId];
         if ($res['stamps']) {
-            array_push($cols, 'created_by', 'updated_by');
-            array_push($exprs, '?', '?');
-            array_push($bind, $user, $user);
+            $cols[] = 'created_by';
+            $exprs[] = '?';
+            $bind[] = $user;
+        }
+        if ($res['updated_by'] ?? $res['stamps']) {
+            $cols[] = 'updated_by';
+            $exprs[] = '?';
+            $bind[] = $user;
         }
         foreach ($this->writeParts($res, $values, $extra) as [$col, $expr, $b]) {
             $cols[] = $col;
@@ -131,7 +136,7 @@ final class RecordsService
         if ($sets === []) {
             return $this->find($res, $id, decrypt: true);
         }
-        if ($res['stamps']) {
+        if ($res['updated_by'] ?? $res['stamps']) {
             $sets[] = 'updated_by = ?';
             $bind[] = (string) auth()->id();
         }
@@ -153,8 +158,8 @@ final class RecordsService
         RecordRules::for($res['table'])?->prepareDelete($res, $current);
 
         $this->guard(fn () => $res['soft_delete']
-            ? DB::update('update "'.$res['table'].'" set deleted_at = now()'.($res['stamps'] ? ', updated_by = ?' : '').' where id = ?',
-                $res['stamps'] ? [(string) auth()->id(), $id] : [$id])
+            ? DB::update('update "'.$res['table'].'" set deleted_at = now()'.(($res['updated_by'] ?? $res['stamps']) ? ', updated_by = ?' : '').' where id = ?',
+                ($res['updated_by'] ?? $res['stamps']) ? [(string) auth()->id(), $id] : [$id])
             : DB::delete('delete from "'.$res['table'].'" where id = ?', [$id]));
 
         $label = $res['label'] !== 'id' ? ($current->{$res['label']} ?? null) : null;
