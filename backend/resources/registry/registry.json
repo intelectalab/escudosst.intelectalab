@@ -1605,7 +1605,7 @@
   },
   "document_acknowledgements": {
    "module": "DOC",
-   "tab": "document_acknowledgements",
+   "tab": "Cargos de lectura",
    "title": "Cargo de entrega/lectura (inalterable)",
    "hybrid": false,
    "immutable": true,
@@ -1918,7 +1918,7 @@
   },
   "notification_deliveries": {
    "module": "NOT",
-   "tab": "notification_deliveries",
+   "tab": "Envíos de avisos",
    "title": "Intento de entrega por canal (inalterable)",
    "hybrid": false,
    "immutable": true,
@@ -12536,7 +12536,7 @@
   },
   "certificate_verifications": {
    "module": "CAP",
-   "tab": "certificate_verifications",
+   "tab": "Verificaciones",
    "title": "Consulta de verificación de un certificado (solo inserción)",
    "hybrid": false,
    "immutable": true,
@@ -15301,7 +15301,7 @@
   },
   "credential_verifications": {
    "module": "FOT",
-   "tab": "credential_verifications",
+   "tab": "Verificaciones del fotocheck",
    "title": "Verificación registrada (inalterable)",
    "hybrid": false,
    "immutable": true,
@@ -20687,7 +20687,7 @@
   },
   "access_events": {
    "module": "ING",
-   "tab": "access_events",
+   "tab": "Ingresos y salidas",
    "title": "Evento de acceso (inalterable)",
    "hybrid": false,
    "immutable": true,

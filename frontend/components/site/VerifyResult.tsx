@@ -60,7 +60,7 @@ export function VerifyResult({ kind, code }: { kind: "certificate" | "credential
         <p className="text-sm">Motivo: {(r.blocking_reasons as string[]).join(", ")}.</p>
       )}
       {r.result === "not_public" && <p className="text-sm">La empresa {String(r.company ?? "")} no habilitó la verificación pública de este certificado.</p>}
-      <p className="text-xs text-[var(--site-text-2)]">Verificación hecha en EscudoSST el {new Date().toLocaleString("es-PE")}. Cada consulta queda registrada.</p>
+      <p className="text-xs text-[var(--site-text-2)]">Verificación hecha en EscudoSST el {new Date().toLocaleString("es-PE")} · Cada consulta queda registrada.</p>
     </div>
   );
 }

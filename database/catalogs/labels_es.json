@@ -2067,6 +2067,11 @@
   "work_shifts": "Turnos",
   "worker_assignments": "Asignaciones",
   "worker_documents": "Legajo",
-  "workers": "Trabajadores"
+  "workers": "Trabajadores",
+  "document_acknowledgements": "Cargos de lectura",
+  "notification_deliveries": "Envíos de avisos",
+  "certificate_verifications": "Verificaciones",
+  "credential_verifications": "Verificaciones del fotocheck",
+  "access_events": "Ingresos y salidas"
  }
 }
