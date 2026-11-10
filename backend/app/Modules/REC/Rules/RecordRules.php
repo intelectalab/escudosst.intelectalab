@@ -26,6 +26,15 @@ abstract class RecordRules
         'action_evidences' => AcrRules::class,
         'inspections' => InsRules::class,
         'findings' => InsRules::class,
+        'annual_programs' => ProgramRules::class,
+        'program_activities' => ProgramRules::class,
+        'activity_executions' => ProgramRules::class,
+        'training_programs' => ProgramRules::class,
+        'training_program_items' => ProgramRules::class,
+        'trainings' => ProgramRules::class,
+        'training_sessions' => ProgramRules::class,
+        'training_attendances' => ProgramRules::class,
+        'training_certificates' => ProgramRules::class,
     ];
 
     public static function for(string $table): ?self

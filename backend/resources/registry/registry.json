@@ -3633,24 +3633,28 @@
     {
      "name": "approved_by",
      "label": "Aprobado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "approved_at",
      "label": "Aprobado el",
+     "readonly": true,
      "type": "datetime",
      "list": true
     },
     {
      "name": "progress_pct",
      "label": "Avance (%)",
+     "readonly": true,
      "type": "number",
      "default": 0
     },
     {
      "name": "closed_at",
      "label": "Cerrado el",
+     "readonly": true,
      "type": "datetime"
     }
    ]
@@ -3797,6 +3801,7 @@
     {
      "name": "executed_quantity",
      "label": "Cantidad ejecutada",
+     "readonly": true,
      "type": "int",
      "default": 0
     },
@@ -3838,6 +3843,7 @@
     {
      "name": "progress_pct",
      "label": "Avance (%)",
+     "readonly": true,
      "type": "number",
      "default": 0
     },
@@ -3897,18 +3903,21 @@
     {
      "name": "recorded_by",
      "label": "Registrado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "verified_by",
      "label": "Verificado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "verified_at",
      "label": "Verificado el",
+     "readonly": true,
      "type": "datetime"
     }
    ]
@@ -3987,6 +3996,7 @@
     {
      "name": "approved_at",
      "label": "Aprobado el",
+     "readonly": true,
      "type": "datetime",
      "list": true
     },
@@ -11687,6 +11697,7 @@
     {
      "name": "certificate_code",
      "label": "Código del certificado",
+     "readonly": true,
      "type": "text",
      "required": true,
      "list": true
@@ -11694,29 +11705,34 @@
     {
      "name": "verification_code",
      "label": "Código de verificación",
+     "readonly": true,
      "type": "text",
      "required": true
     },
     {
      "name": "holder_name",
      "label": "Titular",
+     "readonly": true,
      "type": "text",
      "required": true
     },
     {
      "name": "holder_document_masked",
      "label": "Documento del titular",
+     "readonly": true,
      "type": "text"
     },
     {
      "name": "course_title",
      "label": "Título del curso",
+     "readonly": true,
      "type": "text",
      "required": true
     },
     {
      "name": "issued_on",
      "label": "Fecha de emisión",
+     "readonly": true,
      "type": "date",
      "required": true,
      "list": true
@@ -11724,16 +11740,19 @@
     {
      "name": "expires_on",
      "label": "Fecha de vencimiento",
+     "readonly": true,
      "type": "date"
     },
     {
      "name": "hours",
      "label": "Horas",
+     "readonly": true,
      "type": "number"
     },
     {
      "name": "score",
      "label": "Puntaje",
+     "readonly": true,
      "type": "number"
     },
     {
@@ -11781,23 +11800,27 @@
     {
      "name": "validated_by",
      "label": "Validado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "validated_at",
      "label": "Validado el",
+     "readonly": true,
      "type": "datetime"
     },
     {
      "name": "voided_by",
      "label": "Anulado por",
+     "readonly": true,
      "type": "ref",
      "ref": "users"
     },
     {
      "name": "voided_at",
      "label": "Anulado el",
+     "readonly": true,
      "type": "datetime"
     },
     {

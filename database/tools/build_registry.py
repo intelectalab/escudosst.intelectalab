@@ -36,12 +36,20 @@ READONLY = {"areas.depth", "workers.document_last4", "workers.activated_at", "wo
             "corrective_actions.completed_at", "corrective_actions.verified_by", "corrective_actions.verified_at", "corrective_actions.reopened_count",
             "action_evidences.submitted_by", "action_evidences.submitted_at", "inspections.score_pct", "inspections.started_at",
             "inspections.completed_at", "findings.corrective_action_id", "inspection_answers.is_compliant", "inspection_answers.is_critical",
-            "inspection_answers.question_snapshot"}
+            "inspection_answers.question_snapshot",
+            # PAS / PCA / CAP: avance, aprobación y certificados los calcula o emite el sistema.
+            "annual_programs.progress_pct", "annual_programs.approved_by", "annual_programs.approved_at", "annual_programs.closed_at",
+            "program_activities.executed_quantity", "program_activities.progress_pct", "activity_executions.recorded_by",
+            "activity_executions.verified_by", "activity_executions.verified_at", "training_programs.approved_at",
+            "training_certificates.certificate_code", "training_certificates.verification_code", "training_certificates.holder_name",
+            "training_certificates.holder_document_masked", "training_certificates.course_title", "training_certificates.issued_on",
+            "training_certificates.expires_on", "training_certificates.hours", "training_certificates.score", "training_certificates.validated_by",
+            "training_certificates.validated_at", "training_certificates.voided_by", "training_certificates.voided_at"}
 # Datos estructurados (jsonb) que sí se editan desde un formulario propio.
 WRITABLE_JSON = {"iperc_rows.probability_detail", "iperc_versions.participants"}
 # Obligatorios en la base pero que calcula una regla si no se envían.
 COMPUTED = {"work_shifts.hours_per_day", "areas.depth", "iperc_rows.probability_value",
-            "iperc_rows.hazard", "iperc_rows.risk", "corrective_actions.code", "inspections.code"}
+            "iperc_rows.hazard", "iperc_rows.risk", "corrective_actions.code", "inspections.code", "trainings.code"}
 LONG_TEXT = re.compile(r"(^|_)(description|notes|note|comment|comments|summary|functions|observations|content|body|"
                        r"details|detail|justification|reason|instructions|scope|recommendations|conclusions|text|"
                        r"statement|commitments|methodology|findings|lessons|answer|explanation|purpose)$")

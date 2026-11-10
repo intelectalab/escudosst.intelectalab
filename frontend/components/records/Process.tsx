@@ -125,6 +125,11 @@ export function RecordActions({
   if (res.table === "corrective_actions") return <CorrectiveFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "inspections") return <InspectionRun row={row} onChanged={onChanged} />;
   if (res.table === "findings") return <FindingAction row={row} onChanged={onChanged} />;
+  if (res.table === "annual_programs" || res.table === "training_programs")
+    return <ProgramFlow code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />;
+  if (res.table === "program_activities") return <ActivityExecution row={row} onChanged={onChanged} />;
+  if (res.table === "training_sessions") return <SessionHeld row={row} canEdit={res.can.update} onChanged={onChanged} />;
+  if (res.table === "trainings") return <IssueCertificates row={row} onChanged={onChanged} />;
   void code;
   return null;
 }
@@ -469,6 +474,167 @@ function FindingAction({ row, onChanged }: { row: RecordRow; onChanged: () => vo
           </div>
         </Modal>
       )}
+    </section>
+  );
+}
+
+
+// ─────────────── PAS / PCA: aprobación del programa ───────────────
+
+const PROGRAM_STEPS: [string, string][] = [
+  ["draft", "Borrador"],
+  ["committee_review", "Revisión del comité"],
+  ["approved", "Aprobado"],
+  ["in_execution", "En ejecución"],
+  ["closed", "Cerrado"],
+];
+
+function ProgramFlow({ code, table, row, canEdit, onChanged }: { code: string; table: string; row: RecordRow; canEdit: boolean; onChanged: () => void }) {
+  const status = String(row.status);
+  const idx = PROGRAM_STEPS.findIndex(([s]) => s === status);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const move = async (to: string) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await records.update(code, table, row.id, { status: to });
+      onChanged();
+    } catch (e) {
+      const err = e as ApiError;
+      setMsg(Object.values(err.errors ?? {})[0]?.[0] ?? err.detail ?? err.title);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const isPas = table === "annual_programs";
+  return (
+    <section aria-label="Proceso del programa" className="space-y-3 rounded-xl border border-line p-4">
+      <ol className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+        {PROGRAM_STEPS.map(([s, l], i) => (
+          <li key={s} className="flex items-center gap-2">
+            <span className={`rounded-full px-3 py-1 ${i < idx ? "bg-ok-soft text-ok" : i === idx ? "bg-brand text-white" : "bg-bg text-muted"}`}>{l}</span>
+            {i < PROGRAM_STEPS.length - 1 && <span aria-hidden="true" className="text-muted">→</span>}
+          </li>
+        ))}
+      </ol>
+      {isPas && row.progress_pct !== undefined && row.progress_pct !== null && (
+        <div>
+          <p className="text-sm">Avance del programa: <b>{String(row.progress_pct)} %</b></p>
+          <div className="mt-1 h-2 rounded-full bg-bg"><div className="h-2 rounded-full bg-brand" style={{ width: `${Math.min(100, Number(row.progress_pct))}%` }} /></div>
+        </div>
+      )}
+      <p className="text-xs text-muted">
+        {status === "draft" || status === "committee_review"
+          ? `Agrega ${isPas ? "las actividades" : "los temas"} y envíalo a aprobación. Una vez aprobado, ${isPas ? "sus actividades" : "sus temas"} ya no cambian.`
+          : status === "closed"
+            ? "Programa cerrado."
+            : isPas
+              ? "Aprobado: registra la ejecución desde cada actividad; el avance se calcula solo."
+              : "Aprobado: cada tema se marca ejecutado cuando su capacitación tiene una sesión realizada."}
+      </p>
+      {msg && <p role="alert" className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{msg}</p>}
+      {canEdit && (
+        <div className="flex flex-wrap gap-2">
+          {status === "draft" && <Button loading={busy} onClick={() => move("committee_review")}>Enviar al comité</Button>}
+          {(status === "draft" || status === "committee_review") && <Button variant="primary" loading={busy} onClick={() => move("approved")}>Aprobar</Button>}
+          {status === "committee_review" && <Button loading={busy} onClick={() => move("draft")}>Devolver a borrador</Button>}
+          {status === "approved" && <Button variant="primary" loading={busy} onClick={() => move("in_execution")}>Iniciar ejecución</Button>}
+          {(status === "approved" || status === "in_execution") && <Button loading={busy} onClick={() => move("closed")}>Cerrar programa</Button>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─────────────── PAS: registrar la ejecución de una actividad ───────────────
+
+function ActivityExecution({ row, onChanged }: { row: RecordRow; onChanged: () => void }) {
+  const [form, setForm] = useState({ executed_on: new Date().toISOString().slice(0, 10), quantity: "1", description: "" });
+  const [list, setList] = useState<RecordRow[]>([]);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    records.list("PAS", "activity_executions", { filters: { activity_id: row.id } }).then((r) => setList(r.data)).catch(() => setList([]));
+  }, [row.id, row.updated_at]);
+  const add = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await records.create("PAS", "activity_executions", { activity_id: row.id, executed_on: form.executed_on, quantity: Number(form.quantity), description: form.description });
+      setForm({ ...form, description: "" });
+      onChanged();
+    } catch (e) {
+      const err = e as ApiError;
+      setMsg(Object.values(err.errors ?? {})[0]?.[0] ?? err.detail ?? err.title);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section aria-label="Ejecución" className="space-y-3 rounded-xl border border-line p-4">
+      <p className="text-sm">
+        Avance: <b>{String(row.executed_quantity ?? 0)}</b> de <b>{String(row.goal_quantity ?? 1)}</b> ({String(row.progress_pct ?? 0)} %)
+      </p>
+      <div className="h-2 rounded-full bg-bg"><div className="h-2 rounded-full bg-brand" style={{ width: `${Math.min(100, Number(row.progress_pct ?? 0))}%` }} /></div>
+      {list.map((e) => (
+        <p key={e.id} className="rounded-lg bg-bg px-3 py-2 text-sm">
+          {String(e.executed_on ?? "").slice(0, 10)} · {String(e.quantity ?? "")} · {String(e.description ?? "")}
+        </p>
+      ))}
+      <div className="grid gap-2 sm:grid-cols-[9rem_6rem_1fr_auto]">
+        <input className="input" type="date" aria-label="Fecha de ejecución" value={form.executed_on} onChange={(e) => setForm({ ...form, executed_on: e.target.value })} />
+        <input className="input" type="number" min={1} aria-label="Cantidad" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+        <input className="input" placeholder="Evidencia (acta, informe, registro)" aria-label="Evidencia" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        <Button variant="primary" loading={busy} onClick={add}>Registrar ejecución</Button>
+      </div>
+      {msg && <p role="alert" className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{msg}</p>}
+    </section>
+  );
+}
+
+// ─────────────── CAP: sesión realizada y certificados ───────────────
+
+function SessionHeld({ row, canEdit, onChanged }: { row: RecordRow; canEdit: boolean; onChanged: () => void }) {
+  const [msg, setMsg] = useState<string | null>(null);
+  if (!canEdit || row.status !== "scheduled") return null;
+  return (
+    <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line px-4 py-3 text-sm">
+      <span>Cuando termine la sesión y tengas las asistencias, márcala como realizada: el tema del programa queda ejecutado.</span>
+      <Button
+        variant="primary"
+        onClick={() =>
+          records.update("CAP", "training_sessions", row.id, { status: "held" }).then(onChanged).catch((e: ApiError) => setMsg(Object.values(e.errors ?? {})[0]?.[0] ?? e.detail ?? e.title))
+        }
+      >
+        Marcar como realizada
+      </Button>
+      {msg && <p role="alert" className="w-full text-bad">{msg}</p>}
+    </section>
+  );
+}
+
+function IssueCertificates({ row, onChanged }: { row: RecordRow; onChanged: () => void }) {
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const issue = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api<{ data: { issued: number; skipped: string[] } }>(`/cap/trainings/${row.id}/certificates`, { method: "POST", withCompany: true });
+      setMsg(`${r.data.issued} certificado(s) emitido(s).${r.data.skipped.length ? ` Sin certificado: ${r.data.skipped.join(", ")}.` : ""}`);
+      onChanged();
+    } catch (e) {
+      setMsg((e as ApiError).detail ?? (e as ApiError).title);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line px-4 py-3 text-sm">
+      <span>Emite un certificado a cada asistente de una sesión realizada (y con evaluación aprobada si la capacitación exige nota).</span>
+      <Button variant="primary" loading={busy} onClick={issue}>Emitir certificados</Button>
+      {msg && <p className="w-full text-brand-strong">{msg}</p>}
     </section>
   );
 }
