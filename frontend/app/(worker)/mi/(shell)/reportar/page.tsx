@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Alert, BigButton, Empty, Panel, Pill, Title, type Tone } from "@/components/worker/WorkerUi";
 import { useWorker } from "@/components/worker/WorkerContext";
-import { canQueue } from "@/lib/offline";
+import { canQueue, queueFile } from "@/lib/offline";
 import { records, uploadFile } from "@/lib/records";
 import { errorText, fmtDate, workerApi } from "@/lib/workerApp";
 
@@ -53,13 +53,17 @@ export default function ReportPage() {
     setMsg(null);
     try {
       let photoId: string | null = null;
-      if (photo && navigator.onLine) photoId = (await uploadFile(photo, "ACT")).id;
+      if (photo) {
+        // Con señal se sube ya; sin señal la foto queda cifrada en el equipo y se sube junto con el reporte.
+        if (navigator.onLine) photoId = await uploadFile(photo, "ACT").then((f) => f.id).catch((e) => (canQueue("substandard_reports") && (e instanceof TypeError || e?.status === 0) ? queueFile(photo, "ACT") : Promise.reject(e)));
+        else if (canQueue("substandard_reports")) photoId = await queueFile(photo, "ACT");
+      }
       const body: Record<string, unknown> = { report_type: type, description: desc.trim(), location_text: place.trim() || null, is_anonymous: anon, origin: "app",
         occurred_at: new Date().toISOString(), ...(photoId ? { photo_file_id: photoId } : {}) };
       const r = await records.create("ACT", "substandard_reports", body);
       const queued = (r.data as { offline_pending?: boolean }).offline_pending;
       setMsg({ tone: "ok", text: queued
-        ? `Sin señal: tu reporte quedó guardado en este equipo y se enviará solo cuando vuelva la conexión.${photo ? " La foto no se guardó: vuelve a tomarla con señal si hace falta." : ""}`
+        ? `Sin señal: tu reporte${photo ? " y su foto quedaron guardados" : " quedó guardado"} en este equipo y se enviará${photo ? "n" : ""} solo cuando vuelva la conexión.`
         : "Reporte enviado. Lo recibe el área de SST. ¡Gracias por cuidarnos!" });
       setDesc("");
       setPhoto(null);

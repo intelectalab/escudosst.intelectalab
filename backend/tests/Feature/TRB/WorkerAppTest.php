@@ -204,3 +204,52 @@ it('liga el reporte del trabajador a su ficha y lo muestra en Mis reportes (anó
     expect($mine->pluck('id')->all())->toBe([$id]);
     expect(wappAs(HUAYLAS_ID, fn () => DB::selectOne('select reporter_worker_id from substandard_reports where id = ?', [$id])->reporter_worker_id))->toBe($a);
 });
+
+it('lista los celulares activados y al quitar uno su PIN deja de servir y se cierran las sesiones', function () {
+    $w = wappWorker('77117711', 'Rosa');
+    $s = wappActivate('77117711', wappIssue($w)['code'], '715293', 'wdev-rosa');
+    $boss = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
+
+    $st = $this->getJson("/api/v1/trb/workers/{$w}/app-access", $boss)->assertOk()->json('data');
+    expect($st['devices'])->toBe(1)->and($st['device_list'][0]['id'])->toBe($s['device']['id']);
+
+    $this->deleteJson("/api/v1/trb/workers/{$w}/app-access/devices/{$s['device']['id']}", [], $boss)->assertOk();
+    expect($this->getJson("/api/v1/trb/workers/{$w}/app-access", $boss)->json('data.devices'))->toBe(0);
+    $this->deleteJson("/api/v1/trb/workers/{$w}/app-access/devices/{$s['device']['id']}", [], $boss)->assertNotFound();
+
+    app('auth')->forgetGuards();
+    $this->getJson('/api/v1/me/worker', authHeaders($s['token'], HUAYLAS_ID))->assertUnauthorized();
+    app('auth')->forgetGuards();
+    $this->postJson('/api/v1/auth/worker/pin-login', ['company_id' => HUAYLAS_ID, 'device_id' => $s['device']['id'], 'device_secret' => $s['device']['secret'],
+        'dni' => '77117711', 'pin' => '715293'])->assertStatus(401);
+});
+
+it('pone las charlas y los ATS por firmar en sus pendientes y los firma con el PIN', function () {
+    $w = wappWorker('77227722', 'Luis');
+    $s = wappActivate('77227722', wappIssue($w)['code'], '628417');
+    [$att, $part] = wappAs(HUAYLAS_ID, function () use ($w) {
+        $talk = DB::selectOne("insert into safety_talks (company_id, topic, content, talk_on, status) values (?, 'Uso de arnés', 'Revisa tu arnés antes de subir.', current_date, 'held') returning id", [HUAYLAS_ID])->id;
+        $att = DB::selectOne("insert into talk_attendances (company_id, safety_talk_id, worker_id, attended_at, method) values (?, ?, ?, now(), 'signature') returning id", [HUAYLAS_ID, $talk, $w])->id;
+        $site = DB::selectOne('select id from sites where company_id = ? order by is_main desc limit 1', [HUAYLAS_ID])->id;
+        $form = DB::selectOne("insert into ats_forms (company_id, code, task, site_id, performed_on, status) values (?, 'ATS-WAPP', 'Cambio de luminaria', ?, current_date, 'draft') returning id", [HUAYLAS_ID, $site])->id;
+        DB::insert("insert into ats_steps (company_id, ats_form_id, step_number, description, hazards, controls) values (?, ?, 1, 'Bloquear energía', '[\"Contacto eléctrico\"]', '[\"Candado y tarjeta\"]')", [HUAYLAS_ID, $form]);
+        $part = DB::selectOne("insert into ats_participants (company_id, ats_form_id, worker_id, role) values (?, ?, ?, 'executor') returning id", [HUAYLAS_ID, $form, $w])->id;
+
+        return [$att, $part];
+    });
+    $h = authHeaders($s['token'], HUAYLAS_ID);
+
+    $kinds = collect($this->getJson('/api/v1/me/worker/pending', $h)->assertOk()->json('data'))->map(fn ($i) => $i['kind'].':'.$i['id'])->all();
+    expect($kinds)->toContain("talk:{$att}")->toContain("ats:{$part}");
+
+    $this->getJson("/api/v1/me/worker/items/ats/{$part}", $h)->assertOk()->assertJsonPath('data.signed', false)
+        ->assertJsonPath('data.content_html', fn ($v) => str_contains($v, 'Bloquear energía') && str_contains($v, 'Candado y tarjeta'));
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'talk', 'id' => $att, 'pin' => '628417'], $h)->assertOk();
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ats', 'id' => $part, 'pin' => '628417'], $h)->assertOk();
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ats', 'id' => $part, 'pin' => '628417'], $h)->assertStatus(409);
+
+    $after = collect($this->getJson('/api/v1/me/worker/pending', $h)->json('data'))->pluck('kind')->all();
+    expect($after)->not->toContain('talk')->not->toContain('ats');
+    $signed = wappAs(HUAYLAS_ID, fn () => DB::selectOne('select (select signature_id from talk_attendances where id = ?) is not null as t, (select signed_at from ats_participants where id = ?) is not null as a', [$att, $part]));
+    expect($signed->t)->toBeTrue()->and($signed->a)->toBeTrue();
+});

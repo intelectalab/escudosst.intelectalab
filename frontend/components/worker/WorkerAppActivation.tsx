@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { api, ApiError } from "@/lib/api";
 
-type Status = { activated_at: string | null; pending_activation: boolean; devices: number; membership_status: string | null; last_access_at: string | null; has_email: boolean; whatsapp: boolean; can_issue: boolean };
+type Device = { id: string; platform: string | null; model: string | null; registered_at: string | null; last_login_at: string | null };
+type Status = { activated_at: string | null; pending_activation: boolean; devices: number; device_list?: Device[]; membership_status: string | null; last_access_at: string | null; has_email: boolean; whatsapp: boolean; can_issue: boolean };
 type Issued = { worker: { full_name: string; document_masked: string | null }; company: string; code: string; link: string; expires_at: string; sent: { email: boolean; whatsapp: boolean } };
 
 const fmt = (v: string | null) => (v ? new Date(v).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short", timeZone: "America/Lima" }) : "—");
@@ -20,6 +21,7 @@ export function WorkerAppActivation({ workerId }: { workerId: string }) {
   const [issued, setIssued] = useState<Issued | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showDevices, setShowDevices] = useState(false);
 
   const load = () => api<{ data: Status }>(`/trb/workers/${workerId}/app-access`, { withCompany: true }).then((r) => setStatus(r.data)).catch(() => setStatus(null));
   useEffect(() => {
@@ -42,12 +44,51 @@ export function WorkerAppActivation({ workerId }: { workerId: string }) {
     }
   }
 
+  async function revoke(d: Device) {
+    if (!window.confirm("¿Quitar el acceso de este celular? Su PIN deja de funcionar en ese equipo y se cierran las sesiones abiertas del trabajador. Para usar otro celular, genera un código nuevo.")) return;
+    setError(null);
+    try {
+      await api(`/trb/workers/${workerId}/app-access/devices/${d.id}`, { method: "DELETE", withCompany: true });
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.detail ?? e.title : "No se pudo quitar el acceso.");
+    }
+  }
+
   if (!status?.can_issue) return null;
   return (
     <>
       <Button icon="phone" onClick={issue} loading={busy} title={status.activated_at ? `App activada el ${fmt(status.activated_at)} · ${status.devices} equipo(s)` : "El trabajador aún no activa su app"}>
         {status.activated_at ? "Nuevo código de la app" : "Activar app del trabajador"}
       </Button>
+      {status.devices > 0 && (
+        <Button icon="phone" onClick={() => setShowDevices(true)} title="Celulares donde el trabajador activó su app">
+          Celulares ({status.devices})
+        </Button>
+      )}
+      {showDevices && (
+        <Modal title="Celulares con la app activada" onClose={() => setShowDevices(false)}>
+          <div className="space-y-3">
+            <p className="text-sm text-muted">Si el trabajador perdió o cambió su celular, quítale el acceso aquí. Luego genera un código nuevo para el equipo nuevo.</p>
+            {error && <p className="rounded-lg bg-bad-soft p-3 text-sm text-bad">{error}</p>}
+            {(status.device_list ?? []).length === 0 ? (
+              <p className="text-sm text-muted">Ningún celular tiene la app activada.</p>
+            ) : (
+              <ul className="divide-y divide-line rounded-xl border border-line">
+                {(status.device_list ?? []).map((d) => (
+                  <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
+                    <div className="text-sm">
+                      <p className="font-semibold">{d.model || (d.platform === "web_pwa" ? "Celular (app web)" : "Celular")}</p>
+                      <p className="text-muted">Activado el {fmt(d.registered_at)} · último ingreso {fmt(d.last_login_at)}</p>
+                    </div>
+                    <Button variant="danger" onClick={() => revoke(d)}>Quitar acceso</Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Modal>
+      )}
       {error && <p role="alert" className="w-full text-sm text-bad">{error}</p>}
       {issued && (
         <Modal title="Código de activación" subtitle={`${issued.worker.full_name}${issued.worker.document_masked ? ` · DNI ${issued.worker.document_masked}` : ""}`} onClose={() => setIssued(null)}

@@ -30,6 +30,7 @@ Route::middleware('throttle:20,1')->post('auth/worker/pin-login', [\App\Modules\
 Route::middleware(['auth:sanctum', 'company', 'module:TRB'])->prefix('trb/workers/{id}/app-access')->whereUuid('id')->group(function () {
     Route::get('/', [\App\Modules\TRB\WorkerAppAuthController::class, 'status']);
     Route::post('/', [\App\Modules\TRB\WorkerAppAuthController::class, 'issue'])->middleware('throttle:20,1');
+    Route::delete('devices/{device}', [\App\Modules\TRB\WorkerAppAuthController::class, 'revokeDevice']);
 });
 
 // Lo mío en la app del trabajador: solo los datos del trabajador vinculado a la membresía activa.

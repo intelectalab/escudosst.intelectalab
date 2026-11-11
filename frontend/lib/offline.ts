@@ -168,6 +168,47 @@ async function open(row: { iv: Uint8Array; data: ArrayBuffer }): Promise<OutboxO
   }
 }
 
+// ── Fotos sin señal ─────────────────────────────────────────────────────────
+// La foto se guarda cifrada en el dispositivo y el registro lleva «local-file:<id>» en su campo de archivo. Al volver la
+// señal, antes de enviar el lote se sube la foto y el campo pasa a tener el id real del archivo.
+
+const LOCAL_FILE = "local-file:";
+
+/** Guarda una foto o archivo para subirlo después. Devuelve la referencia que va en el campo del registro. */
+export async function queueFile(file: File, module?: string): Promise<string> {
+  const id = uuidv7();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await key(), await file.arrayBuffer());
+  await tx("files", "readwrite", (s) => s.put({ id, iv, data, name: file.name || "foto.jpg", type: file.type || "image/jpeg", module: module ?? null }));
+  return LOCAL_FILE + id;
+}
+
+async function uploadQueuedFiles(op: OutboxOp): Promise<OutboxOp> {
+  const refs = Object.entries(op.payload).filter(([, v]) => typeof v === "string" && v.startsWith(LOCAL_FILE));
+  if (!refs.length) return op;
+  const { uploadFile } = await import("./records");
+  const payload = { ...op.payload };
+  for (const [field, ref] of refs) {
+    const id = (ref as string).slice(LOCAL_FILE.length);
+    const row = await tx<{ iv: Uint8Array; data: ArrayBuffer; name: string; type: string; module: string | null } | undefined>("files", "readonly", (s) => s.get(id));
+    if (!row) {
+      delete payload[field];   // la foto ya no está en el equipo: el registro se envía sin ella
+      continue;
+    }
+    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: row.iv as BufferSource }, await key(), row.data);
+    try {
+      payload[field] = (await uploadFile(new File([plain], row.name, { type: row.type }), row.module ?? undefined)).id;
+    } catch (e) {
+      if (e instanceof TypeError || isNetwork(e)) throw e;   // sin señal otra vez (fetch no llegó): se reintenta luego
+      delete payload[field];       // el servidor no aceptó el archivo: el registro se envía sin la foto
+    }
+    await tx("files", "readwrite", (s) => s.delete(id));
+  }
+  const next = { ...op, payload };
+  await putOp(next);
+  return next;
+}
+
 export async function listOutbox(): Promise<OutboxOp[]> {
   if (!ctx) return [];
   const rows = await tx<{ k: string; seq: number; iv: Uint8Array; data: ArrayBuffer }[]>("outbox", "readonly", (s) => s.getAll());
@@ -293,7 +334,8 @@ async function doSync() {
   emit({ syncing: true, lastError: null });
   try {
     for (let i = 0; i < pending.length; i += 50) {
-      const chunk = pending.slice(i, i + 50);
+      const chunk: OutboxOp[] = [];
+      for (const o of pending.slice(i, i + 50)) chunk.push(await uploadQueuedFiles(o));
       const res = await api<{ data: { results: SyncResult[] } }>("/sync/batches", {
         method: "POST",
         withCompany: true,

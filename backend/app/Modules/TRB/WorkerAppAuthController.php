@@ -23,7 +23,9 @@ use Throwable;
  * Acceso a la app del trabajador (docs/07 §5.2; reglas en WorkerAppAccess).
  *
  * Con sesión (responsable SST o RR. HH., permiso trb.workers.update):
- *  GET  /trb/workers/{id}/app-access       estado: activada, equipos ligados, activación pendiente
+ *  GET  /trb/workers/{id}/app-access       estado: activada, equipos ligados (con su lista), activación pendiente
+ *  DELETE /trb/workers/{id}/app-access/devices/{device}  quita el acceso de un celular (por pérdida o cambio): su
+ *                                          credencial deja de servir y se cierran las sesiones abiertas del trabajador
  *  POST /trb/workers/{id}/app-access       genera el código y el enlace; los envía por correo (si tiene) y WhatsApp (si está
  *                                          en vivo y el trabajador lo aceptó); siempre se devuelven para imprimirlos
  * Sin sesión:
@@ -40,15 +42,37 @@ class WorkerAppAuthController extends Controller
     public function status(string $id): JsonResponse
     {
         $w = $this->worker($id);
-        $devices = (int) DB::selectOne("select count(*) as n from devices where worker_id = ? and pin_bound and status = 'active' and deleted_at is null", [$w->id])->n;
+        $list = DB::select("select id, platform, model, registered_at, last_login_at from devices
+                              where worker_id = ? and pin_bound and status = 'active' and deleted_at is null order by registered_at desc", [$w->id]);
+        $devices = count($list);
         $user = DB::selectOne("select m.status, m.last_access_at from memberships m where m.worker_id = ? and m.deleted_at is null order by (m.status = 'active') desc limit 1", [$w->id]);
 
         return response()->json(['data' => [
-            'activated_at' => $w->activated_at, 'pending_activation' => $w->activation_code_hash !== null, 'devices' => $devices,
+            'activated_at' => $w->activated_at, 'pending_activation' => $w->activation_code_hash !== null, 'devices' => $devices, 'device_list' => $list,
             'membership_status' => $user?->status, 'last_access_at' => $user?->last_access_at,
             'has_email' => (bool) WorkerAppAccess::decrypt($w->personal_email), 'whatsapp' => $this->whatsappPhone($w) !== null,
             'can_issue' => in_array('trb.workers.update', Permissions::effective(), true),
         ]]);
+    }
+
+    public function revokeDevice(Request $request, string $id, string $device): JsonResponse
+    {
+        $this->can('trb.workers.update');
+        $w = $this->worker($id);
+        $d = Str::isUuid($device) ? DB::selectOne("select id from devices where id = ? and worker_id = ? and status = 'active' and deleted_at is null", [$device, $w->id]) : null;
+        if (! $d) {
+            throw ApiProblem::notFound('Ese celular ya no tiene acceso.');
+        }
+        $reason = mb_substr(trim((string) $request->input('reason', '')), 0, 200) ?: 'Acceso quitado por el responsable';
+        DB::update("update devices set status = 'revoked', revoked_at = now(), revoked_by = ?, revoke_reason = ?, credential_hash = null, updated_by = ?, updated_at = now()
+                     where id = ?", [auth()->id(), $reason, auth()->id(), $d->id]);
+        // Las sesiones abiertas del trabajador se cierran: si el celular se perdió, nadie sigue dentro.
+        $userIds = array_column(DB::select('select user_id from memberships where worker_id = ? and user_id is not null', [$w->id]), 'user_id');
+        if ($userIds) {
+            \App\Core\Auth\PersonalAccessToken::query()->whereIn('tokenable_id', $userIds)->delete();
+        }
+
+        return response()->json(['data' => ['revoked' => true]]);
     }
 
     public function issue(string $id): JsonResponse

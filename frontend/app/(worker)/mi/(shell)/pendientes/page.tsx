@@ -10,8 +10,8 @@ import { Alert, Empty, Loading, SignSheet, Title } from "@/components/worker/Wor
 import { useWorker } from "@/components/worker/WorkerContext";
 import { errorText, workerApi, type PendingItem, type SignKind } from "@/lib/workerApp";
 
-const ICON: Record<PendingItem["kind"], string> = { signature: "pen", document: "file", risst: "book", ppe: "hardhat", course: "play", survey: "chat", election: "people" };
-const SIGNABLE: PendingItem["kind"][] = ["signature", "document", "risst", "ppe"];
+const ICON: Record<PendingItem["kind"], string> = { signature: "pen", document: "file", risst: "book", ppe: "hardhat", talk: "megaphone", ats: "checklist", course: "play", survey: "chat", election: "people" };
+const SIGNABLE: PendingItem["kind"][] = ["signature", "document", "risst", "ppe", "talk", "ats"];
 
 export default function PendingPage() {
   const { reload } = useWorker();

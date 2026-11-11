@@ -34,7 +34,7 @@ use Illuminate\Support\Str;
  */
 class WorkerSelfController extends Controller
 {
-    private const KINDS = ['signature', 'document', 'risst', 'ppe'];
+    private const KINDS = ['signature', 'document', 'risst', 'ppe', 'talk', 'ats'];
 
     public function home(): JsonResponse
     {
@@ -197,6 +197,8 @@ class WorkerSelfController extends Controller
                 'risst' => DB::update("update risst_deliveries set status = 'signed', method = 'app_signature', signature_id = ?, delivered_on = coalesce(delivered_on, ?::date), updated_by = ? where id = ?",
                     [$sig, WorkerSelf::today(), $uid, $row->id]),
                 'ppe' => DB::update('update ppe_deliveries set signature_id = ?, updated_by = ? where id = ?', [$sig, $uid, $row->id]),
+                'talk' => DB::update('update talk_attendances set signature_id = ?, updated_by = ? where id = ?', [$sig, $uid, $row->id]),
+                'ats' => DB::update('update ats_participants set signature_id = ?, signed_at = now(), updated_by = ? where id = ?', [$sig, $uid, $row->id]),
             };
         }
         DB::insert("insert into audit_logs (company_id, actor_user_id, actor_role, actor_type, action, module_code, entity_type, entity_id, changes, ip, user_agent)
@@ -306,6 +308,21 @@ class WorkerSelfController extends Controller
                 $items[] = ['kind' => 'ppe', 'id' => $r->id, 'title' => 'Confirmar entrega de EPP', 'detail' => "{$r->name} × {$r->quantity} · ".date('d/m/Y', strtotime($r->delivered_at)), 'due' => null, 'at' => $r->delivered_at];
             }
         }
+        if (WorkerSelf::usable('CH5')) {
+            foreach (DB::select(
+                "select a.id, t.topic, t.talk_on from talk_attendances a join safety_talks t on t.id = a.safety_talk_id
+                  where a.worker_id = ? and a.signature_id is null and a.deleted_at is null and t.deleted_at is null order by t.talk_on", [$w->id]) as $r) {
+                $items[] = ['kind' => 'talk', 'id' => $r->id, 'title' => 'Firmar asistencia a la charla', 'detail' => $r->topic.($r->talk_on ? ' · '.date('d/m/Y', strtotime($r->talk_on)) : ''), 'due' => null, 'at' => $r->talk_on];
+            }
+        }
+        if (WorkerSelf::usable('ATS')) {
+            foreach (DB::select(
+                "select p.id, f.code, f.task, f.performed_on from ats_participants p join ats_forms f on f.id = p.ats_form_id
+                  where p.worker_id = ? and p.signature_id is null and p.deleted_at is null and f.deleted_at is null and f.status in ('draft', 'signed', 'in_execution')
+                  order by f.performed_on", [$w->id]) as $r) {
+                $items[] = ['kind' => 'ats', 'id' => $r->id, 'title' => 'Firmar el ATS', 'detail' => trim(($r->code ? $r->code.' · ' : '').$r->task).($r->performed_on ? ' · '.date('d/m/Y', strtotime($r->performed_on)) : ''), 'due' => $r->performed_on, 'at' => $r->performed_on];
+            }
+        }
         if (WorkerSelf::usable('AUL')) {
             foreach (DB::select(
                 "select e.id, c.title, e.progress_pct, e.due_on, e.enrolled_at from course_enrollments e join courses c on c.id = e.course_id
@@ -386,6 +403,30 @@ class WorkerSelfController extends Controller
 
                 return ['risst_deliveries', $row, ['title' => 'Reglamento Interno de SST', 'subtitle' => "{$r->title} · versión {$r->version_number}", 'signed' => $r->status !== 'pending',
                     'declaration' => $decl('el Reglamento Interno de Seguridad y Salud en el Trabajo'), 'content_html' => $r->content_html, 'file_id' => $r->version_file_id]];
+            case 'talk':
+                $this->module('CH5');
+                $t = DB::selectOne('select a.*, t.topic, t.content, t.talk_on from talk_attendances a join safety_talks t on t.id = a.safety_talk_id
+                                     where a.id = ? and a.worker_id = ? and a.deleted_at is null', [$id, $w->id]) ?? throw $nf();
+                $row = DB::selectOne('select * from talk_attendances where id = ?', [$t->id]);
+
+                return ['talk_attendances', $row, ['title' => 'Charla de 5 minutos', 'subtitle' => $t->topic.($t->talk_on ? ' · '.date('d/m/Y', strtotime($t->talk_on)) : ''),
+                    'signed' => $t->signature_id !== null, 'declaration' => "Declaro que asistí a la charla «{$t->topic}» y que entendí lo explicado. Firmo con mi PIN.",
+                    'content_html' => $t->content ? '<p>'.nl2br(e($t->content)).'</p>' : null, 'file_id' => null]];
+            case 'ats':
+                $this->module('ATS');
+                $p = DB::selectOne("select p.*, f.code, f.task, f.work_location, f.performed_on, f.status as form_status from ats_participants p join ats_forms f on f.id = p.ats_form_id
+                                     where p.id = ? and p.worker_id = ? and p.deleted_at is null", [$id, $w->id]) ?? throw $nf();
+                $txt = fn ($v) => e(is_string($v) ? $v : implode(', ', array_map('strval', (array) json_decode((string) json_encode($v), true))));
+                $steps = DB::select('select step_number, description, hazards, controls from ats_steps where ats_form_id = ? and deleted_at is null order by step_number', [$p->ats_form_id]);
+                $html = $steps ? '<ol>'.implode('', array_map(fn ($st) => '<li>'.e((string) $st->description)
+                    .($st->hazards ? ' — <b>Peligro:</b> '.$txt(json_decode((string) $st->hazards, true) ?? $st->hazards) : '')
+                    .($st->controls ? ' — <b>Control:</b> '.$txt(json_decode((string) $st->controls, true) ?? $st->controls) : '').'</li>', $steps)).'</ol>' : null;
+                $row = DB::selectOne('select * from ats_participants where id = ?', [$p->id]);
+
+                return ['ats_participants', $row, ['title' => 'Análisis de Trabajo Seguro (ATS)', 'subtitle' => trim(($p->code ? $p->code.' · ' : '').$p->task),
+                    'signed' => $p->signature_id !== null || in_array($p->form_status, ['closed', 'cancelled'], true),
+                    'declaration' => "Declaro que participé en el análisis de la tarea «{$p->task}», que conozco sus peligros y controles y que los cumpliré. Firmo con mi PIN.",
+                    'content_html' => $html, 'file_id' => null]];
             default:
                 $this->module('EPP');
                 $d = DB::selectOne('select d.*, i.name as item from ppe_deliveries d join ppe_items i on i.id = d.ppe_item_id where d.id = ? and d.worker_id = ? and d.deleted_at is null', [$id, $w->id]) ?? throw $nf();
