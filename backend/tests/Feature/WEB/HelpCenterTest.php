@@ -38,9 +38,11 @@ it('el sitio solo muestra lo publicado de categorías activas y busca por texto'
     expect(collect($cats)->firstWhere('slug', 'primeros-pasos')['articles_count'])->toBe(1);
 
     $list = $this->getJson('/api/v1/public/help/articles?q=equipo')->assertOk()->json('data');
+    // Se ignoran los artículos «Cómo usar …» de cada módulo que vienen cargados de fábrica.
+    $list = array_values(array_filter($list, fn ($a) => $a['category_slug'] !== 'uso-de-los-modulos'));
     expect(collect($list)->pluck('slug')->all())->toBe(['como-invitar-a-tu-equipo'])
         ->and($list[0]['excerpt'])->not->toContain('##');
-    expect($this->getJson('/api/v1/public/help/articles?q=borrador')->json('data'))->toBe([]);
+    expect(collect($this->getJson('/api/v1/public/help/articles?q=borrador')->json('data'))->where('category_slug', '!=', 'uso-de-los-modulos')->values()->all())->toBe([]);
     $this->getJson('/api/v1/public/help/articles/borrador-sobre-capacitaciones')->assertNotFound();
 
     $a = $this->getJson('/api/v1/public/help/articles/como-invitar-a-tu-equipo')->assertOk()->json('data');
@@ -70,7 +72,7 @@ it('la ayuda contextual exige sesión y filtra por el código de la pantalla', f
     helpSeed();
     $h = authHeaders(tokenFor(ADMIN_EMAIL));
     expect(collect($this->getJson('/api/v1/me/help?screen_code=SCR-USR-02', $h)->assertOk()->json('data'))->pluck('slug')->all())->toBe(['como-invitar-a-tu-equipo']);
-    expect($this->getJson('/api/v1/me/help?screen_code=SCR-DSH-01', $h)->json('data'))->toBe([]);
+    expect($this->getJson('/api/v1/me/help?screen_code=SCR-WEB-01', $h)->json('data'))->toBe([]);
     $this->getJson('/api/v1/me/help?screen_code=hola', $h)->assertStatus(422);
 });
 

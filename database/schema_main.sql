@@ -11576,6 +11576,22 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
     FROM users u WHERE lower(u.email) = lower(p_email) AND u.deleted_at IS NULL
 $$;
 
+-- Login con DNI (SCR-USR-01): por el HMAC del documento del trabajador vinculado a la membresía o a la cuenta.
+-- Devuelve todas las coincidencias: la aplicación solo acepta una.
+CREATE OR REPLACE FUNCTION public.app_auth_lookup_user_by_document(p_hash bytea)
+RETURNS TABLE (id uuid, password_hash text, status text, mfa_enabled boolean, locked_until timestamptz, is_platform_staff boolean)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT u.id, u.password_hash, u.status, u.mfa_enabled, u.locked_until, u.is_platform_staff
+    FROM users u
+   WHERE u.deleted_at IS NULL
+     AND u.id IN (
+       SELECT m.user_id FROM memberships m JOIN workers w ON w.id = m.worker_id
+        WHERE w.document_number_hash = p_hash AND w.deleted_at IS NULL AND m.deleted_at IS NULL AND m.status = 'active'
+       UNION
+       SELECT w.user_id FROM workers w
+        WHERE w.document_number_hash = p_hash AND w.deleted_at IS NULL AND w.user_id IS NOT NULL)
+$$;
+
 -- Selector de empresa: membresías activas del usuario actual (app.user_id), en todas sus empresas.
 CREATE OR REPLACE FUNCTION public.app_my_memberships()
 RETURNS TABLE (membership_id uuid, company_id uuid, ruc char(11), company_name text, role_code text, expires_at timestamptz)

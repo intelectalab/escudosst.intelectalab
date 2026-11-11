@@ -35,9 +35,19 @@ export function useCompanyBrand(companyId: string): Brand | null {
 }
 
 /** Logo del menú: el de la consultora si tiene marca blanca activa; si no, el de EscudoSST. */
-export function CompanyBrand({ companyId }: { companyId: string }) {
+export function CompanyBrand({ companyId, compact = false }: { companyId: string; compact?: boolean }) {
   const b = useCompanyBrand(companyId);
-  if (!b) return <AppBrand light />;
+  if (!b) return <AppBrand light compact={compact} />;
+  if (compact) {
+    return b.logo ? (
+      <span className="grid h-9 w-9 place-items-center rounded-lg bg-white p-1">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={b.logo} alt={b.brand_name} className="max-h-7 w-auto object-contain" />
+      </span>
+    ) : (
+      <span className="grid h-9 w-9 place-items-center rounded-lg bg-white/15 font-display text-sm font-bold text-white">{b.brand_name.slice(0, 2).toUpperCase()}</span>
+    );
+  }
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2.5">
@@ -54,8 +64,8 @@ export function CompanyBrand({ companyId }: { companyId: string }) {
   );
 }
 
-/** Panel de la consultora: su marca para las empresas cliente. */
-export function WhiteLabelPanel() {
+/** Panel de la consultora: su marca para las empresas cliente. Con «bare» se muestra sin marco (dentro de una ventana). */
+export function WhiteLabelPanel({ bare = false }: { bare?: boolean } = {}) {
   const [d, setD] = useState<(Brand & { remove_logo?: boolean; newLogo?: string | null }) | null>(null);
   const [clients, setClients] = useState(0);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -81,9 +91,9 @@ export function WhiteLabelPanel() {
       .catch((e: ApiError) => setMsg({ text: Object.values(e.errors ?? {})[0]?.[0] ?? e.detail ?? e.title, ok: false }));
 
   return (
-    <section className="space-y-4 rounded-2xl border border-line bg-surface p-5 shadow-sm">
+    <section className={bare ? "space-y-4" : "space-y-4 rounded-2xl border border-line bg-surface p-5 shadow-sm"}>
       <div>
-        <h2 className="font-display text-lg font-semibold">Marca blanca</h2>
+        {!bare && <h2 className="font-display text-lg font-semibold">Marca blanca</h2>}
         <p className="text-sm text-muted">Tus {clients} {clients === 1 ? "empresa cliente ve" : "empresas cliente ven"} EscudoSST con tu nombre, logo y colores (menú, inicio, certificados y fotochecks).</p>
       </div>
       <div className="grid gap-4 md:grid-cols-[1fr_16rem]">

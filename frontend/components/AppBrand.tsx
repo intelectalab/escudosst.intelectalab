@@ -29,22 +29,22 @@ function load(): Promise<Marca> {
   return pending;
 }
 
-export function AppBrand({ light = false }: { light?: boolean }) {
+export function AppBrand({ light = false, compact = false }: { light?: boolean; compact?: boolean }) {
   const [m, setM] = useState<Marca | null>(null);
   useEffect(() => {
     load().then(setM);
   }, []);
 
   const file = m && (light ? (m.logoDark ?? m.logo) : m.logo);
-  if (!m || !file) return <Brand light={light} name={m?.name} />;
+  if (!m || !file) return <Brand light={light} name={m?.name} compact={compact} />;
   const plate = light && !m.logoDark;   // logo normal sobre fondo oscuro: placa blanca para que se vea
   return (
     <div className="flex items-center gap-2.5">
       <span className={`grid h-[34px] shrink-0 place-items-center ${plate ? "rounded-lg bg-white px-1.5" : ""}`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={assetUrl(file) ?? ""} alt={m.name} className="h-[28px] w-auto max-w-[120px] object-contain" />
+        <img src={assetUrl(file) ?? ""} alt={m.name} className={`h-[28px] w-auto object-contain ${compact ? "max-w-[30px]" : "max-w-[120px]"}`} />
       </span>
-      <span className={`font-display text-xl font-semibold ${light ? "text-white" : "text-fg"}`}>{m.name}</span>
+      {!compact && <span className={`font-display text-xl font-semibold ${light ? "text-white" : "text-fg"}`}>{m.name}</span>}
     </div>
   );
 }

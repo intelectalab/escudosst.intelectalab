@@ -2,6 +2,7 @@
 // El backend describe cada tabla (campos, tipos, opciones y permisos) y esta app arma la pantalla.
 
 import { api } from "./api";
+import { createOrQueue } from "./offline";
 
 export type FieldType = "text" | "longtext" | "int" | "number" | "date" | "datetime" | "time" | "bool" | "enum" | "ref" | "tags" | "json" | "source" | "file";
 
@@ -29,6 +30,8 @@ export type RecordResource = {
   hybrid: boolean;
   immutable: boolean;
   label: string;
+  /** Columnas de la lista en el orden del prototipo. */
+  columns?: string[];
   fields: RecordField[];
   can: { read: boolean; create: boolean; update: boolean; delete: boolean; export: boolean };
 };
@@ -51,8 +54,9 @@ export const records = {
     return api<RecordPage>(`${base(code, table)}?${qs}`, { withCompany: true });
   },
   get: (code: string, table: string, id: string) => api<{ data: RecordRow }>(`${base(code, table)}/${id}`, { withCompany: true }),
+  // Sin señal y con el complemento OFF, los registros de campo quedan en la cola del dispositivo (lib/offline.ts).
   create: (code: string, table: string, body: Record<string, unknown>) =>
-    api<{ data: RecordRow }>(base(code, table), { method: "POST", body, withCompany: true }),
+    createOrQueue(table, () => api<{ data: RecordRow }>(base(code, table), { method: "POST", body, withCompany: true }), body),
   update: (code: string, table: string, id: string, body: Record<string, unknown>) =>
     api<{ data: RecordRow }>(`${base(code, table)}/${id}`, { method: "PATCH", body, withCompany: true }),
   remove: (code: string, table: string, id: string) => api<void>(`${base(code, table)}/${id}`, { method: "DELETE", withCompany: true }),

@@ -295,6 +295,13 @@
  },
  "resources": {
   "sites": {
+   "columns": [
+    "name",
+    "site_type",
+    "address",
+    "headcount_estimated",
+    "status"
+   ],
    "module": "TEN",
    "tab": "Sedes",
    "title": "Sede, planta, obra o tienda",
@@ -319,8 +326,7 @@
      "name": "code",
      "label": "Código",
      "type": "text",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "name",
@@ -371,12 +377,14 @@
        "label": "Otro"
       }
      ],
-     "default": "plant"
+     "default": "plant",
+     "list": true
     },
     {
      "name": "address",
      "label": "Dirección",
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "ubigeo",
@@ -424,8 +432,7 @@
     {
      "name": "starts_on",
      "label": "Fecha de inicio",
-     "type": "date",
-     "list": true
+     "type": "date"
     },
     {
      "name": "ends_on",
@@ -435,7 +442,8 @@
     {
      "name": "headcount_estimated",
      "label": "Personal estimado",
-     "type": "int"
+     "type": "int",
+     "list": true
     },
     {
      "name": "status",
@@ -461,6 +469,12 @@
    ]
   },
   "areas": {
+   "columns": [
+    "name",
+    "site_id",
+    "parent_area_id",
+    "status"
+   ],
    "module": "TEN",
    "tab": "Áreas",
    "title": "Área o línea dentro de una sede (árbol)",
@@ -491,14 +505,14 @@
      "name": "parent_area_id",
      "label": "Área superior",
      "type": "ref",
-     "ref": "areas"
+     "ref": "areas",
+     "list": true
     },
     {
      "name": "code",
      "label": "Código",
      "type": "text",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "name",
@@ -540,6 +554,13 @@
    ]
   },
   "positions": {
+   "columns": [
+    "name",
+    "area_id",
+    "occupational_group",
+    "is_critical",
+    "status"
+   ],
    "module": "TEN",
    "tab": "Puestos",
    "title": "Puesto de trabajo, unidad para IPERC, EPP, EMO y capacitaciones",
@@ -561,14 +582,14 @@
      "name": "area_id",
      "label": "Área",
      "type": "ref",
-     "ref": "areas"
+     "ref": "areas",
+     "list": true
     },
     {
      "name": "code",
      "label": "Código",
      "type": "text",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "name",
@@ -590,13 +611,15 @@
     {
      "name": "occupational_group",
      "label": "Grupo ocupacional",
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "is_critical",
      "label": "Crítico",
      "type": "bool",
-     "default": false
+     "default": false,
+     "list": true
     },
     {
      "name": "requires_emo",
@@ -635,6 +658,13 @@
    ]
   },
   "work_shifts": {
+   "columns": [
+    "name",
+    "start_time",
+    "end_time",
+    "site_id",
+    "status"
+   ],
    "module": "TEN",
    "tab": "Turnos",
    "title": "Turnos para horas-hombre y programación",
@@ -656,14 +686,14 @@
      "name": "site_id",
      "label": "Sede",
      "type": "ref",
-     "ref": "sites"
+     "ref": "sites",
+     "list": true
     },
     {
      "name": "code",
      "label": "Código",
      "type": "text",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "name",
@@ -676,13 +706,15 @@
      "name": "start_time",
      "label": "Hora de inicio",
      "type": "time",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "end_time",
      "label": "Hora de fin",
      "type": "time",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "hours_per_day",
@@ -721,6 +753,14 @@
    ]
   },
   "workers": {
+   "columns": [
+    "full_name",
+    "document_last4",
+    "current_position_id",
+    "current_area_id",
+    "current_site_id",
+    "status"
+   ],
    "module": "TRB",
    "tab": "Trabajadores",
    "title": "Ficha única del trabajador",
@@ -786,7 +826,8 @@
      "name": "document_last4",
      "label": "Últimos 4 dígitos del documento",
      "readonly": true,
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "first_name",
@@ -815,8 +856,7 @@
     {
      "name": "birth_on",
      "label": "Fecha de nacimiento",
-     "type": "date",
-     "list": true
+     "type": "date"
     },
     {
      "name": "sex",
@@ -941,19 +981,22 @@
      "name": "current_site_id",
      "label": "Sede actual",
      "type": "ref",
-     "ref": "sites"
+     "ref": "sites",
+     "list": true
     },
     {
      "name": "current_area_id",
      "label": "Área actual",
      "type": "ref",
-     "ref": "areas"
+     "ref": "areas",
+     "list": true
     },
     {
      "name": "current_position_id",
      "label": "Puesto actual",
      "type": "ref",
-     "ref": "positions"
+     "ref": "positions",
+     "list": true
     },
     {
      "name": "photo_file_id",
@@ -1006,6 +1049,12 @@
    ]
   },
   "worker_assignments": {
+   "columns": [
+    "change_reason",
+    "worker_id",
+    "site_id",
+    "starts_on"
+   ],
    "module": "TRB",
    "tab": "Asignaciones",
    "title": "Historia de asignación a sede/área/puesto/turno",
@@ -1085,6 +1134,12 @@
    ]
   },
   "worker_documents": {
+   "columns": [
+    "title",
+    "worker_id",
+    "issued_on",
+    "status"
+   ],
    "module": "TRB",
    "tab": "Legajo",
    "title": "Legajo SST: documentos y su vigencia",
@@ -1211,6 +1266,11 @@
    ]
   },
   "document_categories": {
+   "columns": [
+    "code",
+    "name",
+    "requires_approval_by"
+   ],
    "module": "DOC",
    "tab": "Categorías",
    "title": "Tipología con reglas por defecto",
@@ -1310,6 +1370,13 @@
    ]
   },
   "documents": {
+   "columns": [
+    "code",
+    "title",
+    "category_id",
+    "next_review_on",
+    "status"
+   ],
    "module": "DOC",
    "tab": "Documentos",
    "title": "Documento lógico",
@@ -1455,6 +1522,12 @@
    ]
   },
   "document_versions": {
+   "columns": [
+    "version_label",
+    "document_id",
+    "submitted_at",
+    "status"
+   ],
    "module": "DOC",
    "tab": "Versiones",
    "title": "Versión inmutable aprobada",
@@ -1604,6 +1677,12 @@
    ]
   },
   "document_acknowledgements": {
+   "columns": [
+    "method",
+    "document_version_id",
+    "worker_id",
+    "acknowledged_at"
+   ],
    "module": "DOC",
    "tab": "Cargos de lectura",
    "title": "Cargo de entrega/lectura (inalterable)",
@@ -1683,6 +1762,13 @@
    ]
   },
   "notification_rules": {
+   "columns": [
+    "name",
+    "event_code",
+    "lead_days",
+    "channels",
+    "is_active"
+   ],
    "module": "NOT",
    "tab": "Reglas de alerta",
    "title": "Regla de alerta por evento",
@@ -1732,13 +1818,15 @@
      "name": "channels",
      "label": "Canales",
      "type": "tags",
-     "item": "text"
+     "item": "text",
+     "list": true
     },
     {
      "name": "lead_days",
      "label": "Días de anticipación",
      "type": "tags",
-     "item": "integer"
+     "item": "integer",
+     "list": true
     },
     {
      "name": "repeat_every_days",
@@ -1788,18 +1876,23 @@
        "label": "Crítica"
       }
      ],
-     "default": "normal",
-     "list": true
+     "default": "normal"
     },
     {
      "name": "is_active",
      "label": "Activo",
      "type": "bool",
-     "default": true
+     "default": true,
+     "list": true
     }
    ]
   },
   "notifications": {
+   "columns": [
+    "title",
+    "scheduled_for",
+    "priority"
+   ],
    "module": "NOT",
    "tab": "Notificaciones",
    "title": "Notificación generada",
@@ -1917,6 +2010,12 @@
    ]
   },
   "notification_deliveries": {
+   "columns": [
+    "attempted_at",
+    "channel",
+    "notification_id",
+    "status"
+   ],
    "module": "NOT",
    "tab": "Envíos de avisos",
    "title": "Intento de entrega por canal (inalterable)",
@@ -2039,6 +2138,11 @@
    ]
   },
   "user_notification_prefs": {
+   "columns": [
+    "channel",
+    "user_id",
+    "digest_mode"
+   ],
    "module": "NOT",
    "tab": "Preferencias",
    "title": "Preferencias del usuario",
@@ -2131,6 +2235,11 @@
    ]
   },
   "kpi_definitions": {
+   "columns": [
+    "code",
+    "name",
+    "direction"
+   ],
    "module": "DSH",
    "tab": "Definiciones de KPI",
    "title": "KPI declarativo",
@@ -2260,6 +2369,11 @@
    ]
   },
   "kpi_snapshots": {
+   "columns": [
+    "status_color",
+    "kpi_definition_id",
+    "period_start"
+   ],
    "module": "DSH",
    "tab": "Valores calculados",
    "title": "Valor calculado por periodo y ámbito",
@@ -2368,6 +2482,11 @@
    ]
   },
   "dashboards": {
+   "columns": [
+    "name",
+    "audience_role",
+    "owner_user_id"
+   ],
    "module": "DSH",
    "tab": "Tableros",
    "title": "Tablero por rol o personalizado",
@@ -2416,6 +2535,11 @@
    ]
   },
   "dashboard_widgets": {
+   "columns": [
+    "title",
+    "dashboard_id",
+    "widget_type"
+   ],
    "module": "DSH",
    "tab": "Widgets",
    "title": "Widget del tablero",
@@ -2513,6 +2637,11 @@
    ]
   },
   "signature_requests": {
+   "columns": [
+    "subject_type",
+    "expires_at",
+    "status"
+   ],
    "module": "FIR",
    "tab": "Solicitudes de firma",
    "title": "Solicitud de firma sobre un registro",
@@ -2665,6 +2794,12 @@
    ]
   },
   "baseline_assessments": {
+   "columns": [
+    "title",
+    "assessment_on",
+    "score_pct",
+    "status"
+   ],
    "module": "LBA",
    "tab": "Diagnósticos",
    "title": "Diagnóstico de una empresa (o sede) en una fecha",
@@ -2767,7 +2902,8 @@
      "name": "score_pct",
      "label": "Puntaje (%)",
      "readonly": true,
-     "type": "number"
+     "type": "number",
+     "list": true
     },
     {
      "name": "approved_by",
@@ -2790,6 +2926,12 @@
    ]
   },
   "baseline_items": {
+   "columns": [
+    "lineament_name",
+    "item_code",
+    "question",
+    "result"
+   ],
    "module": "LBA",
    "tab": "Ítems evaluados",
    "title": "Respuesta por ítem de la lista",
@@ -2900,6 +3042,13 @@
    ]
   },
   "baseline_gaps": {
+   "columns": [
+    "description",
+    "assessment_id",
+    "baseline_item_id",
+    "due_on",
+    "status"
+   ],
    "module": "LBA",
    "tab": "Brechas",
    "title": "Brecha derivada de un ítem no cumplido",
@@ -3024,6 +3173,13 @@
    ]
   },
   "sst_policies": {
+   "columns": [
+    "version_number",
+    "title",
+    "approved_by",
+    "approved_at",
+    "status"
+   ],
    "module": "POL",
    "tab": "Políticas",
    "title": "Versión de la política SST",
@@ -3049,7 +3205,8 @@
      "label": "N.º de versión",
      "readonly": true,
      "type": "int",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "title",
@@ -3109,7 +3266,8 @@
      "label": "Aprobado por",
      "readonly": true,
      "type": "ref",
-     "ref": "users"
+     "ref": "users",
+     "list": true
     },
     {
      "name": "approved_at",
@@ -3149,6 +3307,14 @@
    ]
   },
   "sst_objectives": {
+   "columns": [
+    "title",
+    "indicator",
+    "target_value",
+    "unit",
+    "responsible_user_id",
+    "status"
+   ],
    "module": "POL",
    "tab": "Objetivos",
    "title": "Objetivo SST",
@@ -3183,8 +3349,7 @@
      "name": "code",
      "label": "Código",
      "type": "text",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "title",
@@ -3201,7 +3366,8 @@
     {
      "name": "indicator",
      "label": "Indicador",
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "baseline_value",
@@ -3211,18 +3377,21 @@
     {
      "name": "target_value",
      "label": "Valor meta",
-     "type": "number"
+     "type": "number",
+     "list": true
     },
     {
      "name": "unit",
      "label": "Unidad",
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "responsible_user_id",
      "label": "Responsable (usuario)",
      "type": "ref",
-     "ref": "users"
+     "ref": "users",
+     "list": true
     },
     {
      "name": "status",
@@ -3256,6 +3425,12 @@
    ]
   },
   "objective_targets": {
+   "columns": [
+    "period_label",
+    "objective_id",
+    "target_on",
+    "status"
+   ],
    "module": "POL",
    "tab": "Metas",
    "title": "Meta medible del objetivo",
@@ -3348,6 +3523,11 @@
    ]
   },
   "legal_parameters": {
+   "columns": [
+    "description",
+    "valid_from",
+    "value_type"
+   ],
    "module": "MRL",
    "tab": "Parámetros legales",
    "title": "Parámetros legales con vigencia (plazos, factores, periodicidades, umbrales)",
@@ -3492,6 +3672,14 @@
    ]
   },
   "legal_requirements": {
+   "columns": [
+    "legal_norm_id",
+    "article",
+    "requirement",
+    "responsible_user_id",
+    "next_evaluation_on",
+    "status"
+   ],
    "module": "MRL",
    "tab": "Requisitos legales",
    "title": "Requisito aplicable a la empresa",
@@ -3523,7 +3711,8 @@
      "name": "requirement",
      "label": "Requisito",
      "type": "text",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "applicability",
@@ -3552,7 +3741,8 @@
      "name": "responsible_user_id",
      "label": "Responsable (usuario)",
      "type": "ref",
-     "ref": "users"
+     "ref": "users",
+     "list": true
     },
     {
      "name": "evidence_expected",
@@ -3594,6 +3784,11 @@
    ]
   },
   "requirement_evaluations": {
+   "columns": [
+    "result",
+    "legal_requirement_id",
+    "evaluated_on"
+   ],
    "module": "MRL",
    "tab": "Evaluaciones",
    "title": "Evaluación de cumplimiento",
@@ -3677,6 +3872,12 @@
    ]
   },
   "annual_plans": {
+   "columns": [
+    "year",
+    "title",
+    "approved_at",
+    "status"
+   ],
    "module": "PLA",
    "tab": "Planes anuales",
    "title": "Plan Anual por año",
@@ -3698,7 +3899,8 @@
      "name": "year",
      "label": "Año",
      "type": "int",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "title",
@@ -3780,6 +3982,12 @@
    ]
   },
   "annual_plan_items": {
+   "columns": [
+    "code",
+    "description",
+    "annual_plan_id",
+    "starts_on"
+   ],
    "module": "PLA",
    "tab": "Componentes",
    "title": "Componente del plan",
@@ -3861,6 +4069,12 @@
    ]
   },
   "annual_programs": {
+   "columns": [
+    "year",
+    "title",
+    "progress_pct",
+    "status"
+   ],
    "module": "PAS",
    "tab": "Programas",
    "title": "Programa del año",
@@ -3882,7 +4096,8 @@
      "name": "year",
      "label": "Año",
      "type": "int",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "annual_plan_id",
@@ -3943,15 +4158,15 @@
      "name": "approved_at",
      "label": "Aprobado el",
      "readonly": true,
-     "type": "datetime",
-     "list": true
+     "type": "datetime"
     },
     {
      "name": "progress_pct",
      "label": "Avance (%)",
      "readonly": true,
      "type": "number",
-     "default": 0
+     "default": 0,
+     "list": true
     },
     {
      "name": "closed_at",
@@ -3962,6 +4177,14 @@
    ]
   },
   "program_activities": {
+   "columns": [
+    "code",
+    "title",
+    "goal_quantity",
+    "executed_quantity",
+    "progress_pct",
+    "status"
+   ],
    "module": "PAS",
    "tab": "Actividades",
    "title": "Actividad programada",
@@ -4159,6 +4382,11 @@
    ]
   },
   "activity_executions": {
+   "columns": [
+    "description",
+    "activity_id",
+    "executed_on"
+   ],
    "module": "PAS",
    "tab": "Ejecuciones",
    "title": "Ejecución de una actividad en un mes",
@@ -4233,6 +4461,12 @@
    ]
   },
   "training_programs": {
+   "columns": [
+    "year",
+    "title",
+    "approved_at",
+    "status"
+   ],
    "module": "PCA",
    "tab": "Programas",
    "title": "Programa anual de capacitación",
@@ -4254,7 +4488,8 @@
      "name": "year",
      "label": "Año",
      "type": "int",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "title",
@@ -4325,6 +4560,11 @@
    ]
   },
   "training_program_items": {
+   "columns": [
+    "topic",
+    "training_program_id",
+    "status"
+   ],
    "module": "PCA",
    "tab": "Temas programados",
    "title": "Tema programado",
@@ -4481,6 +4721,12 @@
    ]
   },
   "risst_versions": {
+   "columns": [
+    "version_number",
+    "title",
+    "effective_on",
+    "status"
+   ],
    "module": "RIS",
    "tab": "Versiones del RISST",
    "title": "Versión del RISST",
@@ -4506,7 +4752,8 @@
      "label": "N.º de versión",
      "readonly": true,
      "type": "int",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "title",
@@ -4583,13 +4830,13 @@
      "name": "approved_at",
      "label": "Aprobado el",
      "readonly": true,
-     "type": "datetime",
-     "list": true
+     "type": "datetime"
     },
     {
      "name": "effective_on",
      "label": "Vigente desde",
-     "type": "date"
+     "type": "date",
+     "list": true
     },
     {
      "name": "obsoleted_at",
@@ -4600,6 +4847,13 @@
    ]
   },
   "risst_deliveries": {
+   "columns": [
+    "worker_id",
+    "risst_version_id",
+    "delivered_on",
+    "method",
+    "status"
+   ],
    "module": "RIS",
    "tab": "Entregas",
    "title": "Entrega a un trabajador (cargo)",
@@ -4700,6 +4954,13 @@
    ]
   },
   "committees": {
+   "columns": [
+    "name",
+    "committee_type",
+    "period_start_on",
+    "period_end_on",
+    "status"
+   ],
    "module": "COM",
    "tab": "Comités",
    "title": "Comité o supervisor de un periodo",
@@ -4731,7 +4992,8 @@
        "label": "Supervisor"
       }
      ],
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "site_id",
@@ -4757,7 +5019,8 @@
      "name": "period_end_on",
      "label": "Fecha de fin del periodo",
      "type": "date",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "installation_on",
@@ -4803,6 +5066,13 @@
    ]
   },
   "committee_members": {
+   "columns": [
+    "representation",
+    "committee_id",
+    "worker_id",
+    "starts_on",
+    "status"
+   ],
    "module": "COM",
    "tab": "Integrantes",
    "title": "Integrantes",
@@ -4955,6 +5225,11 @@
    ]
   },
   "elections": {
+   "columns": [
+    "title",
+    "convened_at",
+    "status"
+   ],
    "module": "COM",
    "tab": "Elecciones",
    "title": "Proceso electoral de representantes",
@@ -5117,6 +5392,13 @@
    ]
   },
   "election_candidates": {
+   "columns": [
+    "list_name",
+    "election_id",
+    "worker_id",
+    "nominated_at",
+    "status"
+   ],
    "module": "COM",
    "tab": "Candidatos",
    "title": "Candidatos inscritos",
@@ -5213,6 +5495,14 @@
    ]
   },
   "committee_meetings": {
+   "columns": [
+    "number",
+    "meeting_type",
+    "scheduled_at",
+    "modality",
+    "quorum_reached",
+    "status"
+   ],
    "module": "COM",
    "tab": "Sesiones del comité",
    "title": "Sesión ordinaria o extraordinaria",
@@ -5236,8 +5526,7 @@
      "label": "Comité",
      "type": "ref",
      "ref": "committees",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "meeting_type",
@@ -5263,7 +5552,8 @@
     {
      "name": "number",
      "label": "Número",
-     "type": "int"
+     "type": "int",
+     "list": true
     },
     {
      "name": "scheduled_at",
@@ -5299,12 +5589,14 @@
        "label": "Mixta"
       }
      ],
-     "default": "in_person"
+     "default": "in_person",
+     "list": true
     },
     {
      "name": "quorum_reached",
      "label": "Quórum alcanzado",
-     "type": "bool"
+     "type": "bool",
+     "list": true
     },
     {
      "name": "attendance",
@@ -5359,6 +5651,12 @@
    ]
   },
   "meeting_agreements": {
+   "columns": [
+    "description",
+    "meeting_id",
+    "due_on",
+    "status"
+   ],
    "module": "COM",
    "tab": "Acuerdos",
    "title": "Acuerdo con seguimiento",
@@ -5460,6 +5758,13 @@
    ]
   },
   "budgets": {
+   "columns": [
+    "year",
+    "title",
+    "total_planned",
+    "total_executed",
+    "status"
+   ],
    "module": "PRE",
    "tab": "Presupuestos",
    "title": "Presupuesto anual",
@@ -5481,7 +5786,8 @@
      "name": "year",
      "label": "Año",
      "type": "int",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "title",
@@ -5502,14 +5808,16 @@
      "label": "Total planificado",
      "readonly": true,
      "type": "number",
-     "default": 0
+     "default": 0,
+     "list": true
     },
     {
      "name": "total_executed",
      "label": "Total ejecutado",
      "readonly": true,
      "type": "number",
-     "default": 0
+     "default": 0,
+     "list": true
     },
     {
      "name": "status",
@@ -5549,12 +5857,16 @@
     {
      "name": "approved_at",
      "label": "Aprobado el",
-     "type": "datetime",
-     "list": true
+     "type": "datetime"
     }
    ]
   },
   "budget_lines": {
+   "columns": [
+    "description",
+    "budget_id",
+    "category"
+   ],
    "module": "PRE",
    "tab": "Líneas presupuestales",
    "title": "Línea presupuestal",
@@ -5665,6 +5977,11 @@
    ]
   },
   "budget_executions": {
+   "columns": [
+    "description",
+    "budget_line_id",
+    "executed_on"
+   ],
    "module": "PRE",
    "tab": "Gastos ejecutados",
    "title": "Gasto ejecutado",
@@ -5729,6 +6046,11 @@
    ]
   },
   "hazard_catalog": {
+   "columns": [
+    "code",
+    "hazard",
+    "hazard_family"
+   ],
    "module": "IPC",
    "tab": "Catálogo de peligros",
    "title": "Catálogo de peligros (global y propio de la empresa)",
@@ -5858,6 +6180,11 @@
    ]
   },
   "risk_criteria": {
+   "columns": [
+    "code",
+    "name",
+    "status"
+   ],
    "module": "IPC",
    "tab": "Criterios de riesgo",
    "title": "Criterios de evaluación configurables",
@@ -5980,6 +6307,13 @@
    ]
   },
   "iperc_matrices": {
+   "columns": [
+    "code",
+    "title",
+    "risk_criteria_id",
+    "next_review_on",
+    "status"
+   ],
    "module": "IPC",
    "tab": "Matrices IPERC",
    "title": "Matriz por alcance",
@@ -6087,6 +6421,11 @@
    ]
   },
   "iperc_versions": {
+   "columns": [
+    "status",
+    "iperc_matrix_id",
+    "prepared_at"
+   ],
    "module": "IPC",
    "tab": "Versiones IPERC",
    "title": "Versión aprobada (congelada)",
@@ -6227,6 +6566,11 @@
    ]
   },
   "iperc_rows": {
+   "columns": [
+    "hazard",
+    "iperc_version_id",
+    "row_number"
+   ],
    "module": "IPC",
    "tab": "Filas IPERC",
    "title": "Fila de la matriz",
@@ -6403,6 +6747,12 @@
    ]
   },
   "iperc_controls": {
+   "columns": [
+    "description",
+    "iperc_row_id",
+    "due_on",
+    "status"
+   ],
    "module": "IPC",
    "tab": "Controles",
    "title": "Control por fila",
@@ -6538,6 +6888,13 @@
    ]
   },
   "risk_maps": {
+   "columns": [
+    "title",
+    "site_id",
+    "floor_label",
+    "version_number",
+    "status"
+   ],
    "module": "MAP",
    "tab": "Mapas de riesgo",
    "title": "Mapa por sede/nivel",
@@ -6581,14 +6938,16 @@
     {
      "name": "floor_label",
      "label": "Piso",
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "version_number",
      "label": "N.º de versión",
      "readonly": true,
      "type": "int",
-     "default": 1
+     "default": 1,
+     "list": true
     },
     {
      "name": "plan_file_id",
@@ -6646,8 +7005,7 @@
      "name": "approved_at",
      "label": "Aprobado el",
      "readonly": true,
-     "type": "datetime",
-     "list": true
+     "type": "datetime"
     },
     {
      "name": "effective_on",
@@ -6657,6 +7015,13 @@
    ]
   },
   "risk_map_markers": {
+   "columns": [
+    "marker_type",
+    "label",
+    "x_pct",
+    "y_pct",
+    "risk_map_id"
+   ],
    "module": "MAP",
    "tab": "Marcadores",
    "title": "Marcador sobre el plano",
@@ -6768,6 +7133,12 @@
    ]
   },
   "exposure_limits": {
+   "columns": [
+    "substance_name",
+    "agent_type_id",
+    "valid_from",
+    "limit_type"
+   ],
    "module": "MAG",
    "tab": "Límites permisibles",
    "title": "Límite permisible vigente",
@@ -6881,6 +7252,13 @@
    ]
   },
   "monitoring_points": {
+   "columns": [
+    "code",
+    "name",
+    "site_id",
+    "agent_type_id",
+    "status"
+   ],
    "module": "MAG",
    "tab": "Puntos de monitoreo",
    "title": "Punto o grupo de exposición",
@@ -6975,6 +7353,12 @@
    ]
   },
   "monitoring_campaigns": {
+   "columns": [
+    "title",
+    "starts_on",
+    "provider_name",
+    "status"
+   ],
    "module": "MAG",
    "tab": "Campañas",
    "title": "Campaña de monitoreo",
@@ -7003,7 +7387,8 @@
     {
      "name": "provider_name",
      "label": "Nombre del proveedor",
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "provider_ruc",
@@ -7076,6 +7461,14 @@
    ]
   },
   "measurements": {
+   "columns": [
+    "monitoring_point_id",
+    "agent_type_id",
+    "value",
+    "unit",
+    "measured_at",
+    "result"
+   ],
    "module": "MAG",
    "tab": "Mediciones",
    "title": "Resultado por punto y agente",
@@ -7094,8 +7487,7 @@
      "label": "Campaña",
      "type": "ref",
      "ref": "monitoring_campaigns",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "monitoring_point_id",
@@ -7110,7 +7502,8 @@
      "label": "Tipo de agente",
      "type": "ref",
      "ref": "agent_types",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "exposure_limit_id",
@@ -7140,7 +7533,8 @@
      "name": "value",
      "label": "Valor",
      "type": "number",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "unit",
@@ -7198,6 +7592,14 @@
    ]
   },
   "ergonomic_assessments": {
+   "columns": [
+    "position_id",
+    "method",
+    "score",
+    "risk_level",
+    "assessed_on",
+    "status"
+   ],
    "module": "PSI",
    "tab": "Evaluaciones ergonómicas",
    "title": "Evaluación por puesto",
@@ -7215,7 +7617,8 @@
      "name": "position_id",
      "label": "Puesto",
      "type": "ref",
-     "ref": "positions"
+     "ref": "positions",
+     "list": true
     },
     {
      "name": "worker_id",
@@ -7282,7 +7685,8 @@
     {
      "name": "score",
      "label": "Puntaje",
-     "type": "number"
+     "type": "number",
+     "list": true
     },
     {
      "name": "risk_level",
@@ -7305,7 +7709,8 @@
        "value": "very_high",
        "label": "Muy alto"
       }
-     ]
+     ],
+     "list": true
     },
     {
      "name": "findings",
@@ -7352,6 +7757,13 @@
    ]
   },
   "psychosocial_surveys": {
+   "columns": [
+    "title",
+    "instrument",
+    "starts_on",
+    "ends_on",
+    "status"
+   ],
    "module": "PSI",
    "tab": "Encuestas",
    "title": "Encuesta",
@@ -7390,7 +7802,8 @@
        "label": "Cuestionario base EscudoSST"
       }
      ],
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "instrument_version",
@@ -7406,7 +7819,8 @@
     {
      "name": "ends_on",
      "label": "Fecha de fin",
-     "type": "date"
+     "type": "date",
+     "list": true
     },
     {
      "name": "is_anonymous",
@@ -7474,6 +7888,11 @@
    ]
   },
   "psychosocial_responses": {
+   "columns": [
+    "survey_id",
+    "submitted_at",
+    "worker_id"
+   ],
    "module": "PSI",
    "tab": "Respuestas",
    "title": "Respuesta anónima",
@@ -7542,6 +7961,14 @@
    ]
   },
   "procedures": {
+   "columns": [
+    "code",
+    "title",
+    "area_id",
+    "is_critical_task",
+    "next_review_on",
+    "status"
+   ],
    "module": "PET",
    "tab": "Procedimientos",
    "title": "Procedimiento lógico",
@@ -7611,7 +8038,8 @@
      "name": "area_id",
      "label": "Área",
      "type": "ref",
-     "ref": "areas"
+     "ref": "areas",
+     "list": true
     },
     {
      "name": "position_id",
@@ -7629,7 +8057,8 @@
      "name": "is_critical_task",
      "label": "Tarea crítica",
      "type": "bool",
-     "default": true
+     "default": true,
+     "list": true
     },
     {
      "name": "current_version_id",
@@ -7664,6 +8093,12 @@
    ]
   },
   "procedure_versions": {
+   "columns": [
+    "content_html",
+    "procedure_id",
+    "approved_at",
+    "status"
+   ],
    "module": "PET",
    "tab": "Versiones",
    "title": "Versión",
@@ -7798,6 +8233,14 @@
    ]
   },
   "change_requests": {
+   "columns": [
+    "code",
+    "title",
+    "change_type",
+    "requested_by",
+    "requested_on",
+    "status"
+   ],
    "module": "MOC",
    "tab": "Solicitudes de cambio",
    "title": "Solicitud de cambio",
@@ -7866,7 +8309,8 @@
        "label": "Otro"
       }
      ],
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "is_temporary",
@@ -7901,7 +8345,8 @@
      "name": "requested_by",
      "label": "Solicitado por",
      "type": "ref",
-     "ref": "users"
+     "ref": "users",
+     "list": true
     },
     {
      "name": "requested_on",
@@ -7987,6 +8432,13 @@
    ]
   },
   "change_reviews": {
+   "columns": [
+    "review_area",
+    "change_request_id",
+    "reviewer_user_id",
+    "reviewed_at",
+    "decision"
+   ],
    "module": "MOC",
    "tab": "Revisiones",
    "title": "Revisión por disciplina",
@@ -8066,6 +8518,13 @@
    ]
   },
   "inspection_templates": {
+   "columns": [
+    "code",
+    "name",
+    "inspection_type",
+    "version_number",
+    "status"
+   ],
    "module": "INS",
    "tab": "Plantillas",
    "title": "Plantilla de checklist",
@@ -8145,7 +8604,8 @@
        "label": "Otro"
       }
      ],
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "sector",
@@ -8162,7 +8622,8 @@
      "name": "version_number",
      "label": "N.º de versión",
      "type": "int",
-     "default": 1
+     "default": 1,
+     "list": true
     },
     {
      "name": "description",
@@ -8219,6 +8680,11 @@
    ]
   },
   "inspection_template_items": {
+   "columns": [
+    "question",
+    "template_id",
+    "answer_type"
+   ],
    "module": "INS",
    "tab": "Ítems de plantilla",
    "title": "Ítem de la plantilla",
@@ -8328,6 +8794,15 @@
    ]
   },
   "inspections": {
+   "columns": [
+    "code",
+    "title",
+    "site_id",
+    "inspector_user_id",
+    "scheduled_on",
+    "score_pct",
+    "status"
+   ],
    "module": "INS",
    "tab": "Inspecciones",
    "title": "Inspección ejecutada",
@@ -8444,7 +8919,8 @@
      "name": "inspector_user_id",
      "label": "Inspector (usuario)",
      "type": "ref",
-     "ref": "users"
+     "ref": "users",
+     "list": true
     },
     {
      "name": "inspector_worker_id",
@@ -8468,7 +8944,8 @@
      "name": "score_pct",
      "label": "Puntaje (%)",
      "readonly": true,
-     "type": "number"
+     "type": "number",
+     "list": true
     },
     {
      "name": "latitude",
@@ -8532,6 +9009,11 @@
    ]
   },
   "inspection_answers": {
+   "columns": [
+    "question_snapshot",
+    "inspection_id",
+    "template_item_id"
+   ],
    "module": "INS",
    "tab": "Respuestas",
    "title": "Respuesta por ítem",
@@ -8609,6 +9091,13 @@
    ]
   },
   "findings": {
+   "columns": [
+    "inspection_id",
+    "finding_type",
+    "severity",
+    "site_id",
+    "status"
+   ],
    "module": "INS",
    "tab": "Hallazgos",
    "title": "Hallazgo",
@@ -8644,14 +9133,14 @@
        "label": "Otro"
       }
      ],
-     "default": "inspection",
-     "list": true
+     "default": "inspection"
     },
     {
      "name": "inspection_id",
      "label": "Inspección",
      "type": "ref",
-     "ref": "inspections"
+     "ref": "inspections",
+     "list": true
     },
     {
      "name": "inspection_answer_id",
@@ -8685,14 +9174,14 @@
        "label": "Oportunidad de mejora"
       }
      ],
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "description",
      "label": "Descripción",
      "type": "longtext",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "severity",
@@ -8716,13 +9205,15 @@
        "label": "Crítica"
       }
      ],
-     "default": "medium"
+     "default": "medium",
+     "list": true
     },
     {
      "name": "site_id",
      "label": "Sede",
      "type": "ref",
-     "ref": "sites"
+     "ref": "sites",
+     "list": true
     },
     {
      "name": "area_id",
@@ -8785,6 +9276,14 @@
    ]
   },
   "report_points": {
+   "columns": [
+    "code",
+    "name",
+    "site_id",
+    "report_count",
+    "last_used_at",
+    "is_active"
+   ],
    "module": "ACT",
    "tab": "Puntos QR",
    "title": "Punto QR físico",
@@ -8863,13 +9362,15 @@
      "name": "is_active",
      "label": "Activo",
      "type": "bool",
-     "default": true
+     "default": true,
+     "list": true
     },
     {
      "name": "report_count",
      "label": "Cantidad de reportes",
      "type": "int",
-     "default": 0
+     "default": 0,
+     "list": true
     },
     {
      "name": "last_used_at",
@@ -8885,6 +9386,15 @@
    ]
   },
   "substandard_reports": {
+   "columns": [
+    "code",
+    "origin",
+    "report_type",
+    "site_id",
+    "occurred_at",
+    "risk_level",
+    "status"
+   ],
    "module": "ACT",
    "tab": "Reportes",
    "title": "Reporte",
@@ -8926,7 +9436,8 @@
        "label": "Sugerencia"
       }
      ],
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "origin",
@@ -8949,7 +9460,8 @@
        "value": "web",
        "label": "Web"
       }
-     ]
+     ],
+     "list": true
     },
     {
      "name": "report_point_id",
@@ -8961,7 +9473,8 @@
      "name": "site_id",
      "label": "Sede",
      "type": "ref",
-     "ref": "sites"
+     "ref": "sites",
+     "list": true
     },
     {
      "name": "area_id",
@@ -8979,8 +9492,7 @@
      "name": "description",
      "label": "Descripción",
      "type": "longtext",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "location_text",
@@ -9069,7 +9581,8 @@
        "value": "critical",
        "label": "Crítica"
       }
-     ]
+     ],
+     "list": true
     },
     {
      "name": "status",
@@ -9139,6 +9652,14 @@
    ]
   },
   "safety_talks": {
+   "columns": [
+    "talk_on",
+    "topic",
+    "speaker_worker_id",
+    "area_id",
+    "duration_minutes",
+    "status"
+   ],
    "module": "CH5",
    "tab": "Charlas",
    "title": "Charla",
@@ -9186,7 +9707,8 @@
      "name": "area_id",
      "label": "Área",
      "type": "ref",
-     "ref": "areas"
+     "ref": "areas",
+     "list": true
     },
     {
      "name": "work_shift_id",
@@ -9204,12 +9726,14 @@
      "name": "speaker_worker_id",
      "label": "Expositor (trabajador)",
      "type": "ref",
-     "ref": "workers"
+     "ref": "workers",
+     "list": true
     },
     {
      "name": "duration_minutes",
      "label": "Duración (min)",
-     "type": "int"
+     "type": "int",
+     "list": true
     },
     {
      "name": "material_document_id",
@@ -9256,6 +9780,11 @@
    ]
   },
   "talk_attendances": {
+   "columns": [
+    "method",
+    "safety_talk_id",
+    "attended_at"
+   ],
    "module": "CH5",
    "tab": "Asistencias",
    "title": "Asistencia firmada",
@@ -9328,6 +9857,14 @@
    ]
   },
   "ats_forms": {
+   "columns": [
+    "code",
+    "task",
+    "work_location",
+    "performed_on",
+    "supervisor_user_id",
+    "status"
+   ],
    "module": "ATS",
    "tab": "Formatos ATS",
    "title": "ATS de una tarea",
@@ -9351,15 +9888,15 @@
      "name": "task",
      "label": "Tarea",
      "type": "text",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "site_id",
      "label": "Sede",
      "type": "ref",
      "ref": "sites",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "area_id",
@@ -9370,7 +9907,8 @@
     {
      "name": "work_location",
      "label": "Lugar de trabajo",
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "performed_on",
@@ -9383,7 +9921,8 @@
      "name": "supervisor_user_id",
      "label": "Supervisor (usuario)",
      "type": "ref",
-     "ref": "users"
+     "ref": "users",
+     "list": true
     },
     {
      "name": "leader_worker_id",
@@ -9472,6 +10011,11 @@
    ]
   },
   "ats_steps": {
+   "columns": [
+    "description",
+    "ats_form_id",
+    "step_number"
+   ],
    "module": "ATS",
    "tab": "Pasos",
    "title": "Paso de la tarea",
@@ -9537,6 +10081,11 @@
    ]
   },
   "ats_participants": {
+   "columns": [
+    "role",
+    "ats_form_id",
+    "signed_at"
+   ],
    "module": "ATS",
    "tab": "Ejecutores",
    "title": "Ejecutor firmante",
@@ -9604,6 +10153,11 @@
    ]
   },
   "permit_types": {
+   "columns": [
+    "code",
+    "name",
+    "category"
+   ],
    "module": "PTR",
    "tab": "Tipos de permiso",
    "title": "Tipo de permiso",
@@ -9703,14 +10257,12 @@
      "name": "checklist",
      "label": "Lista de verificación",
      "type": "json",
-     "readonly": true,
      "required": true
     },
     {
      "name": "approval_chain",
      "label": "Cadena de aprobación",
      "type": "json",
-     "readonly": true,
      "required": true
     },
     {
@@ -9733,6 +10285,15 @@
    ]
   },
   "work_permits": {
+   "columns": [
+    "code",
+    "permit_type_id",
+    "site_id",
+    "executor_leader_worker_id",
+    "valid_from",
+    "valid_until",
+    "status"
+   ],
    "module": "PTR",
    "tab": "Permisos",
    "title": "Permiso emitido",
@@ -9809,7 +10370,8 @@
      "name": "executor_leader_worker_id",
      "label": "Líder ejecutor (trabajador)",
      "type": "ref",
-     "ref": "workers"
+     "ref": "workers",
+     "list": true
     },
     {
      "name": "executor_leader_contractor_worker_id",
@@ -9840,7 +10402,8 @@
     {
      "name": "valid_until",
      "label": "Válido hasta",
-     "type": "datetime"
+     "type": "datetime",
+     "list": true
     },
     {
      "name": "ats_form_id",
@@ -9950,6 +10513,12 @@
    ]
   },
   "permit_checks": {
+   "columns": [
+    "question",
+    "work_permit_id",
+    "checked_at",
+    "check_phase"
+   ],
    "module": "PTR",
    "tab": "Verificaciones",
    "title": "Verificación de requisitos",
@@ -10054,6 +10623,12 @@
    ]
   },
   "permit_approvals": {
+   "columns": [
+    "approver_role",
+    "work_permit_id",
+    "decided_at",
+    "decision"
+   ],
    "module": "PTR",
    "tab": "Aprobaciones",
    "title": "Aprobación en cadena",
@@ -10134,6 +10709,14 @@
    ]
   },
   "behavior_observations": {
+   "columns": [
+    "observed_on",
+    "area_id",
+    "observer_worker_id",
+    "task_observed",
+    "safe_count",
+    "at_risk_count"
+   ],
    "module": "OBS",
    "tab": "Observaciones",
    "title": "Observación",
@@ -10164,7 +10747,8 @@
      "name": "observer_worker_id",
      "label": "Observador (trabajador)",
      "type": "ref",
-     "ref": "workers"
+     "ref": "workers",
+     "list": true
     },
     {
      "name": "site_id",
@@ -10176,7 +10760,8 @@
      "name": "area_id",
      "label": "Área",
      "type": "ref",
-     "ref": "areas"
+     "ref": "areas",
+     "list": true
     },
     {
      "name": "contractor_id",
@@ -10212,13 +10797,15 @@
      "name": "safe_count",
      "label": "Cantidad segura",
      "type": "int",
-     "default": 0
+     "default": 0,
+     "list": true
     },
     {
      "name": "at_risk_count",
      "label": "Cantidad en riesgo",
      "type": "int",
-     "default": 0
+     "default": 0,
+     "list": true
     },
     {
      "name": "comments",
@@ -10243,12 +10830,16 @@
        "label": "Revisado"
       }
      ],
-     "default": "draft",
-     "list": true
+     "default": "draft"
     }
    ]
   },
   "behavior_observation_items": {
+   "columns": [
+    "category",
+    "observation_id",
+    "result"
+   ],
    "module": "OBS",
    "tab": "Comportamientos",
    "title": "Comportamiento observado",
@@ -10348,6 +10939,14 @@
    ]
   },
   "ppe_items": {
+   "columns": [
+    "code",
+    "name",
+    "category",
+    "useful_life_days",
+    "min_stock",
+    "is_active"
+   ],
    "module": "EPP",
    "tab": "Catálogo de EPP",
    "title": "Catálogo de EPP",
@@ -10448,7 +11047,8 @@
     {
      "name": "useful_life_days",
      "label": "Vida útil (días)",
-     "type": "int"
+     "type": "int",
+     "list": true
     },
     {
      "name": "unit",
@@ -10460,7 +11060,8 @@
      "name": "min_stock",
      "label": "Stock mínimo",
      "type": "int",
-     "default": 0
+     "default": 0,
+     "list": true
     },
     {
      "name": "requires_training",
@@ -10477,11 +11078,19 @@
      "name": "is_active",
      "label": "Activo",
      "type": "bool",
-     "default": true
+     "default": true,
+     "list": true
     }
    ]
   },
   "ppe_position_requirements": {
+   "columns": [
+    "position_id",
+    "ppe_item_id",
+    "quantity",
+    "replacement_days",
+    "is_mandatory"
+   ],
    "module": "EPP",
    "tab": "EPP por puesto",
    "title": "EPP exigido por puesto",
@@ -10520,28 +11129,37 @@
      "name": "quantity",
      "label": "Cantidad",
      "type": "int",
-     "default": 1
+     "default": 1,
+     "list": true
     },
     {
      "name": "replacement_days",
      "label": "Días de reposición",
-     "type": "int"
+     "type": "int",
+     "list": true
     },
     {
      "name": "is_mandatory",
      "label": "Obligatorio",
      "type": "bool",
-     "default": true
+     "default": true,
+     "list": true
     },
     {
      "name": "conditions",
      "label": "Condiciones",
-     "type": "text",
-     "list": true
+     "type": "text"
     }
    ]
   },
   "ppe_stock_movements": {
+   "columns": [
+    "moved_at",
+    "ppe_item_id",
+    "site_id",
+    "movement_type",
+    "quantity"
+   ],
    "module": "EPP",
    "tab": "Kardex de EPP",
    "title": "Kardex por sede",
@@ -10608,7 +11226,8 @@
      "name": "quantity",
      "label": "Cantidad",
      "type": "int",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "size",
@@ -10651,6 +11270,14 @@
    ]
   },
   "ppe_deliveries": {
+   "columns": [
+    "worker_id",
+    "ppe_item_id",
+    "quantity",
+    "delivered_at",
+    "expires_on",
+    "status"
+   ],
    "module": "EPP",
    "tab": "Entregas de EPP",
    "title": "Entrega al trabajador",
@@ -10690,13 +11317,13 @@
      "name": "quantity",
      "label": "Cantidad",
      "type": "int",
-     "default": 1
+     "default": 1,
+     "list": true
     },
     {
      "name": "size",
      "label": "Talla",
-     "type": "text",
-     "list": true
+     "type": "text"
     },
     {
      "name": "delivered_at",
@@ -10735,7 +11362,8 @@
     {
      "name": "expires_on",
      "label": "Fecha de vencimiento",
-     "type": "date"
+     "type": "date",
+     "list": true
     },
     {
      "name": "delivered_by",
@@ -10782,6 +11410,15 @@
    ]
   },
   "emergency_equipment": {
+   "columns": [
+    "code",
+    "equipment_type",
+    "site_id",
+    "area_id",
+    "next_maintenance_on",
+    "expires_on",
+    "status"
+   ],
    "module": "EQE",
    "tab": "Equipos",
    "title": "Equipo",
@@ -10852,7 +11489,8 @@
        "label": "Otro"
       }
      ],
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "site_id",
@@ -10866,7 +11504,8 @@
      "name": "area_id",
      "label": "Área",
      "type": "ref",
-     "ref": "areas"
+     "ref": "areas",
+     "list": true
     },
     {
      "name": "location_text",
@@ -10892,8 +11531,7 @@
     {
      "name": "installed_on",
      "label": "Fecha de instalación",
-     "type": "date",
-     "list": true
+     "type": "date"
     },
     {
      "name": "last_maintenance_on",
@@ -10903,12 +11541,14 @@
     {
      "name": "next_maintenance_on",
      "label": "Próximo mantenimiento",
-     "type": "date"
+     "type": "date",
+     "list": true
     },
     {
      "name": "expires_on",
      "label": "Fecha de vencimiento",
-     "type": "date"
+     "type": "date",
+     "list": true
     },
     {
      "name": "latitude",
@@ -10948,6 +11588,12 @@
    ]
   },
   "equipment_checks": {
+   "columns": [
+    "check_type",
+    "equipment_id",
+    "checked_at",
+    "result"
+   ],
    "module": "EQE",
    "tab": "Controles de equipos",
    "title": "Inspección o mantenimiento",
@@ -11061,6 +11707,14 @@
    ]
   },
   "first_aid_kits": {
+   "columns": [
+    "code",
+    "kit_type",
+    "site_id",
+    "responsible_worker_id",
+    "last_checked_on",
+    "status"
+   ],
    "module": "EQE",
    "tab": "Botiquines",
    "title": "Botiquín",
@@ -11130,13 +11784,15 @@
        "label": "Otro"
       }
      ],
-     "default": "A"
+     "default": "A",
+     "list": true
     },
     {
      "name": "responsible_worker_id",
      "label": "Responsable",
      "type": "ref",
-     "ref": "workers"
+     "ref": "workers",
+     "list": true
     },
     {
      "name": "last_checked_on",
@@ -11172,6 +11828,11 @@
    ]
   },
   "first_aid_kit_items": {
+   "columns": [
+    "item_name",
+    "kit_id",
+    "expires_on"
+   ],
    "module": "EQE",
    "tab": "Contenido de botiquín",
    "title": "Contenido del botiquín",
@@ -11231,6 +11892,15 @@
    ]
   },
   "drills": {
+   "columns": [
+    "code",
+    "scheduled_at",
+    "drill_type",
+    "site_id",
+    "participants_count",
+    "evacuation_time_seconds",
+    "status"
+   ],
    "module": "SIM",
    "tab": "Simulacros",
    "title": "Simulacro",
@@ -11254,8 +11924,7 @@
      "name": "title",
      "label": "Título",
      "type": "text",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "drill_type",
@@ -11295,7 +11964,8 @@
        "label": "Otro"
       }
      ],
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "site_id",
@@ -11335,12 +12005,14 @@
     {
      "name": "evacuation_time_seconds",
      "label": "Tiempo de evacuación (s)",
-     "type": "int"
+     "type": "int",
+     "list": true
     },
     {
      "name": "participants_count",
      "label": "N.º de participantes",
-     "type": "int"
+     "type": "int",
+     "list": true
     },
     {
      "name": "observers",
@@ -11417,6 +12089,11 @@
    ]
   },
   "drill_participants": {
+   "columns": [
+    "role",
+    "drill_id",
+    "worker_id"
+   ],
    "module": "SIM",
    "tab": "Participantes",
    "title": "Participación",
@@ -11485,6 +12162,13 @@
    ]
   },
   "brigades": {
+   "columns": [
+    "name",
+    "brigade_type",
+    "leader_worker_id",
+    "site_id",
+    "status"
+   ],
    "module": "SIM",
    "tab": "Brigadas",
    "title": "Brigada",
@@ -11536,7 +12220,8 @@
        "label": "General"
       }
      ],
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "name",
@@ -11549,13 +12234,13 @@
      "name": "leader_worker_id",
      "label": "Líder",
      "type": "ref",
-     "ref": "workers"
+     "ref": "workers",
+     "list": true
     },
     {
      "name": "starts_on",
      "label": "Fecha de inicio",
-     "type": "date",
-     "list": true
+     "type": "date"
     },
     {
      "name": "ends_on",
@@ -11582,6 +12267,13 @@
    ]
   },
   "brigade_members": {
+   "columns": [
+    "role",
+    "brigade_id",
+    "worker_id",
+    "starts_on",
+    "status"
+   ],
    "module": "SIM",
    "tab": "Brigadistas",
    "title": "Integrante",
@@ -11674,6 +12366,14 @@
    ]
   },
   "trainings": {
+   "columns": [
+    "code",
+    "title",
+    "modality",
+    "instructor_name",
+    "duration_minutes",
+    "status"
+   ],
    "module": "CAP",
    "tab": "Capacitaciones",
    "title": "Tema o capacitación (unidad de cumplimiento)",
@@ -11770,12 +12470,14 @@
        "label": "Mixto"
       }
      ],
-     "default": "in_person"
+     "default": "in_person",
+     "list": true
     },
     {
      "name": "duration_minutes",
      "label": "Duración (min)",
-     "type": "int"
+     "type": "int",
+     "list": true
     },
     {
      "name": "provider_type",
@@ -11807,7 +12509,8 @@
     {
      "name": "instructor_name",
      "label": "Instructor",
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "passing_score",
@@ -11869,6 +12572,12 @@
    ]
   },
   "training_sessions": {
+   "columns": [
+    "location",
+    "training_id",
+    "starts_at",
+    "status"
+   ],
    "module": "CAP",
    "tab": "Sesiones",
    "title": "Sesión presencial o virtual en vivo dictada",
@@ -11965,6 +12674,11 @@
    ]
   },
   "training_attendances": {
+   "columns": [
+    "check_in_method",
+    "session_id",
+    "check_in_at"
+   ],
    "module": "CAP",
    "tab": "Asistencias",
    "title": "Asistencia o acreditación de horas",
@@ -12052,6 +12766,11 @@
    ]
   },
   "training_evaluations": {
+   "columns": [
+    "evaluation_type",
+    "training_id",
+    "evaluated_at"
+   ],
    "module": "CAP",
    "tab": "Evaluaciones",
    "title": "Evaluación de una sesión presencial",
@@ -12152,6 +12871,15 @@
    ]
   },
   "training_certificates": {
+   "columns": [
+    "certificate_code",
+    "holder_name",
+    "course_title",
+    "score",
+    "issued_on",
+    "expires_on",
+    "status"
+   ],
    "module": "CAP",
    "tab": "Certificados",
    "title": "Certificado o constancia emitida",
@@ -12234,7 +12962,8 @@
      "label": "Titular",
      "readonly": true,
      "type": "text",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "holder_document_masked",
@@ -12247,7 +12976,8 @@
      "label": "Título del curso",
      "readonly": true,
      "type": "text",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "issued_on",
@@ -12261,7 +12991,8 @@
      "name": "expires_on",
      "label": "Fecha de vencimiento",
      "readonly": true,
-     "type": "date"
+     "type": "date",
+     "list": true
     },
     {
      "name": "hours",
@@ -12273,7 +13004,8 @@
      "name": "score",
      "label": "Puntaje",
      "readonly": true,
-     "type": "number"
+     "type": "number",
+     "list": true
     },
     {
      "name": "score_label",
@@ -12356,6 +13088,11 @@
    ]
   },
   "certificate_templates": {
+   "columns": [
+    "code",
+    "name",
+    "status"
+   ],
    "module": "CAP",
    "tab": "Plantillas de constancia",
    "title": "Plantilla del certificado",
@@ -12540,6 +13277,12 @@
    ]
   },
   "certificate_verifications": {
+   "columns": [
+    "queried_code",
+    "certificate_id",
+    "verified_at",
+    "channel"
+   ],
    "module": "CAP",
    "tab": "Verificaciones",
    "title": "Consulta de verificación de un certificado (solo inserción)",
@@ -12637,6 +13380,12 @@
    ]
   },
   "position_training_requirements": {
+   "columns": [
+    "position_id",
+    "training_id",
+    "requirement_level",
+    "renewal_months"
+   ],
    "module": "CAP",
    "tab": "Matriz por cargo",
    "title": "Matriz de capacitación por cargo",
@@ -12700,7 +13449,8 @@
     {
      "name": "renewal_months",
      "label": "Meses de renovación",
-     "type": "int"
+     "type": "int",
+     "list": true
     },
     {
      "name": "due_within_days",
@@ -12738,6 +13488,12 @@
    ]
   },
   "courses": {
+   "columns": [
+    "code",
+    "title",
+    "published_at",
+    "status"
+   ],
    "module": "AUL",
    "tab": "Cursos",
    "title": "Curso del aula",
@@ -13032,6 +13788,11 @@
    ]
   },
   "course_sections": {
+   "columns": [
+    "title",
+    "course_id",
+    "section_number"
+   ],
    "module": "AUL",
    "tab": "Secciones",
    "title": "Sección o unidad del curso",
@@ -13092,6 +13853,11 @@
    ]
   },
   "course_lessons": {
+   "columns": [
+    "title",
+    "course_id",
+    "lesson_type"
+   ],
    "module": "AUL",
    "tab": "Lecciones",
    "title": "Contenido o actividad dentro de una sección",
@@ -13249,6 +14015,12 @@
    ]
   },
   "course_enrollments": {
+   "columns": [
+    "source",
+    "course_id",
+    "enrolled_at",
+    "status"
+   ],
    "module": "AUL",
    "tab": "Matrículas",
    "title": "Matrícula de un participante en un curso",
@@ -13485,6 +14257,12 @@
    ]
   },
   "quiz_attempts": {
+   "columns": [
+    "source",
+    "enrollment_id",
+    "started_at",
+    "status"
+   ],
    "module": "AUL",
    "tab": "Intentos",
    "title": "Intento de evaluación o nota importada",
@@ -13643,6 +14421,11 @@
    ]
   },
   "question_banks": {
+   "columns": [
+    "code",
+    "name",
+    "status"
+   ],
    "module": "AUL",
    "tab": "Bancos de preguntas",
    "title": "Banco de preguntas",
@@ -13710,6 +14493,11 @@
    ]
   },
   "questions": {
+   "columns": [
+    "code",
+    "question_bank_id",
+    "status"
+   ],
    "module": "AUL",
    "tab": "Preguntas",
    "title": "Pregunta de un banco",
@@ -13854,6 +14642,11 @@
    ]
   },
   "grading_scales": {
+   "columns": [
+    "code",
+    "name",
+    "status"
+   ],
    "module": "AUL",
    "tab": "Escalas de nota",
    "title": "Escala de calificación",
@@ -13960,6 +14753,11 @@
    ]
   },
   "trainer_permissions": {
+   "columns": [
+    "notes",
+    "trainer_user_id",
+    "valid_from"
+   ],
    "module": "AUL",
    "tab": "Permisos del capacitador",
    "title": "Permisos del capacitador",
@@ -14060,6 +14858,12 @@
    ]
   },
   "trainer_availability": {
+   "columns": [
+    "kind",
+    "trainer_user_id",
+    "date_from",
+    "modality"
+   ],
    "module": "AUL",
    "tab": "Disponibilidad",
    "title": "Disponibilidad del capacitador",
@@ -14162,6 +14966,12 @@
    ]
   },
   "learning_activity_sessions": {
+   "columns": [
+    "client_session_id",
+    "enrollment_id",
+    "started_at",
+    "device_type"
+   ],
    "module": "AUL",
    "tab": "Actividad real",
    "title": "Registro de actividad real del participante",
@@ -14315,6 +15125,12 @@
    ]
   },
   "completion_commitments": {
+   "columns": [
+    "commitment_text_snapshot",
+    "enrollment_id",
+    "course_id",
+    "accepted_at"
+   ],
    "module": "AUL",
    "tab": "Compromisos",
    "title": "Compromiso de culminación",
@@ -14381,6 +15197,11 @@
    ]
   },
   "lms_connections": {
+   "columns": [
+    "name",
+    "last_tested_at",
+    "status"
+   ],
    "module": "AUL",
    "tab": "Conexiones Moodle",
    "title": "Conexión opcional con Moodle",
@@ -14541,6 +15362,12 @@
    ]
   },
   "recommendation_rules": {
+   "columns": [
+    "code",
+    "name",
+    "last_run_at",
+    "rule_type"
+   ],
    "module": "AUL",
    "tab": "Reglas de recomendación",
    "title": "Regla automática de recomendación",
@@ -14713,6 +15540,12 @@
    ]
   },
   "course_recommendations": {
+   "columns": [
+    "buyer_company_name",
+    "course_id",
+    "sent_at",
+    "status"
+   ],
    "module": "AUL",
    "tab": "Recomendaciones",
    "title": "Recomendación concreta a una persona, cargo, área o empresa compradora",
@@ -14965,6 +15798,11 @@
    ]
   },
   "credential_types": {
+   "columns": [
+    "code",
+    "name",
+    "applies_to"
+   ],
    "module": "FOT",
    "tab": "Tipos de credencial",
    "title": "Tipo de credencial",
@@ -15054,6 +15892,11 @@
    ]
   },
   "credential_requirements": {
+   "columns": [
+    "description",
+    "credential_type_id",
+    "requirement_type"
+   ],
    "module": "FOT",
    "tab": "Requisitos",
    "title": "Requisito del tipo",
@@ -15151,6 +15994,13 @@
    ]
   },
   "credentials": {
+   "columns": [
+    "credential_number",
+    "worker_id",
+    "credential_type_id",
+    "expires_on",
+    "status"
+   ],
    "module": "FOT",
    "tab": "Fotochecks",
    "title": "Fotocheck emitido",
@@ -15183,7 +16033,8 @@
      "name": "worker_id",
      "label": "Trabajador",
      "type": "ref",
-     "ref": "workers"
+     "ref": "workers",
+     "list": true
     },
     {
      "name": "contractor_worker_id",
@@ -15216,8 +16067,7 @@
      "name": "issued_at",
      "label": "Emitido el",
      "readonly": true,
-     "type": "datetime",
-     "list": true
+     "type": "datetime"
     },
     {
      "name": "issued_by",
@@ -15234,7 +16084,8 @@
     {
      "name": "expires_on",
      "label": "Fecha de vencimiento",
-     "type": "date"
+     "type": "date",
+     "list": true
     },
     {
      "name": "status",
@@ -15305,6 +16156,12 @@
    ]
   },
   "credential_verifications": {
+   "columns": [
+    "channel",
+    "credential_id",
+    "verified_at",
+    "result"
+   ],
    "module": "FOT",
    "tab": "Verificaciones del fotocheck",
    "title": "Verificación registrada (inalterable)",
@@ -15418,6 +16275,14 @@
    ]
   },
   "medical_exam_orders": {
+   "columns": [
+    "worker_id",
+    "position_id",
+    "exam_type",
+    "clinic_name",
+    "scheduled_at",
+    "status"
+   ],
    "module": "EMO",
    "tab": "Órdenes de examen",
    "title": "Orden de examen (base principal, sin datos clínicos)",
@@ -15476,7 +16341,8 @@
      "name": "position_id",
      "label": "Puesto",
      "type": "ref",
-     "ref": "positions"
+     "ref": "positions",
+     "list": true
     },
     {
      "name": "protocol_code",
@@ -15486,7 +16352,8 @@
     {
      "name": "clinic_name",
      "label": "Clínica",
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "clinic_ruc",
@@ -15558,6 +16425,13 @@
    ]
   },
   "fitness_status": {
+   "columns": [
+    "worker_id",
+    "status",
+    "valid_from",
+    "valid_until",
+    "is_current"
+   ],
    "module": "EMO",
    "tab": "Estados de aptitud",
    "title": "Estado de aptitud no sensible (base principal)",
@@ -15627,7 +16501,8 @@
     {
      "name": "valid_until",
      "label": "Válido hasta",
-     "type": "date"
+     "type": "date",
+     "list": true
     },
     {
      "name": "work_restrictions",
@@ -15651,11 +16526,20 @@
      "name": "is_current",
      "label": "Vigente",
      "type": "bool",
-     "default": true
+     "default": true,
+     "list": true
     }
    ]
   },
   "absences": {
+   "columns": [
+    "worker_id",
+    "absence_type",
+    "starts_on",
+    "ends_on",
+    "days",
+    "status"
+   ],
    "module": "DES",
    "tab": "Ausencias",
    "title": "Ausencia (base principal)",
@@ -15729,13 +16613,15 @@
      "name": "ends_on",
      "label": "Fecha de fin",
      "type": "date",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "days",
      "label": "Días",
      "readonly": true,
-     "type": "int"
+     "type": "int",
+     "list": true
     },
     {
      "name": "is_work_related",
@@ -15790,6 +16676,13 @@
    ]
   },
   "work_adjustments": {
+   "columns": [
+    "worker_id",
+    "adjustment_category",
+    "starts_on",
+    "ends_on",
+    "status"
+   ],
    "module": "VUL",
    "tab": "Adecuaciones",
    "title": "Adecuación (base principal)",
@@ -15845,14 +16738,14 @@
        "label": "Otro"
       }
      ],
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "description",
      "label": "Descripción",
      "type": "longtext",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "new_position_id",
@@ -15870,7 +16763,8 @@
     {
      "name": "ends_on",
      "label": "Fecha de fin",
-     "type": "date"
+     "type": "date",
+     "list": true
     },
     {
      "name": "approved_by",
@@ -15907,6 +16801,11 @@
    ]
   },
   "external_learners": {
+   "columns": [
+    "document_type",
+    "data_consent_at",
+    "status"
+   ],
    "module": "VTA",
    "tab": "Participantes externos",
    "title": "Participante externo (no trabajador de la empresa)",
@@ -16087,6 +16986,14 @@
    ]
   },
   "course_offers": {
+   "columns": [
+    "title",
+    "course_id",
+    "sale_price",
+    "currency",
+    "seats_sold",
+    "status"
+   ],
    "module": "VTA",
    "tab": "Ofertas",
    "title": "Oferta de venta de un curso del aula",
@@ -16135,7 +17042,8 @@
      "label": "Moneda",
      "type": "text",
      "max": 3,
-     "default": "PEN"
+     "default": "PEN",
+     "list": true
     },
     {
      "name": "list_price",
@@ -16146,7 +17054,8 @@
     {
      "name": "sale_price",
      "label": "Precio de oferta",
-     "type": "number"
+     "type": "number",
+     "list": true
     },
     {
      "name": "price_includes_igv",
@@ -16177,8 +17086,7 @@
     {
      "name": "sale_starts_at",
      "label": "Inicio de la oferta",
-     "type": "datetime",
-     "list": true
+     "type": "datetime"
     },
     {
      "name": "sale_ends_at",
@@ -16199,7 +17107,8 @@
      "name": "seats_sold",
      "label": "Cupos vendidos",
      "type": "int",
-     "default": 0
+     "default": 0,
+     "list": true
     },
     {
      "name": "allows_company_purchase",
@@ -16251,6 +17160,12 @@
    ]
   },
   "coupons": {
+   "columns": [
+    "code",
+    "description",
+    "valid_from",
+    "discount_type"
+   ],
    "module": "VTA",
    "tab": "Cupones",
    "title": "Cupón de descuento",
@@ -16369,6 +17284,14 @@
    ]
   },
   "orders": {
+   "columns": [
+    "order_number",
+    "buyer_name",
+    "total",
+    "currency",
+    "paid_at",
+    "status"
+   ],
    "module": "VTA",
    "tab": "Pedidos",
    "title": "Pedido (carrito confirmado)",
@@ -16462,7 +17385,8 @@
      "name": "buyer_name",
      "label": "Nombre del comprador",
      "type": "text",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "buyer_email",
@@ -16525,7 +17449,8 @@
      "label": "Moneda",
      "type": "text",
      "max": 3,
-     "default": "PEN"
+     "default": "PEN",
+     "list": true
     },
     {
      "name": "subtotal",
@@ -16554,7 +17479,8 @@
      "name": "total",
      "label": "Total",
      "type": "number",
-     "default": 0
+     "default": 0,
+     "list": true
     },
     {
      "name": "source",
@@ -16608,13 +17534,13 @@
     {
      "name": "expires_at",
      "label": "Vence el",
-     "type": "datetime",
-     "list": true
+     "type": "datetime"
     },
     {
      "name": "paid_at",
      "label": "Pagado el",
-     "type": "datetime"
+     "type": "datetime",
+     "list": true
     },
     {
      "name": "voided_at",
@@ -16639,6 +17565,12 @@
    ]
   },
   "order_items": {
+   "columns": [
+    "description",
+    "order_id",
+    "course_offer_id",
+    "item_type"
+   ],
    "module": "VTA",
    "tab": "Líneas de pedido",
    "title": "Línea del pedido",
@@ -16744,6 +17676,11 @@
    ]
   },
   "payment_gateways": {
+   "columns": [
+    "name",
+    "last_tested_at",
+    "provider"
+   ],
    "module": "VTA",
    "tab": "Pasarelas de pago",
    "title": "Pasarela configurada por la empresa",
@@ -16883,6 +17820,14 @@
    ]
   },
   "course_licenses": {
+   "columns": [
+    "buyer_legal_name",
+    "course_id",
+    "seats_purchased",
+    "seats_used",
+    "expires_at",
+    "status"
+   ],
    "module": "VTA",
    "tab": "Licencias de curso",
    "title": "Cupos comprados por una empresa compradora",
@@ -16955,13 +17900,15 @@
      "name": "seats_purchased",
      "label": "Licencias compradas",
      "type": "int",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "seats_used",
      "label": "Licencias usadas",
      "type": "int",
-     "default": 0
+     "default": 0,
+     "list": true
     },
     {
      "name": "access_days",
@@ -17002,6 +17949,12 @@
    ]
   },
   "license_assignments": {
+   "columns": [
+    "status",
+    "course_license_id",
+    "external_learner_id",
+    "assigned_at"
+   ],
    "module": "VTA",
    "tab": "Asignaciones de cupo",
    "title": "Asignación de un cupo a una persona",
@@ -17088,6 +18041,12 @@
    ]
   },
   "sales_documents": {
+   "columns": [
+    "document_type",
+    "order_id",
+    "issue_date",
+    "status"
+   ],
    "module": "VTA",
    "tab": "Comprobantes",
    "title": "Comprobante electrónico emitido por la empresa vendedora",
@@ -17357,6 +18316,14 @@
    ]
   },
   "sst_events": {
+   "columns": [
+    "code",
+    "event_type",
+    "occurred_at",
+    "site_id",
+    "notification_deadline_at",
+    "status"
+   ],
    "module": "ACC",
    "tab": "Eventos",
    "title": "Evento",
@@ -17665,6 +18632,11 @@
    ]
   },
   "event_people": {
+   "columns": [
+    "external_person_name",
+    "event_id",
+    "person_role"
+   ],
    "module": "ACC",
    "tab": "Personas involucradas",
    "title": "Persona afectada o testigo",
@@ -17820,6 +18792,12 @@
    ]
   },
   "event_notifications": {
+   "columns": [
+    "authority",
+    "event_id",
+    "deadline_at",
+    "status"
+   ],
    "module": "ACC",
    "tab": "Notificaciones",
    "title": "Notificación obligatoria y su plazo",
@@ -17996,6 +18974,14 @@
    ]
   },
   "investigations": {
+   "columns": [
+    "code",
+    "event_id",
+    "method",
+    "started_on",
+    "due_on",
+    "status"
+   ],
    "module": "INV",
    "tab": "Investigaciones",
    "title": "Investigación",
@@ -18053,7 +19039,8 @@
        "label": "Otro"
       }
      ],
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "started_on",
@@ -18064,7 +19051,8 @@
     {
      "name": "due_on",
      "label": "Fecha límite",
-     "type": "date"
+     "type": "date",
+     "list": true
     },
     {
      "name": "summary",
@@ -18163,6 +19151,11 @@
    ]
   },
   "investigation_team": {
+   "columns": [
+    "external_name",
+    "investigation_id",
+    "role"
+   ],
    "module": "INV",
    "tab": "Equipo investigador",
    "title": "Integrante del equipo",
@@ -18238,6 +19231,11 @@
    ]
   },
   "investigation_causes": {
+   "columns": [
+    "description",
+    "investigation_id",
+    "cause_level"
+   ],
    "module": "INV",
    "tab": "Causas",
    "title": "Causa identificada",
@@ -18351,6 +19349,14 @@
    ]
   },
   "corrective_actions": {
+   "columns": [
+    "code",
+    "title",
+    "source_type",
+    "responsible_user_id",
+    "due_on",
+    "status"
+   ],
    "module": "ACR",
    "tab": "Acciones",
    "title": "Acción",
@@ -18444,7 +19450,8 @@
        "label": "Otro"
       }
      ],
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "source_id",
@@ -18530,7 +19537,8 @@
      "name": "responsible_user_id",
      "label": "Responsable (usuario)",
      "type": "ref",
-     "ref": "users"
+     "ref": "users",
+     "list": true
     },
     {
      "name": "responsible_worker_id",
@@ -18666,6 +19674,12 @@
    ]
   },
   "action_evidences": {
+   "columns": [
+    "description",
+    "corrective_action_id",
+    "submitted_at",
+    "evidence_type"
+   ],
    "module": "ACR",
    "tab": "Evidencias",
    "title": "Evidencia de ejecución",
@@ -18740,6 +19754,13 @@
    ]
   },
   "audits": {
+   "columns": [
+    "code",
+    "audit_type",
+    "lead_auditor_name",
+    "starts_on",
+    "status"
+   ],
    "module": "AUI",
    "tab": "Auditorías",
    "title": "Auditoría",
@@ -18789,7 +19810,8 @@
        "label": "Proveedor"
       }
      ],
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "standard",
@@ -18853,7 +19875,8 @@
     {
      "name": "lead_auditor_name",
      "label": "Auditor líder",
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "auditor_registration",
@@ -18917,6 +19940,11 @@
    ]
   },
   "audit_checklist_items": {
+   "columns": [
+    "clause_code",
+    "audit_id",
+    "result"
+   ],
    "module": "AUI",
    "tab": "Ítems auditados",
    "title": "Ítem auditado",
@@ -19006,6 +20034,12 @@
    ]
   },
   "audit_findings": {
+   "columns": [
+    "description",
+    "audit_id",
+    "due_on",
+    "status"
+   ],
    "module": "AUI",
    "tab": "Hallazgos",
    "title": "Hallazgo",
@@ -19115,6 +20149,13 @@
    ]
   },
   "man_hours": {
+   "columns": [
+    "period_year",
+    "period_month",
+    "site_id",
+    "worker_count",
+    "hours_worked"
+   ],
    "module": "EST",
    "tab": "Horas-hombre",
    "title": "Horas-hombre trabajadas",
@@ -19214,6 +20255,16 @@
    ]
   },
   "monthly_statistics": {
+   "columns": [
+    "period_year",
+    "period_month",
+    "site_id",
+    "hours_worked",
+    "frequency_index",
+    "severity_index",
+    "accident_rate_index",
+    "is_closed"
+   ],
    "module": "EST",
    "tab": "Estadísticas mensuales",
    "title": "Estadística mensual (snapshot)",
@@ -19373,6 +20424,12 @@
    ]
   },
   "management_reviews": {
+   "columns": [
+    "year",
+    "review_on",
+    "title",
+    "status"
+   ],
    "module": "RVD",
    "tab": "Revisiones",
    "title": "Revisión",
@@ -19390,7 +20447,8 @@
      "name": "year",
      "label": "Año",
      "type": "int",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "review_on",
@@ -19414,8 +20472,7 @@
     {
      "name": "participants",
      "label": "Participantes",
-     "type": "json",
-     "readonly": true
+     "type": "json"
     },
     {
      "name": "conclusions",
@@ -19474,6 +20531,12 @@
    ]
   },
   "management_review_outputs": {
+   "columns": [
+    "description",
+    "review_id",
+    "due_on",
+    "status"
+   ],
    "module": "RVD",
    "tab": "Decisiones",
    "title": "Decisión",
@@ -19581,6 +20644,11 @@
    ]
   },
   "register_exports": {
+   "columns": [
+    "register_type",
+    "period_from",
+    "status"
+   ],
    "module": "REG",
    "tab": "Exportaciones",
    "title": "Exportación de un registro",
@@ -19756,6 +20824,13 @@
    ]
   },
   "contractors": {
+   "columns": [
+    "legal_name",
+    "ruc",
+    "contact_name",
+    "risk_level",
+    "status"
+   ],
    "module": "CTR",
    "tab": "Contratistas",
    "title": "Empresa contratista",
@@ -19796,7 +20871,8 @@
     {
      "name": "contact_name",
      "label": "Nombre de contacto",
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "contact_email",
@@ -19836,7 +20912,8 @@
        "value": "very_high",
        "label": "Muy alto"
       }
-     ]
+     ],
+     "list": true
     },
     {
      "name": "status",
@@ -19866,6 +20943,12 @@
    ]
   },
   "contractor_workers": {
+   "columns": [
+    "document_type",
+    "contractor_id",
+    "emo_valid_until",
+    "status"
+   ],
    "module": "CTR",
    "tab": "Trabajadores",
    "title": "Trabajador del contratista",
@@ -20031,6 +21114,11 @@
    ]
   },
   "contractor_requirements": {
+   "columns": [
+    "name",
+    "applies_to",
+    "requirement_code"
+   ],
    "module": "CTR",
    "tab": "Requisitos",
    "title": "Requisito exigido",
@@ -20121,6 +21209,12 @@
    ]
   },
   "contractor_documents": {
+   "columns": [
+    "document_kind",
+    "contractor_id",
+    "issued_on",
+    "status"
+   ],
    "module": "CTR",
    "tab": "Documentos",
    "title": "Documento cargado",
@@ -20237,6 +21331,12 @@
    ]
   },
   "contractor_accreditations": {
+   "columns": [
+    "contract_reference",
+    "contractor_id",
+    "starts_on",
+    "status"
+   ],
    "module": "CTR",
    "tab": "Acreditaciones",
    "title": "Acreditación de un servicio",
@@ -20386,6 +21486,14 @@
    ]
   },
   "sctr_policies": {
+   "columns": [
+    "policy_number",
+    "insurer_name",
+    "coverage_kind",
+    "starts_on",
+    "ends_on",
+    "status"
+   ],
    "module": "SCT",
    "tab": "Pólizas",
    "title": "Póliza",
@@ -20450,7 +21558,8 @@
      "name": "insurer_name",
      "label": "Aseguradora",
      "type": "text",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "insurer_ruc",
@@ -20462,7 +21571,8 @@
      "name": "policy_number",
      "label": "N.º de póliza",
      "type": "text",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "starts_on",
@@ -20475,7 +21585,8 @@
      "name": "ends_on",
      "label": "Fecha de fin",
      "type": "date",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "file_id",
@@ -20510,6 +21621,13 @@
    ]
   },
   "sctr_coverages": {
+   "columns": [
+    "worker_id",
+    "contractor_worker_id",
+    "sctr_policy_id",
+    "covered_until",
+    "status"
+   ],
    "module": "SCT",
    "tab": "Coberturas",
    "title": "Cobertura por trabajador y periodo",
@@ -20535,32 +21653,33 @@
      "name": "worker_id",
      "label": "Trabajador",
      "type": "ref",
-     "ref": "workers"
+     "ref": "workers",
+     "list": true
     },
     {
      "name": "contractor_worker_id",
      "label": "Trabajador contratista",
      "type": "ref",
-     "ref": "contractor_workers"
+     "ref": "contractor_workers",
+     "list": true
     },
     {
      "name": "covered_from",
      "label": "Cubierto desde",
      "type": "date",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "covered_until",
      "label": "Cubierto hasta",
      "type": "date",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "constancy_number",
      "label": "Número de constancia",
-     "type": "text",
-     "list": true
+     "type": "text"
     },
     {
      "name": "file_id",
@@ -20592,6 +21711,13 @@
    ]
   },
   "access_points": {
+   "columns": [
+    "code",
+    "name",
+    "site_id",
+    "point_type",
+    "is_active"
+   ],
    "module": "ING",
    "tab": "Puntos de acceso",
    "title": "Punto de acceso",
@@ -20686,11 +21812,21 @@
      "name": "is_active",
      "label": "Activo",
      "type": "bool",
-     "default": true
+     "default": true,
+     "list": true
     }
    ]
   },
   "access_events": {
+   "columns": [
+    "occurred_at",
+    "subject_type",
+    "worker_id",
+    "contractor_worker_id",
+    "visitor_name",
+    "access_point_id",
+    "result"
+   ],
    "module": "ING",
    "tab": "Ingresos y salidas",
    "title": "Evento de acceso (inalterable)",
@@ -20732,8 +21868,7 @@
        "label": "Salida"
       }
      ],
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "subject_type",
@@ -20764,13 +21899,15 @@
      "name": "worker_id",
      "label": "Trabajador",
      "type": "ref",
-     "ref": "workers"
+     "ref": "workers",
+     "list": true
     },
     {
      "name": "contractor_worker_id",
      "label": "Trabajador contratista",
      "type": "ref",
-     "ref": "contractor_workers"
+     "ref": "contractor_workers",
+     "list": true
     },
     {
      "name": "credential_id",
@@ -20781,7 +21918,8 @@
     {
      "name": "visitor_name",
      "label": "Visitor name",
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "visitor_document_masked",
@@ -20805,7 +21943,8 @@
        "value": "overridden",
        "label": "overridden"
       }
-     ]
+     ],
+     "list": true
     },
     {
      "name": "deny_reasons",
@@ -20828,6 +21967,11 @@
    ]
   },
   "vendor_evaluation_templates": {
+   "columns": [
+    "code",
+    "name",
+    "status"
+   ],
    "module": "HOM",
    "tab": "Plantillas",
    "title": "Plantilla",
@@ -20902,6 +22046,13 @@
    ]
   },
   "vendor_evaluations": {
+   "columns": [
+    "vendor_name",
+    "total_score",
+    "rating",
+    "valid_until",
+    "status"
+   ],
    "module": "HOM",
    "tab": "Evaluaciones",
    "title": "Evaluación",
@@ -20920,8 +22071,7 @@
      "label": "Plantilla",
      "type": "ref",
      "ref": "vendor_evaluation_templates",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "contractor_id",
@@ -20946,8 +22096,7 @@
      "name": "evaluated_on",
      "label": "Fecha de evaluación",
      "type": "date",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "evaluator_user_id",
@@ -20965,7 +22114,8 @@
      "name": "total_score",
      "label": "Puntaje total",
      "readonly": true,
-     "type": "number"
+     "type": "number",
+     "list": true
     },
     {
      "name": "rating",
@@ -20984,12 +22134,14 @@
        "value": "rejected",
        "label": "Rechazado"
       }
-     ]
+     ],
+     "list": true
     },
     {
      "name": "valid_until",
      "label": "Válido hasta",
-     "type": "date"
+     "type": "date",
+     "list": true
     },
     {
      "name": "file_id",
@@ -21024,6 +22176,11 @@
    ]
   },
   "self_diagnostics": {
+   "columns": [
+    "title",
+    "diagnostic_on",
+    "status"
+   ],
    "module": "SUN",
    "tab": "Autodiagnósticos",
    "title": "Autodiagnóstico de brechas",
@@ -21107,6 +22264,14 @@
    ]
   },
   "inspection_dossiers": {
+   "columns": [
+    "title",
+    "request_type",
+    "appearance_at",
+    "period_from",
+    "period_to",
+    "status"
+   ],
    "module": "SUN",
    "tab": "Expedientes",
    "title": "Expediente",
@@ -21149,7 +22314,8 @@
        "label": "Otro"
       }
      ],
-     "default": "sunafil_inspection"
+     "default": "sunafil_inspection",
+     "list": true
     },
     {
      "name": "inspection_order_number",
@@ -21176,13 +22342,15 @@
      "name": "period_from",
      "label": "Periodo desde",
      "type": "date",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "period_to",
      "label": "Periodo hasta",
      "type": "date",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "site_id",
@@ -21270,6 +22438,11 @@
    ]
   },
   "dossier_items": {
+   "columns": [
+    "title",
+    "dossier_id",
+    "status"
+   ],
    "module": "SUN",
    "tab": "Ítems del expediente",
    "title": "Ítem del expediente",
@@ -21375,6 +22548,12 @@
    ]
   },
   "dossier_share_links": {
+   "columns": [
+    "token_last4",
+    "dossier_id",
+    "expires_at",
+    "status"
+   ],
    "module": "SUN",
    "tab": "Enlaces al inspector",
    "title": "Enlace para el inspector",
@@ -21490,6 +22669,12 @@
    ]
   },
   "devices": {
+   "columns": [
+    "model",
+    "user_id",
+    "last_sync_at",
+    "status"
+   ],
    "module": "OFF",
    "tab": "Dispositivos",
    "title": "Dispositivo registrado",
@@ -21511,7 +22696,8 @@
      "name": "user_id",
      "label": "Usuario",
      "type": "ref",
-     "ref": "users"
+     "ref": "users",
+     "list": true
     },
     {
      "name": "worker_id",
@@ -21523,8 +22709,7 @@
      "name": "device_uid",
      "label": "Identificador del dispositivo",
      "type": "text",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "platform",
@@ -21557,7 +22742,8 @@
     {
      "name": "model",
      "label": "Modelo",
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "app_version",
@@ -21584,13 +22770,13 @@
     {
      "name": "registered_at",
      "label": "Registrado el",
-     "type": "datetime",
-     "list": true
+     "type": "datetime"
     },
     {
      "name": "last_sync_at",
      "label": "Última sincronización",
-     "type": "datetime"
+     "type": "datetime",
+     "list": true
     },
     {
      "name": "status",
@@ -21636,6 +22822,11 @@
    ]
   },
   "sync_batches": {
+   "columns": [
+    "app_version",
+    "received_at",
+    "status"
+   ],
    "module": "OFF",
    "tab": "Lotes",
    "title": "Lote sincronizado",
@@ -21748,6 +22939,11 @@
    ]
   },
   "sync_conflicts": {
+   "columns": [
+    "operation_idempotency_key",
+    "resolved_at",
+    "operation"
+   ],
    "module": "OFF",
    "tab": "Conflictos",
    "title": "Conflicto detectado",
@@ -21898,6 +23094,12 @@
    ]
   },
   "ai_requests": {
+   "columns": [
+    "feature",
+    "user_id",
+    "completed_at",
+    "status"
+   ],
    "module": "IAA",
    "tab": "Solicitudes",
    "title": "Solicitud a la IA",
@@ -22069,6 +23271,11 @@
    ]
   },
   "ai_suggestions": {
+   "columns": [
+    "suggestion_type",
+    "reviewed_at",
+    "status"
+   ],
    "module": "IAA",
    "tab": "Sugerencias",
    "title": "Sugerencia pendiente",
@@ -22171,6 +23378,11 @@
    ]
   },
   "consultant_assignments": {
+   "columns": [
+    "status",
+    "consultant_user_id",
+    "starts_on"
+   ],
    "module": "CON",
    "tab": "Consultores",
    "title": "Consultor asignado a empresa cliente",
@@ -22242,6 +23454,11 @@
    ]
   },
   "company_sector_packs": {
+   "columns": [
+    "status",
+    "sector_pack_id",
+    "applied_at"
+   ],
    "module": "PSE",
    "tab": "Instalaciones",
    "title": "Instalación en una empresa",
@@ -22311,6 +23528,12 @@
    ]
   },
   "iso_evidences": {
+   "columns": [
+    "iso_clause_id",
+    "source_module",
+    "last_reviewed_on",
+    "status"
+   ],
    "module": "ISO",
    "tab": "Evidencias",
    "title": "Evidencia por cláusula",
@@ -22335,14 +23558,14 @@
     {
      "name": "description",
      "label": "Descripción",
-     "type": "longtext",
-     "list": true
+     "type": "longtext"
     },
     {
      "name": "source_module",
      "label": "Módulo de origen",
      "type": "text",
-     "max": 3
+     "max": 3,
+     "list": true
     },
     {
      "name": "source_type",
@@ -22409,6 +23632,13 @@
    ]
   },
   "environmental_aspects": {
+   "columns": [
+    "activity",
+    "aspect",
+    "impact",
+    "significance_score",
+    "is_significant"
+   ],
    "module": "AMB",
    "tab": "Aspectos ambientales",
    "title": "Aspecto/impacto",
@@ -22426,8 +23656,7 @@
      "name": "site_id",
      "label": "Sede",
      "type": "ref",
-     "ref": "sites",
-     "list": true
+     "ref": "sites"
     },
     {
      "name": "area_id",
@@ -22446,13 +23675,15 @@
      "name": "aspect",
      "label": "Aspecto",
      "type": "text",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "impact",
      "label": "Impacto",
      "type": "text",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "condition",
@@ -22494,13 +23725,15 @@
      "name": "significance_score",
      "label": "Puntaje de significancia",
      "readonly": true,
-     "type": "int"
+     "type": "int",
+     "list": true
     },
     {
      "name": "is_significant",
      "label": "Significativo",
      "type": "bool",
-     "default": false
+     "default": false,
+     "list": true
     },
     {
      "name": "controls",
@@ -22521,12 +23754,19 @@
        "label": "Obsoleto"
       }
      ],
-     "default": "active",
-     "list": true
+     "default": "active"
     }
    ]
   },
   "waste_records": {
+   "columns": [
+    "generated_on",
+    "waste_type",
+    "quantity",
+    "unit",
+    "eo_rs_name",
+    "status"
+   ],
    "module": "AMB",
    "tab": "Residuos",
    "title": "Generación y disposición",
@@ -22545,8 +23785,7 @@
      "label": "Sede",
      "type": "ref",
      "ref": "sites",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "waste_type",
@@ -22582,19 +23821,20 @@
        "label": "Otro"
       }
      ],
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "description",
      "label": "Descripción",
-     "type": "longtext",
-     "list": true
+     "type": "longtext"
     },
     {
      "name": "quantity",
      "label": "Cantidad",
      "type": "number",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "unit",
@@ -22622,7 +23862,8 @@
        "label": "Unidades"
       }
      ],
-     "default": "kg"
+     "default": "kg",
+     "list": true
     },
     {
      "name": "generated_on",
@@ -22639,7 +23880,8 @@
     {
      "name": "eo_rs_name",
      "label": "Nombre de la EO-RS",
-     "type": "text"
+     "type": "text",
+     "list": true
     },
     {
      "name": "eo_rs_ruc",
@@ -22681,6 +23923,12 @@
    ]
   },
   "api_clients": {
+   "columns": [
+    "name",
+    "scopes",
+    "last_used_at",
+    "status"
+   ],
    "module": "API",
    "tab": "Clientes de API",
    "title": "Cliente de API",
@@ -22716,7 +23964,8 @@
      "name": "scopes",
      "label": "Permisos",
      "type": "tags",
-     "item": "text"
+     "item": "text",
+     "list": true
     },
     {
      "name": "rate_limit_per_minute",
@@ -22726,14 +23975,14 @@
     {
      "name": "expires_at",
      "label": "Vence el",
-     "type": "datetime",
-     "list": true
+     "type": "datetime"
     },
     {
      "name": "last_used_at",
      "label": "Último uso",
      "readonly": true,
-     "type": "datetime"
+     "type": "datetime",
+     "list": true
     },
     {
      "name": "status",
@@ -22755,6 +24004,13 @@
    ]
   },
   "webhooks": {
+   "columns": [
+    "name",
+    "target_url",
+    "event_codes",
+    "failure_count",
+    "is_active"
+   ],
    "module": "API",
    "tab": "Webhooks",
    "title": "Suscripción",
@@ -22772,8 +24028,7 @@
      "name": "api_client_id",
      "label": "Cliente API",
      "type": "ref",
-     "ref": "api_clients",
-     "list": true
+     "ref": "api_clients"
     },
     {
      "name": "name",
@@ -22786,45 +24041,46 @@
      "name": "target_url",
      "label": "URL de destino",
      "type": "text",
-     "required": true
+     "required": true,
+     "list": true
     },
     {
      "name": "event_codes",
      "label": "Códigos de evento",
      "type": "tags",
-     "item": "text"
-    },
-    {
-     "name": "secret",
-     "label": "Clave secreta",
-     "readonly": true,
-     "type": "text",
-     "encrypted": true,
-     "required": true
+     "item": "text",
+     "list": true
     },
     {
      "name": "is_active",
      "label": "Activo",
      "type": "bool",
-     "default": true
+     "default": true,
+     "list": true
     },
     {
      "name": "failure_count",
      "label": "N.º de fallos",
      "readonly": true,
      "type": "int",
-     "default": 0
+     "default": 0,
+     "list": true
     },
     {
      "name": "disabled_at",
      "label": "Deshabilitado el",
      "readonly": true,
-     "type": "datetime",
-     "list": true
+     "type": "datetime"
     }
    ]
   },
   "webhook_deliveries": {
+   "columns": [
+    "event_code",
+    "webhook_id",
+    "next_retry_at",
+    "status"
+   ],
    "module": "API",
    "tab": "Entregas",
    "title": "Entrega",

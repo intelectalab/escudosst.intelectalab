@@ -12,12 +12,17 @@ use App\Modules\SUS\Http\Controllers\PlanModulesController;
 use App\Modules\SUS\Http\Controllers\PlatformNotificationsController;
 use App\Modules\SUS\Http\Controllers\ProvidersController;
 use App\Modules\SUS\Http\Controllers\SubscriptionsController;
+use App\Modules\SUS\Http\Controllers\SupportTicketsController;
 use Illuminate\Support\Facades\Route;
 
 // Panel interno del dueño de la plataforma (docs/08-api.md §16). Sin X-Company-Id.
 Route::middleware(['auth:sanctum', 'platform'])->prefix('internal')->group(function () {
     // Avisos de la campana del panel
     Route::get('notifications', [PlatformNotificationsController::class, 'index']);
+    // Consultas de las empresas al equipo
+    Route::get('support-tickets', [SupportTicketsController::class, 'index']);
+    Route::post('support-tickets/{id}/reply', [SupportTicketsController::class, 'reply'])->whereUuid('id');
+    Route::post('support-tickets/{id}/close', [SupportTicketsController::class, 'close'])->whereUuid('id');
     // Proveedores y claves (IA, pagos, facturación electrónica, WhatsApp, firma digital): solo el dueño cambia claves.
     Route::get('providers', [ProvidersController::class, 'index']);
     Route::put('providers/{code}', [ProvidersController::class, 'update'])->whereIn('code', ['payments', 'einvoice', 'whatsapp', 'esign'])->middleware('platform.owner');
@@ -79,3 +84,9 @@ Route::middleware(['auth:sanctum', 'company'])->group(function () {
 
 // Estado de los proveedores para la app de la empresa (avisos de «modo de prueba»).
 Route::middleware(['auth:sanctum'])->get('providers/status', [ProvidersController::class, 'status']);
+
+// Consultas al equipo de EscudoSST desde la aplicación de empresa (Ayuda › Escribir al equipo).
+Route::middleware(['auth:sanctum', 'company'])->prefix('me')->group(function () {
+    Route::get('support-tickets', [SupportTicketsController::class, 'mine']);
+    Route::post('support-tickets', [SupportTicketsController::class, 'store'])->middleware('throttle:10,1');
+});

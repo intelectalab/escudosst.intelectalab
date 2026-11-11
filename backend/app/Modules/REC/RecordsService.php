@@ -48,9 +48,36 @@ final class RecordsService
         return isset(self::LABEL_SQL[$table]) ? str_replace('{a}', $alias, self::LABEL_SQL[$table]) : null;
     }
 
-    /** Condición «solo lo suyo» para el rol trabajador, o null si no aplica. */
+    /**
+     * Administrador de contratista (contractor_admin): solo ve y toca lo de SU contratista (membership_scopes
+     * «contractor»). Tablas con contractor_id → solo las suyas; la tabla de contratistas → solo su fila; los requisitos
+     * (catálogo de lo que se exige) se leen; cualquier otra tabla queda vacía para este rol.
+     */
+    private function contractorScope(array $res): ?array
+    {
+        if (app(\App\Core\Tenancy\CompanyContext::class)->roleCode !== 'contractor_admin') {
+            return null;
+        }
+        $cid = \App\Modules\CTR\ContractorStatus::scopedContractorId();
+        if (! $cid) {
+            return ['false', []];
+        }
+        if ($res['table'] === 'contractors') {
+            return ['t.id = ?', [$cid]];
+        }
+        if (in_array('contractor_id', array_column($res['fields'], 'name'), true)) {
+            return ['t.contractor_id = ?', [$cid]];
+        }
+
+        return $res['table'] === 'contractor_requirements' ? null : ['false', []];
+    }
+
+    /** Condición «solo lo suyo» para el rol trabajador o el contratista, o null si no aplica. */
     private function selfScope(array $res): ?array
     {
+        if ($c = $this->contractorScope($res)) {
+            return $c;
+        }
         $ctx = app(\App\Core\Tenancy\CompanyContext::class);
         if ($ctx->roleCode !== 'worker' || ! in_array($res['module'], self::SELF_ONLY_MODULES, true)
             || ! in_array('worker_id', array_column($res['fields'], 'name'), true)) {
@@ -115,6 +142,13 @@ final class RecordsService
 
     public function create(array $res, array $input): array
     {
+        if (app(\App\Core\Tenancy\CompanyContext::class)->roleCode === 'contractor_admin') {
+            $cid = \App\Modules\CTR\ContractorStatus::scopedContractorId();
+            if (! $cid || $res['table'] === 'contractors' || ! in_array('contractor_id', array_column($res['fields'], 'name'), true)) {
+                throw ApiProblem::forbidden('Como contratista solo registras información de tu propia empresa.');
+            }
+            $input['contractor_id'] = $cid;
+        }
         $rules = RecordRules::for($res['table']);
         $values = $this->validate($res, $input, creating: true);
         $extra = [];
@@ -151,7 +185,7 @@ final class RecordsService
         $this->audit($res, 'create', $id, $this->auditable($res, $values));
         \App\Modules\API\Webhooks::queue($res['table'], 'create', $id, $values);
 
-        return $this->find($res, $id, decrypt: true);
+        return $this->find($res, $id, decrypt: true) + ($rules?->reveal($res, $id) ?? []);
     }
 
     public function update(array $res, string $id, array $input): array

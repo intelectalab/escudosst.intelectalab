@@ -86,5 +86,6 @@ Contenedores internos, sin puertos hacia afuera: pg-main, pg-medical, redis, wor
 ## Cuidados
 
 - **Nunca** `docker compose ... down -v`: borra las bases de datos.
-- Copia de seguridad cifrada diaria a las 02:30 en el volumen `api_storage`. Pendiente: copiarla fuera del servidor (Backblaze B2).
+- Copia de seguridad cifrada diaria a las 02:30 en el volumen `api_storage`.
+- **Copia externa (fuera del servidor):** completa `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`, `BACKUP_S3_KEY`, `BACKUP_S3_SECRET` y `BACKUP_S3_REGION` en `deploy/backend.env` (Backblaze B2 o cualquier almacenamiento compatible con S3). Cada copia cifrada se sube también allí y se borra al pasar `BACKUP_REMOTE_RETENTION_DAYS` días (30 por defecto). En B2 crea el bucket privado `escudosst-prod-backups` con bloqueo de objetos y una llave de aplicación solo para ese bucket (leer, escribir, listar y borrar). Si se deja vacío, no se sube y el panel muestra «Copia externa: sin configurar». Comprueba con `./deploy/escudo.sh artisan escudo:backup`.
 - Para ver los registros de un servicio: `./deploy/escudo.sh logs worker` (o `api`, `web`, `scheduler`, `proxy`).

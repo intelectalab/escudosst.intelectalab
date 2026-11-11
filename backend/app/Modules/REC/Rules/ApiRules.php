@@ -2,29 +2,32 @@
 
 namespace App\Modules\REC\Rules;
 
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
 
 /**
- * API · Clientes de la API y webhooks (docs/modulos/M-API.md §8).
+ * API · Clientes de la API y webhooks (docs/modulos/M-API.md §8, RN-API-03).
  * - Cliente: la clave pública se genera sola; el secreto se genera al crearlo, se guarda solo su hash y se muestra
- *   una única vez (queda 10 minutos para leerlo con «Ver secreto»). Revocar es definitivo.
- * - Webhook: la URL debe ser https; su secreto de firma (HMAC) se genera solo.
+ *   una única vez en la respuesta de creación. Después solo se puede rotar (nuevo secreto, el anterior deja de servir)
+ *   o revocar, que es definitivo.
+ * - Webhook: la URL debe ser https; su secreto de firma (HMAC) se genera solo, se guarda cifrado (hace falta para
+ *   firmar cada envío) y se muestra una única vez al crearlo o al rotarlo.
  */
 class ApiRules extends RecordRules
 {
+    /** Secreto recién generado en esta solicitud (se entrega una vez con la respuesta de creación). */
+    private static ?string $fresh = null;
+
     public function prepare(string $op, array $res, array &$values, ?object $current, array &$extra): void
     {
         if ($res['table'] === 'api_clients') {
             if ($op === 'create') {
-                $secret = 'sk_'.Str::random(40);
-                $key = 'esc_'.Str::lower(Str::random(24));
-                $extra['client_key'] = ['?', [$key]];
-                $extra['secret_hash'] = ['?', [hash('sha256', $secret)]];
+                $secret = self::newClientSecret();
+                $extra['client_key'] = ['?', ['esc_'.Str::lower(Str::random(24))]];
+                $extra['secret_hash'] = ['?', [self::hashClientSecret($secret)]];
                 $values['scopes'] ??= ['read'];
                 $values['status'] = 'active';
-                Cache::put('api-secret:'.$key, $secret, now()->addMinutes(10));
+                self::$fresh = $secret;
             }
             if ($current && $current->status === 'revoked' && $values !== []) {
                 $this->conflict('El cliente está revocado: crea uno nuevo.');
@@ -38,17 +41,34 @@ class ApiRules extends RecordRules
                 $this->fail('target_url', 'La dirección debe empezar con https://');
             }
             if ($op === 'create') {
-                $extra['secret'] = ['?', [\Illuminate\Support\Facades\Crypt::encryptString('whsec_'.Str::random(32))]];   // cifrado (lo lee «Ver secreto»)
+                $secret = self::newWebhookSecret();
+                $extra['secret'] = ['?', [Crypt::encryptString($secret)]];
                 $values['event_codes'] ??= [];
+                self::$fresh = $secret;
             }
         }
     }
 
-    /** Secreto recién creado (una sola lectura, mientras no venza). */
-    public static function pullSecret(string $clientId): ?string
+    public function reveal(array $res, string $id): array
     {
-        $key = DB::selectOne('select client_key from api_clients where id = ?', [$clientId])?->client_key;
+        $secret = self::$fresh;
+        self::$fresh = null;
 
-        return $key ? Cache::pull('api-secret:'.$key) : null;
+        return $secret === null ? [] : ['secret' => $secret];
+    }
+
+    public static function newClientSecret(): string
+    {
+        return 'sk_'.Str::random(40);
+    }
+
+    public static function hashClientSecret(string $secret): string
+    {
+        return hash('sha256', $secret);
+    }
+
+    public static function newWebhookSecret(): string
+    {
+        return 'whsec_'.Str::random(32);
     }
 }

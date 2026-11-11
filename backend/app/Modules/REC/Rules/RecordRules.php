@@ -117,6 +117,12 @@ abstract class RecordRules
 
     public function prepareDelete(array $res, object $current): void {}
 
+    /** Datos que se entregan una sola vez en la respuesta de creación (p. ej. un secreto recién generado). */
+    public function reveal(array $res, string $id): array
+    {
+        return [];
+    }
+
     protected function fail(string $field, string $message): never
     {
         throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', $message, ['errors' => [$field => [$message]]]);

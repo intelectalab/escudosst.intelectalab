@@ -4,7 +4,7 @@
 // El pago se registra a mano (Yape, Plin, transferencia, depósito o efectivo, con su número de operación); con la pasarela
 // configurada en Proveedores y claves, el pago en línea se confirma solo.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/lib/api";
 import type { RecordRow } from "@/lib/records";
@@ -29,6 +29,7 @@ export function SellOffer({ row, onChanged }: { row: RecordRow; onChanged: () =>
   );
   return (
     <section className="space-y-3 rounded-xl border border-line px-4 py-3 text-sm">
+      <CatalogLink offerSlug={String(row.slug ?? "")} isPublic={!!row.is_public} />
       <p className="font-semibold">Vender esta oferta</p>
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-xs">Comprador
@@ -75,6 +76,44 @@ export function PayOrder({ id, label, onChanged }: { id: string; label?: string;
         <Button size="sm" variant="primary" onClick={pay}>Registrar pago</Button>
       </div>
       {msg && <p className={msg.ok ? "text-ok" : "text-bad"}>{msg.text}</p>}
+    </div>
+  );
+}
+
+/** Dirección del catálogo público de la empresa y de esta oferta (SCR-VTA-12/15); se puede cambiar el nombre de la dirección. */
+export function CatalogLink({ offerSlug, isPublic }: { offerSlug: string; isPublic: boolean }) {
+  const [link, setLink] = useState<{ slug: string | null; url: string } | null>(null);
+  const [slug, setSlug] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    api<{ data: { slug: string | null; url: string } }>("/vta/catalog", { withCompany: true }).then((r) => { setLink(r.data); setSlug(r.data.slug ?? ""); }).catch(() => setLink(null));
+  }, []);
+  if (!link) return null;
+  const save = () =>
+    api<{ data: { slug: string | null; url: string } }>("/vta/catalog", { method: "PUT", withCompany: true, body: { slug } })
+      .then((r) => { setLink(r.data); setEditing(false); setMsg(null); })
+      .catch((e) => setMsg(errText(e)));
+  const offerUrl = offerSlug ? `${link.url}/${offerSlug}` : null;
+  return (
+    <div className="space-y-1 rounded-xl bg-bg px-3 py-2 text-xs">
+      <p>
+        Catálogo público: <a className="font-semibold text-brand underline" href={link.url} target="_blank" rel="noreferrer">{link.url}</a>{" "}
+        <button type="button" className="text-muted underline" onClick={() => setEditing(!editing)}>{link.slug ? "Cambiar dirección" : "Elegir una dirección"}</button>
+      </p>
+      {offerUrl && (
+        <p className="text-muted">
+          Esta oferta: <a className="underline" href={offerUrl} target="_blank" rel="noreferrer">{offerUrl}</a>
+          {isPublic ? "" : " · no aparece en el catálogo (solo con este enlace)"}
+        </p>
+      )}
+      {editing && (
+        <div className="flex flex-wrap items-end gap-2 pt-1">
+          <label>Dirección<input className="input mt-1 !w-56" placeholder="mi-empresa" value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase())} /></label>
+          <Button variant="primary" onClick={save}>Guardar</Button>
+        </div>
+      )}
+      {msg && <p className="text-bad">{msg}</p>}
     </div>
   );
 }

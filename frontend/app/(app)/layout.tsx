@@ -5,21 +5,26 @@
 // En el menú: solo módulos que el rol puede usar; los no contratados con candado;
 // AUL/VTA desactivados por la empresa no aparecen.
 
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { CompanyBrand } from "@/components/addons/WhiteLabel";
 import { AppContext, type AppState } from "@/components/AppContext";
+import { GlobalSearch } from "@/components/GlobalSearch";
 import { HelpButton } from "@/components/HelpButton";
 import { ProductUpdatesButton } from "@/components/ProductUpdatesButton";
+import { AppSidebar, type SideGroup } from "@/components/AppSidebar";
+import { UserMenu } from "@/components/UserMenu";
+import { MobileBar } from "@/components/MobileBar";
 import { LegalPendingGate } from "@/components/LegalPendingGate";
 import { NotificationBell } from "@/components/NotificationBell";
+import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { SupportRequestBanner } from "@/components/SupportRequestBanner";
 import { Icon } from "@/components/ui/Icon";
 import { formatDate } from "@/lib/accounts";
 import { SubscriptionBanner } from "@/components/SubscriptionBanner";
 import { api, ApiError } from "@/lib/api";
-import { availableIn, MENU_GROUPS } from "@/lib/menu";
+import { MENU_GROUPS } from "@/lib/menu";
+import { pendingCount } from "@/lib/offline";
 import { session } from "@/lib/session";
 import type { CompanyOption, ModuleItem, User } from "@/lib/types";
 
@@ -29,6 +34,26 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [drawer, setDrawer] = useState(false);
+  // Menú plegado (solo íconos) con el botón de la cabecera, como el prototipo; la elección se guarda en el navegador.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("escudo.menu.collapsed");
+      setCollapsed(saved === "1");
+    } catch {
+      setCollapsed(false);
+    }
+  }, []);
+  function toggleCollapsed() {
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem("escudo.menu.collapsed", c ? "0" : "1");
+      } catch {
+        /* sin almacenamiento */
+      }
+      return !c;
+    });
+  }
 
   useEffect(() => {
     const companyId = session.getCompanyId();
@@ -60,12 +85,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => setDrawer(false), [pathname]);
 
+  // Administrador de contratista (docs/05 §4.4, M-CTR SCR-CTR-05): solo ve su portal, su cuenta y la ayuda.
+  const contractorOnly = state?.company.role.code === "contractor_admin";
+  useEffect(() => {
+    if (contractorOnly && !["/m/ctr", "/cuenta", "/soporte"].some((p) => pathname.startsWith(p))) router.replace("/m/ctr");
+  }, [contractorOnly, pathname, router]);
+
   function leaveSupport() {
     session.clearCompany();
     router.replace("/plataforma/soporte");
   }
 
   async function logout() {
+    // Registros guardados sin conexión: se avisa antes de salir (docs/16 §8).
+    const pending = await pendingCount().catch(() => 0);
+    if (pending > 0 && !window.confirm(`Tienes ${pending} registro(s) sin sincronizar. Quedarán guardados en este equipo y se enviarán cuando vuelvas a ingresar. ¿Salir igual?`)) return;
     await api("/auth/logout", { method: "POST" }).catch(() => undefined);
     session.clear();
     router.replace("/login");
@@ -76,41 +110,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const byCode = new Map(state.modules.map((m) => [m.code, m]));
   const visible = (m: ModuleItem | undefined): m is ModuleItem => !!m && m.role_can_use && m.mode !== "disabled_by_company";
-  const groups = MENU_GROUPS.map((g) => ({ ...g, items: g.codes.map((c) => byCode.get(c)).filter(visible) })).filter((g) => g.items.length > 0);
+  const groups: SideGroup[] = MENU_GROUPS.map((g) => ({ title: g.title, icon: g.icon, highlight: g.highlight, items: g.codes.map((c) => byCode.get(c)).filter(visible) })).map((g) => (contractorOnly ? { ...g, items: g.items.filter((m) => m.code === "CTR") } : g)).filter((g) => g.items.length > 0);
   const dsh = byCode.get("DSH");
   const isSupport = state.company.role.code === "platform_support";
   const canSeeSupport = ["account_admin", "sst_manager"].includes(state.company.role.code);
-
-  const nav = (
-    <nav className="flex-1 overflow-y-auto p-3 space-y-4 text-sm" aria-label="Módulos">
-      {visible(dsh) && (
-        <NavLink href="/inicio" active={pathname === "/inicio"}>
-          Inicio
-        </NavLink>
-      )}
-      {groups.map((g) => (
-        <div key={g.title}>
-          <p className={`px-2 pb-1 text-xs uppercase tracking-wide ${g.highlight ? "text-amber-300" : "text-white/50"}`}>{g.title}</p>
-          <ul>
-            {g.items.map((m) => (
-              <li key={m.code}>
-                <NavLink
-                  href={`/m/${m.code.toLowerCase()}`}
-                  active={pathname === `/m/${m.code.toLowerCase()}`}
-                  muted={m.mode === "locked"}
-                  title={m.mode === "locked" ? `Disponible en ${availableIn(m.required_plan, m.name)}` : (m.solves ?? m.name)}
-                >
-                  <span className="truncate">{m.name}</span>
-                  {m.mode === "locked" && <span aria-label="No incluido en tu plan">🔒</span>}
-                  {m.mode === "read_only" && <span className="text-[10px] uppercase">Lectura</span>}
-                </NavLink>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-    </nav>
-  );
 
   return (
     <AppContext.Provider value={state}>
@@ -126,89 +129,80 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       )}
-      <div className="min-h-screen flex">
-        {/* Menú en escritorio */}
-        <aside className="hidden md:flex w-72 shrink-0 flex-col bg-side text-white/90 sticky top-0 h-screen">
-          <div className="p-5 border-b border-white/10">
-            <Link href="/inicio">
-              <CompanyBrand companyId={state.company.company_id} />
-            </Link>
-          </div>
-          {nav}
+      <div className="flex min-h-screen">
+        {/* Menú en escritorio y tablet (se pliega a solo íconos) */}
+        <aside className={`sticky top-0 z-30 hidden h-screen shrink-0 flex-col bg-side text-white/90 transition-[width] duration-200 md:flex ${collapsed ? "w-[4.5rem]" : "w-[17rem]"}`}>
+          <Suspense>
+            <AppSidebar
+              groups={groups}
+              showHome={visible(dsh) && !contractorOnly}
+              brand={<CompanyBrand companyId={state.company.company_id} />}
+              brandCompact={<CompanyBrand companyId={state.company.company_id} compact />}
+              collapsed={collapsed}
+            />
+          </Suspense>
         </aside>
 
         {/* Cajón en el celular */}
         {drawer && (
-          <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Menú">
+          <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Menú">
             <button className="absolute inset-0 bg-black/40" aria-label="Cerrar menú" onClick={() => setDrawer(false)} />
-            <aside className="relative flex h-full w-72 flex-col bg-side text-white/90">
-              <div className="flex items-center justify-between p-5 border-b border-white/10">
-                <CompanyBrand companyId={state.company.company_id} />
-                <button onClick={() => setDrawer(false)} aria-label="Cerrar menú" className="text-xl">
-                  ✕
-                </button>
-              </div>
-              {nav}
+            <aside className="relative flex h-full w-[85vw] max-w-72 flex-col bg-side text-white/90 shadow-2xl">
+              <Suspense>
+                <AppSidebar
+                  groups={groups}
+                  showHome={visible(dsh) && !contractorOnly}
+                  brand={<CompanyBrand companyId={state.company.company_id} />}
+                  brandCompact={null}
+                  collapsed={false}
+                  mobile
+                  onClose={() => setDrawer(false)}
+                />
+              </Suspense>
             </aside>
           </div>
         )}
 
-        <div className="flex-1 min-w-0 flex flex-col">
-          <header className="flex items-center justify-between gap-3 border-b border-line bg-surface px-4 md:px-6 py-3">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-3 border-b border-line bg-surface px-3 sm:px-5">
             <div className="flex min-w-0 items-center gap-3">
-              <button className="md:hidden rounded-lg border border-line px-3 py-2" aria-label="Abrir menú" onClick={() => setDrawer(true)}>
-                ☰
+              <button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-line hover:bg-bg" aria-label="Abrir o plegar el menú" title="Abrir o plegar el menú"
+                onClick={() => (window.innerWidth < 768 ? setDrawer(true) : toggleCollapsed())}>
+                <Icon name="menu" size={20} />
               </button>
               <div className="min-w-0">
-                <p className="font-display font-semibold truncate">{state.company.name}</p>
-                <p className="text-sm text-muted truncate">
+                <p className="truncate font-display font-semibold leading-tight">{state.company.name}</p>
+                <p className="truncate text-xs text-muted sm:text-sm">
                   RUC {state.company.ruc} · {state.company.role.name}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              <HelpButton />
+            <GlobalSearch />
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
               <ProductUpdatesButton />
+              <HelpButton screenName={pathname === "/inicio" ? "Inicio" : state.modules.find((m) => pathname.startsWith(`/m/${m.code.toLowerCase()}`))?.name} />
               {!isSupport && <NotificationBell />}
-              {canSeeSupport && (
-                <Link href="/soporte" className="hidden rounded-lg px-3 py-2 text-muted hover:bg-bg hover:text-fg lg:block" title="Accesos de soporte">
-                  Soporte
-                </Link>
-              )}
-              {state.companiesCount > 1 && (
-                <Link href="/select-company" className="rounded-lg border border-line px-3 py-2 hover:bg-bg">
-                  Cambiar empresa
-                </Link>
-              )}
-              <Link href="/cuenta" className="hidden sm:block rounded-lg px-3 py-2 text-muted hover:bg-bg hover:text-fg" title="Mi cuenta">
-                {state.user.full_name}
-              </Link>
-              <button onClick={logout} className="rounded-lg border border-line px-3 py-2 hover:bg-bg">
-                Salir
-              </button>
+              <UserMenu
+                name={state.user.full_name}
+                email={state.user.email}
+                role={state.company.role.name}
+                company={state.company.name}
+                canSeeSupport={canSeeSupport}
+                canSwitch={state.companiesCount > 1}
+                onLogout={logout}
+              />
             </div>
           </header>
-          <main className="flex-1 p-4 md:p-6">
+          <main className="flex-1 p-3 pb-20 sm:p-4 sm:pb-20 md:pb-4 lg:p-5">
             {canSeeSupport && <SupportRequestBanner />}
             {!isSupport && <SubscriptionBanner />}
+            {!isSupport && <OfflineIndicator />}
             {!isSupport && <LegalPendingGate />}
             {children}
           </main>
         </div>
       </div>
+      {!isSupport && <MobileBar role={state.company.role.code} modules={contractorOnly ? state.modules.filter((m) => m.code === "CTR") : state.modules} />}
     </AppContext.Provider>
-  );
-}
-
-function NavLink({ href, active, muted, title, children }: { href: string; active: boolean; muted?: boolean; title?: string; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      title={title}
-      aria-current={active ? "page" : undefined}
-      className={`flex items-center justify-between gap-2 rounded-md px-2 py-1.5 ${active ? "bg-white text-side font-semibold" : muted ? "text-white/40 hover:bg-white/5" : "hover:bg-white/10"}`}
-    >
-      {children}
-    </Link>
   );
 }

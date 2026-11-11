@@ -29,6 +29,7 @@ const SECTIONS: { title: string; items: Item[] }[] = [
       { href: "/plataforma/cuentas", label: "Cuentas y suscripciones", icon: "building", ready: true },
       { href: "/plataforma/facturacion", label: "Facturación", icon: "file", ready: true },
       { href: "/plataforma/metricas", label: "Métricas", icon: "grid", ready: true },
+      { href: "/plataforma/consultas", label: "Consultas de empresas", icon: "chat", ready: true },
       { href: "/plataforma/soporte", label: "Accesos de soporte", icon: "shield", ready: true },
     ],
   },

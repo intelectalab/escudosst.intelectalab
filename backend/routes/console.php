@@ -127,8 +127,14 @@ Artisan::command('escudo:backup {--target=all : main, medical o all}', function 
     $targets = $target === 'all' ? array_keys(\App\Modules\SUS\Services\BackupService::TARGETS) : [$target];
     foreach ($targets as $t) {
         $id = $backups->run($t, 'schedule');
-        $run = \Illuminate\Support\Facades\DB::connection('platform')->selectOne('select status, size_bytes, error from backup_runs where id = ?', [$id]);
+        $run = \Illuminate\Support\Facades\DB::connection('platform')->selectOne('select status, size_bytes, error, remote_status, remote_error from backup_runs where id = ?', [$id]);
         $run->status === 'ok' ? $this->info("{$t}: copia lista (".number_format($run->size_bytes / 1024, 1).' KB)') : $this->error("{$t}: falló — {$run->error}");
+        match ($run->remote_status) {
+            'ok' => $this->info("{$t}: copia externa subida"),
+            'failed' => $this->error("{$t}: copia externa falló — {$run->remote_error}"),
+            'skipped' => $this->line("{$t}: copia externa sin configurar (BACKUP_S3_*)"),
+            default => null,
+        };
     }
     if ($target === 'all') {
         $this->info('Copias vencidas borradas: '.$backups->prune());

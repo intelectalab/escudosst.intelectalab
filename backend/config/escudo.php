@@ -37,6 +37,14 @@ return [
     // Dirección del frontend para armar enlaces en los correos.
     'frontend_url' => env('FRONTEND_URL', 'http://localhost:3000'),
 
+    // Datos clínicos (EMO) en la base médica (docs/10 §5): llave de aplicación propia, distinta de APP_KEY y de las de respaldo
+    // («base64:...» de 32 bytes). Los archivos médicos van a su propio disco (bucket médico separado en producción).
+    'medical' => [
+        'field_key' => env('MEDICAL_FIELD_KEY'),
+        'files_disk' => env('MEDICAL_FILES_DISK', 'local'),
+        'reauth_minutes' => (int) env('MEDICAL_REAUTH_MINUTES', 15),
+    ],
+
     // Copias de seguridad lógicas cifradas (docs/15 §9). Las llaves y la contraseña viven solo en backend/.env.
     'backups' => [
         'disk' => env('BACKUP_DISK', 'backups'),
@@ -49,6 +57,15 @@ return [
         'db_password' => env('DB_BACKUP_PASSWORD', ''),
         'key' => env('BACKUP_KEY'),
         'medical_key' => env('BACKUP_MEDICAL_KEY'),
+        // Copia externa (fuera del servidor) en un almacenamiento compatible con S3 (Backblaze B2 u otro). Vacío = no se sube.
+        'remote' => [
+            'endpoint' => env('BACKUP_S3_ENDPOINT', ''),
+            'bucket' => env('BACKUP_S3_BUCKET', ''),
+            'key' => env('BACKUP_S3_KEY', ''),
+            'secret' => env('BACKUP_S3_SECRET', ''),
+            'region' => env('BACKUP_S3_REGION', ''),
+            'retention_days' => (int) env('BACKUP_REMOTE_RETENTION_DAYS', 30),
+        ],
     ],
 
     // Disco donde se guardan el logo y el favicon del sitio (local en desarrollo; B2 en producción).

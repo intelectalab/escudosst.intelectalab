@@ -4,6 +4,7 @@ namespace App\Modules\USR\Http\Controllers;
 
 use App\Core\Http\ApiProblem;
 use App\Http\Controllers\Controller;
+use App\Modules\REC\Rules\WorkerRules;
 use App\Modules\USR\Http\Requests\LoginRequest;
 use App\Modules\USR\Services\LoginAttempts;
 use App\Modules\USR\Services\MfaService;
@@ -31,11 +32,17 @@ class AuthController extends Controller
 
     public function login(LoginRequest $request): JsonResponse
     {
-        $email = $request->validated('email');
         $password = $request->validated('password');
+        $dni = $request->dni();
 
-        // SECURITY DEFINER: busca por correo sin abrir la tabla users (RLS).
-        $found = DB::selectOne('select * from app_auth_lookup_user(?)', [$email]);
+        // SECURITY DEFINER: busca por correo, o por DNI del trabajador vinculado, sin abrir la tabla users (RLS).
+        // Con DNI solo vale una coincidencia: si hay varias o ninguna, la respuesta es la misma que sin usuario.
+        if ($dni !== null) {
+            $matches = DB::select("select * from app_auth_lookup_user_by_document(decode(?, 'hex'))", [WorkerRules::documentHash('DNI', $dni)]);
+            $found = count($matches) === 1 ? $matches[0] : null;
+        } else {
+            $found = DB::selectOne('select * from app_auth_lookup_user(?)', [$request->validated('email')]);
+        }
 
         if ($found === null) {
             Hash::check($password, self::DUMMY_HASH);
@@ -76,8 +83,8 @@ class AuthController extends Controller
 
     private function invalidCredentials(): ApiProblem
     {
-        // Mismo mensaje exista o no el correo.
+        // Mismo mensaje exista o no el correo o el DNI.
         return new ApiProblem(401, 'invalid_credentials', 'No pudimos iniciar sesión',
-            'El correo o la contraseña no son correctos.');
+            'El correo o DNI, o la contraseña, no son correctos.');
     }
 }

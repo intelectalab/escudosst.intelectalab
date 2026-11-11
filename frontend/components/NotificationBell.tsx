@@ -63,11 +63,11 @@ export function NotificationBell() {
         onClick={() => setOpen((v) => !v)}
         aria-label={unread ? `Avisos: ${unread} sin leer` : "Avisos"}
         aria-expanded={open}
-        className="relative grid h-10 w-10 place-items-center rounded-lg border border-line hover:bg-bg"
+        className="relative grid h-10 w-10 place-items-center rounded-xl border border-line bg-surface hover:bg-bg"
       >
         <Icon name="bell" size={19} />
         {unread > 0 && (
-          <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-bad px-1 text-[11px] font-bold text-white">{unread > 9 ? "9+" : unread}</span>
+          <span className="absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-bad px-1 text-[10px] ring-2 ring-surface font-bold text-white">{unread > 9 ? "9+" : unread}</span>
         )}
       </button>
 

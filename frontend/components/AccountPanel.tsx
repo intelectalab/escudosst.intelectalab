@@ -110,7 +110,7 @@ export function AccountPanel({
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1400px] space-y-6">
+    <div className="w-full space-y-6">
       <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-side to-brand p-6 text-white shadow-md sm:p-8">
         <div
           className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl"

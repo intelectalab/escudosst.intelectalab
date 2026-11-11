@@ -75,3 +75,14 @@ it('compara la medición con el límite de exposición', function () {
         'exposure_limit_id' => $limit->json('data.id'), 'measured_at' => now()->toIso8601String(), 'value' => 92, 'unit' => 'dB(A)'], $h)->assertCreated();
     expect($m->json('data.result'))->toBe('exceeds_limit');
 });
+
+it('completa la revisión por la dirección indicando los participantes (uno por línea en el formulario)', function () {
+    $h = imp();
+    $id = $this->postJson('/api/v1/records/RVD/management_reviews', ['year' => (int) now()->year + 4, 'title' => 'Revisión anual'], $h)->assertCreated()->json('data.id');
+    $this->patchJson("/api/v1/records/RVD/management_reviews/{$id}", ['status' => 'in_progress'], $h)->assertOk();
+    $this->patchJson("/api/v1/records/RVD/management_reviews/{$id}", ['status' => 'completed', 'conclusions' => 'Sistema eficaz'], $h)
+        ->assertStatus(422)->assertJsonPath('errors.participants.0', 'Indica quiénes participaron (la alta dirección participa en la revisión).');
+    $this->patchJson("/api/v1/records/RVD/management_reviews/{$id}", ['participants' => ['Gerente general', 'Jefe SST'], 'status' => 'completed', 'conclusions' => 'Sistema eficaz'], $h)
+        ->assertOk()->assertJsonPath('data.status', 'completed');
+    expect($this->getJson("/api/v1/records/RVD/management_reviews/{$id}", $h)->json('data.participants'))->toBe(['Gerente general', 'Jefe SST']);
+});

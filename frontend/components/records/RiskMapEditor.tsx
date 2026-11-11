@@ -66,7 +66,8 @@ export function Pictogram({ type, size = 28 }: { type: string; size?: number }) 
   }
 }
 
-export function RiskMapEditor({ row, canEdit }: { row: RecordRow; canEdit: boolean }) {
+/** onSelect / focusId / onChange: la vista principal del módulo (MapModule) sigue el marcador tocado y refresca su leyenda. */
+export function RiskMapEditor({ row, canEdit, onSelect, focusId, onChange }: { row: RecordRow; canEdit: boolean; onSelect?: (id: string) => void; focusId?: string | null; onChange?: () => void }) {
   const [img, setImg] = useState<string | null>(null);
   const [markers, setMarkers] = useState<Marker[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +116,7 @@ export function RiskMapEditor({ row, canEdit }: { row: RecordRow; canEdit: boole
       await records.create("MAP", "risk_map_markers", { risk_map_id: row.id, marker_type: draft.type, x_pct: draft.x, y_pct: draft.y, label: draft.label || null });
       setDraft(null);
       load();
+      onChange?.();
     } catch (e) {
       setError(e instanceof ApiError ? (e.detail ?? e.title) : "No se pudo guardar.");
     }
@@ -126,6 +128,7 @@ export function RiskMapEditor({ row, canEdit }: { row: RecordRow; canEdit: boole
       setSelected(null);
       setConfirmDelete(false);
       load();
+      onChange?.();
     } catch (e) {
       setError(e instanceof ApiError ? (e.detail ?? e.title) : "No se pudo quitar.");
     }
@@ -163,10 +166,11 @@ export function RiskMapEditor({ row, canEdit }: { row: RecordRow; canEdit: boole
                 setDraft(null);
                 setConfirmDelete(false);
                 setSelected(m);
+                onSelect?.(m.id);
               }}
               title={`${MARKER_TYPES[m.marker_type]}${m.label ? `: ${m.label}` : ""}`}
               aria-label={`${MARKER_TYPES[m.marker_type]}${m.label ? `: ${m.label}` : ""}`}
-              className={`absolute -translate-x-1/2 -translate-y-1/2 rounded drop-shadow transition ${only && only !== m.marker_type ? "opacity-20" : ""} ${selected?.id === m.id ? "ring-2 ring-brand" : ""}`}
+              className={`absolute -translate-x-1/2 -translate-y-1/2 rounded drop-shadow transition ${only && only !== m.marker_type ? "opacity-20" : ""} ${selected?.id === m.id || focusId === m.id ? "ring-2 ring-brand" : ""}`}
               style={{ left: `${m.x_pct}%`, top: `${m.y_pct}%` }}
             >
               <Pictogram type={m.marker_type} />

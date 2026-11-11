@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 
 // Modo inspección SUNAFIL: armar el expediente con los datos de la empresa (M-SUN) y compartirlo con un enlace temporal.
 Route::middleware(['auth:sanctum', 'company', 'module:SUN', 'permission:sun.inspection_dossiers.read'])->prefix('sun')->group(function () {
+    Route::get('diagnosis', \App\Modules\SUN\DiagnosisController::class);
     Route::post('dossiers/{dossier}/build', DossierBuilder::class)->whereUuid('dossier');
     Route::get('dossiers/{dossier}/zip', \App\Modules\SUN\DossierZip::class)->whereUuid('dossier');
     Route::post('dossiers/{dossier}/share', [ShareLinkController::class, 'store'])->whereUuid('dossier');

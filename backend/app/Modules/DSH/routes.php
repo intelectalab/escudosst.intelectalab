@@ -7,4 +7,5 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'company', 'module:DSH', 'permission:dsh.dashboards.read'])->prefix('dsh')->group(function () {
     Route::get('overview', [DashboardController::class, 'overview']);
     Route::get('group', [DashboardController::class, 'group']);
+    Route::get('home', \App\Modules\DSH\Http\HomeController::class);
 });

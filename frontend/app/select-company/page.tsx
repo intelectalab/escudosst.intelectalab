@@ -1,6 +1,7 @@
 "use client";
 
-// Selector de empresa: el usuario elige con qué empresa trabajar (docs/08-api.md §3).
+// Selector de empresa: solo si el usuario tiene varias (docs/07 §2 «si tiene varias»; docs/08-api.md §3).
+// Con una sola entra directo sin mostrar el selector.
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -56,6 +57,16 @@ export default function SelectCompanyPage() {
       });
   }, [router, choose]);
 
+  // Con una sola empresa (o mientras se sabe cuántas hay) no se muestra el selector: solo «Entrando…».
+  if (!error && (companies === null || companies.length === 1)) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-6" aria-busy="true">
+        <AppBrand />
+        <p className="text-sm text-muted">Entrando…</p>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
       <div className="w-full max-w-lg space-y-6">
@@ -70,8 +81,6 @@ export default function SelectCompanyPage() {
             {error}
           </div>
         )}
-
-        {companies === null && !error && <p className="text-muted">Cargando…</p>}
 
         {companies?.length === 0 && (
           <div className="rounded-xl border border-line bg-surface p-6 text-muted">

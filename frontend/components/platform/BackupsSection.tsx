@@ -11,8 +11,9 @@ import { Icon } from "@/components/ui/Icon";
 import { api } from "@/lib/api";
 
 type Target = { target: string; label: string; last_ok_at: string | null; last_size_bytes: number | null; last_status: string | null; last_error: string | null; overdue: boolean };
-type Run = { id: string; target: string; trigger: string; status: "running" | "ok" | "failed"; started_at: string; finished_at: string | null; size_bytes: number | null; error: string | null; deleted_at: string | null; requested_by: string | null };
-type Status = { targets: Target[]; runs: Run[]; config: { disk: string; retention_days: number; daily_at: string; max_age_hours: number; keys_ready: boolean } };
+type Run = { id: string; target: string; trigger: string; status: "running" | "ok" | "failed"; started_at: string; finished_at: string | null; size_bytes: number | null; error: string | null; deleted_at: string | null; requested_by: string | null; remote_status: "skipped" | "ok" | "failed" | null; remote_uploaded_at: string | null; remote_deleted_at: string | null };
+type Remote = { configured: boolean; destination: string | null; retention_days: number; last_upload_at: string | null; last_status: "ok" | "failed" | null; last_error: string | null; message: string | null };
+type Status = { targets: Target[]; runs: Run[]; config: { disk: string; retention_days: number; daily_at: string; max_age_hours: number; keys_ready: boolean }; remote?: Remote };
 
 const size = (b: number | null) => (b == null ? "–" : b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${(b / 1024).toFixed(0)} KB`);
 const when = (d: string | null) => (d ? new Date(d).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" }) : "nunca");
@@ -80,6 +81,23 @@ export function BackupsSection({ onToast }: { onToast: (t: string) => void }) {
         })}
       </div>
 
+      {s.remote && (
+        <div className={`mx-4 mb-4 flex flex-wrap items-start gap-3 rounded-xl border p-3 text-sm ${!s.remote.configured ? "border-line bg-bg/60" : s.remote.last_status === "failed" ? "border-bad/30 bg-bad-soft/50" : "border-ok/30 bg-ok-soft/40"}`}>
+          <Icon name="server" size={18} className={`mt-0.5 shrink-0 ${!s.remote.configured ? "text-muted" : s.remote.last_status === "failed" ? "text-bad" : "text-ok"}`} />
+          <span className="min-w-0 flex-1">
+            <b>Copia externa: {s.remote.configured ? "activa" : "sin configurar"}</b>
+            {s.remote.configured ? (
+              <span className="block text-muted">
+                {s.remote.destination} · última subida: <b className="text-fg">{when(s.remote.last_upload_at)}</b> · se guardan {s.remote.retention_days} días
+              </span>
+            ) : (
+              <span className="block text-muted">{s.remote.message ?? "Las copias solo quedan en el servidor."} Se activa con las variables BACKUP_S3_* del servidor.</span>
+            )}
+            {s.remote.configured && s.remote.last_status === "failed" && <span className="mt-1 block text-xs text-bad">La última subida falló: {s.remote.last_error}</span>}
+          </span>
+        </div>
+      )}
+
       <ul className="grid grid-cols-1 gap-2 border-y border-line bg-bg/60 px-5 py-3 text-xs text-muted sm:grid-cols-2 xl:grid-cols-4">
         <li className="flex gap-2">
           <Icon name="clock" size={14} className="mt-0.5 shrink-0 text-brand" /> Automática todos los días a las {s.config.daily_at} (hora de Lima).
@@ -103,13 +121,14 @@ export function BackupsSection({ onToast }: { onToast: (t: string) => void }) {
               <th className="px-3 py-2 font-semibold">Base</th>
               <th className="px-3 py-2 font-semibold">Origen</th>
               <th className="px-3 py-2 font-semibold">Resultado</th>
+              <th className="px-3 py-2 font-semibold">Copia externa</th>
               <th className="px-5 py-2 text-right font-semibold">Tamaño</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
             {s.runs.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-5 py-6 text-center text-muted">
+                <td colSpan={6} className="px-5 py-6 text-center text-muted">
                   Todavía no hay copias.
                 </td>
               </tr>
@@ -121,6 +140,9 @@ export function BackupsSection({ onToast }: { onToast: (t: string) => void }) {
                   <td className="px-3 py-2 text-muted">{r.trigger === "manual" ? `A mano${r.requested_by ? ` · ${r.requested_by}` : ""}` : "Automática"}</td>
                   <td className="px-3 py-2">
                     {r.status === "ok" ? <Chip tone="ok">{r.deleted_at ? "Borrada por antigüedad" : "Lista"}</Chip> : r.status === "running" ? <Chip tone="amber">En curso</Chip> : <Chip tone="bad">Falló</Chip>}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-muted">
+                    {r.remote_status === "ok" ? (r.remote_deleted_at ? "Borrada por antigüedad" : `Subida ${when(r.remote_uploaded_at)}`) : r.remote_status === "failed" ? <span className="text-bad">No se subió</span> : r.remote_status === "skipped" ? "Sin configurar" : "–"}
                   </td>
                   <td className="px-5 py-2 text-right tabular-nums">{size(r.size_bytes)}</td>
                 </tr>

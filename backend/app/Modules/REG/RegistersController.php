@@ -39,6 +39,38 @@ class RegistersController extends Controller
         return response()->json(['data' => array_map(fn ($k, $v) => ['type' => $k, 'name' => $v], array_keys(self::TYPES), self::TYPES)]);
     }
 
+    /**
+     * GET /reg/{type}/preview?from=&to= — vista previa del registro (SCR-REG-02): cabecera de la empresa, columnas y las
+     * primeras filas del mismo armado que el Excel. No deja constancia en el historial (solo la descarga la deja).
+     */
+    public function preview(Request $request, string $type): \Illuminate\Http\JsonResponse
+    {
+        $this->can('reg.register_exports.read');
+        if (! isset(self::TYPES[$type])) {
+            throw ApiProblem::notFound('Ese registro no existe.');
+        }
+        $from = (string) $request->query('from', date('Y').'-01-01');
+        $to = (string) $request->query('to', date('Y-m-d'));
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $to) || $to < $from) {
+            throw ApiProblem::badRequest('Elige un periodo válido.');
+        }
+        $limit = max(1, min(500, (int) $request->query('limit', 10)));
+        [$header, $rows] = $this->data($type, $from, $to);
+        $company = DB::selectOne('select legal_name, ruc, fiscal_address, economic_sector from companies where id = ?', [app(CompanyContext::class)->companyId]);
+        $workers = (int) DB::selectOne("select count(*) as n from workers where deleted_at is null and status in ('active','on_leave')")->n;
+
+        return response()->json(['data' => [
+            'type' => $type,
+            'title' => self::TYPES[$type],
+            'company' => ['legal_name' => $company->legal_name, 'ruc' => trim((string) $company->ruc), 'address' => $company->fiscal_address,
+                'activity' => $company->economic_sector, 'workers' => $workers],
+            'period' => ['from' => $from, 'to' => $to],
+            'header' => $header,
+            'rows' => array_slice($rows, 0, $limit),
+            'total' => count($rows),
+        ]]);
+    }
+
     public function export(Request $request, string $type): Response
     {
         $this->can('reg.register_exports.export');

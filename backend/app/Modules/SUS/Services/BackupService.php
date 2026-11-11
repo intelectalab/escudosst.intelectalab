@@ -19,6 +19,8 @@ use RuntimeException;
  *   puede leer: hay que guardarla fuera del servidor (docs/10: copia offline custodiada por dos personas).
  * - Se guarda en el disco escudo.backups.disk (local en desarrollo; bucket de respaldos con bloqueo de objetos en
  *   producción) y se borra al pasar escudo.backups.retention_days.
+ * - Copia externa: si BACKUP_S3_* está configurado, el archivo cifrado se sube también a un almacenamiento compatible
+ *   con S3 (Backblaze B2 u otro) y allí se borra al pasar BACKUP_REMOTE_RETENTION_DAYS (RemoteBackupStore).
  * - Cada copia queda en backup_runs (resultado, tamaño, huella sha256 del archivo cifrado).
  *
  * Esto es la copia lógica diaria. La copia física con WAL continuo (recuperación a un punto en el tiempo) se configura
@@ -32,6 +34,8 @@ class BackupService
     private const CHUNK = 1024 * 1024;
 
     public const TARGETS = ['main' => 'Base principal', 'medical' => 'Base médica'];
+
+    public function __construct(private RemoteBackupStore $remote) {}
 
     private function db(): ConnectionInterface
     {
@@ -59,6 +63,7 @@ class BackupService
                 "update backup_runs set status = 'ok', finished_at = now(), disk = ?, path = ?, size_bytes = ?, sha256 = ? where id = ?",
                 [$disk, $path, filesize($enc), hash_file('sha256', $enc), $id]
             );
+            $this->uploadRemote($id, $path, $enc);
         } catch (\Throwable $e) {
             Log::error('Copia de seguridad fallida', ['target' => $target, 'run' => $id, 'error' => $e->getMessage()]);
             $this->db()->update(
@@ -99,7 +104,72 @@ class BackupService
             }
         }
 
+        $this->pruneRemote();
+
         return count($old);
+    }
+
+    /**
+     * Sube la copia cifrada al almacenamiento externo (S3/B2). Sin configurar se omite en silencio (remote_status =
+     * skipped). Si falla, la copia local sigue siendo buena: solo se registra el error de la copia externa.
+     */
+    private function uploadRemote(string $id, string $path, string $file): void
+    {
+        if (! $this->remote->configured()) {
+            $this->db()->update("update backup_runs set remote_status = 'skipped' where id = ?", [$id]);
+
+            return;
+        }
+        try {
+            $this->remote->put($path, $file);
+            $this->db()->update(
+                "update backup_runs set remote_status = 'ok', remote_key = ?, remote_uploaded_at = now(), remote_error = null where id = ?",
+                [$path, $id]
+            );
+        } catch (\Throwable $e) {
+            Log::error('No se pudo subir la copia al almacenamiento externo', ['run' => $id, 'error' => $e->getMessage()]);
+            $this->db()->update(
+                "update backup_runs set remote_status = 'failed', remote_error = ? where id = ?",
+                [mb_substr($this->clean($e->getMessage()), 0, 500), $id]
+            );
+        }
+    }
+
+    /**
+     * Borra del almacenamiento externo las copias más antiguas que BACKUP_REMOTE_RETENTION_DAYS. Mira lo que hay
+     * realmente en el bucket (por base), no solo los registros. Con bloqueo de objetos el bucket puede negarse hasta
+     * que vence: se reintenta en la próxima limpieza.
+     */
+    public function pruneRemote(): int
+    {
+        if (! $this->remote->configured()) {
+            return 0;
+        }
+        $limit = time() - (int) config('escudo.backups.remote.retention_days') * 86400;
+        $deleted = 0;
+        foreach (array_keys(self::TARGETS) as $t) {
+            try {
+                $objects = $this->remote->list($t.'/');
+            } catch (\Throwable $e) {
+                Log::warning('No se pudieron listar las copias externas', ['target' => $t, 'error' => $e->getMessage()]);
+
+                continue;
+            }
+            foreach ($objects as $o) {
+                if ($o['last_modified'] <= 0 || $o['last_modified'] >= $limit) {
+                    continue;
+                }
+                try {
+                    $this->remote->delete($o['key']);
+                    $this->db()->update('update backup_runs set remote_deleted_at = now() where remote_key = ? and remote_deleted_at is null', [$o['key']]);
+                    $deleted++;
+                } catch (\Throwable $e) {
+                    Log::warning('No se pudo borrar una copia externa vencida', ['key' => $o['key'], 'error' => $e->getMessage()]);
+                }
+            }
+        }
+
+        return $deleted;
     }
 
     /** Estado para el panel y los avisos: última copia buena por base, si está atrasada y las últimas ejecuciones. */
@@ -124,7 +194,7 @@ class BackupService
         return [
             'targets' => $targets,
             'runs' => $this->db()->select(
-                'select r.id, r.target, r.trigger, r.status, r.started_at, r.finished_at, r.size_bytes, r.sha256, r.error, r.path, r.deleted_at, u.full_name as requested_by
+                'select r.id, r.target, r.trigger, r.status, r.started_at, r.finished_at, r.size_bytes, r.sha256, r.error, r.path, r.deleted_at, r.remote_status, r.remote_uploaded_at, r.remote_deleted_at, u.full_name as requested_by
                    from backup_runs r left join users u on u.id = r.requested_by order by r.started_at desc limit 30'
             ),
             'config' => [
@@ -134,6 +204,25 @@ class BackupService
                 'max_age_hours' => $maxAge,
                 'keys_ready' => $this->hasKey('main') && $this->hasKey('medical'),
             ],
+            'remote' => $this->remoteStatus(),
+        ];
+    }
+
+    /** Estado de la copia externa para el panel: si está configurada, destino, retención y última subida. */
+    private function remoteStatus(): array
+    {
+        $configured = $this->remote->configured();
+        $lastOk = $this->db()->selectOne("select remote_uploaded_at from backup_runs where remote_status = 'ok' order by remote_uploaded_at desc limit 1");
+        $last = $this->db()->selectOne("select remote_status, remote_error from backup_runs where remote_status in ('ok', 'failed') order by started_at desc limit 1");
+
+        return [
+            'configured' => $configured,
+            'destination' => $this->remote->describe(),
+            'retention_days' => (int) config('escudo.backups.remote.retention_days'),
+            'last_upload_at' => $lastOk?->remote_uploaded_at,
+            'last_status' => $configured ? $last?->remote_status : null,
+            'last_error' => $configured && $last?->remote_status === 'failed' ? $last->remote_error : null,
+            'message' => $configured ? null : 'Copia externa sin configurar: las copias solo quedan en el servidor.',
         ];
     }
 
@@ -241,8 +330,12 @@ class BackupService
     /** Quita contraseñas o cadenas de conexión de un mensaje de error antes de guardarlo. */
     private function clean(string $msg): string
     {
-        $pass = (string) config('escudo.backups.db_password');
+        foreach ([(string) config('escudo.backups.db_password'), (string) config('escudo.backups.remote.secret')] as $secret) {
+            if ($secret !== '') {
+                $msg = str_replace($secret, '***', $msg);
+            }
+        }
 
-        return $pass !== '' ? str_replace($pass, '***', $msg) : $msg;
+        return $msg;
     }
 }

@@ -85,6 +85,9 @@ export type Workspace = {
     next_review_on: string | null;
     current_version_id: string | null;
     status: string;
+    position_id?: string | null;
+    site_id?: string | null;
+    area_id?: string | null;
   };
   criteria: Criteria;
   versions: IpercVersion[];
@@ -92,6 +95,8 @@ export type Workspace = {
   rows: IpercRow[];
   heatmap: { initial: Record<string, number>; residual: Record<string, number> };
   issues: { row: string | null; text: string }[];
+  /** Trabajadores activos del puesto de la matriz (o el mayor «expuestos» de las filas). */
+  exposed_workers?: number | null;
   can: { edit: boolean; controls: boolean; submit: boolean; approve: boolean; new_version: boolean; export: boolean };
 };
 

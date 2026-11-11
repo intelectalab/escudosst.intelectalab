@@ -60,10 +60,10 @@ export default function SoporteClientePage() {
   }
 
   if (error) return <p className="rounded-xl border border-bad/30 bg-bad-soft p-4 text-bad">{error}</p>;
-  if (!grants) return <div className="mx-auto h-72 max-w-4xl animate-pulse rounded-2xl bg-line/40" aria-label="Cargando" />;
+  if (!grants) return <div className="h-72 animate-pulse rounded-2xl bg-line/40" aria-label="Cargando" />;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="space-y-6">
       <PageHeader
         crumbs={[["Mi empresa"], ["Accesos de soporte"]]}
         icon="shield"

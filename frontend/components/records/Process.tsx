@@ -19,6 +19,10 @@ import { IsoAssess, PseApply } from "@/components/addons/IsoPsePanels";
 import { PayOrder, SellOffer } from "@/components/addons/VtaPanels";
 import { QuestionOptions } from "@/components/addons/AulLearner";
 import { RiskMapEditor } from "./RiskMapEditor";
+import { InvTreeWithGuide } from "@/components/addons/IaaGuided";
+import { EmoClinical } from "@/components/modules/EmoClinical";
+import { useApp } from "@/components/AppContext";
+import { submitInspectionAnswers } from "@/lib/offline";
 
 /** Texto de un filtro que llegó por enlace (chips «Mostrando solo: …»). */
 export function describeFilter(res: RecordResource, key: string, value: string): string {
@@ -135,6 +139,20 @@ export function RecordActions({
   readOnly: boolean;
   onChanged: () => void;
 }) {
+  if (res.table === "investigations")
+    return (
+      <div className="space-y-3">
+        <InvTreeWithGuide row={row} readOnly={readOnly} />
+        {!readOnly && <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />}
+      </div>
+    );
+  if (res.table === "medical_exam_orders")
+    return (
+      <div className="space-y-3">
+        <EmoClinicalForRole orderId={row.id} readOnly={readOnly} onSaved={onChanged} />
+        {!readOnly && <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />}
+      </div>
+    );
   if (readOnly) return null;
   if (res.table === "corrective_actions") return <CorrectiveFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "inspections") return <InspectionRun row={row} onChanged={onChanged} />;
@@ -150,7 +168,7 @@ export function RecordActions({
   if (res.table === "monthly_statistics") return <CloseMonth row={row} onChanged={onChanged} />;
   if (res.table === "inspection_dossiers") return <DossierBuild row={row} onChanged={onChanged} />;
   if (res.table === "api_clients") return <ApiSecret row={row} canEdit={res.can.update} onChanged={onChanged} />;
-  if (res.table === "webhooks") return <WebhookSecret row={row} />;
+  if (res.table === "webhooks") return <WebhookSecret row={row} canEdit={res.can.update} />;
   if (res.table === "report_points") return <ReportPointQr row={row} />;
   if (res.table === "vendor_evaluation_templates") return <CriteriaEditor row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "vendor_evaluations") return <ScoreForm row={row} canEdit={res.can.update} onChanged={onChanged} />;
@@ -436,7 +454,7 @@ function InspectionRun({ row, onChanged }: { row: RecordRow; onChanged: () => vo
     setMsg(null);
     try {
       const list = Object.entries(answers).filter(([, a]) => a.answer).map(([item_id, a]) => ({ item_id, answer: a.answer, comment: a.comment || null }));
-      if (list.length) await api(`/ins/inspections/${row.id}/answers`, { method: "POST", body: { answers: list }, withCompany: true });
+      if (list.length) await submitInspectionAnswers(row.id, list);
       if (finish) {
         const r = await api<{ data: { score_pct: number | null; findings_created: number; critical: boolean } }>(`/ins/inspections/${row.id}/finish`, { method: "POST", body: {}, withCompany: true });
         setMsg(`Finalizada: ${r.data.score_pct ?? "—"} % · ${r.data.findings_created} hallazgo(s)${r.data.critical ? " · incluye un ítem crítico" : ""}.`);
@@ -840,7 +858,7 @@ export function PanelActions({ table, onDone }: { table: string; onDone: () => v
   const [period, setPeriod] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  if (table === "register_exports") return <RegisterDownload onDone={onDone} />;
+  if (table === "register_exports") return null;
   if (table === "iso_evidences") return <IsoAssess onDone={onDone} />;
   if (table === "company_sector_packs") return <PseApply onDone={onDone} />;
   if (table !== "monthly_statistics") return null;
@@ -1160,67 +1178,6 @@ function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; t
 }
 
 
-// ─────────────── REG: descargar un registro obligatorio ───────────────
-
-const REGISTERS: [string, string][] = [
-  ["accidents", "Accidentes de trabajo"],
-  ["occupational_diseases", "Enfermedades ocupacionales"],
-  ["incidents", "Incidentes peligrosos e incidentes"],
-  ["emo", "Exámenes médicos (aptitud)"],
-  ["monitoring", "Monitoreo de agentes"],
-  ["inspections", "Inspecciones internas"],
-  ["statistics", "Estadísticas de SST"],
-  ["emergency_equipment", "Equipos de seguridad o emergencia"],
-  ["training", "Inducción, capacitación y simulacros"],
-  ["audits", "Auditorías"],
-];
-
-function RegisterDownload({ onDone }: { onDone: () => void }) {
-  const y = new Date().getFullYear();
-  const [type, setType] = useState("accidents");
-  const [from, setFrom] = useState(`${y}-01-01`);
-  const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
-  const [msg, setMsg] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const run = async () => {
-    setBusy(true);
-    setMsg(null);
-    try {
-      await downloadFile(`/reg/${type}.xlsx?from=${from}&to=${to}`, `registro-${type}-${from}-${to}.xlsx`);
-      onDone();
-    } catch (e) {
-      setMsg((e as ApiError).detail ?? (e as ApiError).title);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="flex flex-wrap items-end gap-2">
-      <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-        Registro
-        <select className="input !h-10" value={type} onChange={(e) => setType(e.target.value)}>
-          {REGISTERS.map(([v, l]) => (
-            <option key={v} value={v}>
-              {l}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-        Desde
-        <input className="input !h-10" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-      </label>
-      <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-        Hasta
-        <input className="input !h-10" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-      </label>
-      <Button variant="primary" icon="download" loading={busy} onClick={run}>Descargar Excel</Button>
-      {msg && <span className="text-sm text-bad">{msg}</span>}
-    </div>
-  );
-}
-
-
 // ─────────────── SUN: armar el expediente ───────────────
 
 type DossierItem = { code: string; title: string; module: string; table: string | null; id: string | null; status: string; gap: string | null };
@@ -1339,17 +1296,66 @@ function ShareLinkRevoke({ row, onChanged }: { row: RecordRow; onChanged: () => 
 }
 
 
-// ─────────────── API: secreto del cliente (una sola vez) ───────────────
+// ─────────────── API: secretos que se muestran una sola vez (M-API RN-API-03) ───────────────
 
-function WebhookSecret({ row }: { row: RecordRow }) {
+/** Caja para copiar un secreto recién creado o rotado: después no se vuelve a mostrar. */
+function SecretBox({ secret }: { secret: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="space-y-1 rounded-lg bg-amber-soft px-3 py-2 text-amber-ink">
+      <p className="font-semibold">Cópialo ahora: no se volverá a mostrar.</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <code className="select-all break-all">{secret}</code>
+        <button type="button" className="text-xs font-semibold underline" onClick={() => navigator.clipboard?.writeText(secret).then(() => setCopied(true))}>
+          {copied ? "Copiado" : "Copiar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Secreto que llega una sola vez en la respuesta de creación (cliente de API o webhook). */
+export function OneTimeSecret({ table, secret, onClose }: { table: string; secret: string; onClose: () => void }) {
+  return (
+    <Modal title={table === "webhooks" ? "Secreto de firma del webhook" : "Secreto del cliente de API"} icon="key" size="sm" z={60} onClose={onClose}
+      footer={<Button variant="primary" onClick={onClose}>Ya lo guardé</Button>}>
+      <div className="space-y-2 text-sm">
+        <p>{table === "webhooks" ? "Úsalo en tu sistema para validar la firma de cada envío." : "Úsalo en la cabecera X-Api-Secret junto con la clave pública."}</p>
+        <SecretBox secret={secret} />
+      </div>
+    </Modal>
+  );
+}
+
+function WebhookSecret({ row, canEdit }: { row: RecordRow; canEdit: boolean }) {
   const [secret, setSecret] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fail = (e: ApiError) => setMsg(e.detail ?? e.title);
+  const rotate = () => {
+    if (!confirm("Se generará un nuevo secreto de firma y el actual dejará de servir. ¿Continuar?")) return;
+    setMsg(null);
+    api<{ data: { secret: string } }>(`/webhooks/${row.id}/rotate-secret`, { method: "POST", withCompany: true }).then((r) => setSecret(r.data.secret)).catch(fail);
+  };
+  const test = () => {
+    setBusy(true);
+    setMsg(null);
+    api<{ data: { status: string; response_status: number | null; error: string | null } }>(`/webhooks/${row.id}/test`, { method: "POST", withCompany: true })
+      .then((r) => setMsg(r.data.status === "delivered" ? `Prueba entregada (respuesta ${r.data.response_status}). Queda en «Entregas».` : `La prueba no llegó${r.data.response_status ? ` (respuesta ${r.data.response_status})` : ""}${r.data.error ? `: ${r.data.error}` : "."} Queda en «Entregas».`))
+      .catch(fail)
+      .finally(() => setBusy(false));
+  };
   return (
     <section className="space-y-2 rounded-xl border border-line px-4 py-3 text-sm">
-      <p>Cada envío llega firmado: la cabecera <code>X-EscudoSST-Signature</code> es <code>sha256=</code> + HMAC-SHA256 del cuerpo con el secreto. Eventos: event.created, action.created, action.verified, inspection.completed, report.received. Se reintenta hasta 6 veces.</p>
-      {secret ? <p className="rounded-lg bg-amber-soft px-3 py-2 text-amber-ink">Secreto de firma: <code className="select-all break-all">{secret}</code></p>
-        : <Button size="sm" onClick={() => api<{ data: { secret: string } }>(`/webhooks/${row.id}/secret`, { method: "POST", withCompany: true }).then((r) => setSecret(r.data.secret)).catch((e: ApiError) => setMsg(e.detail ?? e.title))}>Ver secreto de firma</Button>}
-      {msg && <p className="text-bad">{msg}</p>}
+      <p>Cada envío llega firmado: la cabecera <code>X-EscudoSST-Signature</code> es <code>sha256=</code> + HMAC-SHA256 del cuerpo con el secreto de firma, que solo se muestra al crear el webhook o al rotarlo. Eventos: event.created, action.created, action.verified, inspection.completed, report.received. Se reintenta hasta 6 veces.</p>
+      {secret && <SecretBox secret={secret} />}
+      {canEdit && (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" disabled={busy} onClick={test}>{busy ? "Enviando…" : "Enviar prueba"}</Button>
+          <Button size="sm" onClick={rotate}>Rotar secreto de firma</Button>
+        </div>
+      )}
+      {msg && <p className="text-muted">{msg}</p>}
     </section>
   );
 }
@@ -1357,33 +1363,41 @@ function WebhookSecret({ row }: { row: RecordRow }) {
 function ApiSecret({ row, canEdit, onChanged }: { row: RecordRow; canEdit: boolean; onChanged: () => void }) {
   const [secret, setSecret] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const fail = (e: ApiError) => setMsg(e.detail ?? e.title);
   if (row.status === "revoked") return <p className="rounded-xl bg-bg px-4 py-3 text-sm text-muted">Cliente revocado: ya no puede usar la API.</p>;
+  const rotate = () => {
+    if (!confirm("Se generará un nuevo secreto y el actual dejará de servir. ¿Continuar?")) return;
+    setMsg(null);
+    api<{ data: { secret: string } }>(`/api-clients/${row.id}/rotate-secret`, { method: "POST", withCompany: true }).then((r) => setSecret(r.data.secret)).catch(fail);
+  };
+  const revoke = () => {
+    if (!confirm("El cliente dejará de poder usar la API. No se puede deshacer. ¿Revocar?")) return;
+    records.update("API", "api_clients", row.id, { status: "revoked" }).then(onChanged).catch(fail);
+  };
   return (
     <section className="space-y-2 rounded-xl border border-line px-4 py-3 text-sm">
       <p>
-        Clave pública: <code className="rounded bg-bg px-1">{String(row.client_key ?? "")}</code>. El secreto se muestra una sola vez (10 minutos después de crear el cliente).
+        Clave pública: <code className="rounded bg-bg px-1">{String(row.client_key ?? "")}</code>. El secreto se mostró una sola vez al crear el cliente; si se perdió, rótalo.
       </p>
       <p className="rounded-lg bg-bg px-3 py-2 text-xs">
         Para consultar: <code>GET {(process.env.NEXT_PUBLIC_API_URL ?? "")}/api/v1/ext/v1/workers</code> (también <code>events</code>, <code>actions</code>, <code>inspections</code>, <code>trainings</code>; opcional <code>?updated_since=</code>) con las cabeceras
         <code> X-Company-Id: {String(row.company_id ?? "")}</code>, <code>X-Api-Key</code> (la clave pública) y <code>X-Api-Secret</code> (el secreto). Solo lectura; sin datos de salud.
       </p>
-      {secret ? (
-        <p className="rounded-lg bg-amber-soft px-3 py-2 text-amber-ink">
-          Cópialo ahora, no se volverá a mostrar: <code className="select-all break-all">{secret}</code>
-        </p>
-      ) : (
+      {secret && <SecretBox secret={secret} />}
+      {canEdit && (
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => api<{ data: { secret: string } }>(`/api-clients/${row.id}/secret`, { method: "POST", withCompany: true }).then((r) => setSecret(r.data.secret)).catch((e: ApiError) => setMsg(e.detail ?? e.title))}>
-            Ver secreto
-          </Button>
-          {canEdit && (
-            <Button variant="danger-ghost" onClick={() => records.update("API", "api_clients", row.id, { status: "revoked" }).then(onChanged).catch((e: ApiError) => setMsg(e.detail ?? e.title))}>
-              Revocar
-            </Button>
-          )}
+          <Button onClick={rotate}>Rotar secreto</Button>
+          <Button variant="danger-ghost" onClick={revoke}>Revocar</Button>
         </div>
       )}
       {msg && <p className="text-bad">{msg}</p>}
     </section>
   );
+}
+
+/** Resultado clínico del EMO: solo médico ocupacional y personal de salud (los demás ven solo la aptitud). */
+function EmoClinicalForRole({ orderId, readOnly, onSaved }: { orderId: string; readOnly: boolean; onSaved: () => void }) {
+  const { company } = useApp();
+  if (!["occupational_doctor", "health_staff"].includes(company.role.code)) return null;
+  return <EmoClinical orderId={orderId} readOnly={readOnly} onSaved={onSaved} />;
 }

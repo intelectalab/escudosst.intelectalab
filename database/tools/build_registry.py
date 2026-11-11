@@ -22,6 +22,8 @@ SKIP_MODULES = {"WEB", "SUS", "USR", "AUD"}
 SKIP_TABLES = {"accounts", "companies", "files", "worker_consents", "arco_requests", "bulk_imports", "bulk_import_rows"}
 SYSTEM = {"id", "company_id", "created_at", "created_by", "updated_at", "updated_by", "deleted_at",
           "idempotency_key", "device_id", "client_created_at", "sync_batch_id", "version"}
+# Secretos que solo se muestran una vez (al crear o rotar): nunca en formularios ni fichas (M-API RN-API-03).
+SECRET_COLS = {"webhooks.secret"}
 HIDDEN_REFS = {"signature_requests", "signatures", "devices", "sync_batches", "accounts", "companies", "ai_requests", "memberships", "bulk_imports"}
 # Campos que calcula el sistema: se muestran pero no se editan.
 READONLY = {"psychosocial_surveys.is_anonymous", "psychosocial_surveys.min_responses_param", "psychosocial_responses.worker_id", "areas.depth", "workers.document_last4", "workers.activated_at", "workers.whatsapp_opt_in_at",
@@ -82,15 +84,90 @@ READONLY = {"psychosocial_surveys.is_anonymous", "psychosocial_surveys.min_respo
             "api_clients.client_key", "api_clients.last_used_at", "webhooks.secret", "webhooks.failure_count", "webhooks.disabled_at"}
 # Columnas de la lista elegidas a mano donde las automáticas no dicen lo importante.
 LIST = {
+    # Columnas de cada lista principal como en el prototipo (prototipo/src/m-*.js) y las fichas docs/modulos.
     "monthly_statistics": ["period_year", "period_month", "site_id", "hours_worked", "frequency_index", "severity_index", "accident_rate_index", "is_closed"],
     "man_hours": ["period_year", "period_month", "site_id", "worker_count", "hours_worked"],
     "program_activities": ["code", "title", "goal_quantity", "executed_quantity", "progress_pct", "status"],
     "baseline_items": ["lineament_name", "item_code", "question", "result"],
     "sst_events": ["code", "event_type", "occurred_at", "site_id", "notification_deadline_at", "status"],
     "risk_map_markers": ["marker_type", "label", "x_pct", "y_pct", "risk_map_id"],
+    "sites": ["name", "site_type", "address", "headcount_estimated", "status"],
+    "areas": ["name", "site_id", "parent_area_id", "status"],
+    "positions": ["name", "area_id", "occupational_group", "is_critical", "status"],
+    "work_shifts": ["name", "start_time", "end_time", "site_id", "status"],
+    "workers": ["full_name", "document_last4", "current_position_id", "current_area_id", "current_site_id", "status"],
+    "documents": ["code", "title", "category_id", "next_review_on", "status"],
+    "notification_rules": ["name", "event_code", "lead_days", "channels", "is_active"],
+    "notification_deliveries": ["attempted_at", "channel", "notification_id", "status"],
+    "baseline_assessments": ["title", "assessment_on", "score_pct", "status"],
+    "sst_policies": ["version_number", "title", "approved_by", "approved_at", "status"],
+    "sst_objectives": ["title", "indicator", "target_value", "unit", "responsible_user_id", "status"],
+    "legal_requirements": ["legal_norm_id", "article", "requirement", "responsible_user_id", "next_evaluation_on", "status"],
+    "annual_plans": ["year", "title", "approved_at", "status"],
+    "annual_programs": ["year", "title", "progress_pct", "status"],
+    "training_programs": ["year", "title", "approved_at", "status"],
+    "risst_versions": ["version_number", "title", "effective_on", "status"],
+    "risst_deliveries": ["worker_id", "risst_version_id", "delivered_on", "method", "status"],
+    "committees": ["name", "committee_type", "period_start_on", "period_end_on", "status"],
+    "committee_meetings": ["number", "meeting_type", "scheduled_at", "modality", "quorum_reached", "status"],
+    "budgets": ["year", "title", "total_planned", "total_executed", "status"],
+    "risk_maps": ["title", "site_id", "floor_label", "version_number", "status"],
+    "monitoring_points": ["code", "name", "site_id", "agent_type_id", "status"],
+    "monitoring_campaigns": ["title", "starts_on", "provider_name", "status"],
+    "measurements": ["monitoring_point_id", "agent_type_id", "value", "unit", "measured_at", "result"],
+    "ergonomic_assessments": ["position_id", "method", "score", "risk_level", "assessed_on", "status"],
+    "psychosocial_surveys": ["title", "instrument", "starts_on", "ends_on", "status"],
+    "procedures": ["code", "title", "area_id", "is_critical_task", "next_review_on", "status"],
+    "change_requests": ["code", "title", "change_type", "requested_by", "requested_on", "status"],
+    "inspection_templates": ["code", "name", "inspection_type", "version_number", "status"],
+    "inspections": ["code", "title", "site_id", "inspector_user_id", "scheduled_on", "score_pct", "status"],
+    "findings": ["inspection_id", "finding_type", "severity", "site_id", "status"],
+    "report_points": ["code", "name", "site_id", "report_count", "last_used_at", "is_active"],
+    "substandard_reports": ["code", "origin", "report_type", "site_id", "occurred_at", "risk_level", "status"],
+    "safety_talks": ["talk_on", "topic", "speaker_worker_id", "area_id", "duration_minutes", "status"],
+    "ats_forms": ["code", "task", "work_location", "performed_on", "supervisor_user_id", "status"],
+    "work_permits": ["code", "permit_type_id", "site_id", "executor_leader_worker_id", "valid_from", "valid_until", "status"],
+    "behavior_observations": ["observed_on", "area_id", "observer_worker_id", "task_observed", "safe_count", "at_risk_count"],
+    "ppe_items": ["code", "name", "category", "useful_life_days", "min_stock", "is_active"],
+    "ppe_position_requirements": ["position_id", "ppe_item_id", "quantity", "replacement_days", "is_mandatory"],
+    "ppe_stock_movements": ["moved_at", "ppe_item_id", "site_id", "movement_type", "quantity"],
+    "ppe_deliveries": ["worker_id", "ppe_item_id", "quantity", "delivered_at", "expires_on", "status"],
+    "emergency_equipment": ["code", "equipment_type", "site_id", "area_id", "next_maintenance_on", "expires_on", "status"],
+    "first_aid_kits": ["code", "kit_type", "site_id", "responsible_worker_id", "last_checked_on", "status"],
+    "drills": ["code", "scheduled_at", "drill_type", "site_id", "participants_count", "evacuation_time_seconds", "status"],
+    "brigades": ["name", "brigade_type", "leader_worker_id", "site_id", "status"],
+    "trainings": ["code", "title", "modality", "instructor_name", "duration_minutes", "status"],
+    "training_certificates": ["certificate_code", "holder_name", "course_title", "score", "issued_on", "expires_on", "status"],
+    "position_training_requirements": ["position_id", "training_id", "requirement_level", "renewal_months"],
+    "credentials": ["credential_number", "worker_id", "credential_type_id", "expires_on", "status"],
+    "medical_exam_orders": ["worker_id", "position_id", "exam_type", "clinic_name", "scheduled_at", "status"],
+    "fitness_status": ["worker_id", "status", "valid_from", "valid_until", "is_current"],
+    "absences": ["worker_id", "absence_type", "starts_on", "ends_on", "days", "status"],
+    "work_adjustments": ["worker_id", "adjustment_category", "starts_on", "ends_on", "status"],
+    "course_offers": ["title", "course_id", "sale_price", "currency", "seats_sold", "status"],
+    "orders": ["order_number", "buyer_name", "total", "currency", "paid_at", "status"],
+    "course_licenses": ["buyer_legal_name", "course_id", "seats_purchased", "seats_used", "expires_at", "status"],
+    "investigations": ["code", "event_id", "method", "started_on", "due_on", "status"],
+    "corrective_actions": ["code", "title", "source_type", "responsible_user_id", "due_on", "status"],
+    "audits": ["code", "audit_type", "lead_auditor_name", "starts_on", "status"],
+    "management_reviews": ["year", "review_on", "title", "status"],
+    "contractors": ["legal_name", "ruc", "contact_name", "risk_level", "status"],
+    "sctr_policies": ["policy_number", "insurer_name", "coverage_kind", "starts_on", "ends_on", "status"],
+    "sctr_coverages": ["worker_id", "contractor_worker_id", "sctr_policy_id", "covered_until", "status"],
+    "access_points": ["code", "name", "site_id", "point_type", "is_active"],
+    "access_events": ["occurred_at", "subject_type", "worker_id", "contractor_worker_id", "visitor_name", "access_point_id", "result"],
+    "vendor_evaluations": ["vendor_name", "total_score", "rating", "valid_until", "status"],
+    "inspection_dossiers": ["title", "request_type", "appearance_at", "period_from", "period_to", "status"],
+    "devices": ["model", "user_id", "last_sync_at", "status"],
+    "environmental_aspects": ["activity", "aspect", "impact", "significance_score", "is_significant"],
+    "waste_records": ["generated_on", "waste_type", "quantity", "unit", "eo_rs_name", "status"],
+    "api_clients": ["name", "scopes", "last_used_at", "status"],
+    "webhooks": ["name", "target_url", "event_codes", "failure_count", "is_active"],
+    "iso_evidences": ["iso_clause_id", "source_module", "last_reviewed_on", "status"],
 }
 # Datos estructurados (jsonb) que sí se editan desde un formulario propio.
-WRITABLE_JSON = {"iperc_rows.probability_detail", "iperc_versions.participants"}
+WRITABLE_JSON = {"iperc_rows.probability_detail", "iperc_versions.participants", "management_reviews.participants",
+                 "permit_types.checklist", "permit_types.approval_chain"}
 # Obligatorios en la base pero que calcula una regla si no se envían.
 COMPUTED = {"vendor_evaluation_templates.criteria", "vendor_evaluations.scores", "work_shifts.hours_per_day", "areas.depth", "iperc_rows.probability_value",
             "iperc_rows.hazard", "iperc_rows.risk", "measurements.result", "work_permits.valid_until", "access_events.result", "access_events.occurred_at", "api_clients.scopes", "webhooks.event_codes", "corrective_actions.code", "inspections.code", "trainings.code",
@@ -161,7 +238,7 @@ def main():
                 continue
             f = {"name": name, "label": col_labels.get(name) or name.replace("_", " ").capitalize()}
             ref = (c["ref"] or "").split(".")[0] or None
-            if base == "bytea" or name.endswith("_hash") or name.endswith("_hmac"):
+            if base == "bytea" or name.endswith("_hash") or name.endswith("_hmac") or f'{t["table"]}.{name}' in SECRET_COLS:
                 continue
             if c["generated"] or f'{t["table"]}.{name}' in READONLY:
                 f["readonly"] = True
@@ -245,6 +322,7 @@ def main():
 
         immutable = bool(t["immutable"]) or "imm" in t["kind"]
         res = {
+            "columns": [n for n in listed if any(f["name"] == n for f in fields)],
             "module": t["module"],
             "tab": labels.get("tables", {}).get(t["table"]) or t["table"],
             "title": titles.get(t["table"]) or (t["comment"] or t["table"]).split(";")[0].split("]")[-1].strip(),

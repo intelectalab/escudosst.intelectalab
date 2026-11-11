@@ -54,6 +54,10 @@ final class IpercWorkflow
             'version_id' => $selected,
             'rows' => $rows,
             'heatmap' => $this->heatmap($rows),
+            // Trabajadores activos del puesto de la matriz (cabecera del editor); sin puesto, el mayor «expuestos» de las filas.
+            'exposed_workers' => $m->position_id
+                ? (int) DB::selectOne("select count(*) as n from workers where current_position_id = ? and deleted_at is null and status in ('active','on_leave')", [$m->position_id])->n
+                : (collect($rows)->max('exposed_workers') === null ? null : (int) collect($rows)->max('exposed_workers')),
             'issues' => $version->status === 'draft' ? $this->issues($selected, $criteria, $rows, json_decode((string) $version->participants, true) ?? []) : [],
         ];
     }

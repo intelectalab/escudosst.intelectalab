@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\DB;
  *  DELETE /records/{module}/{table}/{id}            archivo (borrado lógico)
  *  GET    /records/{module}/{table}/options/{field} opciones de una referencia (q, id)
  *  GET    /records/{module}/{table}/{id}/trace      trazabilidad: de dónde viene y qué generó
+ *  GET    /records/{module}/{table}/{id}/history    historial del registro (bitácora): quién cambió qué y cuándo
  *
  * Plan: el módulo debe estar habilitado (en solo lectura, solo se lee). Permisos: {módulo}.{tabla}.{acción}.
  */
@@ -45,6 +46,7 @@ class RecordsController extends Controller
                 'hybrid' => $res['hybrid'],
                 'immutable' => $res['immutable'],
                 'label' => $res['label'],
+                'columns' => $res['columns'] ?? [],
                 'fields' => $res['fields'],
                 'can' => $can,
             ];
@@ -96,6 +98,47 @@ class RecordsController extends Controller
         $this->records->find($res, $id);
 
         return response()->json(['data' => app(TraceService::class)->trace($res, $id)]);
+    }
+
+    /**
+     * Historial del registro (docs/07 §3.2, pestaña «Historial»): línea de tiempo desde la bitácora. Lo ve quien puede
+     * ver el registro. Los valores de campos cifrados no se muestran (solo que cambiaron).
+     */
+    public function history(Request $request, string $module, string $table, string $id): JsonResponse
+    {
+        $res = $this->resource($request, $module, $table, 'read');
+        $this->records->find($res, $id);
+        $hidden = array_column(array_filter($res['fields'], fn ($f) => ! empty($f['encrypted'])), 'name');
+        $fields = array_column($res['fields'], null, 'name');
+        $show = function (string $k, mixed $v) use ($fields): mixed {
+            if ($v === null || ! is_scalar($v)) {
+                return $v === null ? null : json_encode($v, JSON_UNESCAPED_UNICODE);
+            }
+            foreach ($fields[$k]['options'] ?? [] as $o) {
+                if ((string) $o['value'] === (string) $v) {
+                    return $o['label'];
+                }
+            }
+
+            return is_bool($v) ? ($v ? 'Sí' : 'No') : $v;
+        };
+        $rows = DB::select("select a.occurred_at, a.action, a.changes, a.actor_role, a.is_support_session, u.full_name as actor_name
+            from audit_logs a left join users u on u.id = a.actor_user_id
+            where a.entity_type = ? and a.entity_id = ? order by a.occurred_at desc, a.chain_seq desc limit 100", [$table, $id]);
+
+        return response()->json(['data' => array_map(function ($r) use ($hidden, $fields, $show) {
+            $out = [];
+            foreach ((array) (json_decode((string) $r->changes, true) ?: []) as $k => $v) {
+                if (in_array($k, ['updated_at', 'updated_by', 'created_at', 'created_by', 'company_id', 'id', 'row_version'], true) || ! isset($fields[$k])) {
+                    continue;
+                }
+                $secret = in_array($k, $hidden, true) || ($fields[$k]['type'] ?? '') === 'ref';
+                $pair = is_array($v) && array_key_exists('to', $v) ? $v : ['from' => null, 'to' => $v];
+                $out[] = ['field' => $fields[$k]['label'] ?? $k, 'from' => $secret ? null : $show($k, $pair['from']), 'to' => $secret ? null : $show($k, $pair['to'])];
+            }
+
+            return ['occurred_at' => $r->occurred_at, 'action' => $r->action, 'actor' => $r->actor_name ?? 'Sistema', 'actor_role' => $r->actor_role, 'support' => (bool) $r->is_support_session, 'changes' => array_slice($out, 0, 12)];
+        }, $rows)]);
     }
 
     public function options(Request $request, string $module, string $table, string $field): JsonResponse

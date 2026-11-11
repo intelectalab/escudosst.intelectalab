@@ -6,14 +6,27 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useApp } from "@/components/AppContext";
-import { availableIn } from "@/lib/menu";
+import { availableIn, MENU_GROUPS, PLAN_NAMES } from "@/lib/menu";
+import { Icon } from "@/components/ui/Icon";
 import { ModuleRecords } from "@/components/records/ModuleRecords";
 import { IpercModule } from "@/components/ipc/IpercModule";
 import { Dashboard } from "@/components/dsh/Dashboard";
 import { VmdModule } from "@/components/vmd/VmdModule";
 import { IaaModule } from "@/components/addons/IaaModule";
 import { MyCourses } from "@/components/addons/AulLearner";
-import { WhiteLabelPanel } from "@/components/addons/WhiteLabel";
+import { LbaSummary } from "@/components/modules/LbaSummary";
+import { SunSummary } from "@/components/modules/SunSummary";
+import { CapMatrix } from "@/components/modules/CapMatrix";
+import { FotIssue } from "@/components/modules/FotIssue";
+import { RegRegisters } from "@/components/modules/RegRegisters";
+import { EstSummary } from "@/components/modules/EstSummary";
+import { MapModule } from "@/components/modules/MapModule";
+import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
+import { ComModule } from "@/components/modules/ComModule";
+import { CtrPortal } from "@/components/modules/CtrPortal";
+import { CtrClientPanel } from "@/components/modules/CtrClient";
+import { IngSummary } from "@/components/modules/IngSummary";
+import { ConsultancyPanel } from "@/components/modules/ConPanel";
 import { CompanyAudit, CompanyUsers } from "@/components/usr/CompanyAdmin";
 
 export default function ModulePage() {
@@ -33,29 +46,33 @@ export default function ModulePage() {
     );
   }
 
+  // Cabecera plana del prototipo (prototipo/src/app.js encMod): migas, título, descripción y plan.
+  const group = MENU_GROUPS.find((g) => g.codes.includes(m.code))?.title;
+  const plan = m.required_plan === "+" ? "Complemento" : PLAN_NAMES[m.required_plan] ?? m.required_plan;
   const header = (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#0d3b6e] to-[#1f7fd1] px-5 py-5 text-white shadow-md sm:px-7">
-      <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" aria-hidden="true" />
-      <div className="relative flex items-center gap-4">
-        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/15 font-display text-sm font-bold ring-1 ring-white/25">{m.code}</span>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wider text-white/70">Módulo {m.number}</p>
-          <h1 className="font-display text-2xl font-bold leading-tight">{m.name}</h1>
-          {m.solves && <p className="mt-0.5 text-sm text-white/80">{m.solves}</p>}
-        </div>
-      </div>
+    <div className="space-y-1">
+      <nav aria-label="Migas de pan" className="text-xs text-muted">
+        EscudoSST{group ? ` › ${group}` : ""} › <span className="text-fg">{m.name}</span>
+      </nav>
+      <h1 className="font-display text-2xl font-bold leading-tight">{m.name}</h1>
+      <p className="text-sm text-muted">
+        {m.solves}{" "}
+        <span className="ml-1 inline-block rounded border border-line bg-surface px-1.5 py-0.5 align-middle text-[11px] font-semibold text-muted" title="Disponible desde">
+          {m.number} · {plan}
+        </span>
+      </p>
     </div>
   );
 
   if (m.mode === "locked") {
     const isAdmin = company.role.code === "account_admin";
     return (
-      <div className="max-w-2xl space-y-4">
+      <div className="space-y-4">
         {header}
         <Card center>
-          <div className="text-4xl" aria-hidden="true">
-            🔒
-          </div>
+          <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-bg text-muted" aria-hidden="true">
+            <Icon name="lock" size={26} />
+          </span>
           <h2 className="text-xl font-semibold">Disponible en {availableIn(m.required_plan, m.name)}</h2>
           <p className="text-muted">
             Tu empresa no tiene este módulo en su plan.{" "}
@@ -71,13 +88,13 @@ export default function ModulePage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {m.mode === "read_only" && (
         <div role="status" className="rounded-lg bg-amber-soft px-4 py-3 text-amber-ink">
           Este módulo está en solo lectura. Tus datos se conservan.
         </div>
       )}
-      {header}
+      {m.code !== "DSH" && header}
       {m.code === "IAA" ? (
         <IaaModule />
       ) : m.code === "IPC" ? (
@@ -92,9 +109,35 @@ export default function ModulePage() {
         <CompanyAudit />
       ) : m.code === "CON" ? (
         <div className="space-y-5">
-          <WhiteLabelPanel />
+          <ConsultancyPanel readOnly={m.mode === "read_only"} />
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
+      ) : m.code === "CTR" && company.role.code === "contractor_admin" ? (
+        <CtrPortal />
+      ) : m.code === "COM" || m.code === "CTR" || m.code === "ING" ? (
+        <div className="space-y-6">
+          {m.code === "COM" ? <ComModule readOnly={m.mode === "read_only"} /> : m.code === "CTR" ? <CtrClientPanel readOnly={m.mode === "read_only"} /> : <IngSummary readOnly={m.mode === "read_only"} />}
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
+      ) : m.code === "SUN" || m.code === "CAP" || m.code === "FOT" || m.code === "EST" ? (
+        <div className="space-y-6">
+          {m.code === "SUN" ? <SunSummary readOnly={m.mode === "read_only"} /> : m.code === "CAP" ? <CapMatrix /> : m.code === "FOT" ? <FotIssue readOnly={m.mode === "read_only"} /> : <EstSummary />}
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
+      ) : m.code === "MAP" ? (
+        <div className="space-y-6">
+          <MapModule readOnly={m.mode === "read_only"} />
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
+      ) : m.code === "REG" ? (
+        <RegRegisters readOnly={m.mode === "read_only"} />
+      ) : m.code === "LBA" ? (
+        <div className="space-y-6">
+          <LbaSummary />
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
+      ) : hasModuleWizard(m.code) ? (
+        <ModuleWizards code={m.code} readOnly={m.mode === "read_only"} />
       ) : m.code === "AUL" ? (
         <div className="space-y-5">
           <MyCourses />

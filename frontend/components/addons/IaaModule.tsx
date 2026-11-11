@@ -1,9 +1,11 @@
 "use client";
 
-// Asistente IA (complemento IAA): controles para un peligro, guía de causas de un accidente y guion de charla de 5 minutos.
-// Son propuestas: la persona revisa y decide qué usar. Responde con la biblioteca que entrena el equipo de EscudoSST.
+// Asistente IA (complemento IAA): pestañas «IPERC sugerido», «Investigación guiada», «Consultas rápidas» (controles,
+// causas y guion de charla de 5 minutos) e «Historial». Son propuestas: la persona revisa y decide qué usar.
+// Responde con la biblioteca que entrena el equipo de EscudoSST.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { IaaHistory, InvestigationGuide, IpercSuggest } from "@/components/addons/IaaGuided";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/Form";
 import { api, ApiError } from "@/lib/api";
@@ -15,7 +17,42 @@ const FEATURES: [string, string, string, string][] = [
   ["talk", "Guion de charla de 5 minutos", "Tema de la charla", "Ej.: orden y limpieza en el almacén"],
 ];
 
+const TABS: [string, string][] = [["iperc", "IPERC sugerido"], ["inv", "Investigación guiada"], ["quick", "Consultas rápidas"], ["history", "Historial"]];
+
 export function IaaModule() {
+  const [tab, setTab] = useState("iperc");
+  const [preset, setPreset] = useState<{ investigation?: string; position?: string }>({});
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const t = q.get("t");
+    if (t && TABS.some((x) => x[0] === t)) setTab(t);
+    setPreset({ investigation: q.get("investigacion") ?? undefined, position: q.get("puesto") ?? undefined });
+  }, []);
+  const go = (t: string) => {
+    setTab(t);
+    const url = new URL(window.location.href);
+    url.searchParams.set("t", t);
+    window.history.replaceState(null, "", url);
+  };
+  return (
+    <div className="space-y-4">
+      <div role="tablist" aria-label="Asistente" className="flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
+        {TABS.map(([t, l]) => (
+          <button key={t} role="tab" aria-selected={tab === t} onClick={() => go(t)}
+            className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold ${tab === t ? "bg-brand text-white shadow-sm" : "text-muted hover:bg-bg hover:text-fg"}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {tab === "iperc" && <IpercSuggest key={preset.position ?? "-"} positionId={preset.position} />}
+      {tab === "inv" && <InvestigationGuide key={preset.investigation ?? "-"} investigationId={preset.investigation} />}
+      {tab === "quick" && <QuickAssistant />}
+      {tab === "history" && <IaaHistory />}
+    </div>
+  );
+}
+
+function QuickAssistant() {
   const [feature, setFeature] = useState("controls");
   const [text, setText] = useState("");
   const [res, setRes] = useState<{ topic: string | null; items: Item[]; note: string } | null>(null);

@@ -3,7 +3,6 @@
 // «Novedades» dentro de la aplicación (SCR-WEB-76): lo nuevo de EscudoSST publicado con «mostrar en la app».
 // El contador de no leídas se guarda en el navegador (fecha de la última vez que se abrió el panel).
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { api } from "@/lib/api";
@@ -36,7 +35,6 @@ export function ProductUpdatesButton() {
     };
   }, [open]);
 
-  if (items.length === 0) return null;
   const unread = items.filter((u) => new Date(u.published_at).getTime() > seen).length;
 
   function toggle() {
@@ -50,14 +48,15 @@ export function ProductUpdatesButton() {
 
   return (
     <div ref={box} className="relative">
-      <button type="button" onClick={toggle} aria-expanded={open} className="relative grid h-9 w-9 place-items-center rounded-lg text-muted hover:bg-bg hover:text-fg" title="Novedades de EscudoSST">
-        <Icon name="star" size={18} />
+      <button type="button" onClick={toggle} aria-expanded={open} className="relative inline-flex h-10 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-semibold hover:bg-bg" title="Novedades del producto">
+        <Icon name="sparkle" size={17} /> <span className="hidden lg:inline">Novedades</span>
         <span className="sr-only">Novedades{unread ? ` (${unread} sin leer)` : ""}</span>
         {unread > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-bad px-1 text-[10px] font-bold text-white">{unread}</span>}
       </button>
       {open && (
         <div className="absolute right-0 z-40 mt-2 w-[min(360px,90vw)] overflow-hidden rounded-2xl border border-line bg-surface shadow-xl">
-          <p className="border-b border-line px-4 py-3 font-display font-semibold">Novedades de EscudoSST</p>
+          <p className="border-b border-line px-4 py-3 font-display font-semibold">Novedades <span className="block text-xs font-normal text-muted">Lo nuevo en EscudoSST</span></p>
+          {items.length === 0 && <p className="px-4 py-6 text-sm text-muted">Aún no hay novedades publicadas.</p>}
           <ul className="max-h-[60vh] divide-y divide-line overflow-y-auto">
             {items.map((u) => {
               const isNew = new Date(u.published_at).getTime() > seen;
@@ -67,10 +66,8 @@ export function ProductUpdatesButton() {
                     <span className={`rounded-full px-2 py-0.5 font-semibold ${CAT[u.category][1]}`}>{CAT[u.category][0]}</span>
                     <span className="text-muted">{new Intl.DateTimeFormat("es-PE", { dateStyle: "medium", timeZone: "America/Lima" }).format(new Date(u.published_at))}</span>
                   </span>
-                  <Link href={`/novedades/${u.slug}`} target="_blank" className="mt-1 block text-sm font-semibold hover:text-brand-strong">
-                    {u.title}
-                  </Link>
-                  <p className="mt-0.5 line-clamp-2 text-xs text-muted">{u.excerpt}</p>
+                  <p className="mt-1 text-sm font-semibold">{u.title}</p>
+                  <p className="mt-0.5 text-xs text-muted">{u.excerpt}</p>
                 </li>
               );
             })}

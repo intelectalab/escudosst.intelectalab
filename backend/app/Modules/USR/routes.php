@@ -6,6 +6,7 @@ use App\Modules\USR\Http\Controllers\CompanyUsersController;
 use App\Modules\USR\Http\Controllers\InvitationController;
 use App\Modules\USR\Http\Controllers\MeController;
 use App\Modules\USR\Http\Controllers\MfaController;
+use App\Modules\USR\Http\Controllers\SearchController;
 use App\Modules\USR\Http\Controllers\SupportAccessController;
 use Illuminate\Support\Facades\Route;
 
@@ -47,6 +48,7 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware(['auth:sanctum', 'company'])->group(function () {
     Route::get('me/permissions', [MeController::class, 'permissions']);
     Route::get('me/modules', [MeController::class, 'modules']);
+    Route::get('search', [SearchController::class, 'index'])->middleware('throttle:120,1');
 });
 
 // Usuarios de la empresa (invitar, cambiar rol, suspender)

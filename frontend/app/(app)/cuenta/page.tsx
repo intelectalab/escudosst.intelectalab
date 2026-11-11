@@ -11,7 +11,7 @@ export default function CuentaPage() {
   return (
     <div className="space-y-6">
       <AccountPanel user={user} roleLabel={`Rol en ${company.name}`} roleValue={company.role.name} />
-      <div className="max-w-3xl">
+      <div id="firma" className="scroll-mt-24">
         <MySignature />
       </div>
     </div>

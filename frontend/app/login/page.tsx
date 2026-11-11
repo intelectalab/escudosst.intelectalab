@@ -2,7 +2,7 @@
 
 // SCR-USR-01 · Inicio de sesión con segundo factor (docs/modulos/M-USR.md §6, docs/08-api.md §2).
 // Pasos: correo y contraseña → (primera vez) configurar la app de autenticación → código → códigos de recuperación.
-// Pendiente: «olvidé mi contraseña», código por correo e ingreso por DNI.
+// Orden de verificación: 1) código de la app, 2) código por correo, 3) código de recuperación (se usa una sola vez).
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -11,6 +11,7 @@ import { AppBrand } from "@/components/AppBrand";
 import { CodeInput } from "@/components/mfa/CodeInput";
 import { QrCode } from "@/components/mfa/QrCode";
 import { RecoveryCodes } from "@/components/mfa/RecoveryCodes";
+import { Icon } from "@/components/ui/Icon";
 import { api, ApiError } from "@/lib/api";
 import { session } from "@/lib/session";
 import type { LoginResponse, MfaSetup, SessionResponse } from "@/lib/types";
@@ -31,6 +32,7 @@ export default function LoginPage() {
   const [emailSentTo, setEmailSentTo] = useState<string | null>(null);
   const [mfaEnabled, setMfaEnabled] = useState(true);
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [showPass, setShowPass] = useState(false);
 
   // La sesión anterior se cerró sola (inactividad o vencimiento): se avisa.
   const [expired, setExpired] = useState(false);
@@ -116,14 +118,9 @@ export default function LoginPage() {
         setSetup(s);
         setStep("setup");
       } else {
-        // El código llega solo por correo al ingresar; quien tiene la app puede usarla con «Usar el código de la app».
-        try {
-          const sent = await api<{ sent_to: string }>("/auth/mfa/email", { method: "POST", body: { mfa_challenge_id: res.mfa_challenge_id } });
-          setEmailSentTo(sent.sent_to);
-          setMethod("email");
-        } catch {
-          setMethod("app");   // si el correo no sale, queda el código de la app y «Enviarme un código por correo»
-        }
+        // Primero se pide el código de la app; si no la tiene a la mano, pide el código por correo y, como último
+        // recurso, usa uno de sus códigos de recuperación (cada uno sirve una sola vez).
+        setMethod("app");
         setStep("verify");
       }
     });
@@ -156,22 +153,20 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen grid lg:grid-cols-2">
-      <section className="hidden lg:flex flex-col justify-between bg-side p-12 text-white">
+    <main className="grid min-h-screen bg-bg lg:grid-cols-2">
+      <section className="hidden flex-col justify-between bg-side p-12 text-white lg:flex">
         <AppBrand light />
-        <div className="space-y-4 max-w-md">
-          <h1 className="text-3xl font-semibold leading-tight">Seguridad y salud en el trabajo, en orden y a la mano.</h1>
+        <div className="max-w-md space-y-4">
+          <h1 className="font-display text-3xl font-semibold leading-tight">Seguridad y salud en el trabajo, en orden y a la mano.</h1>
           <p className="text-white/75">IPERC, inspecciones, capacitaciones, EPP y el expediente para SUNAFIL en un solo lugar.</p>
         </div>
-        <p className="text-sm text-white/60">Ley N.° 29783 y su reglamento</p>
+        <p className="flex items-center gap-2 text-sm text-white/60"><Icon name="lock" size={15} /> Ley N.° 29783 y su reglamento</p>
       </section>
 
-      <section className="flex items-center justify-center p-6">
-        <div className="w-full max-w-sm space-y-5 rounded-xl border border-line bg-surface p-8 shadow-sm">
-          <div className="lg:hidden">
-            <AppBrand />
-          </div>
-
+      <section className="relative flex flex-col items-center justify-start px-4 pb-8 pt-12 sm:px-6 lg:justify-center lg:py-8">
+        <div className="absolute inset-x-0 top-0 h-44 bg-side lg:hidden" aria-hidden="true" />
+        <div className="relative mb-5 lg:hidden"><AppBrand light /></div>
+        <div className="relative w-full max-w-md space-y-5 rounded-xl border border-line bg-surface p-6 shadow-sm sm:p-8">
           {expired && !error && step === "password" && (
             <div role="status" className="rounded-lg bg-amber-soft px-4 py-3 text-sm text-amber-ink">
               Tu sesión se cerró por seguridad (inactividad o tiempo máximo). Vuelve a ingresar.
@@ -186,14 +181,23 @@ export default function LoginPage() {
           {step === "password" && (
             <form onSubmit={onPassword} noValidate className="space-y-5">
               <div>
-                <h2 className="text-2xl font-semibold">Iniciar sesión</h2>
-                <p className="mt-1 text-muted">Ingresa con tu correo de trabajo.</p>
+                <h2 className="font-display text-2xl font-semibold">Iniciar sesión</h2>
+                <p className="mt-1 text-muted">Ingresa con tu correo de trabajo o tu DNI.</p>
               </div>
-              <Field label="Correo" error={fieldErrors.email?.[0]}>
-                <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} className="input" placeholder="nombre@empresa.com" required />
+              <Field label="Correo o DNI" error={fieldErrors.email?.[0]}>
+                <span className="relative block">
+                  <Icon name="mail" size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                  <input type="text" autoComplete="username" autoCapitalize="none" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value.trim())} className="input pl-10" placeholder="nombre@empresa.com o 12345678" required />
+                </span>
               </Field>
               <Field label="Contraseña" error={fieldErrors.password?.[0]}>
-                <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="input" required />
+                <span className="relative block">
+                  <Icon name="lock" size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                  <input type={showPass ? "text" : "password"} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="input pl-10 pr-11" required />
+                  <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-muted hover:bg-bg hover:text-fg" aria-label={showPass ? "Ocultar contraseña" : "Mostrar contraseña"}>
+                    <Icon name="eye" size={17} />
+                  </button>
+                </span>
               </Field>
               <p className="-mt-2 text-right text-sm">
                 <Link href="/recuperar" className="font-semibold text-brand hover:underline">
@@ -257,26 +261,29 @@ export default function LoginPage() {
                 </Field>
               )}
               <Submit loading={loading} label="Verificar" busy="Verificando…" />
-              <div className="space-y-2 text-center text-sm">
-                {method === "email" ? (
-                  <button type="button" onClick={sendEmailCode} disabled={loading} className="block w-full text-brand hover:underline">
-                    Reenviar el código
-                  </button>
-                ) : (
-                  <button type="button" onClick={sendEmailCode} disabled={loading} className="block w-full text-brand hover:underline">
-                    Enviarme un código por correo
-                  </button>
-                )}
-                {mfaEnabled && method !== "app" && (
-                  <button type="button" onClick={() => changeMethod("app")} className="block w-full text-brand hover:underline">
-                    Usar el código de la app
-                  </button>
-                )}
-                {mfaEnabled && method !== "recovery" && (
-                  <button type="button" onClick={() => changeMethod("recovery")} className="block w-full text-brand hover:underline">
-                    ¿Perdiste tu celular? Usa un código de recuperación
-                  </button>
-                )}
+              {method === "email" && (
+                <button type="button" onClick={sendEmailCode} disabled={loading} className="block w-full text-center text-sm font-semibold text-brand hover:underline">
+                  Reenviar el código
+                </button>
+              )}
+              <div className="space-y-2 border-t border-line pt-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-muted">¿No puedes con este método?</p>
+                {([
+                  ["app", "1", "Código de la app", "Google o Microsoft Authenticator en tu celular.", () => changeMethod("app")],
+                  ["email", "2", "Código por correo", "Te enviamos 6 dígitos a tu correo.", sendEmailCode],
+                  ["recovery", "3", "Código de recuperación", "Los que guardaste al activar la verificación. Cada uno sirve una sola vez.", () => changeMethod("recovery")],
+                ] as const)
+                  .filter(([k]) => k !== method && (mfaEnabled || k === "email"))
+                  .map(([k, n, label, hint, go]) => (
+                    <button key={k} type="button" onClick={go} disabled={loading}
+                      className="flex w-full items-center gap-3 rounded-xl border border-line px-3 py-2.5 text-left transition hover:border-brand/50 hover:bg-brand-soft/40 disabled:opacity-60">
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-bold text-brand-strong">{n}</span>
+                      <span className="min-w-0">
+                        <b className="block text-sm">{label}</b>
+                        <span className="block text-xs text-muted">{hint}</span>
+                      </span>
+                    </button>
+                  ))}
               </div>
               <Back onClick={resetToPassword} />
             </form>
@@ -292,6 +299,9 @@ export default function LoginPage() {
             </div>
           )}
         </div>
+        <p className="relative mt-5 text-center text-xs text-muted">
+          ¿Aún no usas EscudoSST? <Link href="/demo" className="font-semibold text-brand hover:underline">Solicita una demostración</Link>
+        </p>
       </section>
     </main>
   );
@@ -309,7 +319,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
 
 function Submit({ loading, label, busy }: { loading: boolean; label: string; busy: string }) {
   return (
-    <button type="submit" disabled={loading} className="w-full rounded-lg bg-brand py-3 text-lg font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
+    <button type="submit" disabled={loading} className="w-full rounded-lg bg-brand py-3 text-base font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
       {loading ? busy : label}
     </button>
   );

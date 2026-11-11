@@ -88,9 +88,15 @@ class MeController extends Controller
      */
     public function modules(): JsonResponse
     {
+        return response()->json(['data' => self::moduleRows()]);
+    }
+
+    /** Módulos con su estado en la empresa activa y si el rol los puede usar (también lo usa la búsqueda global). */
+    public static function moduleRows(): array
+    {
         $context = app(CompanyContext::class);
 
-        $rows = DB::select(
+        return DB::select(
             "select trim(m.code) as code, m.number, m.name, m.solves, m.group_number, m.plan_code,
                     coalesce(f.mode, 'locked') as mode,
                     coalesce((select p.code from plan_modules pm join plans p on p.id = pm.plan_id
@@ -109,7 +115,5 @@ class MeController extends Controller
               order by m.group_number, m.number",
             [$context->membershipId, '{'.implode(',', Permissions::MEDICAL_MODULES).'}', $context->membershipId]
         );
-
-        return response()->json(['data' => $rows]);
     }
 }

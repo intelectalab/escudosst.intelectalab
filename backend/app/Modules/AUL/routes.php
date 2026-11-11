@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\AUL\AulController;
+use App\Modules\AUL\VtaCatalogController;
 use App\Modules\AUL\VtaController;
 use Illuminate\Support\Facades\Route;
 
@@ -8,6 +9,15 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'company', 'module:VTA'])->prefix('vta')->group(function () {
     Route::post('sell', [VtaController::class, 'sell']);
     Route::post('orders/{id}/pay', [VtaController::class, 'pay'])->whereUuid('id');
+    Route::get('catalog', [VtaCatalogController::class, 'link']);
+    Route::put('catalog', [VtaCatalogController::class, 'setSlug']);
+});
+
+// Catálogo público de cursos de la empresa (sin sesión): lectura y solicitud de compra con límite de uso por IP (RN-VTA-24).
+Route::prefix('public/courses/{catalog}')->where(['catalog' => '[A-Za-z0-9-]{3,60}', 'offer' => '[a-z0-9-]{1,120}'])->group(function () {
+    Route::middleware('throttle:web-read')->get('/', [VtaCatalogController::class, 'index']);
+    Route::middleware('throttle:web-read')->get('{offer}', [VtaCatalogController::class, 'show']);
+    Route::middleware('throttle:web-forms')->post('{offer}/order', [VtaCatalogController::class, 'order']);
 });
 
 // Aula virtual para quien aprende: mis cursos, lecciones, examen; y alternativas de las preguntas.
