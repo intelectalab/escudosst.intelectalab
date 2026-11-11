@@ -3,6 +3,7 @@
 use App\Modules\AUL\AulAdminController;
 use App\Modules\AUL\AulController;
 use App\Modules\AUL\AulToolsController;
+use App\Modules\AUL\MoodleController;
 use App\Modules\AUL\QuestionImport;
 use App\Modules\AUL\VtaCatalogController;
 use App\Modules\AUL\VtaController;
@@ -70,6 +71,7 @@ Route::middleware(['auth:sanctum', 'company', 'module:AUL'])->prefix('aul/admin'
         Route::get('grading', 'gradingQueue')->middleware('permission:aul.quiz_attempts.update');
         Route::get('attempts/{id}', 'attemptDetail')->whereUuid('id')->middleware('permission:aul.quiz_attempts.update');
         Route::post('attempts/{id}/grade', 'grade')->whereUuid('id')->middleware('permission:aul.quiz_attempts.update');
+        Route::post('attempts/{id}/regrade', 'regrade')->whereUuid('id')->middleware('permission:aul.quiz_attempts.update');
         Route::get('scales', 'scales')->middleware('permission:aul.grading_scales.read');
         Route::post('scales', 'createScale')->middleware('permission:aul.grading_scales.create');
         Route::put('scales/{id}', 'updateScale')->whereUuid('id')->middleware('permission:aul.grading_scales.update');
@@ -77,6 +79,15 @@ Route::middleware(['auth:sanctum', 'company', 'module:AUL'])->prefix('aul/admin'
         Route::post('rules', 'createRule')->middleware('permission:aul.recommendation_rules.create');
         Route::put('rules/{id}', 'updateRule')->whereUuid('id')->middleware('permission:aul.recommendation_rules.update');
         Route::post('rules/{id}/run', 'runRule')->whereUuid('id')->middleware('permission:aul.recommendation_rules.generate');
+    });
+    // Conexión opcional con Moodle (SCR-AUL-19): configurar, probar, enlazar cursos, enviar matrículas y traer notas.
+    Route::controller(MoodleController::class)->prefix('moodle')->group(function () {
+        Route::get('/', 'show')->middleware('permission:aul.lms_connections.read');
+        Route::put('/', 'save')->middleware('permission:aul.lms_connections.update');
+        Route::post('test', 'test')->middleware(['permission:aul.lms_connections.verify', 'throttle:10,1']);
+        Route::put('courses/{id}', 'link')->whereUuid('id')->middleware('permission:aul.lms_connections.update');
+        Route::post('courses/{id}/push', 'push')->whereUuid('id')->middleware(['permission:aul.lms_connections.sync', 'throttle:10,1']);
+        Route::post('courses/{id}/pull', 'pull')->whereUuid('id')->middleware(['permission:aul.lms_connections.sync', 'throttle:10,1']);
     });
     Route::get('banks/{id}/import/template', [QuestionImport::class, 'template'])->whereUuid('id')->middleware('permission:aul.questions.import');
     Route::post('banks/{id}/import/preview', [QuestionImport::class, 'preview'])->whereUuid('id')->middleware(['permission:aul.questions.import', 'throttle:30,1']);

@@ -63,7 +63,7 @@ class DashboardController extends Controller
         }
         $active = app(CompanyContext::class)->companyId;
         $group = DB::selectOne('select a.name, a.account_type from companies c join accounts a on a.id = c.account_id where c.id = ?', [$active]);
-        $mine = DB::select('select membership_id, company_id, company_name, ruc, role_code from app_my_memberships() order by company_name');
+        $mine = DB::select('select membership_id, company_id, company_name, ruc, split_part(role_code, \':\', 1) as role_code from app_my_memberships() order by company_name');
 
         $rows = [];
         try {

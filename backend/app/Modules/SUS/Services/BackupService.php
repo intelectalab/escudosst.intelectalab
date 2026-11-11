@@ -145,7 +145,7 @@ class BackupService
         if (! $this->remote->configured()) {
             return 0;
         }
-        $limit = time() - (int) config('escudo.backups.remote.retention_days') * 86400;
+        $limit = time() - $this->remote->retentionDays() * 86400;
         $deleted = 0;
         foreach (array_keys(self::TARGETS) as $t) {
             try {
@@ -218,10 +218,11 @@ class BackupService
         return [
             'configured' => $configured,
             'destination' => $this->remote->describe(),
-            'retention_days' => (int) config('escudo.backups.remote.retention_days'),
+            'retention_days' => $this->remote->retentionDays(),
             'last_upload_at' => $lastOk?->remote_uploaded_at,
             'last_status' => $configured ? $last?->remote_status : null,
             'last_error' => $configured && $last?->remote_status === 'failed' ? $last->remote_error : null,
+            'source' => $this->remote->source(),
             'message' => $configured ? null : 'Copia externa sin configurar: las copias solo quedan en el servidor.',
         ];
     }
@@ -330,7 +331,7 @@ class BackupService
     /** Quita contraseñas o cadenas de conexión de un mensaje de error antes de guardarlo. */
     private function clean(string $msg): string
     {
-        foreach ([(string) config('escudo.backups.db_password'), (string) config('escudo.backups.remote.secret')] as $secret) {
+        foreach ([(string) config('escudo.backups.db_password'), $this->remote->secretForRedaction()] as $secret) {
             if ($secret !== '') {
                 $msg = str_replace($secret, '***', $msg);
             }

@@ -3,6 +3,8 @@
 namespace App\Modules\SUS\Services;
 
 use App\Core\Http\ApiProblem;
+use App\Modules\MRL\NormChanges;
+use App\Modules\VUL\VulController;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -51,9 +53,28 @@ class CatalogsService
 
     // ---------------------------------------------------------------- Parámetros legales
 
+    /**
+     * Dónde usa el sistema cada parámetro (para que el dueño y el especialista sepan qué cambia al editarlo).
+     * Clave → lista de usos en lenguaje simple.
+     */
+    public const USAGE = [
+        'minor_age_years' => [
+            'Grupos vulnerables: decide quién es menor de edad para las alertas y la compatibilidad del puesto.',
+            'Trabajadores: al registrar o cambiar el puesto de un menor se revisan los peligros prohibidos.',
+        ],
+        'minor_forbidden_hazard_families' => [
+            'Trabajadores: no deja asignar a un menor a un puesto cuyo IPERC tenga estas familias de peligro.',
+            'Grupos vulnerables: bloquea la reubicación de un menor a esos puestos y lo muestra en la compatibilidad.',
+        ],
+        'adjustment_notice_days' => ['Grupos vulnerables: aviso de adecuación de puesto por vencer.'],
+    ];
+
+    /** Valores JSON con forma conocida: lista de familias de peligro del catálogo base. */
+    private const FAMILY_LIST_KEYS = ['minor_forbidden_hazard_families'];
+
     public function legalParameters(): array
     {
-        return array_map(fn ($r) => (array) $r + ['is_current' => (bool) $r->is_current] + self::classify($r), $this->db()->select(
+        return array_map(fn ($r) => (array) $r + ['is_current' => (bool) $r->is_current, 'used_in' => self::USAGE[$r->key] ?? []] + self::classify($r), $this->db()->select(
             'select p.id, p.key, p.value, p.value_type, p.unit, p.description, p.legal_reference, p.source, p.sector,
                     p.valid_from, p.valid_to, p.to_confirm, p.confirmed_by, p.confirmed_at,
                     n.id as norm_id, n.number as norm_number, n.title as norm_title,
@@ -98,7 +119,7 @@ class CatalogsService
     public function newParameterVersion(string $id, array $data, string $actor): array
     {
         $p = $this->find('legal_parameters', $id, 'El parámetro no existe.');
-        $this->assertValue($p->value_type, $data['value']);
+        $data['value'] = $this->assertParameterValue($p, $data['value']);
         if ($data['valid_from'] <= $p->valid_from) {
             throw $this->validation('valid_from', 'La nueva vigencia debe empezar después del '.date('d/m/Y', strtotime($p->valid_from)).'.');
         }
@@ -153,7 +174,9 @@ class CatalogsService
     public function legalNorms(): array
     {
         return $this->db()->select(
-            "select n.*, (select count(*) from legal_parameters p where p.legal_norm_id = n.id and p.deleted_at is null and p.company_id is null) as parameters_count
+            "select n.*, (select count(*) from legal_parameters p where p.legal_norm_id = n.id and p.deleted_at is null and p.company_id is null) as parameters_count,
+                    (select count(*) from legal_norm_requirements t where t.legal_norm_id = n.id and t.deleted_at is null) as requirements_count,
+                    (select count(*) from legal_norm_requirements t where t.legal_norm_id = n.id and t.deleted_at is null and t.to_confirm) as requirements_to_confirm
                from legal_norms n where n.deleted_at is null
               order by case n.norm_type when 'law' then 0 when 'supreme_decree' then 1 when 'ministerial_resolution' then 2 else 3 end, n.published_on desc nulls last, n.number"
         );
@@ -180,8 +203,8 @@ class CatalogsService
                 'after' => $fields,
             ]);
             // Novedades normativas (M-MRL RN-MRL-05): los requisitos vinculados de cada empresa quedan «requiere revisión».
-            if ($reason = \App\Modules\MRL\NormChanges::reason($before, $fields)) {
-                $flagged = app(\App\Modules\MRL\NormChanges::class)->flag($id, $reason);
+            if ($reason = NormChanges::reason($before, $fields)) {
+                $flagged = app(NormChanges::class)->flag($id, $reason);
 
                 return ['id' => $id, 'flagged' => $flagged];
             }
@@ -300,6 +323,25 @@ class CatalogsService
         $row = Str::isUuid($id) ? $this->db()->selectOne("select * from {$table} where id = ? and deleted_at is null", [$id]) : null;
 
         return $row ?? throw ApiProblem::notFound($notFound);
+    }
+
+    /** Valida el valor según el tipo del parámetro (y su forma, si se conoce) y lo devuelve normalizado. */
+    public function assertParameterValue(object $p, string $value): string
+    {
+        $this->assertValue($p->value_type, $value);
+        $value = trim($value);
+        if (in_array($p->key, self::FAMILY_LIST_KEYS, true)) {
+            $list = json_decode($value, true);
+            $known = VulController::FAMILIES;
+            if (! is_array($list) || ! array_is_list($list) || array_filter($list, fn ($f) => ! is_string($f) || ! isset($known[$f]))) {
+                throw $this->validation('value', 'Elige familias de peligro del catálogo.');
+            }
+            $list = array_values(array_unique($list));
+            sort($list);
+            $value = json_encode($list);
+        }
+
+        return $value;
     }
 
     private function assertValue(string $type, string $value): void

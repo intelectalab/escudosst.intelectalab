@@ -264,87 +264,154 @@ export function AulTimeReport({ courseId }: { courseId: string }) {
 
 // ─────────────── Por calificar (SCR-AUL-06 / 13) ───────────────
 
-type Pending = { id: string; attempt_number: number; submitted_at: string; lesson: string; course_id: string; course_code: string; course_title: string; name: string };
+type Pending = {
+  id: string; attempt_number: number; submitted_at: string; lesson: string; course_id: string; course_code: string; course_title: string; name: string;
+  // Solo en «Calificados»:
+  score_pct?: number | string | null; grade_label?: string | null; passed?: boolean | null; graded_at?: string | null; changes?: number;
+};
+type GradeChange = { at: string; by_name: string | null; reason: string; previous_pct: number; previous_label: string | null; previous_passed: boolean; new_pct: number; new_label: string; new_passed: boolean };
 type AttemptDetail = {
-  id: string; attempt_number: number; submitted_at: string; lesson: string; practical: boolean; score: number; max_score: number; passing: number;
+  id: string; attempt_number: number; submitted_at: string; status: string; lesson: string; practical: boolean; score: number; max_score: number; passing: number;
   questions: { id: string; type: string; statement: string; max: number; manual: boolean; auto_points: number; ok: boolean | null; answer: string; correct: string }[];
+  score_pct: number | null; grade_label: string | null; passed: boolean | null; graded_at: string | null; feedback: string | null; source?: string; history: GradeChange[];
 };
 
 export function AulGrading({ readOnly }: { readOnly: boolean }) {
+  const [tab, setTab] = useState<"pending" | "graded">("pending");
   const [items, setItems] = useState<Pending[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<Pending | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const load = useCallback(() => {
-    api<{ data: { items: Pending[] } }>("/aul/admin/grading", { withCompany: true }).then((r) => setItems(r.data.items)).catch((e) => setError(errorText(e)));
-  }, []);
+    setItems(null);
+    api<{ data: { items: Pending[] } }>(`/aul/admin/grading${tab === "graded" ? "?status=graded" : ""}`, { withCompany: true }).then((r) => setItems(r.data.items)).catch((e) => setError(errorText(e)));
+  }, [tab]);
   useEffect(load, [load]);
+  const graded = tab === "graded";
   return (
     <div className="space-y-4">
       <AulCrumbs items={[{ label: "Por calificar" }]} />
       <div>
         <h1 className="font-display text-2xl font-bold">Por calificar</h1>
-        <p className="text-sm text-muted">Evaluaciones prácticas y preguntas abiertas que enviaron los participantes de tus cursos. La nota usa la escala del curso.</p>
+        <p className="text-sm text-muted">Evaluaciones prácticas y preguntas abiertas que enviaron los participantes de tus cursos. La nota usa la escala del curso. En «Calificados» puedes modificar una nota indicando el motivo: la nota anterior queda en el historial.</p>
+      </div>
+      <div role="tablist" aria-label="Intentos" className="inline-flex rounded-lg border border-line bg-surface p-0.5 text-sm">
+        {([["pending", "Por calificar"], ["graded", "Calificados"]] as const).map(([v, l]) => (
+          <button key={v} type="button" role="tab" aria-selected={tab === v} onClick={() => { setMsg(null); setTab(v); }} className={`rounded-md px-3 py-1.5 font-semibold ${tab === v ? "bg-brand text-white" : "text-muted hover:text-fg"}`}>{l}</button>
+        ))}
       </div>
       {error && <p className="rounded-lg bg-bad-soft px-4 py-2 text-sm text-bad">{error}</p>}
       {msg && <p role="status" className="rounded-lg bg-ok-soft px-4 py-2 text-sm text-ok">{msg}</p>}
       {!items ? <div className="h-32 animate-pulse rounded-xl bg-surface" /> : items.length === 0 ? (
-        <div className="rounded-xl border border-line bg-surface p-8 text-center text-sm text-muted"><b className="block text-fg">Nada por calificar</b>Te avisaremos cuando un participante envíe una actividad.</div>
+        <div className="rounded-xl border border-line bg-surface p-8 text-center text-sm text-muted">
+          {graded ? <><b className="block text-fg">Aún no hay intentos calificados</b>Aquí verás las notas ya registradas de tus cursos.</> : <><b className="block text-fg">Nada por calificar</b>Te avisaremos cuando un participante envíe una actividad.</>}
+        </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-line bg-surface">
           <table className="w-full min-w-[620px] text-sm">
-            <thead className="bg-bg text-left text-xs text-muted"><tr>{["Participante", "Curso", "Actividad", "Enviado", ""].map((h) => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead>
+            <thead className="bg-bg text-left text-xs text-muted"><tr>{(graded ? ["Participante", "Curso", "Actividad", "Nota", "Calificado", ""] : ["Participante", "Curso", "Actividad", "Enviado", ""]).map((h) => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead>
             <tbody className="divide-y divide-line">
               {items.map((p) => (
                 <tr key={p.id}>
                   <td className="px-3 py-2 font-semibold">{p.name}</td>
                   <td className="px-3 py-2"><Link href={`/m/aul/${p.course_id}`} className="hover:text-brand"><span className="font-mono text-[11px] text-muted">{p.course_code}</span> {p.course_title}</Link></td>
                   <td className="px-3 py-2">{p.lesson} <span className="text-xs text-muted">· intento {p.attempt_number}</span></td>
-                  <td className="px-3 py-2 text-xs">{fmtDate(p.submitted_at)}</td>
-                  <td className="px-3 py-2 text-right">{!readOnly && <Button size="sm" variant="primary" onClick={() => setOpen(p)}>Calificar</Button>}</td>
+                  {graded ? (
+                    <>
+                      <td className="px-3 py-2">
+                        <span className="mr-2 font-semibold tabular-nums">{p.grade_label ?? `${fmtNum(Number(p.score_pct ?? 0), 1)} %`}</span>
+                        <Chip tone={p.passed ? "ok" : "bad"}>{p.passed ? "Aprobado" : "Desaprobado"}</Chip>
+                        {!!p.changes && <span className="ml-2 text-xs text-muted">· modificada {p.changes} vez/veces</span>}
+                      </td>
+                      <td className="px-3 py-2 text-xs">{fmtDate(p.graded_at ?? null)}</td>
+                      <td className="px-3 py-2 text-right">{!readOnly && <Button size="sm" onClick={() => setOpen(p)}>Modificar nota</Button>}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-3 py-2 text-xs">{fmtDate(p.submitted_at)}</td>
+                      <td className="px-3 py-2 text-right">{!readOnly && <Button size="sm" variant="primary" onClick={() => setOpen(p)}>Calificar</Button>}</td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      {open && <GradeModal pending={open} onClose={() => setOpen(null)} onDone={(t) => { setOpen(null); setMsg(t); load(); }} />}
+      {open && <GradeModal pending={open} regrade={graded} onClose={() => setOpen(null)} onDone={(t) => { setOpen(null); setMsg(t); load(); }} />}
     </div>
   );
 }
 
-function GradeModal({ pending, onClose, onDone }: { pending: Pending; onClose: () => void; onDone: (msg: string) => void }) {
+function GradeModal({ pending, regrade, onClose, onDone }: { pending: Pending; regrade: boolean; onClose: () => void; onDone: (msg: string) => void }) {
   const [d, setD] = useState<AttemptDetail | null>(null);
   const [points, setPoints] = useState<Record<string, string>>({});
   const [pct, setPct] = useState("");
   const [feedback, setFeedback] = useState("");
+  const [reason, setReason] = useState("");
+  const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    api<{ data: AttemptDetail }>(`/aul/admin/attempts/${pending.id}`, { withCompany: true }).then((r) => setD(r.data)).catch((e) => setError(errorText(e)));
-  }, [pending.id]);
+    api<{ data: AttemptDetail }>(`/aul/admin/attempts/${pending.id}`, { withCompany: true }).then((r) => {
+      setD(r.data);
+      if (regrade) {
+        // Se parte de la nota vigente.
+        setPct(r.data.score_pct != null ? String(r.data.score_pct) : "");
+        setPoints(Object.fromEntries(r.data.questions.filter((q) => q.manual).map((q) => [q.id, String(q.auto_points)])));
+        setFeedback(r.data.feedback ?? "");
+      }
+    }).catch((e) => setError(errorText(e)));
+  }, [pending.id, regrade]);
   const manual = d?.questions.filter((q) => q.manual) ?? [];
   const total = d ? d.questions.reduce((a, q) => a + (q.manual ? Number((points[q.id] ?? "").replace(",", ".")) || 0 : q.auto_points), 0) : 0;
   const practical = !!d && (d.practical || manual.length === 0);
   const shown = practical ? Number(pct.replace(",", ".")) || 0 : d && d.max_score ? Math.round((total * 1000) / d.max_score) / 10 : 0;
   const save = async () => {
+    if (regrade && reason.trim().length < 5) {
+      setErrors({ reason: ["Indica el motivo del cambio de nota (al menos 5 caracteres)."] });
+      return;
+    }
     setBusy(true);
     setError(null);
+    setErrors({});
     try {
-      const body = practical ? { score_pct: Number(pct.replace(",", ".")), feedback: feedback || null }
+      const base = practical ? { score_pct: Number(pct.replace(",", ".")), feedback: feedback || null }
         : { question_points: Object.fromEntries(manual.map((q) => [q.id, Number((points[q.id] ?? "").replace(",", "."))])), feedback: feedback || null };
-      const r = await api<{ data: { label: string; passed: boolean } }>(`/aul/admin/attempts/${pending.id}/grade`, { method: "POST", withCompany: true, body });
-      onDone(`Nota ${r.data.label} registrada para ${pending.name}: ${r.data.passed ? "aprobado" : "desaprobado"}.`);
+      const body = regrade ? { ...base, reason: reason.trim() } : base;
+      const r = await api<{ data: { label: string; passed: boolean } }>(`/aul/admin/attempts/${pending.id}/${regrade ? "regrade" : "grade"}`, { method: "POST", withCompany: true, body });
+      onDone(regrade ? `Nota de ${pending.name} modificada a ${r.data.label}: ${r.data.passed ? "aprobado" : "desaprobado"}. La nota anterior quedó en el historial.`
+        : `Nota ${r.data.label} registrada para ${pending.name}: ${r.data.passed ? "aprobado" : "desaprobado"}.`);
     } catch (e) {
+      const fe = (e as { errors?: Record<string, string[]> })?.errors;
+      if (fe) setErrors(fe);
       setError(errorText(e));
       setBusy(false);
     }
   };
   return (
-    <Modal title={`Calificar · ${pending.name}`} subtitle={`${pending.lesson} · ${pending.course_title}`} icon="pen" size="lg" onClose={onClose}
-      footer={<div className="flex w-full flex-wrap items-center justify-between gap-2"><span className="text-sm">Nota: <b>{fmtNum(shown, 1)} %</b>{d ? ` (mínimo ${d.passing} %)` : ""}</span><div className="flex gap-2"><Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} disabled={!d} onClick={save}>Guardar nota</Button></div></div>}>
+    <Modal title={`${regrade ? "Modificar nota" : "Calificar"} · ${pending.name}`} subtitle={`${pending.lesson} · ${pending.course_title}`} icon="pen" size="lg" onClose={onClose}
+      footer={<div className="flex w-full flex-wrap items-center justify-between gap-2"><span className="text-sm">{regrade ? "Nueva nota" : "Nota"}: <b>{fmtNum(shown, 1)} %</b>{d ? ` (mínimo ${d.passing} %)` : ""}</span><div className="flex gap-2"><Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} disabled={!d || (regrade && d.source === "external")} onClick={save}>{regrade ? "Guardar cambio" : "Guardar nota"}</Button></div></div>}>
       {!d ? <div className="h-24 animate-pulse rounded-xl bg-bg" /> : (
         <div className="space-y-3">
+          {regrade && (
+            <div className="rounded-xl border border-line bg-bg p-3 text-sm">
+              <p>Nota vigente: <b>{d.grade_label ?? `${fmtNum(d.score_pct ?? 0, 1)} %`}</b> ({fmtNum(d.score_pct ?? 0, 1)} %) · <Chip tone={d.passed ? "ok" : "bad"}>{d.passed ? "Aprobado" : "Desaprobado"}</Chip> <span className="text-xs text-muted">· {fmtDate(d.graded_at)}</span></p>
+              {d.history.length > 0 && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs font-semibold text-muted">Historial de cambios ({d.history.length})</summary>
+                  <ul className="mt-2 space-y-1 text-xs">
+                    {[...d.history].reverse().map((h, i) => (
+                      <li key={i} className="rounded-lg border border-line bg-surface px-2 py-1">
+                        <b>{fmtDate(h.at)}</b> · {h.by_name ?? "—"}: {h.previous_label ?? `${fmtNum(h.previous_pct, 1)} %`} → {h.new_label} <span className="text-muted">· {h.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              {d.source === "external" && <p className="mt-2 text-xs text-bad">La nota viene de la plataforma externa: modifícala allí.</p>}
+            </div>
+          )}
           <ol className="space-y-2">
             {d.questions.map((q, i) => (
               <li key={q.id} className="space-y-1 rounded-xl border border-line p-3 text-sm">
@@ -360,8 +427,13 @@ function GradeModal({ pending, onClose, onDone }: { pending: Pending; onClose: (
               </li>
             ))}
           </ol>
-          {practical && <FormField label="Nota del intento (%) *" hint="Evaluación práctica: la nota la pone quien califica."><input className="input max-w-32" inputMode="decimal" value={pct} onChange={(e) => setPct(e.target.value)} /></FormField>}
+          {practical && <FormField label={regrade ? "Nueva nota del intento (%) *" : "Nota del intento (%) *"} hint={d.practical ? "Evaluación práctica: la nota la pone quien califica." : undefined} error={errors.score_pct?.[0]}><input className="input max-w-32" inputMode="decimal" value={pct} onChange={(e) => setPct(e.target.value)} /></FormField>}
           <FormField label="Comentario para el participante"><textarea className="input min-h-20" value={feedback} onChange={(e) => setFeedback(e.target.value)} /></FormField>
+          {regrade && (
+            <FormField label="Motivo del cambio *" hint="Queda en la bitácora y en el historial del intento junto con la nota anterior." error={errors.reason?.[0]}>
+              <textarea className="input min-h-20" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej.: se revisó el video de la práctica y el procedimiento fue correcto" />
+            </FormField>
+          )}
         </div>
       )}
       {error && <p className="mt-2 text-sm text-bad">{error}</p>}

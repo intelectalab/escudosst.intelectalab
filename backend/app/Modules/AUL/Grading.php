@@ -70,4 +70,52 @@ final class Grading
 
         return $coursePassing ?? 70.0;
     }
+
+    /**
+     * Aviso «Evaluación práctica por calificar» (M-AUL §10): al enviar el participante un intento que queda por calificar
+     * (evaluación práctica o con preguntas abiertas), avisa en la app a los capacitadores del curso que pueden calificar
+     * (trainer_permissions del curso, vigentes, con membresía activa). Sin capacitador asignado, avisa a quien publicó o
+     * creó el curso. Uno por intento y destinatario.
+     *
+     * @return int avisos creados
+     */
+    public static function notifyPending(object $enrollment, object $lesson, object $attempt, bool $practical): int
+    {
+        $course = DB::selectOne('select id, company_id, code, title, published_by, created_by from courses where id = ?', [$enrollment->course_id]);
+        if (! $course) {
+            return 0;
+        }
+        $to = array_column(DB::select(
+            "select distinct tp.trainer_user_id as user_id from trainer_permissions tp
+               join memberships m on m.user_id = tp.trainer_user_id and m.company_id = tp.company_id and m.status = 'active' and m.deleted_at is null
+              where tp.course_id = ? and tp.deleted_at is null and tp.can_grade
+                and (tp.valid_from is null or tp.valid_from <= current_date) and (tp.valid_until is null or tp.valid_until >= current_date)",
+            [$course->id]), 'user_id');
+        if ($to === []) {
+            $owner = $course->published_by ?? $course->created_by;
+            if ($owner && DB::selectOne("select 1 as ok from memberships where user_id = ? and company_id = ? and status = 'active' and deleted_at is null", [$owner, $course->company_id])) {
+                $to = [$owner];
+            }
+        }
+        $who = DB::selectOne(
+            "select coalesce(w.full_name, cw.first_name || ' ' || cw.paternal_last_name, xl.first_name || ' ' || xl.last_name, u.full_name) as name
+               from course_enrollments e left join workers w on w.id = e.worker_id left join contractor_workers cw on cw.id = e.contractor_worker_id
+               left join external_learners xl on xl.id = e.external_learner_id left join users u on u.id = e.user_id where e.id = ?", [$enrollment->id])?->name ?: 'Un participante';
+        $title = $practical ? 'Evaluación práctica por calificar' : 'Evaluación con preguntas abiertas por calificar';
+        $body = "{$who} envió «{$lesson->title}» (intento {$attempt->attempt_number}) del curso {$course->code} · {$course->title}.";
+        $n = 0;
+        foreach ($to as $uid) {
+            $key = "aul.grading.{$attempt->id}.{$uid}";
+            if (DB::selectOne('select 1 as ok from notifications where dedupe_key = ? and deleted_at is null', [$key])) {
+                continue;
+            }
+            DB::insert(
+                "insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, dedupe_key)
+                 values (?, 'aul.attempt_pending_grading', 'quiz_attempts', ?, ?, ?, ?, '/m/aul/calificar', 'normal', ?)",
+                [$course->company_id, $attempt->id, $uid, $title, mb_substr($body, 0, 500), $key]);
+            $n++;
+        }
+
+        return $n;
+    }
 }

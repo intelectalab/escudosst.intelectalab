@@ -377,7 +377,7 @@ class AulAdminController extends Controller
         $ctx = app(CompanyContext::class);
         $people = DB::select(
             "select distinct u.id, u.full_name as name, u.email from memberships m join roles r on r.id = m.role_id join users u on u.id = m.user_id
-              where m.company_id = ? and m.status = 'active' and (r.code = 'trainer' or r.base_role_code = 'trainer') order by 2", [$ctx->companyId]);
+              where m.company_id = ? and m.status = 'active' and coalesce(r.base_role_code, r.code) = 'trainer' order by 2", [$ctx->companyId]);
         $perms = DB::select(
             'select t.id, t.trainer_user_id, t.course_id, c.code as course_code, c.title as course_title, t.can_upload_materials, t.can_edit_content, t.can_edit_assessments,
                     t.can_manage_question_banks, t.can_grade, t.can_enroll, t.can_view_reports, t.valid_from, t.valid_until

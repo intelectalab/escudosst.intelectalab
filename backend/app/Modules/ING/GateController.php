@@ -15,7 +15,8 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Portería (M-ING SCR-ING-01/02/03):
+ * Portería (M-ING SCR-ING-01/02/03), solo para quien opera la garita: permiso `ing.access_events.create` (M-ING §4:
+ * supervisor SST; también Jefe SST y consultor por la matriz de docs/05), acotado a los puntos de acceso de sus sedes.
  *  GET  /ing/gate                 puntos de acceso activos e indicadores del día
  *  POST /ing/gate/scan            evalúa un QR o código (token del fotocheck, N.° de fotocheck o DNI) y registra el evento
  *  POST /ing/gate/visitor         registra el ingreso o la salida de un visitante (con inducción de visita aceptada)
@@ -33,10 +34,12 @@ class GateController extends Controller
 
     public function index(): JsonResponse
     {
+        $sites = $this->scopedSites();
         $points = DB::select(
             'select p.id, p.code, p.name, p.point_type, p.allows_visitors, p.requires_credential, s.name as site
                from access_points p left join sites s on s.id = p.site_id
-              where p.deleted_at is null and p.is_active order by s.name nulls last, p.name');
+              where p.deleted_at is null and p.is_active'.($sites ? ' and p.site_id = any(?::uuid[])' : '').' order by s.name nulls last, p.name',
+            $sites ? ['{'.implode(',', $sites).'}'] : []);
 
         return response()->json(['data' => ['points' => $points, 'kpis' => $this->kpis()]]);
     }
@@ -177,11 +180,28 @@ class GateController extends Controller
             'deny_reasons' => json_decode((string) ($raw->deny_reasons ?? '[]'), true) ?: [], 'visitor_name' => $raw->visitor_name];
     }
 
+    /**
+     * Sedes de la membresía (membership_scopes «site»): quien opera la portería solo ve y usa los puntos de acceso de sus
+     * sedes (M-ING §4). Sin alcance por sede: todas las de la empresa.
+     *
+     * @return list<string>
+     */
+    private function scopedSites(): array
+    {
+        return array_column(DB::select(
+            "select distinct site_id from membership_scopes where membership_id = ? and scope_type = 'site' and site_id is not null and deleted_at is null",
+            [app(CompanyContext::class)->membershipId]), 'site_id');
+    }
+
     private function point(string $id): object
     {
-        $p = DB::selectOne('select id, name, is_active from access_points where id = ? and deleted_at is null', [$id]);
+        $p = DB::selectOne('select id, name, is_active, site_id from access_points where id = ? and deleted_at is null', [$id]);
         if (! $p) {
             throw ValidationException::withMessages(['access_point_id' => 'Elige un punto de acceso de esta empresa.']);
+        }
+        $sites = $this->scopedSites();
+        if ($sites && ! in_array($p->site_id, $sites, true)) {
+            throw ValidationException::withMessages(['access_point_id' => 'Ese punto de acceso no es de la sede que tienes asignada.']);
         }
 
         return $p;
@@ -297,7 +317,7 @@ class GateController extends Controller
         $company = app(CompanyContext::class)->companyId;
         $to = DB::select(
             "select distinct m.user_id from memberships m join roles r on r.id = m.role_id
-              where m.company_id = ? and r.code = 'sst_manager' and m.status = 'active' and m.deleted_at is null", [$company]);
+              where m.company_id = ? and coalesce(r.base_role_code, r.code) = 'sst_manager' and m.status = 'active' and m.deleted_at is null", [$company]);
         foreach ($to as $u) {
             DB::insert(
                 "insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, dedupe_key)

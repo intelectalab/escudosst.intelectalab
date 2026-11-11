@@ -16,6 +16,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
 import { useApp } from "@/components/AppContext";
 import { EditAccessModal, expiresText, lastAccess, MfaChip, RolesMatrix, ScopeFields, scopeText, type Scope } from "@/components/usr/UsersExtras";
+import { CustomRoles } from "@/components/usr/CustomRoles";
 
 type Member = {
   id: string;
@@ -23,6 +24,8 @@ type Member = {
   full_name: string;
   email: string;
   role_code: string;
+  base_role_code?: string;
+  is_custom_role?: boolean;
   role_name: string;
   worker_name: string | null;
   last_access_at: string | null;
@@ -31,7 +34,20 @@ type Member = {
   requires_mfa?: boolean;
   scopes?: Scope[];
 };
-type Role = { code: string; name: string; description: string; requires_mfa: boolean };
+type Role = { code: string; name: string; description: string | null; requires_mfa: boolean; base_role_code: string; is_custom: boolean };
+
+/** Opciones del selector de rol: roles base y, aparte, los personalizados de la cuenta. */
+function RoleOptions({ roles }: { roles: Role[] }) {
+  const custom = roles.filter((r) => r.is_custom);
+  const base = roles.filter((r) => !r.is_custom);
+  const opts = (list: Role[]) => list.map((r) => <option key={r.code} value={r.code}>{r.name}</option>);
+  return custom.length === 0 ? <>{opts(base)}</> : (
+    <>
+      <optgroup label="Roles base">{opts(base)}</optgroup>
+      <optgroup label="Roles personalizados">{opts(custom)}</optgroup>
+    </>
+  );
+}
 
 const STATUS: Record<string, [string, "ok" | "amber" | "bad" | "na"]> = {
   active: ["Activo", "ok"],
@@ -47,7 +63,7 @@ export function CompanyUsers({ readOnly }: { readOnly: boolean }) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [filter, setFilter] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
-  const [tab, setTab] = useState<"users" | "roles">("users");
+  const [tab, setTab] = useState<"users" | "roles" | "matrix">("users");
   const [inviting, setInviting] = useState(false);
   const [editing, setEditing] = useState<{ m: Member; role?: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -56,10 +72,13 @@ export function CompanyUsers({ readOnly }: { readOnly: boolean }) {
   const load = useCallback(() => {
     api<{ data: Member[] }>("/company/users", { withCompany: true }).then((r) => setRows(r.data)).catch((e: ApiError) => setError(e.detail ?? e.title));
   }, []);
+  const loadRoles = useCallback(() => {
+    api<{ data: Role[] }>("/company/roles", { withCompany: true }).then((r) => setRoles(r.data)).catch(() => setRoles([]));
+  }, []);
   useEffect(() => {
     load();
-    api<{ data: Role[] }>("/company/roles", { withCompany: true }).then((r) => setRoles(r.data)).catch(() => setRoles([]));
-  }, [load]);
+    loadRoles();
+  }, [load, loadRoles]);
 
   const act = (fn: () => Promise<unknown>, msg: string) =>
     fn()
@@ -86,14 +105,14 @@ export function CompanyUsers({ readOnly }: { readOnly: boolean }) {
         )}
       </div>
       <div role="tablist" aria-label="Usuarios y roles" className="flex gap-1 border-b border-line">
-        {([["users", "Usuarios"], ["roles", "Roles y permisos"]] as const).map(([k, l]) => (
-          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+        {([["users", "Usuarios"], ["roles", "Roles"], ["matrix", "Matriz de permisos"]] as const).map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={tab === k} onClick={() => { setTab(k); if (k === "users") { load(); loadRoles(); } }}
             className={`-mb-px border-b-2 px-3 py-2 text-sm font-semibold ${tab === k ? "border-brand text-brand" : "border-transparent text-muted hover:text-fg"}`}>
             {l}
           </button>
         ))}
       </div>
-      {tab === "roles" ? <RolesMatrix /> : <>
+      {tab === "roles" ? <CustomRoles readOnly={readOnly} /> : tab === "matrix" ? <RolesMatrix /> : <>
       <FilterBar count={rows ? `${shown.length} persona(s)` : undefined}>
         <FilterSelect label="Rol" value={roleFilter} onChange={setRoleFilter} options={roleOptions} />
         <FilterSelect label="Estado" value={filter} onChange={setFilter} options={[["", "Todos"], ...Object.entries(STATUS).slice(0, 4).map(([k, [l]]) => [k, l] as [string, string])]} />
@@ -132,16 +151,12 @@ export function CompanyUsers({ readOnly }: { readOnly: boolean }) {
                       <select className="input !h-9 !py-0 text-sm" aria-label={`Rol de ${m.full_name}`} value={m.role_code}
                         onChange={(e) => {
                           const role = e.target.value;
-                          // El auditor externo necesita fecha de fin: se pide en «Editar acceso» antes de guardar el rol.
-                          if (role === "external_auditor" && !m.expires_at) setEditing({ m, role });
+                          // El auditor externo (o un rol derivado de él) necesita fecha de fin: se pide en «Editar acceso» antes de guardar el rol.
+                          if (roles.find((r) => r.code === role)?.base_role_code === "external_auditor" && !m.expires_at) setEditing({ m, role });
                           else act(() => api(`/company/users/${m.id}`, { method: "PATCH", body: { role_code: role }, withCompany: true }), "Rol actualizado.");
                         }}>
                         {!roles.some((r) => r.code === m.role_code) && <option value={m.role_code}>{m.role_name}</option>}
-                        {roles.map((r) => (
-                          <option key={r.code} value={r.code}>
-                            {r.name}
-                          </option>
-                        ))}
+                        <RoleOptions roles={roles} />
                       </select>
                     )}
                   </td>
@@ -190,7 +205,7 @@ export function CompanyUsers({ readOnly }: { readOnly: boolean }) {
       )}
       </>}
       {editing && (
-        <EditAccessModal member={editing.m} roleCode={editing.role} onClose={() => setEditing(null)} onDone={(msg) => { setEditing(null); setToast(msg); load(); }} />
+        <EditAccessModal member={editing.m} roleCode={editing.role} roleBase={roles.find((r) => r.code === editing.role)?.base_role_code} onClose={() => setEditing(null)} onDone={(msg) => { setEditing(null); setToast(msg); load(); }} />
       )}
       {inviting && <InviteModal roles={roles} onClose={() => setInviting(false)} onDone={(msg) => { setInviting(false); setToast(msg); load(); }} />}
       {toast && <Toast message={toast.replace(/^⚠ /, "")} tone={toast.startsWith("⚠") ? "bad" : "ok"} onClose={() => setToast(null)} />}
@@ -237,16 +252,12 @@ function InviteModal({ roles, onClose, onDone }: { roles: Role[]; onClose: () =>
         <FormField label="Nombre completo *" error={errors.full_name?.[0]}>
           <input className="input" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
         </FormField>
-        <FormField label="Rol *" error={errors.role_code?.[0]} hint={role ? `${role.description}${role.requires_mfa ? " Pide segundo factor." : ""}` : undefined}>
+        <FormField label="Rol *" error={errors.role_code?.[0]} hint={role ? `${role.description ?? ""}${role.requires_mfa ? " Pide segundo factor." : ""}`.trim() || undefined : undefined}>
           <select className="input" value={form.role_code} onChange={(e) => setForm({ ...form, role_code: e.target.value })}>
-            {roles.map((r) => (
-              <option key={r.code} value={r.code}>
-                {r.name}
-              </option>
-            ))}
+            <RoleOptions roles={roles} />
           </select>
         </FormField>
-        <ScopeFields value={scope} onChange={setScope} errors={errors} auditor={form.role_code === "external_auditor"} />
+        <ScopeFields value={scope} onChange={setScope} errors={errors} auditor={role?.base_role_code === "external_auditor"} />
       </div>
     </Modal>
   );

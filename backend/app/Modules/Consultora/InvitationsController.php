@@ -261,7 +261,7 @@ class InvitationsController extends Controller
         $client = $this->p()->selectOne('select coalesce(trade_name, legal_name) as n from companies where id = ?', [$ctx->companyId])?->n ?? 'Una empresa cliente';
         foreach ($this->p()->select('select id from companies where account_id = ? and deleted_at is null', [$account]) as $own) {
             $accounts->withCompany($own->id, function (ConnectionInterface $db) use ($own, $client, $ctx) {
-                foreach ($db->select("select m.user_id from memberships m join roles r on r.id = m.role_id where m.company_id = ? and m.status = 'active' and m.deleted_at is null and r.code = 'account_admin'", [$own->id]) as $a) {
+                foreach ($db->select("select m.user_id from memberships m join roles r on r.id = m.role_id where m.company_id = ? and m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = 'account_admin'", [$own->id]) as $a) {
                     $db->insert(
                         "insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, dedupe_key)
                          values (?, 'con.link_revoked', 'CON', ?, ?, 'Una empresa quitó el acceso', ?, '/m/con', 'high', ?)",

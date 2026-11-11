@@ -202,6 +202,18 @@ Artisan::command('escudo:sst-alerts', function (\App\Modules\NOT\SstAlerts $aler
 Schedule::command('escudo:sst-alerts')->dailyAt('07:00')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:sst-alerts');
 
 /*
+| Entrega por correo y WhatsApp de los avisos de la campana (M-NOT): críticos al momento, enlaces de votación,
+| respuesta a reportes y resumen diario por WhatsApp a quien lo aceptó. Cada intento queda en notification_deliveries.
+| Uso: php artisan escudo:alerts-deliver
+*/
+Artisan::command('escudo:alerts-deliver', function (\App\Modules\NOT\AlertDelivery $delivery) {
+    $n = $delivery->run();
+    $this->info("Correos: {$n['email']} · WhatsApp: {$n['whatsapp']}");
+})->purpose('Envía por correo y WhatsApp los avisos que lo requieren');
+
+Schedule::command('escudo:alerts-deliver')->everyMinute()->withoutOverlapping()->runInBackground()->name('escudo:alerts-deliver');
+
+/*
 | Vencimientos de contratistas (M-CTR RN-CTR-03, M-SCT): documentos y pólizas SCTR por vencer o vencidos → campana del
 | Jefe SST de la empresa principal y del administrador del contratista.
 | Uso: php artisan escudo:ctr-expiry

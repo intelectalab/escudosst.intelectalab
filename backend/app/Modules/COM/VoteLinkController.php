@@ -91,7 +91,8 @@ class VoteLinkController extends Controller
             $this->fail('roll_ids', 'Una de las personas no está en el padrón.');
         }
         $issued = 0;
-        DB::transaction(function () use ($rows, &$issued) {
+        $issuedIds = [];
+        DB::transaction(function () use ($rows, &$issued, &$issuedIds) {
             foreach ($rows as $r) {
                 if ($r->excluded || $r->has_voted) {
                     continue;
@@ -100,8 +101,11 @@ class VoteLinkController extends Controller
                 DB::update("update election_roll set vote_token_hash = decode(?, 'hex'), vote_token_enc = ?, vote_token_issued_at = now(), updated_at = now(), updated_by = ? where id = ?",
                     [hash('sha256', $token), Crypt::encryptString($token), (string) auth()->id(), $r->id]);
                 $issued++;
+                $issuedIds[] = $r->id;
             }
         });
+        // Con WhatsApp en vivo, el enlace personal también llega por WhatsApp a quien lo aceptó (M-COM §10).
+        \App\Modules\NOT\AlertDelivery::queueVoteLinks($this->company(), $issuedIds);
         $this->accounts->audit((string) auth()->id(), 'election_vote_credentials_issued', 'elections', $id, ['issued' => $issued, 'reissue' => (bool) $ids]);
 
         return response()->json(['data' => ['issued' => $issued]], 201);

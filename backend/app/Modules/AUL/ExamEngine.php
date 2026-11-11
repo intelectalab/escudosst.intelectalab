@@ -213,6 +213,7 @@ final class ExamEngine
         if ($manual) {
             DB::update("update quiz_attempts set answers = ?::jsonb, submitted_at = now(), time_spent_seconds = ?, score = ?, max_score = ?, status = 'submitted', updated_at = now() where id = ?",
                 [json_encode(['given' => $given, 'detail' => $detail]), $spent, round($score, 2), round($max, 2), $attempt->id]);
+            Grading::notifyPending($e, $lesson, $attempt, ! empty($cfg['manual_grading']));   // aviso al capacitador (M-AUL §10)
 
             return ['score_pct' => null, 'passing' => $passing, 'passed' => null, 'pending' => true, 'attempt' => (int) $attempt->attempt_number, 'label' => null, 'enrollment' => null, 'detail' => []];
         }

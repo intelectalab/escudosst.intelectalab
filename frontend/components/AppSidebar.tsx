@@ -11,7 +11,8 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { AppContext } from "@/components/AppContext";
 import { Icon } from "@/components/ui/Icon";
 import { availableIn } from "@/lib/menu";
-import type { ModuleItem } from "@/lib/types";
+import { api } from "@/lib/api";
+import type { ModuleItem, PermissionsResponse } from "@/lib/types";
 
 export type SideGroup = { title: string; icon: string; highlight?: boolean; items: ModuleItem[] };
 
@@ -31,7 +32,21 @@ export function AppSidebar({ groups, showHome, brand, brandCompact, collapsed, m
   // Panel de la consultora (M-CON, prototipo R.CON): arriba para los consultores y para la cuenta con plan Consultora.
   const app = useContext(AppContext);
   const consultancy = !!app && (app.company.role.code === "consultant" || app.modules.some((m) => m.code === "CON" && m.role_can_use && (m.mode === "enabled" || m.mode === "read_only")));
-  const gate = !!app && app.modules.some((m) => m.code === "ING" && m.role_can_use && m.mode === "enabled");
+  const ingOn = !!app && app.modules.some((m) => m.code === "ING" && m.role_can_use && m.mode === "enabled");
+  // Portería solo para quien opera la garita: permiso ing.access_events.create (M-ING §4), no para quien solo consulta eventos.
+  const [gateOperator, setGateOperator] = useState(false);
+  const companyId = app?.company.company_id;
+  useEffect(() => {
+    if (!ingOn) return setGateOperator(false);
+    let live = true;
+    api<PermissionsResponse>("/me/permissions", { withCompany: true })
+      .then((r) => live && setGateOperator(r.data.includes("ing.access_events.create")))
+      .catch(() => live && setGateOperator(false));
+    return () => {
+      live = false;
+    };
+  }, [ingOn, companyId]);
+  const gate = ingOn && gateOperator;
   const activeCode = pathname.startsWith("/m/") ? pathname.split("/")[2]?.toUpperCase() : null;
   const activeGroup = groups.find((g) => g.items.some((m) => m.code === activeCode))?.title ?? null;
 
@@ -92,7 +107,7 @@ export function AppSidebar({ groups, showHome, brand, brandCompact, collapsed, m
       <nav className={`side-scroll flex-1 overflow-y-auto py-3 text-sm ${collapsed ? "px-2" : "px-3"}`} aria-label="Módulos">
         {showHome && <Solo href="/inicio" icon="home" label="Inicio" active={pathname === "/inicio"} collapsed={collapsed} />}
         {consultancy && <Solo href="/consultora" icon="briefcase" label="Panel de la consultora" active={pathname === "/consultora"} collapsed={collapsed} />}
-        {/* Portería (M-ING): acceso directo para quien opera la garita (el módulo habilitado para su rol). */}
+        {/* Portería (M-ING): acceso directo solo para quien opera la garita (módulo habilitado y permiso de registrar ingresos). */}
         {gate && <Solo href="/garita" icon="idcard" label="Portería" active={pathname === "/garita"} collapsed={collapsed} />}
 
         <div className={`mt-2 space-y-1 border-t border-white/10 pt-2`}>

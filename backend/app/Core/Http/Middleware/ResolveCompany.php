@@ -2,6 +2,7 @@
 
 namespace App\Core\Http\Middleware;
 
+use App\Core\Auth\Roles;
 use App\Core\Http\ApiProblem;
 use App\Core\Tenancy\CompanyContext;
 use Closure;
@@ -42,9 +43,11 @@ class ResolveCompany
         app()->instance(CompanyContext::class, new CompanyContext(
             companyId: $membership->company_id,
             membershipId: $membership->membership_id,
-            roleCode: $membership->role_code,
+            // Un rol personalizado se comporta como su rol base (recortado a sus permisos): las reglas usan el código base.
+            roleCode: Roles::base($membership->role_code),
             companyName: $membership->company_name,
             ruc: trim($membership->ruc),
+            customRoleCode: Roles::isCustom($membership->role_code) ? $membership->role_code : null,
         ));
 
         return $next($request);

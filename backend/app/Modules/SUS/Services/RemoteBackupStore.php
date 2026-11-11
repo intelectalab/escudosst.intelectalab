@@ -2,6 +2,7 @@
 
 namespace App\Modules\SUS\Services;
 
+use App\Core\Support\Providers;
 use GuzzleHttp\Psr7\Utils;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
@@ -10,10 +11,79 @@ use RuntimeException;
 /**
  * Copia externa de respaldos en un almacenamiento de objetos compatible con S3 (Backblaze B2, AWS S3, MinIO...).
  * Firma las peticiones con AWS Signature V4 usando el cliente HTTP de Laravel (sin dependencias extra).
- * Direcciones de estilo «ruta»: {endpoint}/{bucket}/{llave}. Configuración en escudo.backups.remote (BACKUP_S3_*).
+ * Direcciones de estilo «ruta»: {endpoint}/{bucket}/{llave}. Configuración: primero Panel › Proveedores y claves
+ * («Copias de seguridad externas», activa); si no, escudo.backups.remote (variables BACKUP_S3_* del servidor).
  */
 class RemoteBackupStore
 {
+    /** Configuración a usar en lugar de la guardada (para «Probar conexión» antes de activarla). */
+    private ?array $override = null;
+
+    public function using(array $cfg): static
+    {
+        $clone = clone $this;
+        $clone->override = $cfg;
+
+        return $clone;
+    }
+
+    /** Lo guardado en el panel (aunque no esté activo), en el formato de cfg(). */
+    public static function fromPanel(): array
+    {
+        $p = Providers::get('backups');
+
+        return [
+            'endpoint' => (string) ($p['settings']['endpoint'] ?? ''),
+            'bucket' => (string) ($p['settings']['bucket'] ?? ''),
+            'key' => (string) ($p['secrets']['key_id'] ?? ''),
+            'secret' => (string) ($p['secrets']['secret'] ?? ''),
+            'region' => (string) ($p['settings']['region'] ?? ''),
+            'retention_days' => (int) ($p['settings']['retention_days'] ?? 0) ?: 30,
+            'source' => 'panel',
+        ];
+    }
+
+    /** De dónde sale la configuración: «panel», «env» o null si no hay. */
+    public function source(): ?string
+    {
+        return $this->configured() ? $this->cfg()['source'] : null;
+    }
+
+    public function retentionDays(): int
+    {
+        return max(1, (int) $this->cfg()['retention_days']);
+    }
+
+    /** La clave secreta en uso (solo para quitarla de los mensajes de error). */
+    public function secretForRedaction(): string
+    {
+        return $this->cfg()['secret'];
+    }
+
+    /**
+     * Prueba de conexión: sube y borra un archivo pequeño con la misma firma que las copias.
+     *
+     * @return array{0: bool, 1: string}
+     */
+    public function testConnection(): array
+    {
+        if (! $this->configured()) {
+            return [false, 'Faltan la dirección, el bucket o las claves.'];
+        }
+        $key = 'escudo-prueba-conexion/'.bin2hex(random_bytes(8)).'.txt';
+        $body = 'Prueba de conexión de EscudoSST '.gmdate('c');
+        try {
+            $this->check($this->send('PUT', $key, [], hash('sha256', $body), $body, ['Content-Type' => 'text/plain', 'Content-Length' => (string) strlen($body)]), 'subir el archivo de prueba');
+            $this->delete($key);
+        } catch (\Throwable $e) {
+            $msg = mb_substr($e->getMessage(), 0, 300);
+
+            return [false, $this->cfg()['secret'] !== '' ? str_replace($this->cfg()['secret'], '***', $msg) : $msg];
+        }
+
+        return [true, 'Conexión correcta: se subió y se borró un archivo de prueba en '.$this->describe().'.'];
+    }
+
     public function configured(): bool
     {
         $c = $this->cfg();
@@ -86,14 +156,25 @@ class RemoteBackupStore
 
     private function cfg(): array
     {
-        $c = (array) config('escudo.backups.remote');
+        if ($this->override !== null) {
+            $c = $this->override;
+        } else {
+            try {
+                $panel = Providers::live('backups');
+            } catch (\Throwable) {
+                $panel = false;   // sin base (p. ej. al restaurar): se usan las variables del servidor
+            }
+            $c = $panel ? self::fromPanel() : ((array) config('escudo.backups.remote')) + ['source' => 'env'];
+        }
 
         return [
-            'endpoint' => rtrim((string) ($c['endpoint'] ?? ''), '/'),
-            'bucket' => trim((string) ($c['bucket'] ?? ''), '/'),
-            'key' => (string) ($c['key'] ?? ''),
+            'endpoint' => rtrim(trim((string) ($c['endpoint'] ?? '')), '/'),
+            'bucket' => trim((string) ($c['bucket'] ?? ''), '/ '),
+            'key' => trim((string) ($c['key'] ?? '')),
             'secret' => (string) ($c['secret'] ?? ''),
-            'region' => (string) (($c['region'] ?? '') ?: 'us-east-1'),
+            'region' => trim((string) (($c['region'] ?? '') ?: 'us-east-1')),
+            'retention_days' => (int) ($c['retention_days'] ?? 0) ?: 30,
+            'source' => (string) ($c['source'] ?? 'env'),
         ];
     }
 

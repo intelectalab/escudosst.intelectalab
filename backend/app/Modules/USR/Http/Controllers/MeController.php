@@ -25,20 +25,41 @@ class MeController extends Controller
     /** Selector de empresa: membresías activas del usuario en todas sus empresas. */
     public function companies(): JsonResponse
     {
+        // role.code es siempre el rol BASE (las pantallas deciden con él); un rol personalizado muestra su propio nombre.
         $rows = DB::select(
-            'select company_id, company_name, ruc, role_code, r.name as role_name, expires_at
+            "select company_id, company_name, ruc, m.role_code as custom_code, r.code as role_code, r.name as role_name, expires_at
                from app_my_memberships() m
-               join roles r on r.code = m.role_code and r.account_id is null
-              order by company_name'
+               join roles r on r.code = split_part(m.role_code, ':', 1) and r.account_id is null
+              order by company_name"
         );
+        foreach ($rows as $r) {
+            if ($r->custom_code !== $r->role_code) {
+                $r->role_name = self::customRoleName($r->company_id, $r->custom_code) ?? $r->role_name;
+            }
+        }
 
         return response()->json(['data' => array_map(fn ($r) => [
             'company_id' => $r->company_id,
             'name' => $r->company_name,
             'ruc' => trim($r->ruc),
-            'role' => ['code' => $r->role_code, 'name' => $r->role_name],
+            'role' => ['code' => $r->role_code, 'name' => $r->role_name] + ($r->custom_code !== $r->role_code ? ['custom_code' => $r->custom_code] : []),
             'expires_at' => $r->expires_at,
         ], $rows)]);
+    }
+
+    /** Nombre de un rol personalizado de la cuenta de la empresa (los roles de cuenta solo se leen con la empresa fijada). */
+    private static function customRoleName(string $companyId, string $code): ?string
+    {
+        return DB::transaction(function () use ($companyId, $code) {
+            $previous = DB::selectOne("select current_setting('app.company_id', true) as v")->v ?? '';
+            DB::select("select set_config('app.company_id', ?, true)", [$companyId]);
+            try {
+                return DB::selectOne('select r.name from roles r join companies c on c.account_id = r.account_id and c.id = ? where r.code = ? and r.deleted_at is null',
+                    [$companyId, $code])?->name;
+            } finally {
+                DB::select("select set_config('app.company_id', ?, true)", [$previous]);
+            }
+        });
     }
 
     /**
@@ -76,6 +97,7 @@ class MeController extends Controller
         return response()->json([
             'company_id' => $context->companyId,
             'role_code' => $context->roleCode,
+            'custom_role_code' => $context->customRoleCode,
             'data' => Permissions::effective(),
         ]);
     }
@@ -84,7 +106,7 @@ class MeController extends Controller
      * Módulos para el menú (docs/07-pantallas-y-ux.md §2 y §3.7):
      *  - mode: enabled / read_only / locked / disabled_by_company (feature_flags de la empresa)
      *  - required_plan: plan más bajo que hoy lo incluye (según plan_modules), o '+' si es complemento
-     *  - role_can_use: el rol tiene algún permiso del módulo (si no, el módulo no se muestra)
+     *  - role_can_use: el rol (base o personalizado) puede ver el módulo: tiene un permiso de lectura (si no, no se muestra)
      */
     public function modules(): JsonResponse
     {
@@ -105,10 +127,11 @@ class MeController extends Controller
                     case when (select is_support_session from memberships where id = ?)
                          -- Sesión de soporte: ve (solo lectura) los módulos de la empresa, nunca los médicos.
                          then m.code <> all(?::text[]) and coalesce(f.mode, 'locked') in ('enabled', 'read_only')
+                         -- Rol base o personalizado: el módulo se muestra solo si el rol puede verlo (permiso de lectura).
                          else exists (select 1 from memberships ms
                                         join role_permissions rp on rp.role_id = ms.role_id
                                         join permissions pe on pe.id = rp.permission_id and pe.deleted_at is null
-                                       where ms.id = ? and pe.module_code = m.code) end as role_can_use
+                                       where ms.id = ? and pe.module_code = m.code and pe.action in ('read', 'read_sensitive')) end as role_can_use
                from modules m
                left join feature_flags f on f.module_code = m.code and f.deleted_at is null
               where m.deleted_at is null and m.plan_code <> 'I'

@@ -188,7 +188,7 @@ class PortalSctr extends Controller
     {
         $team = array_column(DB::select(
             "select m.user_id from memberships m join roles r on r.id = m.role_id
-              where m.status = 'active' and m.deleted_at is null and r.code in ('sst_manager', 'hr')"), 'user_id');
+              where m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) in ('sst_manager', 'hr')"), 'user_id');
         ContractorStatus::notify($team, $event, $subject, $title, $body, '/m/sct');
     }
 

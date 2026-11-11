@@ -140,7 +140,7 @@ class PortalController extends Controller
 
         $team = array_column(DB::select(
             "select m.user_id from memberships m join roles r on r.id = m.role_id
-              where m.status = 'active' and m.deleted_at is null and r.code in ('sst_manager', 'sst_supervisor')"), 'user_id');
+              where m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) in ('sst_manager', 'sst_supervisor')"), 'user_id');
         ContractorStatus::notify($team, 'ctr.document_submitted', $row['id'], 'Documento de contratista por revisar',
             "{$c->legal_name} cargó «{$req->name}».", '/m/ctr');
 
@@ -189,7 +189,7 @@ class PortalController extends Controller
 
         $team = array_column(DB::select(
             "select m.user_id from memberships m join roles r on r.id = m.role_id
-              where m.status = 'active' and m.deleted_at is null and r.code in ('sst_manager', 'sst_supervisor')"), 'user_id');
+              where m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) in ('sst_manager', 'sst_supervisor')"), 'user_id');
         ContractorStatus::notify($team, 'ctr.accreditation_submitted', $row['id'], 'Solicitud de acreditación',
             "{$c->legal_name} solicitó acreditación para «{$service}».", '/m/ctr?t=contractor_accreditations&open='.$row['id']);
 

@@ -3,6 +3,7 @@
 namespace App\Modules\USR\Http\Controllers;
 
 use App\Core\Auth\Permissions;
+use App\Core\Auth\Roles;
 use App\Core\Http\ApiProblem;
 use App\Core\Tenancy\CompanyContext;
 use App\Http\Controllers\Controller;
@@ -16,13 +17,14 @@ use Illuminate\Support\Str;
  * Usuarios de la empresa activa (M-USR):
  *
  *  GET   /company/users                     personas con acceso, su rol y estado
- *  GET   /company/roles                     roles que se pueden asignar
+ *  GET   /company/roles                     roles que se pueden asignar (base y personalizados de la cuenta)
  *  POST  /company/users                     invitar {email, full_name, role_code, worker_id?}
  *  PATCH /company/users/{membership}        cambiar rol o suspender/reactivar {role_code?, status?}
  *  POST  /company/users/{membership}/resend reenviar la invitación
  *
  * Reglas: nadie cambia su propio acceso; la empresa no se queda sin administrador de cuenta; solo un administrador
- * de cuenta asigna ese rol; los roles de la plataforma no se asignan aquí.
+ * de cuenta asigna ese rol; los roles de la plataforma no se asignan aquí. role_code es el código de un rol base o de un
+ * rol personalizado de la cuenta (App\Core\Auth\Roles): las reglas se deciden con su rol base.
  */
 class CompanyUsersController extends Controller
 {
@@ -38,7 +40,8 @@ class CompanyUsersController extends Controller
         $rows = DB::select(
             "select m.id, case when m.status = 'active' and m.expires_at is not null and m.expires_at <= now() then 'expired' else m.status end as status,
                     m.invited_at, m.accepted_at, coalesce(m.last_access_at, u.last_login_at) as last_access_at, m.expires_at,
-                    u.id as user_id, u.full_name, u.email, u.mfa_enabled, r.code as role_code, r.name as role_name, r.requires_mfa,
+                    u.id as user_id, u.full_name, u.email, u.mfa_enabled, r.code as role_code, coalesce(r.base_role_code, r.code) as base_role_code, r.name as role_name,
+                    r.account_id is not null as is_custom_role, r.requires_mfa,
                     m.worker_id, w.full_name as worker_name
                from memberships m join users u on u.id = m.user_id join roles r on r.id = m.role_id left join workers w on w.id = m.worker_id
               where m.deleted_at is null and not m.is_support_session order by m.status = 'active' desc, u.full_name"
@@ -46,15 +49,16 @@ class CompanyUsersController extends Controller
         // Alcance (SCR-USR-02): sin filas en membership_scopes = toda la empresa.
         $scopes = [];
         foreach (DB::select(
-            "select s.membership_id, s.scope_type, s.site_id, s.area_id, coalesce(si.name, ar.name, c.legal_name, s.module_code) as name
+            'select s.membership_id, s.scope_type, s.site_id, s.area_id, coalesce(si.name, ar.name, c.legal_name, s.module_code) as name
                from membership_scopes s left join sites si on si.id = s.site_id left join areas ar on ar.id = s.area_id left join contractors c on c.id = s.contractor_id
-              where s.deleted_at is null order by s.scope_type, 5"
+              where s.deleted_at is null order by s.scope_type, 5'
         ) as $s) {
             $scopes[$s->membership_id][] = ['type' => $s->scope_type, 'id' => $s->site_id ?? $s->area_id, 'name' => $s->name];
         }
         foreach ($rows as $r) {
             $r->mfa_enabled = (bool) $r->mfa_enabled;
             $r->requires_mfa = (bool) $r->requires_mfa;
+            $r->is_custom_role = (bool) $r->is_custom_role;
             $r->scopes = $scopes[$r->id] ?? [];
         }
 
@@ -65,11 +69,22 @@ class CompanyUsersController extends Controller
     {
         $this->can('usr.memberships.read');
         $isAdmin = app(CompanyContext::class)->roleCode === 'account_admin';
+        // Roles base y los personalizados de la cuenta de la empresa (RLS: account_id de la empresa activa).
+        $rows = DB::select(
+            'select r.code, r.name, r.description, r.requires_mfa, coalesce(r.base_role_code, r.code) as base_role_code, r.account_id is not null as is_custom
+               from roles r
+              where r.deleted_at is null
+                and (r.account_id is null or r.account_id = (select c.account_id from companies c where c.id = ?))
+              order by r.account_id is not null, r.name',
+            [app(CompanyContext::class)->companyId]
+        );
 
-        return response()->json(['data' => array_values(array_filter(
-            DB::select('select code, name, description, requires_mfa from roles where account_id is null and deleted_at is null order by name'),
-            fn ($r) => in_array($r->code, self::ASSIGNABLE, true) && ($isAdmin || $r->code !== 'account_admin')
-        ))]);
+        return response()->json(['data' => array_values(array_map(function ($r) {
+            $r->requires_mfa = (bool) $r->requires_mfa;
+            $r->is_custom = (bool) $r->is_custom;
+
+            return $r;
+        }, array_filter($rows, fn ($r) => in_array($r->base_role_code, self::ASSIGNABLE, true) && ($isAdmin || $r->base_role_code !== 'account_admin'))))]);
     }
 
     public function store(Request $request): JsonResponse
@@ -80,6 +95,7 @@ class CompanyUsersController extends Controller
         $name = trim((string) $request->input('full_name'));
         $role = (string) $request->input('role_code');
         $worker = $request->input('worker_id');
+        $roleRow = null;
         $errors = [];
         if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $errors['email'][] = 'Escribe un correo válido.';
@@ -87,12 +103,12 @@ class CompanyUsersController extends Controller
         if (mb_strlen($name) < 3) {
             $errors['full_name'][] = 'Escribe el nombre completo.';
         }
-        $this->assignable($role, $errors);
+        $roleRow = $this->assignable($role, $errors);
         if ($worker !== null && $worker !== '' && (! Str::isUuid((string) $worker) || ! DB::selectOne('select 1 as ok from workers where id = ? and deleted_at is null', [$worker]))) {
             $errors['worker_id'][] = 'El trabajador no existe.';
         }
         [$sites, $areas] = $this->scopeInput($request, $errors);
-        $expires = $this->expiresInput($request, $role, $errors);
+        $expires = $this->expiresInput($request, $roleRow->base ?? $role, $errors);
         if ($errors) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Hay campos por corregir.', ['errors' => $errors]);
         }
@@ -111,8 +127,8 @@ class CompanyUsersController extends Controller
         $active = $user?->status === 'active';
         $membership = DB::selectOne(
             'insert into memberships (company_id, user_id, role_id, worker_id, status, invited_by, invited_at, accepted_at, expires_at, created_by)
-             select ?, ?, r.id, ?, ?, ?, now(), ?, ?, ? from roles r where r.account_id is null and r.code = ? returning id',
-            [$ctx->companyId, $userId, $worker ?: null, $active ? 'active' : 'invited', (string) auth()->id(), $active ? now() : null, $expires, (string) auth()->id(), $role]
+             values (?, ?, ?, ?, ?, ?, now(), ?, ?, ?) returning id',
+            [$ctx->companyId, $userId, $roleRow->id, $worker ?: null, $active ? 'active' : 'invited', (string) auth()->id(), $active ? now() : null, $expires, (string) auth()->id()]
         )->id;
         $this->saveScopes($membership, $sites, $areas);
         $this->audit('member_invited', $membership, array_filter(['email' => $email, 'role' => $role, 'sites' => $sites ?: null, 'areas' => $areas ?: null, 'expires_at' => $expires]));
@@ -133,7 +149,7 @@ class CompanyUsersController extends Controller
         $expires = null;
         if ($request->has('expires_on')) {
             $errors = [];
-            $expires = $this->expiresInput($request, (string) ($request->input('role_code') ?: $m->role_code), $errors);
+            $expires = $this->expiresInput($request, Roles::base((string) ($request->input('role_code') ?: $m->role_code)), $errors);
             if ($errors) {
                 throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', $errors['expires_on'][0], ['errors' => $errors]);
             }
@@ -141,18 +157,19 @@ class CompanyUsersController extends Controller
         if ($request->filled('role_code')) {
             $role = (string) $request->input('role_code');
             $errors = [];
-            $this->assignable($role, $errors);
+            $roleRow = $this->assignable($role, $errors);
             if ($errors) {
                 throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', $errors['role_code'][0], ['errors' => $errors]);
             }
-            if ($m->role_code === 'account_admin' && $role !== 'account_admin') {
+            if ($m->base_role_code === 'account_admin' && $roleRow->base !== 'account_admin') {
                 $this->keepAdmin($m->id);
             }
-            if ($role === 'external_auditor' && ! $m->expires_at && ! $request->filled('expires_on')) {
+            if ($roleRow->base === 'external_auditor' && ! $m->expires_at && ! $request->filled('expires_on')) {
                 throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'El auditor externo necesita una fecha de fin del acceso.', ['errors' => ['expires_on' => ['Indica hasta cuándo tendrá acceso.']]]);
             }
-            DB::update('update memberships set role_id = (select id from roles where account_id is null and code = ?), updated_by = ? where id = ?', [$role, (string) auth()->id(), $m->id]);
+            DB::update('update memberships set role_id = ?, updated_by = ? where id = ?', [$roleRow->id, (string) auth()->id(), $m->id]);
             $changes['role'] = ['from' => $m->role_code, 'to' => $role];
+            Permissions::flush();
         }
         // Alcance por sede/área y vigencia (SCR-USR-03): solo si vienen en el pedido.
         if ($request->has('site_ids') || $request->has('area_ids')) {
@@ -174,7 +191,7 @@ class CompanyUsersController extends Controller
             if (! in_array($status, ['active', 'suspended'], true) || ($status === 'active' && $m->status === 'invited')) {
                 throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Solo se suspende o se reactiva un acceso ya aceptado.');
             }
-            if ($status === 'suspended' && $m->role_code === 'account_admin') {
+            if ($status === 'suspended' && $m->base_role_code === 'account_admin') {
                 $this->keepAdmin($m->id);
             }
             DB::update('update memberships set status = ?, updated_by = ? where id = ?', [$status, (string) auth()->id(), $m->id]);
@@ -206,19 +223,38 @@ class CompanyUsersController extends Controller
     private function membership(string $id): object
     {
         $m = Str::isUuid($id) ? DB::selectOne(
-            'select m.id, m.user_id, m.status, m.expires_at, r.code as role_code, u.email, u.full_name from memberships m join roles r on r.id = m.role_id join users u on u.id = m.user_id
+            'select m.id, m.user_id, m.status, m.expires_at, r.code as role_code, coalesce(r.base_role_code, r.code) as base_role_code, u.email, u.full_name from memberships m join roles r on r.id = m.role_id join users u on u.id = m.user_id
               where m.id = ? and m.deleted_at is null and not m.is_support_session', [$id]) : null;
 
         return $m ?? throw ApiProblem::notFound('Esa persona no tiene acceso a esta empresa.');
     }
 
-    private function assignable(string $role, array &$errors): void
+    /**
+     * Rol que se puede asignar: uno base de la lista o uno personalizado (vigente) de la cuenta de la empresa.
+     *
+     * @return object|null {id, code, base}
+     */
+    private function assignable(string $role, array &$errors): ?object
     {
-        if (! in_array($role, self::ASSIGNABLE, true)) {
+        $row = $role === '' ? null : DB::selectOne(
+            'select r.id, r.code, coalesce(r.base_role_code, r.code) as base from roles r
+              where r.code = ? and r.deleted_at is null
+                and (r.account_id is null or r.account_id = (select c.account_id from companies c where c.id = ?))
+              order by r.account_id nulls first limit 1',
+            [$role, app(CompanyContext::class)->companyId]
+        );
+        if (! $row || ! in_array($row->base, self::ASSIGNABLE, true)) {
             $errors['role_code'][] = 'Elige un rol válido.';
-        } elseif ($role === 'account_admin' && app(CompanyContext::class)->roleCode !== 'account_admin') {
-            $errors['role_code'][] = 'Solo un administrador de cuenta puede dar ese rol.';
+
+            return null;
         }
+        if ($row->base === 'account_admin' && app(CompanyContext::class)->roleCode !== 'account_admin') {
+            $errors['role_code'][] = 'Solo un administrador de cuenta puede dar ese rol.';
+
+            return null;
+        }
+
+        return $row;
     }
 
     /** @return array{0: list<string>, 1: list<string>} sedes y áreas del alcance (vacío = toda la empresa) */
@@ -280,7 +316,7 @@ class CompanyUsersController extends Controller
     private function keepAdmin(string $except): void
     {
         $others = (int) DB::selectOne("select count(*) as n from memberships m join roles r on r.id = m.role_id
-                                        where r.code = 'account_admin' and m.status = 'active' and m.deleted_at is null and m.id <> ?", [$except])->n;
+                                        where coalesce(r.base_role_code, r.code) = 'account_admin' and m.status = 'active' and m.deleted_at is null and m.id <> ?", [$except])->n;
         if ($others === 0) {
             throw new ApiProblem(409, 'conflict', 'Último administrador', 'La empresa debe conservar al menos un administrador de cuenta activo.');
         }

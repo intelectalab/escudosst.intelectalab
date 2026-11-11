@@ -1,28 +1,34 @@
 "use client";
 
 // SCR-SUS-08 · Catálogos globales (docs/03 §11): datos de la plataforma que usan todas las empresas.
+// Lo que valida un especialista SST/legal (parámetros, normas y sus requisitos, catálogo SCAT) lo cambia solo el Dueño;
+// Soporte lo ve.
 
 import { useCallback, useEffect, useState } from "react";
 import { HazardsTab, HolidaysTab, NormsTab, PacksTab } from "@/components/catalogs/OtherTabs";
 import { ParametersTab } from "@/components/catalogs/ParametersTab";
+import { ScatTab } from "@/components/catalogs/ScatTab";
+import { usePlatformUser } from "@/components/PlatformContext";
 import { PageHeader, StatCard } from "@/components/ui/Display";
 import { Icon } from "@/components/ui/Icon";
 import { Toast } from "@/components/ui/Toast";
 import { api, ApiError } from "@/lib/api";
-import type { Hazard, Holiday, LegalNorm, LegalParameter, SectorPack } from "@/lib/catalogs";
+import type { Hazard, Holiday, LegalNorm, LegalParameter, ScatItem, SectorPack } from "@/lib/catalogs";
 
-type Tab = "parameters" | "norms" | "hazards" | "packs" | "holidays";
-type Data = { parameters: LegalParameter[]; norms: LegalNorm[]; hazards: Hazard[]; packs: SectorPack[]; holidays: Holiday[] };
+type Tab = "parameters" | "norms" | "hazards" | "scat" | "packs" | "holidays";
+type Data = { parameters: LegalParameter[]; norms: LegalNorm[]; hazards: Hazard[]; scat: ScatItem[]; packs: SectorPack[]; holidays: Holiday[] };
 
 const TABS: [Tab, string, string][] = [
   ["parameters", "Parámetros legales", "shield"],
   ["norms", "Normas", "file"],
   ["hazards", "Peligros base", "lock"],
+  ["scat", "Catálogo SCAT", "checklist"],
   ["packs", "Paquetes sectoriales", "box"],
   ["holidays", "Feriados", "clock"],
 ];
 
 export default function CatalogosPage() {
+  const owner = usePlatformUser().platform_role === "owner";
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("parameters");
@@ -32,8 +38,15 @@ export default function CatalogosPage() {
 
   const load = useCallback(() => {
     const get = <T,>(path: string) => api<{ data: T }>(`/internal/catalogs/${path}`).then((r) => r.data);
-    Promise.all([get<LegalParameter[]>("legal-parameters"), get<LegalNorm[]>("legal-norms"), get<Hazard[]>("hazards"), get<SectorPack[]>("sector-packs"), get<Holiday[]>("holidays")])
-      .then(([parameters, norms, hazards, packs, holidays]) => setData({ parameters, norms, hazards, packs, holidays }))
+    Promise.all([
+      get<LegalParameter[]>("legal-parameters"),
+      get<LegalNorm[]>("legal-norms"),
+      get<Hazard[]>("hazards"),
+      get<ScatItem[]>("scat"),
+      get<SectorPack[]>("sector-packs"),
+      get<Holiday[]>("holidays"),
+    ])
+      .then(([parameters, norms, hazards, scat, packs, holidays]) => setData({ parameters, norms, hazards, scat, packs, holidays }))
       .catch((e) => setError(e instanceof ApiError ? e.message : "No pudimos cargar los catálogos."));
   }, []);
   useEffect(load, [load]);
@@ -83,9 +96,12 @@ export default function CatalogosPage() {
         ))}
       </div>
 
-      {tab === "parameters" && <ParametersTab key={paramFilter} params={data.parameters} onChanged={changed} initialState={paramFilter} onGoHolidays={() => go("holidays")} />}
-      {tab === "norms" && <NormsTab norms={data.norms} onChanged={changed} />}
+      {tab === "parameters" && (
+        <ParametersTab key={paramFilter} params={data.parameters} hazards={data.hazards} canEdit={owner} onChanged={changed} initialState={paramFilter} onGoHolidays={() => go("holidays")} />
+      )}
+      {tab === "norms" && <NormsTab norms={data.norms} canEdit={owner} onChanged={changed} />}
       {tab === "hazards" && <HazardsTab hazards={data.hazards} onChanged={changed} />}
+      {tab === "scat" && <ScatTab items={data.scat} canEdit={owner} onChanged={changed} />}
       {tab === "packs" && <PacksTab packs={data.packs} onChanged={changed} />}
       {tab === "holidays" && <HolidaysTab holidays={data.holidays} onChanged={changed} />}
 

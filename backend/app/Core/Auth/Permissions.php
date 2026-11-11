@@ -8,7 +8,9 @@ use Illuminate\Support\Facades\DB;
 /**
  * Permisos efectivos del usuario en la empresa activa (RN-USR-02):
  * los del rol de su membresía, recortados por los módulos habilitados
- * (enabled; en read_only solo las acciones de lectura).
+ * (enabled; en read_only solo las acciones de lectura). Vale igual para un rol personalizado de la cuenta: sus
+ * role_permissions (por role_id) son un subconjunto de las de su rol base (App\Modules\USR\Services\CustomRolesService).
+ * El caché es por proceso: flush() tras cambiar un rol o la membresía.
  *
  * Pendiente: recorte por membership_scopes (sede/área) y allowed_modules.
  */

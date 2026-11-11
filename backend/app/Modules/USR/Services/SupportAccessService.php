@@ -285,7 +285,7 @@ class SupportAccessService
     {
         return $this->accounts->withCompany($companyId, fn (ConnectionInterface $db) => $db->select(
             "select u.id, u.full_name, u.email from memberships m join roles r on r.id = m.role_id join users u on u.id = m.user_id
-              where m.company_id = ? and r.code = 'account_admin' and m.status = 'active' and m.deleted_at is null and u.deleted_at is null",
+              where m.company_id = ? and coalesce(r.base_role_code, r.code) = 'account_admin' and m.status = 'active' and m.deleted_at is null and u.deleted_at is null",
             [$companyId]
         ));
     }

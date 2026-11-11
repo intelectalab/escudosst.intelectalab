@@ -30,7 +30,7 @@ afterEach(function () {
 it('el panel guarda proveedores sin devolver las claves y exige claves para pasar a «en vivo»', function () {
     $h = authHeaders(tokenFor(ADMIN_EMAIL));
     $list = $this->getJson('/api/v1/internal/providers', $h)->assertOk()->json('data');
-    expect(collect($list)->pluck('code')->all())->toBe(['payments', 'einvoice', 'whatsapp', 'esign']);
+    expect(collect($list)->pluck('code')->all())->toBe(['payments', 'einvoice', 'whatsapp', 'esign', 'backups']);
 
     $this->putJson('/api/v1/internal/providers/payments', ['provider' => 'culqi', 'mode' => 'live', 'settings' => [], 'secrets' => []], $h)
         ->assertStatus(422)->assertJsonValidationErrors('mode');
@@ -53,18 +53,18 @@ it('el asistente IA responde con la biblioteca que entrena el equipo, anota lo q
     $this->postJson('/api/v1/iaa/suggest', ['feature' => 'talk', 'text' => 'Orden y limpieza'], $h)->assertOk()->assertJsonCount(4, 'data.items');
 
     // Sin tema: guía general y la pregunta queda para enseñarle; el equipo agrega el tema y ya responde.
-    $this->postJson('/api/v1/iaa/suggest', ['feature' => 'controls', 'text' => 'Soldadura en taller'], $h)->assertOk()->assertJsonPath('data.topic', null);
-    expect(\Illuminate\Support\Facades\DB::selectOne("select times from assistant_misses where feature = 'controls' and question = 'soldadura en taller'"))->not->toBeNull();
+    $this->postJson('/api/v1/iaa/suggest', ['feature' => 'controls', 'text' => 'Pintura de carteles'], $h)->assertOk()->assertJsonPath('data.topic', null);
+    expect(\Illuminate\Support\Facades\DB::selectOne("select times from assistant_misses where feature = 'controls' and question = 'pintura de carteles'"))->not->toBeNull();
 
     // El equipo le enseña desde el panel (se prueba con «Probar»; la transacción se revierte).
     $db = \Illuminate\Support\Facades\DB::connection('platform');
     $db->beginTransaction();
     try {
         $admin = authHeaders(tokenFor(ADMIN_EMAIL));
-        $this->postJson('/api/v1/internal/assistant/topics', ['feature' => 'controls', 'title' => 'Soldadura', 'keywords' => ['soldadura', 'soldar'],
-            'items' => [['group' => 'Ingeniería', 'title' => 'Extracción de humos', 'detail' => 'Extractor localizado']]], $admin)->assertCreated();
-        $this->postJson('/api/v1/internal/assistant/try', ['feature' => 'controls', 'text' => 'Soldadura en taller'], $admin)->assertOk()->assertJsonPath('data.topic', 'Soldadura');
-        expect(collect($this->getJson('/api/v1/internal/assistant', $admin)->json('data.topics'))->pluck('title')->all())->toContain('Soldadura', 'Trabajo en altura');
+        $this->postJson('/api/v1/internal/assistant/topics', ['feature' => 'controls', 'title' => 'Pintura', 'keywords' => ['pintura', 'pintar'],
+            'items' => [['group' => 'Ingeniería', 'title' => 'Pintura al agua', 'detail' => 'Menos solventes']]], $admin)->assertCreated();
+        $this->postJson('/api/v1/internal/assistant/try', ['feature' => 'controls', 'text' => 'Pintura de carteles'], $admin)->assertOk()->assertJsonPath('data.topic', 'Pintura');
+        expect(collect($this->getJson('/api/v1/internal/assistant', $admin)->json('data.topics'))->pluck('title')->all())->toContain('Pintura', 'Trabajo en altura');
     } finally {
         $db->rollBack();
     }

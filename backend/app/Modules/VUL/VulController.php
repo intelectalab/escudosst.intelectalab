@@ -244,7 +244,7 @@ class VulController extends Controller
                     MedicalAccess::uid(), MedicalAccess::uid()])->id;
             MedicalAccess::med($reauth, fn ($db) => $db->update('update vulnerability_records set work_adjustment_ref = ? where id = ?', [$adjustment, $id]));
             $team = array_column(DB::select("select m.user_id from memberships m join roles r on r.id = m.role_id
-                                              where m.status = 'active' and m.deleted_at is null and r.code = 'sst_manager'"), 'user_id');
+                                              where m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = 'sst_manager'"), 'user_id');
             $this->notify($team, 'vul.adjustment_proposed', $adjustment, 'Adecuación de puesto propuesta',
                 "Se propuso una adecuación para {$w->full_name}. Revísala con el IPERC de su puesto.", 'normal');
         }
@@ -372,7 +372,7 @@ class VulController extends Controller
             return;
         }
         $team = array_column(DB::select("select m.user_id from memberships m join roles r on r.id = m.role_id
-                                          where m.status = 'active' and m.deleted_at is null and r.code = 'sst_manager'"), 'user_id');
+                                          where m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = 'sst_manager'"), 'user_id');
         $this->notify($team, 'vul.incompatible', $id, 'Adecuación incompatible con el puesto',
             "El puesto de {$w->full_name} tiene ".count($compat['conflicts']).' peligro(s) que su adecuación restringe.', 'high');
     }

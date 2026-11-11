@@ -34,6 +34,17 @@ class WorkerRules extends RecordRules
     {
         if ($res['table'] === 'workers') {
             $this->syncAssignment($id, $values, $current);
+            // Cese (M-TRB §7 paso 3, RN-EMO-08): orden de EMO de retiro, desde la ficha o desde la carga masiva «Cesar».
+            if ($current && $current->status !== 'terminated' && ($values['status'] ?? null) === 'terminated') {
+                // Cese desde la ficha o desde la carga «Cesar»: cierra la asignación vigente, suspende sus accesos
+                // al sistema y revoca su fotocheck (M-TRB §7).
+                $on = $values['termination_on'] ?? $current->termination_on ?? now('America/Lima')->toDateString();
+                DB::update('update worker_assignments set ends_on = greatest(starts_on, ?::date) where worker_id = ? and ends_on is null and deleted_at is null', [$on, $id]);
+                DB::update("update memberships set status = 'suspended' where worker_id = ? and status = 'active' and deleted_at is null", [$id]);
+                DB::update("update credentials set status = 'revoked', revoked_at = now(), revoked_reason = ? where worker_id = ? and status in ('draft', 'issued', 'active', 'blocked') and deleted_at is null",
+                    ['Cese del trabajador', $id]);
+                \App\Modules\EMO\ExitExam::onTermination($id);
+            }
 
             return;
         }

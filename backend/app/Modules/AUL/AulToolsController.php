@@ -2,6 +2,7 @@
 
 namespace App\Modules\AUL;
 
+use App\Core\Auth\Permissions;
 use App\Core\Http\ApiProblem;
 use App\Core\Tenancy\CompanyContext;
 use App\Http\Controllers\Controller;
@@ -21,9 +22,12 @@ use Illuminate\Support\Str;
  *  GET    /aul/admin/courses/{id}/preview/lessons/{l}     preguntas de muestra sorteadas de una evaluación (no se guarda nada)
  *  POST   /aul/admin/enrollments/{id}/extend              {access_until, reason} extender acceso (SCR-AUL-05, en la bitácora)
  *  POST   /aul/admin/enrollments/{id}/reset-attempts      {lesson_id?, reason} reiniciar intentos (RN-AUL-15, en la bitácora)
- *  GET    /aul/admin/grading                              «Por calificar»: intentos enviados de preguntas abiertas o evaluaciones prácticas
- *  GET    /aul/admin/attempts/{id}                        intento con preguntas y respuestas para calificar
+ *  GET    /aul/admin/grading                              «Por calificar»: intentos enviados de preguntas abiertas o evaluaciones prácticas;
+ *                                                         ?status=graded: intentos ya calificados (para «Modificar nota»)
+ *  GET    /aul/admin/attempts/{id}                        intento con preguntas y respuestas para calificar (o ya calificado, con su historial de notas)
  *  POST   /aul/admin/attempts/{id}/grade                  {question_points? | score_pct?, feedback?} calificación manual
+ *  POST   /aul/admin/attempts/{id}/regrade                {question_points? | score_pct?, reason, feedback?} «Modificar nota» de un intento calificado:
+ *                                                         motivo obligatorio, en la bitácora y con la nota anterior en el historial del intento
  *  GET    /aul/admin/scales                               escalas de calificación (del sistema y de la empresa) (SCR-AUL-10)
  *  POST   /aul/admin/scales                               nueva escala
  *  PUT    /aul/admin/scales/{id}                          editar escala (no si un curso con calificaciones la usa)
@@ -250,17 +254,22 @@ class AulToolsController extends Controller
 
     // ─────────────── Por calificar (SCR-AUL-06 y 13) ───────────────
 
-    public function gradingQueue(): JsonResponse
+    public function gradingQueue(Request $request): JsonResponse
     {
         $this->staff();
+        $graded = $request->query('status') === 'graded';
         [$f, $b] = $this->trainerFilter('c.id');
         $rows = DB::select(
-            "select q.id, q.attempt_number, q.submitted_at, q.score, q.max_score, l.id as lesson_id, l.title as lesson, c.id as course_id, c.code as course_code, c.title as course_title,
+            "select q.id, q.attempt_number, q.submitted_at, q.score, q.max_score, q.grade_label, q.passed, q.graded_at,
+                    case when q.max_score > 0 then round(q.score * 100 / q.max_score, 2) end as score_pct,
+                    case when jsonb_typeof(q.answers->'history') = 'array' then jsonb_array_length(q.answers->'history') else 0 end as changes,
+                    l.id as lesson_id, l.title as lesson, c.id as course_id, c.code as course_code, c.title as course_title,
                     coalesce(w.full_name, cw.first_name || ' ' || cw.paternal_last_name, xl.first_name || ' ' || xl.last_name, u.full_name, 'Participante') as name
                from quiz_attempts q join course_enrollments e on e.id = q.enrollment_id join courses c on c.id = e.course_id join course_lessons l on l.id = q.lesson_id
                left join workers w on w.id = e.worker_id left join contractor_workers cw on cw.id = e.contractor_worker_id
                left join external_learners xl on xl.id = e.external_learner_id left join users u on u.id = e.user_id
-              where q.deleted_at is null and q.status = 'submitted' and e.deleted_at is null {$f} order by q.submitted_at limit 300", $b);
+              where q.deleted_at is null and e.deleted_at is null and ".($graded ? "q.status = 'graded' and q.source = 'internal'" : "q.status = 'submitted'")."
+                    {$f} order by ".($graded ? 'q.graded_at desc nulls last' : 'q.submitted_at').' limit 300', $b);
         $rows = array_values(array_filter($rows, fn ($r) => TrainerAccess::can($r->course_id, 'can_grade')));
 
         return response()->json(['data' => ['items' => $rows, 'count' => count($rows)]]);
@@ -268,7 +277,7 @@ class AulToolsController extends Controller
 
     public function attemptDetail(string $id): JsonResponse
     {
-        [$a, $l] = $this->gradable($id);
+        [$a, $l] = $this->gradable($id, ['submitted', 'graded']);
         $ans = json_decode($a->answers ?? '{}', true) ?: [];
         $detail = $ans['detail'] ?? [];
         $set = json_decode($a->question_set ?? '[]', true) ?: [];
@@ -293,7 +302,10 @@ class AulToolsController extends Controller
         return response()->json(['data' => ['id' => $a->id, 'attempt_number' => (int) $a->attempt_number, 'submitted_at' => $a->submitted_at, 'status' => $a->status,
             'lesson' => $l->title, 'practical' => ! empty($cfg['manual_grading']), 'score' => (float) $a->score, 'max_score' => (float) $a->max_score,
             'passing' => Grading::passingPct($l->passing_score !== null ? (float) $l->passing_score : null, ($c = DB::selectOne('select passing_score from courses where id = ?', [$l->course_id]))?->passing_score !== null ? (float) $c->passing_score : null, Grading::scaleOf($l->course_id)),
-            'questions' => $questions]]);
+            'questions' => $questions,
+            'score_pct' => $a->status === 'graded' && (float) $a->max_score > 0 ? round((float) $a->score * 100 / (float) $a->max_score, 2) : null,
+            'grade_label' => $a->grade_label, 'passed' => $a->passed, 'graded_at' => $a->graded_at, 'feedback' => $a->feedback, 'source' => $a->source,
+            'history' => array_values((array) ($ans['history'] ?? []))]]);
     }
 
     public function grade(Request $request, string $id): JsonResponse
@@ -302,6 +314,70 @@ class AulToolsController extends Controller
         $d = $request->validate(['question_points' => ['nullable', 'array'], 'question_points.*' => ['numeric', 'min:0'], 'score_pct' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'feedback' => ['nullable', 'string', 'max:2000']]);
         $ans = json_decode($a->answers ?? '{}', true) ?: [];
+        [$detail, $score, $pct, $passing, $passed, $label] = $this->compute($a, $l, $e, $ans, $d);
+        $res = DB::transaction(function () use ($a, $l, $e, $detail, $ans, $score, $passed, $label, $d, $pct) {
+            DB::update("update quiz_attempts set answers = ?::jsonb, score = ?, passed = ?, grade_label = ?, graded_by = ?, graded_at = now(), feedback = ?, status = 'graded', updated_by = ?, updated_at = now() where id = ?",
+                [json_encode(['detail' => $detail] + $ans, JSON_UNESCAPED_UNICODE), $score, $passed ? 'true' : 'false', $label, (string) auth()->id(), $d['feedback'] ?? null, (string) auth()->id(), $a->id]);
+            $this->audit('quiz_attempts.grade', 'quiz_attempts', $a->id, ['score_pct' => $pct, 'passed' => $passed, 'label' => $label]);
+
+            return ExamEngine::afterGrade($e, $l, $pct, $passed);
+        });
+
+        return response()->json(['data' => ['score_pct' => $pct, 'passing' => $passing, 'passed' => $passed, 'label' => $label, 'enrollment' => $res]]);
+    }
+
+    /**
+     * «Modificar nota» de un intento ya calificado (a mano o automáticamente): motivo obligatorio; la nota anterior queda
+     * en el historial del intento y el cambio en la bitácora. Se recalcula el avance: si el intento deja de aprobar y era el
+     * que daba por aprobada la evaluación, la lección vuelve a pendiente y, si el curso deja de estar completo, se anula el
+     * certificado emitido (con el motivo).
+     */
+    public function regrade(Request $request, string $id): JsonResponse
+    {
+        [$a, $l, $e] = $this->gradable($id, ['graded']);
+        if ($a->source !== 'internal') {
+            throw new ApiProblem(409, 'conflict', 'Nota importada', 'La nota de este intento viene de la plataforma externa: modifícala allí.');
+        }
+        $d = $request->validate(['question_points' => ['nullable', 'array'], 'question_points.*' => ['numeric', 'min:0'], 'score_pct' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'feedback' => ['nullable', 'string', 'max:2000'], 'reason' => ['required', 'string', 'min:5', 'max:1000']],
+            ['reason.required' => 'Indica el motivo del cambio de nota.', 'reason.min' => 'Describe el motivo del cambio (al menos 5 caracteres).']);
+        $ans = json_decode($a->answers ?? '{}', true) ?: [];
+        if (! isset($d['score_pct']) && ! array_filter((array) ($ans['detail'] ?? []), fn ($x) => ! empty($x['manual']))) {
+            $this->fail('score_pct', 'Este intento no tiene preguntas abiertas: indica la nueva nota en porcentaje.');
+        }
+        [$detail, $score, $pct, $passing, $passed, $label] = $this->compute($a, $l, $e, $ans, $d);
+        $max = (float) $a->max_score;
+        $prevPct = $max > 0 ? round((float) $a->score * 100 / $max, 2) : 0.0;
+        $wasPassed = (bool) $a->passed;
+        $me = (string) auth()->id();
+        $reason = trim($d['reason']);
+        $history = array_values((array) ($ans['history'] ?? []));
+        $history[] = ['at' => now()->toIso8601String(), 'by' => $me, 'by_name' => DB::selectOne('select full_name from users where id = ?', [$me])?->full_name, 'reason' => $reason,
+            'previous_score' => (float) $a->score, 'previous_pct' => $prevPct, 'previous_label' => $a->grade_label, 'previous_passed' => $wasPassed,
+            'previous_feedback' => $a->feedback, 'previous_graded_by' => $a->graded_by, 'previous_graded_at' => $a->graded_at,
+            'new_score' => $score, 'new_pct' => $pct, 'new_label' => $label, 'new_passed' => $passed];
+        $res = DB::transaction(function () use ($a, $l, $e, $detail, $ans, $history, $score, $passed, $label, $d, $pct, $prevPct, $wasPassed, $reason, $me) {
+            DB::update('update quiz_attempts set answers = ?::jsonb, score = ?, passed = ?, grade_label = ?, graded_by = ?, graded_at = now(), feedback = ?, updated_by = ?, updated_at = now(),
+                          version = version + 1 where id = ?',
+                [json_encode(['detail' => $detail, 'history' => $history] + $ans, JSON_UNESCAPED_UNICODE), $score, $passed ? 'true' : 'false', $label, $me,
+                    array_key_exists('feedback', $d) ? $d['feedback'] : $a->feedback, $me, $a->id]);
+            $this->audit('quiz_attempts.regrade', 'quiz_attempts', $a->id, ['reason' => $reason,
+                'before' => ['score_pct' => $prevPct, 'label' => $a->grade_label, 'passed' => $wasPassed], 'after' => ['score_pct' => $pct, 'label' => $label, 'passed' => $passed]]);
+
+            return $this->reprogress($a, $l, $e, $pct, $passed, $reason);
+        });
+
+        return response()->json(['data' => ['score_pct' => $pct, 'previous_pct' => $prevPct, 'passing' => $passing, 'passed' => $passed, 'label' => $label,
+            'history' => $history, 'enrollment' => $res]]);
+    }
+
+    /**
+     * Puntaje del intento con los puntos de las preguntas abiertas o con la nota directa (evaluación práctica).
+     *
+     * @return array{0: array, 1: float, 2: float, 3: float, 4: bool, 5: string} detalle, puntaje, %, % mínimo, ¿aprobó?, etiqueta
+     */
+    private function compute(object $a, object $l, object $e, array $ans, array $d): array
+    {
         $detail = $ans['detail'] ?? [];
         $max = (float) $a->max_score;
         if (isset($d['score_pct'])) {
@@ -328,17 +404,41 @@ class AulToolsController extends Controller
         $scale = Grading::scaleOf($e->course_id);
         $coursePassing = DB::selectOne('select passing_score from courses where id = ?', [$e->course_id])?->passing_score;
         $passing = Grading::passingPct($l->passing_score !== null ? (float) $l->passing_score : null, $coursePassing !== null ? (float) $coursePassing : null, $scale);
-        $passed = $pct >= $passing;
-        $label = Grading::label($pct, $scale);
-        $res = DB::transaction(function () use ($a, $l, $e, $detail, $ans, $score, $passed, $label, $d, $pct) {
-            DB::update("update quiz_attempts set answers = ?::jsonb, score = ?, passed = ?, grade_label = ?, graded_by = ?, graded_at = now(), feedback = ?, status = 'graded', updated_by = ?, updated_at = now() where id = ?",
-                [json_encode(['given' => $ans['given'] ?? [], 'detail' => $detail]), $score, $passed ? 'true' : 'false', $label, (string) auth()->id(), $d['feedback'] ?? null, (string) auth()->id(), $a->id]);
-            $this->audit('quiz_attempts.grade', 'quiz_attempts', $a->id, ['score_pct' => $pct, 'passed' => $passed, 'label' => $label]);
 
-            return ExamEngine::afterGrade($e, $l, $pct, $passed);
-        });
+        return [$detail, $score, $pct, $passing, $pct >= $passing, Grading::label($pct, $scale)];
+    }
 
-        return response()->json(['data' => ['score_pct' => $pct, 'passing' => $passing, 'passed' => $passed, 'label' => $label, 'enrollment' => $res]]);
+    /** Avance de la matrícula tras modificar la nota de un intento (ver regrade). */
+    private function reprogress(object $a, object $l, object $e, float $pct, bool $passed, string $reason): ?array
+    {
+        $latest = DB::selectOne("select id from quiz_attempts where enrollment_id = ? and lesson_id = ? and status = 'graded' and deleted_at is null order by submitted_at desc nulls last limit 1",
+            [$e->id, $l->id])?->id;
+        $otherPassed = (bool) DB::selectOne("select 1 as ok from quiz_attempts where enrollment_id = ? and lesson_id = ? and status = 'graded' and passed and deleted_at is null and id <> ?",
+            [$e->id, $l->id, $a->id]);
+        if ($passed) {
+            if ($latest !== $a->id && $otherPassed) {
+                return null;   // otro intento aprobado ya define el avance
+            }
+            DB::update("update course_enrollments set status = 'in_progress' where id = ? and status = 'failed'", [$e->id]);
+            $state = ExamEngine::afterGrade($e, $l, $pct, true);
+            DB::update("update training_certificates set score = (select final_score from course_enrollments where id = ?), updated_at = now()
+                         where course_enrollment_id = ? and deleted_at is null and status <> 'voided'", [$e->id, $e->id]);
+
+            return $state;
+        }
+        if ($otherPassed) {
+            return null;
+        }
+        Progress::mark($e, $l->id, ['done' => false, 'passed' => false, 'score' => null]);
+        $state = ExamEngine::afterGrade($e, $l, $pct, false);
+        if (DB::selectOne('select status from course_enrollments where id = ?', [$e->id])?->status !== 'completed') {
+            DB::update('update course_enrollments set completed_at = null, passed = null, certificate_id = null where id = ?', [$e->id]);
+            DB::update("update training_certificates set status = 'voided', voided_by = ?, voided_at = now(), void_reason = ?, updated_at = now()
+                         where course_enrollment_id = ? and deleted_at is null and status <> 'voided'",
+                [(string) auth()->id(), mb_substr('Nota modificada: '.$reason, 0, 1000), $e->id]);
+        }
+
+        return $state;
     }
 
     // ─────────────── Escalas de calificación (SCR-AUL-10) ───────────────
@@ -347,9 +447,9 @@ class AulToolsController extends Controller
     {
         $this->staff();
         $rows = DB::select(
-            "select g.id, g.company_id, g.code, g.name, g.scale_type, g.min_value, g.max_value, g.passing_value, g.passing_label, g.bands, g.decimals, g.is_default, g.status,
+            'select g.id, g.company_id, g.code, g.name, g.scale_type, g.min_value, g.max_value, g.passing_value, g.passing_label, g.bands, g.decimals, g.is_default, g.status,
                     (select count(*) from courses c where c.grading_scale_id = g.id and c.deleted_at is null and c.company_id is not null) as courses
-               from grading_scales g where g.deleted_at is null order by g.company_id nulls first, g.status, g.code");
+               from grading_scales g where g.deleted_at is null order by g.company_id nulls first, g.status, g.code');
         foreach ($rows as $r) {
             $r->bands = json_decode($r->bands ?? '[]', true) ?: [];
             $r->system = $r->company_id === null;
@@ -359,7 +459,7 @@ class AulToolsController extends Controller
             unset($r->company_id);
         }
 
-        return response()->json(['data' => ['items' => $rows, 'can_edit' => in_array('aul.grading_scales.update', \App\Core\Auth\Permissions::effective(), true) && ! TrainerAccess::isTrainer()]]);
+        return response()->json(['data' => ['items' => $rows, 'can_edit' => in_array('aul.grading_scales.update', Permissions::effective(), true) && ! TrainerAccess::isTrainer()]]);
     }
 
     public function createScale(Request $request): JsonResponse
@@ -431,9 +531,9 @@ class AulToolsController extends Controller
         $v = $this->ruleRules($request, null);
         $me = (string) auth()->id();
         $row = DB::selectOne(
-            "insert into recommendation_rules (company_id, code, name, description, rule_type, parameters, audience, course_ids, channels, max_sends_per_person, send_period_days,
+            'insert into recommendation_rules (company_id, code, name, description, rule_type, parameters, audience, course_ids, channels, max_sends_per_person, send_period_days,
                 requires_consent, priority, is_active, created_by, updated_by)
-             values (?, ?, ?, ?, ?, ?::jsonb, ?, ?::uuid[], ?::text[], ?, ?, ?, ?, ?, ?, ?) returning id",
+             values (?, ?, ?, ?, ?, ?::jsonb, ?, ?::uuid[], ?::text[], ?, ?, ?, ?, ?, ?, ?) returning id',
             [app(CompanyContext::class)->companyId, $v['code'], $v['name'], $v['description'], $v['rule_type'], json_encode($v['parameters']), $v['audience'], $this->pgArray($v['course_ids']),
                 $this->pgArray($v['channels']), $v['max_sends_per_person'], $v['send_period_days'], $v['requires_consent'] ? 'true' : 'false', $v['priority'], $v['is_active'] ? 'true' : 'false', $me, $me]);
         $this->audit('recommendation_rules.create', 'recommendation_rules', $row->id, ['code' => $v['code'], 'rule_type' => $v['rule_type']]);
@@ -594,8 +694,11 @@ class AulToolsController extends Controller
         }
     }
 
-    /** @return array{0: object, 1: object, 2: object} intento, evaluación y matrícula */
-    private function gradable(string $id): array
+    /**
+     * @param  list<string>  $statuses  estados admitidos (por defecto, «enviado» = por calificar)
+     * @return array{0: object, 1: object, 2: object} intento, evaluación y matrícula
+     */
+    private function gradable(string $id, array $statuses = ['submitted']): array
     {
         $this->staff();
         $a = Str::isUuid($id) ? DB::selectOne('select * from quiz_attempts where id = ? and deleted_at is null', [$id]) : null;
@@ -604,8 +707,10 @@ class AulToolsController extends Controller
         }
         $e = $this->enrollment($a->enrollment_id);
         TrainerAccess::require($e->course_id, 'can_grade', 'No tienes permiso para calificar en este curso.');
-        if ($a->status !== 'submitted') {
-            throw new ApiProblem(409, 'conflict', 'Ya calificado', 'Este intento no está pendiente de calificación.');
+        if (! in_array($a->status, $statuses, true)) {
+            throw $a->status === 'graded'
+                ? new ApiProblem(409, 'conflict', 'Ya calificado', 'Este intento ya tiene nota: usa «Modificar nota» e indica el motivo.')
+                : new ApiProblem(409, 'conflict', 'Sin calificar', 'Este intento todavía no tiene nota.');
         }
 
         return [$a, DB::selectOne('select * from course_lessons where id = ?', [$a->lesson_id]), $e];

@@ -266,7 +266,7 @@ class EventRules extends RecordRules
         };
         $users = array_column(DB::select(
             "select distinct m.user_id from memberships m join roles r on r.id = m.role_id
-              where m.company_id = ? and m.status = 'active' and m.deleted_at is null and r.code = any(?::text[])",
+              where m.company_id = ? and m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = any(?::text[])",
             [$e->company_id, '{'.implode(',', $roles).'}']), 'user_id');
         if ($e->area_lead) {
             $users[] = $e->area_lead;

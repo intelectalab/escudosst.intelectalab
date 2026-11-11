@@ -11,6 +11,7 @@ use App\Modules\SUS\Http\Controllers\PlanCatalogController;
 use App\Modules\SUS\Http\Controllers\PlanModulesController;
 use App\Modules\SUS\Http\Controllers\PlatformNotificationsController;
 use App\Modules\SUS\Http\Controllers\ProvidersController;
+use App\Modules\SUS\Http\Controllers\SpecialistCatalogsController;
 use App\Modules\SUS\Http\Controllers\SubscriptionsController;
 use App\Modules\SUS\Http\Controllers\SupportTicketsController;
 use Illuminate\Support\Facades\Route;
@@ -25,8 +26,8 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal')->group(funct
     Route::post('support-tickets/{id}/close', [SupportTicketsController::class, 'close'])->whereUuid('id');
     // Proveedores y claves (IA, pagos, facturación electrónica, WhatsApp, firma digital): solo el dueño cambia claves.
     Route::get('providers', [ProvidersController::class, 'index']);
-    Route::put('providers/{code}', [ProvidersController::class, 'update'])->whereIn('code', ['payments', 'einvoice', 'whatsapp', 'esign'])->middleware('platform.owner');
-    Route::post('providers/{code}/test', [ProvidersController::class, 'test'])->whereIn('code', ['payments', 'einvoice', 'whatsapp', 'esign'])->middleware('throttle:10,1');
+    Route::put('providers/{code}', [ProvidersController::class, 'update'])->whereIn('code', ['payments', 'einvoice', 'whatsapp', 'esign', 'backups'])->middleware('platform.owner');
+    Route::post('providers/{code}/test', [ProvidersController::class, 'test'])->whereIn('code', ['payments', 'einvoice', 'whatsapp', 'esign', 'backups'])->middleware(['platform.owner', 'throttle:10,1']);
     // SCR-SUS-01 · Planes y módulos
     Route::get('plans', [PlanModulesController::class, 'index']);
     Route::patch('plans/{plan}', [PlanCatalogController::class, 'updatePlan'])->where('plan', '[A-Za-z]');
@@ -46,11 +47,28 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal')->group(funct
     Route::prefix('catalogs')->group(function () {
         Route::get('/', [CatalogsController::class, 'summary']);
         Route::get('legal-parameters', [CatalogsController::class, 'legalParameters']);
-        Route::post('legal-parameters/{id}/versions', [CatalogsController::class, 'newVersion'])->whereUuid('id');
-        Route::post('legal-parameters/{id}/confirm', [CatalogsController::class, 'confirm'])->whereUuid('id');
         Route::get('legal-norms', [CatalogsController::class, 'legalNorms']);
-        Route::post('legal-norms', [CatalogsController::class, 'saveNorm']);
-        Route::patch('legal-norms/{id}', [CatalogsController::class, 'saveNorm'])->whereUuid('id');
+        // Contenido que valida un especialista SST/legal: lo lee el equipo, lo cambia solo el Dueño.
+        Route::get('legal-parameters/{id}/companies', [SpecialistCatalogsController::class, 'overrides'])->whereUuid('id');
+        Route::get('legal-norms/{id}/requirements', [SpecialistCatalogsController::class, 'requirements'])->whereUuid('id');
+        Route::get('scat', [SpecialistCatalogsController::class, 'scat']);
+        Route::middleware('platform.owner')->group(function () {
+            Route::post('legal-parameters/{id}/versions', [CatalogsController::class, 'newVersion'])->whereUuid('id');
+            Route::post('legal-parameters/{id}/confirm', [CatalogsController::class, 'confirm'])->whereUuid('id');
+            Route::put('legal-parameters/{id}/companies/{company}', [SpecialistCatalogsController::class, 'setOverride'])->whereUuid(['id', 'company']);
+            Route::delete('legal-parameters/{id}/companies/{company}', [SpecialistCatalogsController::class, 'removeOverride'])->whereUuid(['id', 'company']);
+            Route::post('legal-norms', [CatalogsController::class, 'saveNorm']);
+            Route::patch('legal-norms/{id}', [CatalogsController::class, 'saveNorm'])->whereUuid('id');
+            Route::post('legal-norms/{id}/requirements', [SpecialistCatalogsController::class, 'createRequirement'])->whereUuid('id');
+            Route::patch('norm-requirements/{id}', [SpecialistCatalogsController::class, 'updateRequirement'])->whereUuid('id');
+            Route::post('norm-requirements/{id}/confirm', [SpecialistCatalogsController::class, 'confirmRequirement'])->whereUuid('id');
+            Route::post('norm-requirements/{id}/archive', [SpecialistCatalogsController::class, 'archiveRequirement'])->whereUuid('id');
+            Route::post('norm-requirements/{id}/restore', [SpecialistCatalogsController::class, 'restoreRequirement'])->whereUuid('id');
+            Route::post('scat', [SpecialistCatalogsController::class, 'createScat']);
+            Route::post('scat/reorder', [SpecialistCatalogsController::class, 'reorderScat']);
+            Route::patch('scat/{id}', [SpecialistCatalogsController::class, 'updateScat'])->whereUuid('id');
+            Route::post('scat/{id}/confirm', [SpecialistCatalogsController::class, 'confirmScat'])->whereUuid('id');
+        });
         Route::get('hazards', [CatalogsController::class, 'hazards']);
         Route::post('hazards', [CatalogsController::class, 'saveHazard']);
         Route::patch('hazards/{id}', [CatalogsController::class, 'saveHazard'])->whereUuid('id');

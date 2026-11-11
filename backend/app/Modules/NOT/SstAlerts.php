@@ -130,7 +130,7 @@ final class SstAlerts
                 continue;
             }
             $team = $roles ? array_column($db->select(
-                "select m.user_id from memberships m join roles r on r.id = m.role_id where m.company_id = ? and m.status = 'active' and m.deleted_at is null and r.code = any(?::text[])",
+                "select m.user_id from memberships m join roles r on r.id = m.role_id where m.company_id = ? and m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = any(?::text[])",
                 [$company, '{'.implode(',', $roles).'}']
             ), 'user_id') : [];
             foreach ($rows as $r) {

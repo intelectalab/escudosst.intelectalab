@@ -154,8 +154,8 @@ class AssignmentsController extends Controller
         $out = [];
         foreach ($this->p()->select('select id from companies where account_id = ? and deleted_at is null', [$account]) as $c) {
             $rows = $this->accounts->withCompany($c->id, fn (ConnectionInterface $db) => $db->select(
-                "select m.user_id, r.code from memberships m join roles r on r.id = m.role_id
-                  where m.company_id = ? and m.status = 'active' and m.deleted_at is null and r.code in ('consultant', 'account_admin')", [$c->id]));
+                "select m.user_id, coalesce(r.base_role_code, r.code) as code from memberships m join roles r on r.id = m.role_id
+                  where m.company_id = ? and m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) in ('consultant', 'account_admin')", [$c->id]));
             foreach ($rows as $r) {
                 $out[$r->user_id] = ($out[$r->user_id] ?? null) === 'account_admin' ? 'account_admin' : $r->code;
             }

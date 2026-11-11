@@ -3,6 +3,7 @@
 // Copias de seguridad en «Salud del sistema» (docs/15 §9): estado por base, últimas copias y «Hacer copia ahora».
 // Las copias se cifran en el servidor; sin la llave (guardada fuera del servidor) no se pueden abrir.
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { usePlatformUser } from "@/components/PlatformContext";
 import { Button } from "@/components/ui/Button";
@@ -12,7 +13,7 @@ import { api } from "@/lib/api";
 
 type Target = { target: string; label: string; last_ok_at: string | null; last_size_bytes: number | null; last_status: string | null; last_error: string | null; overdue: boolean };
 type Run = { id: string; target: string; trigger: string; status: "running" | "ok" | "failed"; started_at: string; finished_at: string | null; size_bytes: number | null; error: string | null; deleted_at: string | null; requested_by: string | null; remote_status: "skipped" | "ok" | "failed" | null; remote_uploaded_at: string | null; remote_deleted_at: string | null };
-type Remote = { configured: boolean; destination: string | null; retention_days: number; last_upload_at: string | null; last_status: "ok" | "failed" | null; last_error: string | null; message: string | null };
+type Remote = { configured: boolean; source?: "panel" | "env" | null; destination: string | null; retention_days: number; last_upload_at: string | null; last_status: "ok" | "failed" | null; last_error: string | null; message: string | null };
 type Status = { targets: Target[]; runs: Run[]; config: { disk: string; retention_days: number; daily_at: string; max_age_hours: number; keys_ready: boolean }; remote?: Remote };
 
 const size = (b: number | null) => (b == null ? "–" : b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${(b / 1024).toFixed(0)} KB`);
@@ -89,9 +90,13 @@ export function BackupsSection({ onToast }: { onToast: (t: string) => void }) {
             {s.remote.configured ? (
               <span className="block text-muted">
                 {s.remote.destination} · última subida: <b className="text-fg">{when(s.remote.last_upload_at)}</b> · se guardan {s.remote.retention_days} días
+                {s.remote.source === "env" ? " · configurada en el servidor (BACKUP_S3_*)" : ""}
               </span>
             ) : (
-              <span className="block text-muted">{s.remote.message ?? "Las copias solo quedan en el servidor."} Se activa con las variables BACKUP_S3_* del servidor.</span>
+              <span className="block text-muted">
+                {s.remote.message ?? "Las copias solo quedan en el servidor."} Actívala en{" "}
+                <Link href="/plataforma/proveedores" className="font-semibold text-brand hover:underline">Proveedores y claves › Copias de seguridad externas</Link>.
+              </span>
             )}
             {s.remote.configured && s.remote.last_status === "failed" && <span className="mt-1 block text-xs text-bad">La última subida falló: {s.remote.last_error}</span>}
           </span>

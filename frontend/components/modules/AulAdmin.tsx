@@ -18,6 +18,7 @@ import { FormField, SwitchRow } from "@/components/ui/Form";
 import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
 import { Bar, Kpi, fmtNum } from "./Summary";
+import { MoodleModal } from "./AulMoodle";
 import { RefSelect } from "./RefSelect";
 import { errorText } from "./Wizard";
 
@@ -112,6 +113,7 @@ export function AulLanding({ readOnly }: { readOnly: boolean }) {
   const [seg, setSeg] = useState<"all" | "published" | "draft">("all");
   const [creating, setCreating] = useState(false);
   const [trainers, setTrainers] = useState(false);
+  const [moodle, setMoodle] = useState(false);
 
   useEffect(() => {
     api<{ data: Overview }>("/aul/admin/overview", { withCompany: true }).then((r) => setData(r.data)).catch((e) => setError(errorText(e)));
@@ -140,6 +142,7 @@ export function AulLanding({ readOnly }: { readOnly: boolean }) {
           </Link>
         )}
         <Button icon="people" onClick={() => setTrainers(true)}>Capacitadores</Button>
+        {data.can.update_course && <Button icon="plug" onClick={() => setMoodle(true)}>Moodle (opcional)</Button>}
         {data.can.create_course && !readOnly && <Button variant="primary" icon="plus" onClick={() => setCreating(true)}>Nuevo curso</Button>}
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -170,6 +173,7 @@ export function AulLanding({ readOnly }: { readOnly: boolean }) {
         <span><b className="text-fg">Tiempo de permanencia real.</b> Se mide por actividad dentro del curso (lectura, video, respuestas); una ventana abierta sin interacción no suma. Así se acreditan las horas de capacitación.</span>
       </p>
       {creating && <NewCourse onClose={() => setCreating(false)} />}
+      {moodle && <MoodleModal readOnly={readOnly} onClose={() => setMoodle(false)} />}
       {trainers && <TrainersModal canEdit={data.can.trainers && !readOnly} onClose={() => setTrainers(false)} />}
     </div>
   );

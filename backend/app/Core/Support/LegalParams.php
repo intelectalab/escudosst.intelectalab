@@ -15,11 +15,25 @@ final class LegalParams
     {
         $company = app()->bound(CompanyContext::class) ? app(CompanyContext::class)->companyId : null;
         $v = DB::selectOne(
-            "select value from legal_parameters where key = ? and (company_id is null or company_id = ?) and valid_from <= current_date
-                and (valid_to is null or valid_to >= current_date) and deleted_at is null order by company_id nulls last, valid_from desc limit 1",
+            'select value from legal_parameters where key = ? and (company_id is null or company_id = ?) and valid_from <= current_date
+                and (valid_to is null or valid_to >= current_date) and deleted_at is null order by company_id nulls last, valid_from desc limit 1',
             [$key, $company]
         );
 
         return is_numeric($v->value ?? null) ? (float) $v->value : $default;
+    }
+
+    /** Parámetro sí/no ('true'/'false', '1'/'0'); sin parámetro vigente, el valor de respaldo. */
+    public static function flag(string $key, bool $default): bool
+    {
+        $company = app()->bound(CompanyContext::class) ? app(CompanyContext::class)->companyId : null;
+        $v = DB::selectOne(
+            'select value from legal_parameters where key = ? and (company_id is null or company_id = ?) and valid_from <= current_date
+                and (valid_to is null or valid_to >= current_date) and deleted_at is null order by company_id nulls last, valid_from desc limit 1',
+            [$key, $company]
+        );
+        $b = filter_var($v->value ?? null, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+        return $b ?? $default;
     }
 }

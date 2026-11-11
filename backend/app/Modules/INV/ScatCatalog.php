@@ -2,6 +2,9 @@
 
 namespace App\Modules\INV;
 
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
+
 /**
  * Catálogo SCAT de EscudoSST (M-INV SCR-INV-04): taxonomía propia que sigue la estructura del modelo de causalidad
  * (tipo de contacto → causas inmediatas → causas básicas → necesidades de acción de control). Redacción propia,
@@ -14,6 +17,9 @@ namespace App\Modules\INV;
  *  - factores del trabajo       → basic / job_factor            (FT01…)
  *  - necesidades de control     → lack_of_control / management_system (NAC01-P|E|C)
  * El tipo de contacto (C01…) se guarda en investigations.scat_contact.
+ *
+ * El catálogo vigente está en la tabla global scat_catalog_items (lo edita el dueño de la plataforma en Catálogos globales);
+ * las constantes de abajo son la carga inicial y el respaldo si la tabla está vacía.
  */
 final class ScatCatalog
 {
@@ -123,41 +129,107 @@ final class ScatCatalog
         'C' => 'Cumplimiento inadecuado de los estándares',
     ];
 
-    /** Nivel y categoría de una causa por su código (null si el código no es del catálogo). */
-    public static function classify(string $code): ?array
+    /** Nivel del catálogo → [nivel de la causa, categoría, grupo de la API]. */
+    public const LEVELS = [
+        'contact' => [null, null, 'contact'],
+        'immediate_act' => ['immediate', 'unsafe_act', 'acts'],
+        'immediate_condition' => ['immediate', 'unsafe_condition', 'conditions'],
+        'basic_personal' => ['basic', 'personal_factor', 'personal'],
+        'basic_job' => ['basic', 'job_factor', 'job'],
+        'nac' => ['lack_of_control', 'management_system', 'nac'],
+    ];
+
+    private const CACHE = 'inv.scat_catalog_items';
+
+    /**
+     * Elementos del catálogo por código (activos e inactivos), leídos una vez por solicitud. Se leen de scat_catalog_items (lo edita el dueño de la
+     * plataforma); si la tabla está vacía o no existe, se usan las constantes de esta clase.
+     */
+    public static function items(): array
     {
-        if (isset(self::ACTS[$code])) {
-            return ['immediate', 'unsafe_act', self::ACTS[$code]];
+        if (app()->bound(self::CACHE)) {
+            return app(self::CACHE);
         }
-        if (isset(self::CONDITIONS[$code])) {
-            return ['immediate', 'unsafe_condition', self::CONDITIONS[$code]];
+        try {
+            $rows = DB::select('select level, code, label, explanation, category, is_active, to_confirm from scat_catalog_items order by level, sort_order, code');
+        } catch (QueryException) {
+            $rows = [];
         }
-        if (isset(self::PERSONAL[$code])) {
-            return ['basic', 'personal_factor', self::PERSONAL[$code]];
+        $out = [];
+        foreach ($rows as $r) {
+            $out[$r->code] = ['level' => $r->level, 'code' => $r->code, 'label' => $r->label, 'explanation' => $r->explanation, 'category' => $r->category,
+                'is_active' => (bool) $r->is_active, 'to_confirm' => (bool) $r->to_confirm];
         }
-        if (isset(self::JOB[$code])) {
-            return ['basic', 'job_factor', self::JOB[$code]];
-        }
-        if (preg_match('/^(NAC\d{2})-([PEC])$/', $code, $m) && isset(self::NAC[$m[1]])) {
-            return ['lack_of_control', 'management_system', self::NAC[$m[1]].' · '.self::PEC[$m[2]]];
+        if ($out === []) {
+            foreach (['contact' => self::CONTACT, 'immediate_act' => self::ACTS, 'immediate_condition' => self::CONDITIONS,
+                'basic_personal' => self::PERSONAL, 'basic_job' => self::JOB, 'nac' => self::NAC] as $level => $list) {
+                foreach ($list as $code => $label) {
+                    $out[$code] = ['level' => $level, 'code' => $code, 'label' => $label, 'explanation' => null, 'category' => null, 'is_active' => true, 'to_confirm' => true];
+                }
+            }
         }
 
-        return null;
+        app()->instance(self::CACHE, $out);
+
+        return $out;
+    }
+
+    /** Olvida lo leído (tras editar el catálogo en el panel). */
+    public static function flush(): void
+    {
+        app()->forgetInstance(self::CACHE);
+    }
+
+    /** Texto del catálogo de un código (o el mismo código si ya no existe). */
+    public static function label(string $code): string
+    {
+        return self::items()[$code]['label'] ?? $code;
+    }
+
+    /** Códigos de tipo de contacto activos. */
+    public static function contactCodes(bool $activeOnly = true): array
+    {
+        return array_keys(array_filter(self::items(), fn ($i) => $i['level'] === 'contact' && (! $activeOnly || $i['is_active'])));
+    }
+
+    /**
+     * Nivel y categoría de una causa por su código (null si el código no es del catálogo).
+     *
+     * @return array{0: string, 1: string, 2: string, 3: bool}|null [nivel, categoría, descripción, activo]
+     */
+    public static function classify(string $code): ?array
+    {
+        $items = self::items();
+        if (preg_match('/^(NAC\d{2,3})-([PEC])$/', $code, $m)) {
+            $i = $items[$m[1]] ?? null;
+
+            return $i && $i['level'] === 'nac' ? ['lack_of_control', 'management_system', $i['label'].' · '.self::PEC[$m[2]], $i['is_active']] : null;
+        }
+        $i = $items[$code] ?? null;
+        if (! $i || $i['level'] === 'contact' || $i['level'] === 'nac') {
+            return null;
+        }
+        [$level, $category] = self::LEVELS[$i['level']];
+
+        return [$level, $category, $i['label'], $i['is_active']];
     }
 
     public static function toArray(): array
     {
-        $list = fn (array $a) => array_map(fn ($k, $v) => ['code' => $k, 'label' => $v], array_keys($a), $a);
+        $out = ['contact' => [], 'acts' => [], 'conditions' => [], 'personal' => [], 'job' => [], 'nac' => []];
+        $pending = false;
+        foreach (self::items() as $i) {
+            if (! $i['is_active']) {
+                continue;
+            }
+            $pending = $pending || $i['to_confirm'];
+            $out[self::LEVELS[$i['level']][2]][] = ['code' => $i['code'], 'label' => $i['label'], 'explanation' => $i['explanation'], 'category' => $i['category']];
+        }
+        $out['pec'] = array_map(fn ($k, $v) => ['code' => $k, 'label' => $v], array_keys(self::PEC), self::PEC);
+        $out['note'] = $pending
+            ? 'Catálogo propio de EscudoSST basado en la estructura del modelo SCAT; a confirmar por especialista SST.'
+            : 'Catálogo propio de EscudoSST basado en la estructura del modelo SCAT; revisado por especialista SST.';
 
-        return [
-            'contact' => $list(self::CONTACT),
-            'acts' => $list(self::ACTS),
-            'conditions' => $list(self::CONDITIONS),
-            'personal' => $list(self::PERSONAL),
-            'job' => $list(self::JOB),
-            'nac' => $list(self::NAC),
-            'pec' => $list(self::PEC),
-            'note' => 'Catálogo propio de EscudoSST basado en la estructura del modelo SCAT; a confirmar por especialista SST.',
-        ];
+        return $out;
     }
 }

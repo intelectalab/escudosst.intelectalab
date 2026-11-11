@@ -3,6 +3,7 @@
 use App\Modules\USR\Http\Controllers\AccountSecurityController;
 use App\Modules\USR\Http\Controllers\AuthController;
 use App\Modules\USR\Http\Controllers\CompanyUsersController;
+use App\Modules\USR\Http\Controllers\CustomRolesController;
 use App\Modules\USR\Http\Controllers\InvitationController;
 use App\Modules\USR\Http\Controllers\MeController;
 use App\Modules\USR\Http\Controllers\MfaController;
@@ -57,6 +58,11 @@ Route::middleware(['auth:sanctum', 'company', 'module:USR'])->prefix('company')-
     Route::get('users', [CompanyUsersController::class, 'index']);
     Route::get('roles', [CompanyUsersController::class, 'roles']);
     Route::get('roles/matrix', [RolesMatrixController::class, 'matrix']);
+    // Roles personalizados de la cuenta (derivan de un rol base, sin exceder sus permisos)
+    Route::get('roles/manage', [CustomRolesController::class, 'index']);
+    Route::post('roles', [CustomRolesController::class, 'store']);
+    Route::patch('roles/{role}', [CustomRolesController::class, 'update'])->whereUuid('role');
+    Route::delete('roles/{role}', [CustomRolesController::class, 'destroy'])->whereUuid('role');
     Route::get('scope-options', [RolesMatrixController::class, 'scopeOptions']);
     Route::post('users', [CompanyUsersController::class, 'store'])->middleware('throttle:login');
     Route::patch('users/{membership}', [CompanyUsersController::class, 'update'])->whereUuid('membership');

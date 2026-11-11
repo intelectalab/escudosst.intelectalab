@@ -21,6 +21,56 @@ export type LegalParameter = {
   is_current: boolean;
   area: "sst" | "privacy" | "sales" | "web" | "billing";
   kind: "legal" | "internal" | "pending" | "reference";
+  /** Dónde lo usa el sistema, en lenguaje simple. */
+  used_in: string[];
+};
+
+/** Parámetros cuyo valor es una lista de familias de peligro del catálogo base (se editan con casillas). */
+export const FAMILY_LIST_PARAMS = ["minor_forbidden_hazard_families"];
+
+/** Valor propio de una empresa para un parámetro legal. */
+export type ParamOverride = { company_id: string; company_name: string; id: string; value: string; valid_from: string };
+
+/** Requisito del catálogo de una norma (lo usa «Agregar desde el catálogo» de la matriz legal). */
+export type NormRequirement = {
+  id: string;
+  article: string | null;
+  requirement: string;
+  topic: string | null;
+  applicability: string | null;
+  evidence_expected: string | null;
+  frequency: string | null;
+  sort_order: number;
+  to_confirm: boolean;
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  archived: boolean;
+};
+
+export type ScatLevel = "contact" | "immediate_act" | "immediate_condition" | "basic_personal" | "basic_job" | "nac";
+
+export type ScatItem = {
+  id: string;
+  level: ScatLevel;
+  code: string;
+  label: string;
+  explanation: string | null;
+  category: string | null;
+  sort_order: number;
+  is_active: boolean;
+  to_confirm: boolean;
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+};
+
+/** Niveles del catálogo SCAT: nombre, prefijo del código y para qué sirve. */
+export const SCAT_LEVELS: Record<ScatLevel, { label: string; prefix: string; hint: string }> = {
+  contact: { label: "Tipo de contacto", prefix: "C", hint: "Cómo ocurrió el contacto con la energía o sustancia (paso 1 del asistente)." },
+  immediate_act: { label: "Actos subestándar", prefix: "A", hint: "Causas inmediatas: lo que hizo la persona." },
+  immediate_condition: { label: "Condiciones subestándar", prefix: "S", hint: "Causas inmediatas: cómo estaba el lugar, el equipo o el entorno." },
+  basic_personal: { label: "Factores personales", prefix: "FP", hint: "Causas básicas que explican el acto o la condición desde la persona." },
+  basic_job: { label: "Factores del trabajo", prefix: "FT", hint: "Causas básicas que vienen de la organización del trabajo." },
+  nac: { label: "Necesidades de acción de control", prefix: "NAC", hint: "Elemento del sistema de gestión que falló (programa, estándar o cumplimiento)." },
 };
 
 export const PARAM_AREAS: Record<LegalParameter["area"], string> = {
@@ -46,6 +96,8 @@ export type LegalNorm = {
   official_url: string | null;
   status: "current" | "amended" | "repealed";
   parameters_count: number;
+  requirements_count?: number;
+  requirements_to_confirm?: number;
 };
 
 export type Hazard = {

@@ -1,7 +1,7 @@
 "use client";
 
 // USR · piezas de «Usuarios de la empresa» (M-USR SCR-USR-02/03/04): alcance por sede/área, vigencia,
-// doble factor y la matriz de roles y permisos en solo lectura.
+// doble factor y la matriz de roles y permisos en solo lectura (los roles personalizados se editan en CustomRoles.tsx).
 
 import { useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "@/lib/api";
@@ -206,15 +206,18 @@ function limaDate(v: string | null | undefined): string {
 export function EditAccessModal({
   member,
   roleCode,
+  roleBase,
   onClose,
   onDone,
 }: {
-  member: { id: string; full_name: string; role_code: string; role_name: string; expires_at?: string | null; scopes?: Scope[] };
+  member: { id: string; full_name: string; role_code: string; base_role_code?: string; role_name: string; expires_at?: string | null; scopes?: Scope[] };
   roleCode?: string;
+  /** Rol base del rol nuevo (un rol personalizado se comporta como su rol base). */
+  roleBase?: string;
   onClose: () => void;
   onDone: (msg: string) => void;
 }) {
-  const role = roleCode ?? member.role_code;
+  const role = roleCode ? (roleBase ?? roleCode) : (member.base_role_code ?? member.role_code);
   const [value, setValue] = useState({
     site_ids: (member.scopes ?? []).filter((s) => s.type === "site" && s.id).map((s) => s.id as string),
     area_ids: (member.scopes ?? []).filter((s) => s.type === "area" && s.id).map((s) => s.id as string),

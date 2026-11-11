@@ -48,8 +48,8 @@ class MfaService
 
         DbContext::setUser($userId);
         $roles = DB::select(
-            'select m.role_code, r.requires_mfa from app_my_memberships() m
-               join roles r on r.code = m.role_code and r.account_id is null'
+            'select r.code as role_code, r.requires_mfa from app_my_memberships() m
+               join roles r on r.code = split_part(m.role_code, \':\', 1) and r.account_id is null'
         );
 
         foreach ($roles as $role) {

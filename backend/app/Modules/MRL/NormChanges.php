@@ -79,7 +79,7 @@ final class NormChanges
         $label = trim(self::TYPE[$norm->norm_type] ?? '').' '.$norm->number;
         $team = array_column($db->select(
             "select distinct m.user_id from memberships m join roles r on r.id = m.role_id
-              where m.company_id = ? and m.status = 'active' and m.deleted_at is null and r.code = 'sst_manager'", [$company]), 'user_id');
+              where m.company_id = ? and m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = 'sst_manager'", [$company]), 'user_id');
         $sent = 0;
         foreach ($team as $user) {
             $sent += $db->affectingStatement(

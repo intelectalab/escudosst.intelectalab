@@ -229,10 +229,7 @@ class WorkerImport extends Controller
         $id = $this->records->update($res, $r['existing_id'], [
             'status' => 'terminated', 'termination_on' => $r['termination_on'], 'termination_reason' => $r['termination_reason'],
         ])['id'];
-        DB::update('update worker_assignments set ends_on = greatest(starts_on, ?::date) where worker_id = ? and ends_on is null and deleted_at is null', [$r['termination_on'], $id]);
-        DB::update("update memberships set status = 'suspended' where worker_id = ? and status = 'active' and deleted_at is null", [$id]);
-        DB::update("update credentials set status = 'revoked', revoked_at = now(), revoked_reason = ? where worker_id = ? and status in ('draft', 'issued', 'active', 'blocked') and deleted_at is null",
-            ['Cese del trabajador', $id]);
+        // Cerrar asignación, suspender accesos y revocar el fotocheck lo hace la regla del cese (WorkerRules::after).
 
         return $id;
     }

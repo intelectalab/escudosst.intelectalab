@@ -36,10 +36,10 @@ class SubscriptionNotifier
         $link = '/inicio';
 
         $recipients = $this->accounts->withCompany($sub->company_id, fn (ConnectionInterface $db) => $db->select(
-            "select u.id, u.full_name, u.email, r.code as role
+            "select u.id, u.full_name, u.email, coalesce(r.base_role_code, r.code) as role
                from memberships m join roles r on r.id = m.role_id join users u on u.id = m.user_id
               where m.company_id = ? and m.status = 'active' and m.deleted_at is null and u.deleted_at is null
-                and r.code = any(?::text[])",
+                and coalesce(r.base_role_code, r.code) = any(?::text[])",
             [$sub->company_id, '{'.implode(',', self::RECIPIENT_ROLES).'}']
         ));
 

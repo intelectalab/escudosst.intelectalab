@@ -78,7 +78,7 @@ final class ExpiryAlerts
 
         $team = array_column($db->select(
             "select m.user_id from memberships m join roles r on r.id = m.role_id
-              where m.company_id = ? and m.status = 'active' and m.deleted_at is null and r.code = 'sst_manager'", [$company]), 'user_id');
+              where m.company_id = ? and m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = 'sst_manager'", [$company]), 'user_id');
         $created = 0;
         foreach ($docs as $d) {
             $what = $d->worker ? "«{$d->name}» de {$d->worker}" : "«{$d->name}»";

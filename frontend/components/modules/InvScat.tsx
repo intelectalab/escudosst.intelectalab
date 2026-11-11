@@ -15,7 +15,7 @@ import { FindingAction } from "@/components/records/Process";
 import { Card } from "./Summary";
 import { Wizard, type WizardStep } from "./Wizard";
 
-type Item = { code: string; label: string };
+type Item = { code: string; label: string; explanation?: string | null };
 type Catalog = { contact: Item[]; acts: Item[]; conditions: Item[]; personal: Item[]; job: Item[]; nac: Item[]; pec: Item[]; note: string };
 type Cause = {
   id: string; cause_level: string; cause_category: string | null; scat_code: string; description: string; note: string; parent_code: string | null;
@@ -72,7 +72,7 @@ function PickList({ items, value, onChange, parents, withPec, pecs, group }: {
             <li key={i.code} className={`px-3 py-2 ${sel ? "bg-brand-soft/40" : ""}`}>
               <label className="flex cursor-pointer items-start gap-2 text-sm">
                 <input type="checkbox" className="mt-1" checked={!!sel} onChange={() => toggle(i.code)} />
-                <span><span className="font-mono text-[11px] text-muted">{i.code}</span> {i.label}</span>
+                <span><span className="font-mono text-[11px] text-muted">{i.code}</span> {i.label}{i.explanation && <span className="block text-xs text-muted">{i.explanation}</span>}</span>
               </label>
               {sel && (
                 <div className="mt-2 grid gap-2 pl-6 sm:grid-cols-2">
@@ -118,7 +118,7 @@ function ScatWizard({ inv, state, catalog, onClose, onSaved }: { inv: RecordRow;
             return (
               <label key={c.code} className={`flex cursor-pointer items-start gap-2 rounded-xl border p-3 text-sm ${on ? "border-brand bg-brand-soft/50" : "border-line hover:border-brand/50"}`}>
                 <input type="checkbox" className="mt-1" checked={on} onChange={() => set({ contact: on ? d.contact.filter((x) => x !== c.code) : [...d.contact, c.code] })} />
-                <span><span className="font-mono text-[11px] text-muted">{c.code}</span> {c.label}</span>
+                <span><span className="font-mono text-[11px] text-muted">{c.code}</span> {c.label}{c.explanation && <span className="block text-xs text-muted">{c.explanation}</span>}</span>
               </label>
             );
           })}

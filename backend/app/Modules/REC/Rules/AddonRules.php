@@ -182,7 +182,7 @@ class AddonRules extends RecordRules
                  where mw.id = ?
                 union
                 select m.user_id from memberships m join roles r on r.id = m.role_id join membership_scopes s on s.membership_id = m.id and s.deleted_at is null
-                 where r.code = 'area_lead' and m.status = 'active' and m.deleted_at is null
+                 where coalesce(r.base_role_code, r.code) = 'area_lead' and m.status = 'active' and m.deleted_at is null
                    and ((s.scope_type = 'area' and s.area_id = ?) or (s.scope_type = 'site' and s.site_id = ?))
              ) u where u.user_id is not null",
             [$w->manager_worker_id, $w->current_area_id, $w->site_id]);

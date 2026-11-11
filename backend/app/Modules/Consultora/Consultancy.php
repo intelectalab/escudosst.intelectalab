@@ -25,7 +25,7 @@ final class Consultancy
         if (! $account) {
             throw ApiProblem::forbidden('El panel de la consultora es para las cuentas con el plan Consultora.');
         }
-        $mine = DB::select('select membership_id, company_id, company_name, ruc, role_code from app_my_memberships() order by company_name');
+        $mine = DB::select('select membership_id, company_id, company_name, ruc, split_part(role_code, \':\', 1) as role_code from app_my_memberships() order by company_name');
         $info = [];
         if ($mine) {
             foreach ($p->select('select id, account_id, managed_by_account_id, economic_sector, sst_model from companies where id = any(?::uuid[]) and deleted_at is null',

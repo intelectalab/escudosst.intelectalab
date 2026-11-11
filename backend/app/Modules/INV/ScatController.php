@@ -14,7 +14,8 @@ use Illuminate\Support\Str;
 
 /**
  * Método SCAT e informe de la investigación (M-INV SCR-INV-04 y SCR-INV-06):
- *  GET /inv/scat/catalog                  catálogo SCAT (contacto, actos, condiciones, factores, NAC)
+ *  GET /inv/scat/catalog                  catálogo SCAT activo (contacto, actos, condiciones, factores, NAC), de la tabla global
+ *                                         scat_catalog_items que edita el dueño de la plataforma (respaldo: ScatCatalog)
  *  GET /inv/investigations/{id}/scat      lo elegido en el asistente (contacto y causas con código SCAT)
  *  PUT /inv/investigations/{id}/scat      guarda el asistente {contact[], immediate[{code,note}], basic[{code,note,parent}],
  *                                         nac[{code,pec,note,parent}]}: crea, actualiza o quita causas con código SCAT
@@ -47,9 +48,11 @@ class ScatController extends Controller
         if (in_array($inv->status, self::LOCKED, true)) {
             throw new ApiProblem(409, 'conflict', 'Investigación aprobada', 'La investigación ya está aprobada: el análisis SCAT no se cambia. Los nuevos hallazgos van como adenda.');
         }
+        // Códigos desactivados en el catálogo: solo valen si la investigación ya los tenía (se conservan tal cual).
+        $had = array_column(DB::select('select scat_code from investigation_causes where investigation_id = ? and scat_code is not null and deleted_at is null', [$inv->id]), 'scat_code');
         $d = $request->validate([
             'contact' => ['required', 'array', 'min:1'],
-            'contact.*' => ['string', 'in:'.implode(',', array_keys(ScatCatalog::CONTACT))],
+            'contact.*' => ['string', 'in:'.implode(',', array_unique([...ScatCatalog::contactCodes(), ...$this->contact($inv)]))],
             'immediate' => ['required', 'array', 'min:1'],
             'immediate.*.code' => ['required', 'string'],
             'immediate.*.note' => ['nullable', 'string', 'max:500'],
@@ -76,7 +79,7 @@ class ScatController extends Controller
         foreach (['immediate' => 'immediate', 'basic' => 'basic'] as $key => $level) {
             foreach ($d[$key] as $i => $c) {
                 $cls = ScatCatalog::classify($c['code']);
-                if (! $cls || $cls[0] !== $level) {
+                if (! $cls || $cls[0] !== $level || (! $cls[3] && ! in_array($c['code'], $had, true))) {
                     $this->fail("{$key}.{$i}.code", 'Ese código no es del catálogo SCAT para este paso.');
                 }
                 $want[$c['code']] = [$cls[0], $cls[1], $this->text($cls[2], $c['note'] ?? null), $key === 'basic' ? ($c['parent'] ?? null) : null];
@@ -85,7 +88,7 @@ class ScatController extends Controller
         foreach ($d['nac'] as $i => $c) {
             $code = $c['code'].'-'.$c['pec'];
             $cls = ScatCatalog::classify($code);
-            if (! $cls) {
+            if (! $cls || (! $cls[3] && ! in_array($code, $had, true))) {
                 $this->fail("nac.{$i}.code", 'Ese elemento de control no es del catálogo SCAT.');
             }
             $want[$code] = [$cls[0], $cls[1], $this->text($cls[2], $c['note'] ?? null), $c['parent'] ?? null];
@@ -186,7 +189,7 @@ class ScatController extends Controller
                 'id' => $inv->id, 'code' => $inv->code, 'method' => $inv->method, 'status' => $inv->status, 'started_on' => $inv->started_on, 'due_on' => $inv->due_on,
                 'summary' => $inv->summary, 'immediate_causes' => $inv->immediate_causes, 'basic_causes' => $inv->basic_causes, 'conclusions' => $inv->conclusions,
                 'lessons_learned' => $inv->lessons_learned, 'approved_at' => $inv->approved_at, 'approved_by' => $approver,
-                'scat_contact' => array_map(fn ($c) => ['code' => $c, 'label' => ScatCatalog::CONTACT[$c] ?? $c], $this->contact($inv)),
+                'scat_contact' => array_map(fn ($c) => ['code' => $c, 'label' => ScatCatalog::label($c)], $this->contact($inv)),
             ],
             'event' => $event,
             'team' => $team,

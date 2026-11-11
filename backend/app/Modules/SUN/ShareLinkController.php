@@ -102,7 +102,7 @@ class ShareLinkController extends Controller
         if ($approval) {
             $approvers = array_column(DB::select(
                 "select m.user_id from memberships m join roles r on r.id = m.role_id
-                  where m.status = 'active' and m.deleted_at is null and r.code = any(?::text[]) and m.user_id <> ?",
+                  where m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = any(?::text[]) and m.user_id <> ?",
                 ['{'.implode(',', self::APPROVER_ROLES).'}', $me]), 'user_id');
             foreach (array_unique($approvers) as $u) {
                 DB::insert(

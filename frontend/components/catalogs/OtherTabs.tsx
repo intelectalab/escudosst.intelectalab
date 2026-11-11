@@ -1,8 +1,8 @@
 "use client";
 
-// Pestañas de Catálogos globales: normas legales, peligros base, paquetes sectoriales y feriados.
+// Pestañas de Catálogos globales: normas legales (con su catálogo de requisitos), peligros base, paquetes sectoriales y feriados.
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Chip, Code, EmptyState } from "@/components/ui/Display";
 import { FilterBar, FilterSelect, SearchInput } from "@/components/ui/FilterBar";
@@ -11,7 +11,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
 import { api, ApiError } from "@/lib/api";
 import { SECTORS } from "@/lib/accounts";
-import { dateOnly, HAZARD_FAMILIES, type Hazard, type Holiday, type LegalNorm, NORM_STATUS, NORM_TYPES, PACK_ITEM_TYPES, PACK_STATUS, type SectorPack } from "@/lib/catalogs";
+import { dateOnly, HAZARD_FAMILIES, type Hazard, type Holiday, type LegalNorm, NORM_STATUS, NORM_TYPES, type NormRequirement, PACK_ITEM_TYPES, PACK_STATUS, type SectorPack } from "@/lib/catalogs";
 
 type Done = (msg: string) => void;
 const sectorLabel = (s: string | null) => SECTORS.find(([v]) => v === s)?.[1] ?? s ?? "";
@@ -50,9 +50,10 @@ function Footer({ onClose, form, saving, label = "Guardar" }: { onClose: () => v
 
 // ---------------------------------------------------------------- Normas
 
-export function NormsTab({ norms, onChanged }: { norms: LegalNorm[]; onChanged: Done }) {
+export function NormsTab({ norms, onChanged, canEdit = true }: { norms: LegalNorm[]; onChanged: Done; canEdit?: boolean }) {
   const [f, setF] = useState({ q: "", type: "", status: "" });
   const [edit, setEdit] = useState<LegalNorm | "new" | null>(null);
+  const [reqs, setReqs] = useState<LegalNorm | null>(null);
   const list = norms.filter(
     (n) =>
       (!f.q || [n.number, n.title, n.issuing_entity ?? ""].some((v) => v.toLowerCase().includes(f.q.toLowerCase()))) &&
@@ -62,10 +63,13 @@ export function NormsTab({ norms, onChanged }: { norms: LegalNorm[]; onChanged: 
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button icon="plus" onClick={() => setEdit("new")}>
-          Nueva norma
-        </Button>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted">Cada norma trae sus requisitos de catálogo: las empresas los agregan a su matriz legal con «Agregar desde el catálogo».</p>
+        {canEdit && (
+          <Button icon="plus" onClick={() => setEdit("new")}>
+            Nueva norma
+          </Button>
+        )}
       </div>
       <FilterBar count={`${list.length} de ${norms.length} normas`} onClear={f.q || f.type || f.status ? () => setF({ q: "", type: "", status: "" }) : undefined}>
         <SearchInput label="Buscar normas" placeholder="Número, título o entidad" value={f.q} onChange={(q) => setF({ ...f, q })} />
@@ -79,8 +83,13 @@ export function NormsTab({ norms, onChanged }: { norms: LegalNorm[]; onChanged: 
       ) : (
         <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
           {list.map((n) => (
-            <li key={n.id}>
-              <button type="button" onClick={() => setEdit(n)} className="grid w-full gap-2 px-4 py-3 text-left hover:bg-bg/60 sm:px-5 lg:grid-cols-[12rem_minmax(0,1fr)_auto] lg:items-center">
+            <li key={n.id} className="flex flex-col gap-2 pb-3 hover:bg-bg/60 lg:flex-row lg:items-center lg:pb-0 lg:pr-4">
+              <button
+                type="button"
+                onClick={() => canEdit && setEdit(n)}
+                disabled={!canEdit}
+                className="grid w-full flex-1 gap-2 px-4 py-3 text-left disabled:cursor-default sm:px-5 lg:grid-cols-[12rem_minmax(0,1fr)_auto] lg:items-center"
+              >
                 <span>
                   <span className="block text-xs text-muted">{NORM_TYPES[n.norm_type]}</span>
                   <span className="font-semibold">{n.number}</span>
@@ -98,12 +107,247 @@ export function NormsTab({ norms, onChanged }: { norms: LegalNorm[]; onChanged: 
                   </Chip>
                 </span>
               </button>
+              <span className="flex shrink-0 items-center gap-2 px-4 lg:px-0">
+                <Button variant="soft" size="sm" icon="checklist" onClick={() => setReqs(n)}>
+                  Requisitos ({Number(n.requirements_count ?? 0)})
+                </Button>
+                {Number(n.requirements_to_confirm ?? 0) > 0 && <Chip tone="amber">{n.requirements_to_confirm} por confirmar</Chip>}
+              </span>
             </li>
           ))}
         </ul>
       )}
       {edit && <NormModal norm={edit === "new" ? null : edit} onClose={() => setEdit(null)} onDone={(m) => (setEdit(null), onChanged(m))} />}
+      {reqs && <RequirementsModal norm={reqs} canEdit={canEdit} onClose={() => setReqs(null)} onChanged={onChanged} />}
     </div>
+  );
+}
+
+type Flagged = { companies: number; requirements: number; notified: number };
+const EMPTY_REQ = { article: "", requirement: "", topic: "", applicability: "", evidence_expected: "", frequency: "" };
+
+/** Mensaje tras cambiar el catálogo: cuántos requisitos de las empresas quedaron «requiere revisión». */
+function flaggedMsg(base: string, f?: Flagged) {
+  return f && f.requirements > 0 ? `${base} ${f.requirements} requisito(s) de ${f.companies} empresa(s) quedaron «requiere revisión».` : base;
+}
+
+/** Requisitos del catálogo de una norma: ver, agregar, editar, confirmar y archivar. */
+function RequirementsModal({ norm, canEdit, onClose, onChanged }: { norm: LegalNorm; canEdit: boolean; onClose: () => void; onChanged: Done }) {
+  const [list, setList] = useState<NormRequirement[] | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [form, setForm] = useState<(typeof EMPTY_REQ & { id?: string }) | null>(null);
+  const [confirming, setConfirming] = useState<NormRequirement | null>(null);
+  const [who, setWho] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+  const { saving, errors, run } = useSave();
+
+  const load = useCallback(() => {
+    api<{ data: { requirements: NormRequirement[] } }>(`/internal/catalogs/legal-norms/${norm.id}/requirements`)
+      .then((r) => setList(r.data.requirements))
+      .catch((e) => setFailed(e instanceof ApiError ? e.message : "No pudimos cargar los requisitos."));
+  }, [norm.id]);
+  useEffect(load, [load]);
+
+  const after = (msg: string, f?: Flagged) => {
+    load();
+    onChanged(flaggedMsg(msg, f));
+  };
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    if (!form) return;
+    const { id, ...body } = form;
+    let flagged: Flagged | undefined;
+    const ok = await run(async () => {
+      const r = await api<{ data: { flagged?: Flagged } }>(id ? `/internal/catalogs/norm-requirements/${id}` : `/internal/catalogs/legal-norms/${norm.id}/requirements`, {
+        method: id ? "PATCH" : "POST",
+        body,
+      });
+      flagged = r.data.flagged;
+    });
+    if (ok) {
+      setForm(null);
+      after(id ? "Requisito actualizado: queda «por confirmar»." : "Requisito agregado: queda «por confirmar».", flagged);
+    }
+  }
+
+  async function action(r: NormRequirement, path: "archive" | "restore") {
+    try {
+      const res = await api<{ data: { flagged?: Flagged } }>(`/internal/catalogs/norm-requirements/${r.id}/${path}`, { method: "POST", body: {} });
+      after(path === "archive" ? "Requisito archivado: ya no se ofrece a las empresas." : "Requisito restaurado.", res.data.flagged);
+    } catch (e) {
+      onChanged(e instanceof ApiError ? e.message : "No se pudo completar la acción.");
+    }
+  }
+
+  async function confirm(e: FormEvent) {
+    e.preventDefault();
+    if (!confirming) return;
+    const ok = await run(() => api(`/internal/catalogs/norm-requirements/${confirming.id}/confirm`, { method: "POST", body: { confirmed_by: who.trim() } }));
+    if (ok) {
+      setConfirming(null);
+      setWho("");
+      after("Requisito confirmado.");
+    }
+  }
+
+  const active = (list ?? []).filter((r) => !r.archived);
+  const archived = (list ?? []).filter((r) => r.archived);
+  const field = (k: keyof typeof EMPTY_REQ, label: string, max: number, hint?: string) => (
+    <FormField label={label} hint={hint} error={errors[k]?.[0]}>
+      <input className="input" maxLength={max} value={form?.[k] ?? ""} onChange={(e) => form && setForm({ ...form, [k]: e.target.value })} />
+    </FormField>
+  );
+
+  return (
+    <Modal title={`Requisitos de ${NORM_TYPES[norm.norm_type] ?? ""} ${norm.number}`} subtitle={norm.title} icon="checklist" size="lg" onClose={onClose}>
+      <div className="space-y-4">
+        <p className="flex items-start gap-2 rounded-xl bg-amber-soft px-3 py-2 text-sm text-amber-ink">
+          <Icon name="shield" size={16} className="mt-0.5 shrink-0" />
+          El texto es referencial hasta que un especialista SST o legal lo confirme. Si agregas, cambias o archivas un requisito, los requisitos que las empresas tienen de esta norma quedan «requiere
+          revisión».
+        </p>
+        {errors._ && <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{errors._[0]}</p>}
+        {canEdit && !form && (
+          <div className="flex justify-end">
+            <Button icon="plus" size="sm" onClick={() => setForm({ ...EMPTY_REQ })}>
+              Nuevo requisito
+            </Button>
+          </div>
+        )}
+        {form && (
+          <form onSubmit={save} className="space-y-3 rounded-xl border border-brand/30 bg-brand-soft/30 p-3" noValidate>
+            <p className="font-semibold">{form.id ? "Editar requisito" : "Nuevo requisito"}</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {field("article", "Artículo", 60)}
+              {field("topic", "Tema", 60, "Ej.: capacitacion, comite.")}
+              {field("frequency", "Frecuencia", 80, "Ej.: Anual, Por obra.")}
+            </div>
+            <FormField label="Requisito" error={errors.requirement?.[0]} counter={`${form.requirement.length}/1000`}>
+              <textarea className="input min-h-20" maxLength={1000} value={form.requirement} onChange={(e) => setForm({ ...form, requirement: e.target.value })} />
+            </FormField>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {field("applicability", "A quién aplica", 300, "Sector, tamaño o actividad. Vacío: a todas.")}
+              {field("evidence_expected", "Evidencia esperada", 300)}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setForm(null)}>
+                Cancelar
+              </Button>
+              <Button type="submit" size="sm" icon="check" loading={saving}>
+                Guardar
+              </Button>
+            </div>
+          </form>
+        )}
+        {confirming && (
+          <form onSubmit={confirm} className="space-y-3 rounded-xl border border-ok/30 bg-ok-soft/40 p-3" noValidate>
+            <p className="text-sm">
+              Confirma el texto de <b>{confirming.article ?? "este requisito"}</b>. Hazlo solo con la revisión de un especialista SST o legal.
+            </p>
+            <FormField label="Especialista que lo validó" hint="Nombre y cargo. Queda en la bitácora." error={errors.confirmed_by?.[0]}>
+              <input className="input" maxLength={120} value={who} onChange={(e) => setWho(e.target.value)} placeholder="Ej.: Ing. Rosa Salas, especialista SST" />
+            </FormField>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setConfirming(null)}>
+                Cancelar
+              </Button>
+              <Button type="submit" size="sm" icon="check" loading={saving}>
+                Confirmar
+              </Button>
+            </div>
+          </form>
+        )}
+        {failed ? (
+          <p className="text-bad">{failed}</p>
+        ) : !list ? (
+          <div className="h-32 animate-pulse rounded-xl bg-line/40" />
+        ) : active.length === 0 ? (
+          <EmptyState icon="checklist" text="Esta norma aún no tiene requisitos en el catálogo." />
+        ) : (
+          <ul className="divide-y divide-line rounded-xl border border-line">
+            {active.map((r) => (
+              <li key={r.id} className="space-y-1.5 px-3 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {r.article && <Code>{r.article}</Code>}
+                  {r.topic && <Chip tone="na">{r.topic}</Chip>}
+                  {r.to_confirm ? (
+                    <Chip tone="amber" dot>
+                      Por confirmar
+                    </Chip>
+                  ) : (
+                    <span title={`Confirmado por ${r.confirmed_by ?? ""}`}>
+                      <Chip tone="ok" dot>
+                        Confirmado
+                      </Chip>
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm">{r.requirement}</p>
+                <p className="text-xs text-muted">
+                  {[r.applicability && `Aplica a: ${r.applicability}`, r.evidence_expected && `Evidencia: ${r.evidence_expected}`, r.frequency && `Frecuencia: ${r.frequency}`].filter(Boolean).join(" · ")}
+                </p>
+                {canEdit && (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon="pen"
+                      onClick={() =>
+                        setForm({
+                          id: r.id,
+                          article: r.article ?? "",
+                          requirement: r.requirement,
+                          topic: r.topic ?? "",
+                          applicability: r.applicability ?? "",
+                          evidence_expected: r.evidence_expected ?? "",
+                          frequency: r.frequency ?? "",
+                        })
+                      }
+                    >
+                      Editar
+                    </Button>
+                    {r.to_confirm && (
+                      <Button variant="soft" size="sm" icon="check" onClick={() => setConfirming(r)}>
+                        Confirmar
+                      </Button>
+                    )}
+                    <Button variant="danger-ghost" size="sm" icon="close" onClick={() => action(r, "archive")}>
+                      Archivar
+                    </Button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {archived.length > 0 && (
+          <div>
+            <button type="button" onClick={() => setShowArchived(!showArchived)} className="inline-flex items-center gap-1 text-sm font-semibold text-brand hover:underline" aria-expanded={showArchived}>
+              <Icon name="chevron" size={15} className={`transition-transform ${showArchived ? "rotate-90" : ""}`} />
+              Archivados ({archived.length})
+            </button>
+            {showArchived && (
+              <ul className="mt-2 space-y-2">
+                {archived.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-bg px-3 py-2 text-sm text-muted">
+                    <span className="min-w-0 flex-1">
+                      {r.article ? `${r.article} · ` : ""}
+                      {r.requirement}
+                    </span>
+                    {canEdit && (
+                      <Button variant="ghost" size="sm" icon="refresh" onClick={() => action(r, "restore")}>
+                        Restaurar
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
