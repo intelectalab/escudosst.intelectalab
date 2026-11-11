@@ -20,7 +20,7 @@ export function screenCodeFor(path: string): string | null {
   if (path === "/inicio") return "SCR-DSH-01";
   if (path.startsWith("/cuenta")) return "SCR-USR-05";
   if (path.startsWith("/soporte")) return "SCR-USR-07";
-  const m = path.match(/^\/m\/([a-z0-9]{3})/);
+  const m = path.match(/^\/m\/([a-z0-9]{3})(?:[/?]|$)/i);
   return m ? `SCR-${m[1].toUpperCase()}-01` : null;
 }
 

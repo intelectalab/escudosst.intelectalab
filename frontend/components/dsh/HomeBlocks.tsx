@@ -20,7 +20,7 @@ export type Home = {
   monthly: { current: YearSummary; previous: YearSummary | null } | null;
   actions: { open: number; items: { id: string; code: string; title: string; source_type: string; priority: string; status: string; due_on: string; responsible: string | null }[] } | null;
   heatmap: { total: number; cells: { p: number; s: number; count: number; rows: HeatRow[] }[] } | null;
-  activity: { id: string; at: string; actor: string; verb: string; what: string; name: string | null; module: string | null; module_name: string | null; table: string | null; entity_id: string | null }[];
+  activity: { id: string; at: string; actor: string; verb: string; full?: boolean; what: string; name: string | null; module: string | null; module_name: string | null; table: string | null; entity_id: string | null }[];
   management?: {
     compliance: { pct: number; indicators: number } | null;
     accidents: { current: number; previous: number; days: number; previous_days: number } | null;
@@ -321,7 +321,7 @@ export function ActivityCard({ items }: { items: Home["activity"] }) {
           {items.map((a) => {
             const text = (
               <>
-                <b>{a.actor}</b> {a.verb} {a.name ? <>«{a.name}»</> : "un registro"} en {a.what}
+                {a.full ? <><b>{a.actor}</b> {a.verb} · {a.what}</> : <><b>{a.actor}</b> {a.verb} {a.name ? <>«{a.name}»</> : "un registro"} en {a.what}</>}
               </>
             );
             return (

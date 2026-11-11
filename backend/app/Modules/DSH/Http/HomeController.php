@@ -229,6 +229,7 @@ class HomeController extends Controller
             return [
                 'id' => $r->id, 'at' => $r->occurred_at, 'actor' => $r->actor_name ?? 'Sistema',
                 'action' => $r->action, 'verb' => $this->verb($r->action),
+                'full' => ! in_array($r->action, ['create', 'update', 'delete', 'submit', 'approve', 'return', 'close', 'sign', 'signature_signed', 'restore', 'finish'], true),
                 'what' => $res['tab'] ?? Str::headline($r->entity_type), 'name' => $name,
                 'module' => $module, 'module_name' => $module ? ($modules[$module] ?? $module) : null,
                 'table' => $res ? $r->entity_type : null, 'entity_id' => $r->entity_id,
@@ -240,8 +241,13 @@ class HomeController extends Controller
     {
         return match ($action) {
             'create' => 'registró', 'update' => 'actualizó', 'delete' => 'eliminó', 'submit' => 'envió a aprobación',
-            'approve' => 'aprobó', 'return' => 'observó', 'close' => 'cerró', 'sign' => 'firmó', 'restore' => 'restauró',
-            default => str_replace('_', ' ', $action),
+            'approve' => 'aprobó', 'return' => 'observó', 'close' => 'cerró', 'sign' => 'firmó', 'signature_signed' => 'firmó', 'restore' => 'restauró',
+            'finish' => 'terminó',
+            // Acciones que ya dicen todo: la frase no lleva «un registro en …» (ver full()).
+            'worker_app_activated' => 'activó su app del trabajador', 'worker_app_activation_issued' => 'generó un acceso a la app del trabajador',
+            'seed_defaults' => 'preparó la configuración inicial', 'member_invited' => 'invitó a un usuario',
+            // Cualquier otra acción interna se muestra en español genérico (nunca el código en inglés).
+            default => 'hizo un cambio',
         };
     }
 
