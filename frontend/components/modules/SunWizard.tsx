@@ -1,7 +1,7 @@
 "use client";
 
 // Nuevo expediente SUNAFIL (M-SUN, SCR-SUN-03): tipo y orden de inspección → inspector y comparecencia → periodo →
-// trabajador inspeccionado → obligaciones requeridas → resumen. Al confirmar crea el expediente y lo arma con los
+// trabajadores inspeccionados (uno o varios: una sección por trabajador) → obligaciones requeridas → resumen. Al confirmar crea el expediente y lo arma con los
 // datos reales de la empresa (POST /sun/dossiers/{id}/build, DossierBuilder): queda «completo» o «con brechas».
 
 import Link from "next/link";
@@ -23,8 +23,7 @@ type Data = {
   period_to: string;
   site_id: string;
   site_label: string;
-  worker_id: string;
-  worker_label: string;
+  workers: { id: string; label: string }[];
   obligations: string[];
   obligation_names: Record<string, string>;
 };
@@ -84,7 +83,7 @@ export function SunWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
   const now = new Date();
   const initial: Data = {
     request_type: "sunafil_inspection", inspection_order_number: "", inspector_name: "", appearance_at: "", period_from: `${now.getFullYear()}-01-01`,
-    period_to: iso(now), site_id: "", site_label: "", worker_id: "", worker_label: "", obligations: [], obligation_names: {},
+    period_to: iso(now), site_id: "", site_label: "", workers: [], obligations: [], obligation_names: {},
   };
   const steps: WizardStep<Data>[] = [
     {
@@ -133,12 +132,27 @@ export function SunWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
     },
     {
       title: "Trabajadores",
-      hint: "Si la inspección es por un trabajador, elígelo: se agrega su expediente (inducción, capacitaciones, aptitud, EPP, RISST, IPERC y fotocheck).",
+      hint: "Si la inspección es por uno o varios trabajadores, agrégalos: cada uno tiene su sección (inducción, capacitaciones, aptitud, EPP, RISST, IPERC y fotocheck).",
+      validate: (d) => (d.workers.length > 50 ? "Elige hasta 50 trabajadores por expediente." : null),
       render: (d, set) => (
-        <FormField label="Trabajador inspeccionado (opcional)">
-          <RefSelect module="SUN" table="dossier_items" field="worker_id" label="Trabajador" placeholder="Ninguno: expediente de la empresa" value={d.worker_id}
-            onChange={(id, label) => set({ worker_id: id, worker_label: id ? label : "" })} />
-        </FormField>
+        <div className="space-y-3">
+          <FormField label="Agregar trabajador inspeccionado (opcional)">
+            <RefSelect module="SUN" table="dossier_items" field="worker_id" label="Trabajador" placeholder={d.workers.length ? "Agregar otro trabajador" : "Ninguno: expediente de la empresa"} value=""
+              exclude={d.workers.map((w) => w.id)}
+              onChange={(id, label) => id && !d.workers.some((w) => w.id === id) && set({ workers: [...d.workers, { id, label }] })} />
+          </FormField>
+          {d.workers.length > 0 && (
+            <ul className="space-y-2" aria-label="Trabajadores inspeccionados">
+              {d.workers.map((w, i) => (
+                <li key={w.id} className="flex min-h-12 items-center gap-3 rounded-xl border border-line px-3 py-2 text-sm">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-bold text-brand-strong">{i + 1}</span>
+                  <span className="flex-1 font-medium">{w.label}</span>
+                  <button type="button" className="font-semibold text-bad hover:underline" aria-label={`Quitar a ${w.label}`} onClick={() => set({ workers: d.workers.filter((x) => x.id !== w.id) })}>Quitar</button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       ),
     },
     {
@@ -166,7 +180,7 @@ export function SunWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
           <SummaryRow label="Inspector" value={d.inspector_name} onEdit={() => goTo(1)} />
           <SummaryRow label="Comparecencia" value={d.appearance_at ? new Intl.DateTimeFormat("es-PE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(d.appearance_at)) : ""} onEdit={() => goTo(1)} />
           <SummaryRow label="Periodo" value={`${dmy(d.period_from)} al ${dmy(d.period_to)}${d.site_label ? ` · ${d.site_label}` : ""}`} onEdit={() => goTo(2)} />
-          <SummaryRow label="Trabajador" value={d.worker_label || "Expediente de la empresa"} onEdit={() => goTo(3)} />
+          <SummaryRow label="Trabajadores" value={d.workers.length ? `${d.workers.length}: ${d.workers.map((w) => w.label).join(", ")}` : "Expediente de la empresa"} onEdit={() => goTo(3)} />
           <SummaryRow label="Obligaciones" value={d.obligations.map((m) => d.obligation_names[m] ?? m).join(", ")} onEdit={() => goTo(4)} />
         </div>
       )}
@@ -182,10 +196,10 @@ export function SunWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
           period_to: d.period_to,
           site_id: d.site_id || null,
           scope_modules: d.obligations,
-          scope: { obligations: d.obligations, worker_id: d.worker_id || null },
+          scope: { obligations: d.obligations, worker_ids: d.workers.map((w) => w.id), worker_id: d.workers[0]?.id ?? null },
         });
         const id = r.data.id;
-        const b = await api<{ data: { total: number; gaps: number } }>(`/sun/dossiers/${id}/build`, { method: "POST", withCompany: true, body: { worker_id: d.worker_id || null } });
+        const b = await api<{ data: { total: number; gaps: number } }>(`/sun/dossiers/${id}/build`, { method: "POST", withCompany: true, body: { worker_ids: d.workers.map((w) => w.id) } });
         onDone();
         return (
           <div className="space-y-3">

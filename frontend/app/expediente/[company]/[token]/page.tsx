@@ -6,6 +6,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
+import { downloadFile } from "@/lib/records";
 
 type Item = { code: string; title: string; status: string; gap: string | null; per_worker: boolean };
 type Data = {
@@ -14,6 +15,8 @@ type Data = {
   items: Item[];
   expires_at: string;
   views_left: number | null;
+  allow_download?: boolean;
+  downloads_left?: number | null;
 };
 
 const ST: Record<string, [string, string]> = {
@@ -28,6 +31,13 @@ export default function ExpedienteCompartido() {
   const { company, token } = useParams<{ company: string; token: string }>();
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dl, setDl] = useState<{ busy: boolean; msg: string | null }>({ busy: false, msg: null });
+  const download = () => {
+    setDl({ busy: true, msg: null });
+    downloadFile(`/public/sun/${company}/${token}/download`, "expediente.zip")
+      .then(() => setDl({ busy: false, msg: "Descarga lista." }))
+      .catch((e: ApiError) => setDl({ busy: false, msg: e.detail ?? e.title }));
+  };
   useEffect(() => {
     api<{ data: Data }>(`/public/sun/${company}/${token}`).then((r) => setData(r.data)).catch((e: ApiError) => setError(e.detail ?? "El enlace no es válido."));
   }, [company, token]);
@@ -39,7 +49,13 @@ export default function ExpedienteCompartido() {
         {error && <div className="rounded-2xl bg-white p-6 shadow">{error}</div>}
         {!error && !data && <div className="rounded-2xl bg-white p-6 shadow">Cargando…</div>}
         {data && (
-          <div className="space-y-4 rounded-2xl bg-white p-6 shadow">
+          <div className="relative space-y-4 overflow-hidden rounded-2xl bg-white p-6 shadow">
+            {/* Marca de agua (RN-SUN-10): empresa, expediente y fecha de consulta. */}
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0 flex select-none items-center justify-center">
+              <span className="-rotate-[24deg] whitespace-nowrap text-2xl font-bold text-[#0b2440] opacity-[0.06] sm:text-4xl">
+                {data.company.name} · {data.dossier.inspection_order_number ?? data.dossier.title} · {new Date().toLocaleDateString("es-PE", { timeZone: "America/Lima" })}
+              </span>
+            </div>
             <div>
               <h1 className="text-2xl font-bold">{data.company.name}</h1>
               <p className="text-sm text-[#5b6b7c]">RUC {data.company.ruc} · {data.dossier.title}{data.dossier.inspection_order_number ? ` · Orden ${data.dossier.inspection_order_number}` : ""}</p>
@@ -59,6 +75,15 @@ export default function ExpedienteCompartido() {
                 );
               })}
             </ul>
+            {data.allow_download && (
+              <div className="flex flex-wrap items-center gap-3">
+                <button type="button" disabled={dl.busy} onClick={download} className="rounded-lg bg-[#0d3b6e] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                  {dl.busy ? "Descargando…" : "Descargar expediente (ZIP)"}
+                </button>
+                {data.downloads_left != null && <span className="text-xs text-[#5b6b7c]">Descargas restantes: {data.downloads_left}</span>}
+                {dl.msg && <span className="text-xs text-[#5b6b7c]">{dl.msg}</span>}
+              </div>
+            )}
             <p className="text-xs text-[#5b6b7c]">
               Enlace disponible hasta el {new Date(data.expires_at).toLocaleString("es-PE", { timeZone: "America/Lima" })}
               {data.views_left !== null ? ` · visitas restantes: ${data.views_left}` : ""}. Los documentos originales se presentan en la diligencia.

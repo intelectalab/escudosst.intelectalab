@@ -2,6 +2,7 @@
 
 use App\Modules\COM\CommitteeController;
 use App\Modules\COM\ElectionController;
+use App\Modules\COM\VoteLinkController;
 use Illuminate\Support\Facades\Route;
 
 // Comité SST (M-COM): elección electrónica, comité vigente y actas. Los registros (comités, integrantes, reuniones,
@@ -28,9 +29,17 @@ Route::middleware(['auth:sanctum', 'company', 'module:COM'])->prefix('com')->gro
         Route::patch('elections/{id}/roll/{rollId}', [ElectionController::class, 'updateRoll'])->whereUuid('id');
         Route::post('elections/{id}/candidates', [ElectionController::class, 'addCandidate'])->whereUuid('id');
         Route::post('elections/{id}/candidates/{cid}/review', [ElectionController::class, 'review'])->whereUuid('id');
+        // Credenciales de voto por enlace para quienes no tienen usuario de la app (RN-COM-03).
+        Route::get('elections/{id}/credentials', [VoteLinkController::class, 'credentials'])->whereUuid('id');
+        Route::post('elections/{id}/credentials', [VoteLinkController::class, 'issue'])->whereUuid('id');
     });
+    Route::get('my-election', [VoteLinkController::class, 'mine']);
     Route::post('elections/{id}/close', [ElectionController::class, 'close'])->whereUuid('id')->middleware('permission:com.elections.close');
     Route::post('elections/{id}/apply', [ElectionController::class, 'apply'])->whereUuid('id')->middleware('permission:com.election_candidates.create');
     Route::get('elections/{id}/ballot', [ElectionController::class, 'ballot'])->whereUuid('id')->middleware('permission:com.election_ballots.vote');
     Route::post('elections/{id}/vote', [ElectionController::class, 'vote'])->whereUuid('id')->middleware(['permission:com.election_ballots.vote', 'throttle:10,1']);
 });
+
+// Voto por enlace sin sesión (M-COM RN-COM-03): el token de un solo uso del elector.
+Route::middleware('throttle:30,1')->get('public/com/vote/{company}/{token}', [VoteLinkController::class, 'show']);
+Route::middleware('throttle:10,1')->post('public/com/vote/{company}/{token}', [VoteLinkController::class, 'vote']);

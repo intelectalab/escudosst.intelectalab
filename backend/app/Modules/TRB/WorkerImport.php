@@ -5,14 +5,18 @@ namespace App\Modules\TRB;
 use App\Core\Auth\Permissions;
 use App\Core\Http\ApiProblem;
 use App\Core\Support\Xlsx;
+use App\Core\Tenancy\CompanyContext;
 use App\Http\Controllers\Controller;
+use App\Modules\DOC\FilesController;
 use App\Modules\REC\RecordsService;
 use App\Modules\REC\Registry;
 use App\Modules\REC\Rules\WorkerRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Carga de trabajadores desde Excel (M-TRB, SCR-TRB-04/05):
@@ -20,7 +24,12 @@ use Illuminate\Support\Facades\DB;
  *  POST /trb/imports/preview    {file, mode} valida fila por fila sin guardar nada
  *  POST /trb/imports            {file, mode} importa las filas válidas; las que fallan no bloquean a las demás (RN-TRB-05)
  *
- * mode: «create» (solo altas; un documento que ya existe es error) o «upsert» (actualiza por documento, sin duplicar).
+ *  GET  /trb/imports           cargas anteriores (bulk_imports) con contadores y archivo original
+ *  GET  /trb/imports/{id}      detalle por fila de una carga (bulk_import_rows)
+ *
+ * mode: «create» (solo altas; un documento que ya existe es error), «upsert» (actualiza por documento, sin duplicar)
+ * o «terminate» (cesa a los trabajadores listados con su fecha y motivo de cese).
+ * Cada importación queda en bulk_imports con el archivo subido (servicio de archivos) y el resultado de cada fila.
  * Cada fila se guarda con el motor común de registros, así aplica WorkerRules (DNI de 8 dígitos, documento único
  * cifrado con huella, asignación principal a sede/área/puesto) y queda en la bitácora.
  */
@@ -47,6 +56,9 @@ class WorkerImport extends Controller
         'area' => 'Área',
         'position' => 'Puesto',
         'employee_code' => 'Código de empleado',
+        // Solo para el modo «cesar»: fecha y motivo del cese (M-TRB §7 «Cese»).
+        'termination_on' => 'Fecha de cese',
+        'termination_reason' => 'Motivo de cese',
     ];
 
     private const DOC_TYPES = ['DNI' => 'DNI', 'CE' => 'CE', 'PTP' => 'PTP', 'PASAPORTE' => 'PASSPORT', 'PASSPORT' => 'PASSPORT', 'OTRO' => 'OTHER', 'OTHER' => 'OTHER'];
@@ -62,7 +74,7 @@ class WorkerImport extends Controller
         $positions = array_column(DB::select("select coalesce(nullif(code, ''), name) as v from positions where deleted_at is null and status = 'active' order by name limit 40"), 'v');
         $rows = [
             ['EscudoSST · Plantilla de trabajadores · versión '.self::VERSION],
-            ['Una fila por trabajador desde la fila 6. Obligatorios: número de documento, nombres, apellido paterno, sede y puesto. Fechas en dd/mm/aaaa. Tipo de documento: DNI, CE, PTP o PASAPORTE (vacío = DNI). Sexo: M o F. Tipo de vínculo: Propio, Intermediado, Tercerizado o Practicante. Si el DNI empieza con 0, escribe la columna como texto.'],
+            ['Una fila por trabajador desde la fila 6. Obligatorios: número de documento, nombres, apellido paterno, sede y puesto. Fechas en dd/mm/aaaa. Tipo de documento: DNI, CE, PTP o PASAPORTE (vacío = DNI). Sexo: M o F. Tipo de vínculo: Propio, Intermediado, Tercerizado o Practicante. Si el DNI empieza con 0, escribe la columna como texto. Para cesar trabajadores (modo «Cesar»): número de documento, fecha de cese y motivo de cese.'],
             ['Sedes (código o nombre): '.($sites ? implode(', ', $sites) : 'aún no hay sedes; créalas en Empresa y sedes')],
             ['Puestos (código o nombre): '.($positions ? implode(', ', $positions) : 'aún no hay puestos; créalos en Empresa y sedes')],
             array_values(self::COLUMNS),
@@ -92,15 +104,26 @@ class WorkerImport extends Controller
     public function import(Request $request): JsonResponse
     {
         [$mode, $rows] = $this->parse($request);
-        if ($mode === 'upsert' && ! in_array('trb.workers.update', Permissions::effective(), true)) {
-            throw ApiProblem::forbidden('Tu rol puede dar de alta trabajadores, pero no actualizar los existentes. Usa el modo «Solo altas».');
+        if (in_array($mode, ['upsert', 'terminate'], true) && ! in_array('trb.workers.update', Permissions::effective(), true)) {
+            throw ApiProblem::forbidden($mode === 'terminate' ? 'Tu rol no da de baja (cesa) trabajadores.'
+                : 'Tu rol puede dar de alta trabajadores, pero no actualizar los existentes. Usa el modo «Solo altas».');
         }
         $res = Registry::resource('TRB', 'workers');
-        $created = $updated = 0;
+        $import = $this->startImport($request->file('file'), $mode, count($rows));
+        $created = $updated = $terminated = 0;
         $out = [];
         foreach ($rows as $r) {
             if ($r['errors'] === []) {
                 try {
+                    if ($mode === 'terminate') {
+                        $id = DB::transaction(fn () => $this->terminate($res, $r));
+                        $terminated++;
+                        $r['result'] = 'terminated';
+                        $r['worker_id'] = $id;
+                        $out[] = $this->public($r) + ['result' => $r['result'], 'worker_id' => $id];
+
+                        continue;
+                    }
                     $id = DB::transaction(fn () => $r['existing_id']
                         ? $this->records->update($res, $r['existing_id'], $this->values($r, false))['id']
                         : $this->records->create($res, $this->values($r, true))['id']);
@@ -117,14 +140,101 @@ class WorkerImport extends Controller
             $out[] = $this->public($r) + ['result' => $r['result'], 'worker_id' => $r['worker_id'] ?? null];
         }
 
+        $failed = count($rows) - $created - $updated - $terminated;
+        $this->finishImport($import, $out, $created, $updated, $terminated, $failed);
+
         return response()->json(['data' => [
+            'import_id' => $import,
             'mode' => $mode,
             'total' => count($rows),
             'created' => $created,
             'updated' => $updated,
-            'failed' => count($rows) - $created - $updated,
+            'terminated' => $terminated,
+            'failed' => $failed,
             'rows' => $out,
         ]]);
+    }
+
+    /** GET /trb/imports  cargas anteriores con sus contadores, quién la hizo y el archivo original. */
+    public function history(): JsonResponse
+    {
+        $rows = DB::select(
+            "select b.id, b.mode, b.status, b.template_version, b.total_rows, b.ok_rows, b.error_rows, b.skipped_rows, b.options, b.started_at, b.finished_at,
+                    b.file_id, f.original_name as file_name, u.full_name as started_by_name
+               from bulk_imports b left join files f on f.id = b.file_id left join users u on u.id = b.started_by
+              where b.deleted_at is null and b.import_type = 'workers' order by b.created_at desc limit 50"
+        );
+
+        return response()->json(['data' => array_map(fn ($b) => [...(array) $b, 'options' => json_decode((string) $b->options, true) ?: []], $rows)]);
+    }
+
+    /** GET /trb/imports/{id}  detalle por fila de una carga (SCR-TRB-05), con las filas con error y su mensaje. */
+    public function show(string $id): JsonResponse
+    {
+        $b = Str::isUuid($id) ? DB::selectOne("select id, mode, status, total_rows, ok_rows, error_rows, options, started_at, finished_at from bulk_imports
+                                                where id = ? and deleted_at is null and import_type = 'workers'", [$id]) : null;
+        if (! $b) {
+            throw ApiProblem::notFound('La carga no existe o es de otra empresa.');
+        }
+        $rows = DB::select('select row_number, status, payload, errors, worker_id from bulk_import_rows where bulk_import_id = ? order by row_number', [$b->id]);
+
+        return response()->json(['data' => [...(array) $b, 'options' => json_decode((string) $b->options, true) ?: [],
+            'rows' => array_map(fn ($r) => [...(json_decode((string) $r->payload, true) ?: []), 'row' => $r->row_number, 'status' => $r->status,
+                'errors' => json_decode((string) $r->errors, true) ?: [], 'worker_id' => $r->worker_id], $rows)]]);
+    }
+
+    /** Registra la carga (bulk_imports) con el archivo original guardado por el servicio de archivos. */
+    private function startImport(UploadedFile $file, string $mode, int $total): string
+    {
+        $ext = strtolower($file->getClientOriginalExtension()) === 'csv' ? 'csv' : 'xlsx';
+        $fileId = FilesController::put($file, $ext === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $ext, 'TRB', 'bulk_imports');
+        $uid = (string) auth()->id();
+        $id = DB::selectOne(
+            "insert into bulk_imports (company_id, file_id, import_type, template_version, mode, status, total_rows, started_by, started_at, created_by, updated_by)
+             values (?, ?, 'workers', ?, ?, 'importing', ?, ?, now(), ?, ?) returning id",
+            [app(CompanyContext::class)->companyId, $fileId, self::VERSION, $mode, $total, $uid, $uid, $uid]
+        )->id;
+        DB::update('update files set entity_id = ? where id = ?', [$id, $fileId]);
+
+        return $id;
+    }
+
+    private function finishImport(string $id, array $out, int $created, int $updated, int $terminated, int $failed): void
+    {
+        $uid = (string) auth()->id();
+        foreach (array_chunk($out, 200) as $chunk) {
+            $sql = [];
+            $bind = [];
+            foreach ($chunk as $r) {
+                $sql[] = '(?, ?, ?, ?::jsonb, ?, ?::jsonb, ?, ?, ?)';
+                $payload = array_intersect_key($r, array_flip(['document', 'name', 'site', 'area', 'position', 'action', 'result']));
+                array_push($bind, app(CompanyContext::class)->companyId, $id, $r['row'], json_encode($payload, JSON_UNESCAPED_UNICODE),
+                    $r['result'] === 'error' ? 'error' : 'ok', $r['errors'] ? json_encode($r['errors'], JSON_UNESCAPED_UNICODE) : null, $r['worker_id'] ?? null, $uid, $uid);
+            }
+            DB::insert('insert into bulk_import_rows (company_id, bulk_import_id, row_number, payload, status, errors, worker_id, created_by, updated_by) values '.implode(', ', $sql), $bind);
+        }
+        DB::update(
+            "update bulk_imports set status = ?, ok_rows = ?, error_rows = ?, options = ?::jsonb, finished_at = now(), updated_by = ? where id = ?",
+            [$created + $updated + $terminated === 0 && $failed > 0 ? 'failed' : 'completed', $created + $updated + $terminated, $failed,
+                json_encode(['created' => $created, 'updated' => $updated, 'terminated' => $terminated]), $uid, $id]
+        );
+    }
+
+    /**
+     * Cese (M-TRB §7): fecha y motivo con el motor de registros (WorkerRules valida la fecha frente al ingreso); se cierra la
+     * asignación vigente, se suspenden los accesos del trabajador y se revoca su fotocheck.
+     */
+    private function terminate(array $res, array $r): string
+    {
+        $id = $this->records->update($res, $r['existing_id'], [
+            'status' => 'terminated', 'termination_on' => $r['termination_on'], 'termination_reason' => $r['termination_reason'],
+        ])['id'];
+        DB::update('update worker_assignments set ends_on = greatest(starts_on, ?::date) where worker_id = ? and ends_on is null and deleted_at is null', [$r['termination_on'], $id]);
+        DB::update("update memberships set status = 'suspended' where worker_id = ? and status = 'active' and deleted_at is null", [$id]);
+        DB::update("update credentials set status = 'revoked', revoked_at = now(), revoked_reason = ? where worker_id = ? and status in ('draft', 'issued', 'active', 'blocked') and deleted_at is null",
+            ['Cese del trabajador', $id]);
+
+        return $id;
     }
 
     /** @return array{0: string, 1: array<int, array>} */
@@ -132,7 +242,7 @@ class WorkerImport extends Controller
     {
         $request->validate([
             'file' => ['required', 'file', 'max:5120'],
-            'mode' => ['nullable', 'in:create,upsert'],
+            'mode' => ['nullable', 'in:create,upsert,terminate'],
         ], ['file.required' => 'Elige el archivo de Excel.', 'file.max' => 'El archivo pesa más de 5 MB.']);
         $file = $request->file('file');
         $ext = strtolower($file->getClientOriginalExtension());
@@ -217,6 +327,11 @@ class WorkerImport extends Controller
                     $errors[] = "Ya existe un trabajador con ese documento: {$dup->full_name}.";
                 }
                 $existing = $dup?->id;
+            }
+            if ($mode === 'terminate') {
+                $rows[] = $this->terminateRow($n, $type, $number, $v, $existing, $errors);
+
+                continue;
             }
             if ($v['first_name'] === '') {
                 $errors[] = 'Faltan los nombres.';
@@ -317,6 +432,35 @@ class WorkerImport extends Controller
         return $v;
     }
 
+    /** Fila del modo «cesar»: el trabajador debe existir y estar activo; fecha de cese (no antes del ingreso) y motivo obligatorios. */
+    private function terminateRow(int $n, string $type, string $number, array $v, ?string $existing, array $errors): array
+    {
+        $w = $existing ? DB::selectOne('select full_name, status, hire_on from workers where id = ?', [$existing]) : null;
+        if ($number !== '' && ! $w) {
+            $errors[] = 'No hay un trabajador con ese documento.';
+        } elseif ($w && $w->status === 'terminated') {
+            $errors[] = 'El trabajador ya está cesado.';
+        }
+        $end = $this->date($v['termination_on'], 'Fecha de cese', $errors);
+        if ($v['termination_on'] === '') {
+            $errors[] = 'Falta la fecha de cese.';
+        } elseif ($end && $w && $w->hire_on && $end < $w->hire_on) {
+            $errors[] = 'La fecha de cese no puede ser anterior a la de ingreso.';
+        } elseif ($end && $end > now('America/Lima')->addDays(60)->toDateString()) {
+            $errors[] = 'La fecha de cese no puede ser de más de 60 días en el futuro.';
+        }
+        if (mb_strlen($v['termination_reason']) < 3) {
+            $errors[] = 'Falta el motivo del cese.';
+        }
+
+        return [
+            'row' => $n, 'type' => $type, 'number' => $number,
+            'first_name' => $w->full_name ?? trim($v['first_name'].' '.$v['paternal_last_name']), 'paternal_last_name' => '', 'maternal_last_name' => '',
+            'site' => '', 'area' => '', 'position' => '', 'existing_id' => $w ? $existing : null, 'terminate' => true,
+            'termination_on' => $end, 'termination_reason' => mb_substr($v['termination_reason'], 0, 300), 'errors' => $errors,
+        ];
+    }
+
     /** Lo que se muestra de la fila: el documento enmascarado (no se devuelve completo). */
     private function public(array $r): array
     {
@@ -327,7 +471,8 @@ class WorkerImport extends Controller
             'site' => $r['site'],
             'area' => $r['area'],
             'position' => $r['position'],
-            'action' => $r['errors'] !== [] ? 'error' : ($r['existing_id'] ? 'update' : 'create'),
+            'action' => $r['errors'] !== [] ? 'error' : (! empty($r['terminate']) ? 'terminate' : ($r['existing_id'] ? 'update' : 'create')),
+            'termination_on' => $r['termination_on'] ?? null,
             'errors' => $r['errors'],
         ];
     }

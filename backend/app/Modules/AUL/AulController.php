@@ -16,7 +16,10 @@ use Illuminate\Support\Str;
  *  GET  /aul/my                                         mis cursos (matrículas del trabajador o usuario)
  *  GET  /aul/enrollments/{id}                           el curso: secciones, lecciones y mi avance (el examen sin respuestas)
  *  POST /aul/enrollments/{id}/lessons/{lesson}/done     marcar una lección como vista
- *  POST /aul/enrollments/{id}/lessons/{lesson}/exam     rendir el examen {answers: {pregunta: respuesta}} → nota y aprobado
+ *  POST /aul/enrollments/{id}/lessons/{lesson}/attempts iniciar (o retomar) un intento: preguntas sorteadas y tiempo límite
+ *  PUT  /aul/enrollments/{id}/attempts/{attempt}        autoguardado {answers}
+ *  POST /aul/enrollments/{id}/lessons/{lesson}/exam     enviar el intento {attempt_id?, answers} → nota y aprobado (o «por calificar»)
+ *  POST /aul/enrollments/{id}/heartbeat                 latido de permanencia {client_session_id, seq, lesson_id?, interactions, video_seconds}
  *  PUT  /aul/questions/{id}/options                     alternativas de una pregunta [{text, correct}] o respuestas aceptadas
  * El curso se completa cuando están vistas todas las lecciones obligatorias y aprobados sus exámenes.
  */
@@ -37,27 +40,51 @@ class AulController extends Controller
     public function show(string $id): JsonResponse
     {
         $e = $this->enrollment($id);
-        $course = DB::selectOne('select id, title, summary, description, hours, passing_score, sequential from courses where id = ?', [$e->course_id]);
-        $progress = json_decode($e->lesson_progress ?? '{}', true) ?: [];
-        $sections = DB::select('select id, section_number, title, description from course_sections where course_id = ? and deleted_at is null and is_visible order by sort_order, section_number', [$e->course_id]);
-        $lessons = DB::select('select id, section_id, lesson_number, title, lesson_type, content_html, video_provider, video_external_id, external_url, file_id, duration_minutes, is_required,
-                                      question_bank_id, passing_score, max_attempts from course_lessons where course_id = ? and deleted_at is null order by sort_order, lesson_number', [$e->course_id]);
+
+        return response()->json(['data' => self::player($e->course_id, $e)]);
+    }
+
+    /**
+     * El curso como lo ve quien aprende. Con $e = null es la vista previa del administrador (sin matrícula ni avance).
+     * Las evaluaciones no traen preguntas: se sortean al iniciar el intento (RN-AUL-13).
+     */
+    public static function player(string $courseId, ?object $e): array
+    {
+        $course = DB::selectOne('select id, title, summary, description, hours, passing_score, sequential, min_active_time_pct, completion_commitment from courses where id = ?', [$courseId]);
+        $progress = $e ? (json_decode($e->lesson_progress ?? '{}', true) ?: []) : [];
+        $sections = DB::select('select id, section_number, title, description from course_sections where course_id = ? and deleted_at is null and is_visible order by sort_order, section_number', [$courseId]);
+        $lessons = DB::select('select id, course_id, section_id, lesson_number, title, lesson_type, content_html, video_provider, video_external_id, external_url, file_id, duration_minutes, is_required,
+                                      question_bank_id, exam_config, passing_score, max_attempts, time_limit_minutes from course_lessons where course_id = ? and deleted_at is null order by sort_order, lesson_number', [$courseId]);
         foreach ($lessons as $l) {
             $l->done = ! empty($progress[$l->id]['done']);
             $l->best_score = $progress[$l->id]['score'] ?? null;
-            if ($l->lesson_type === 'exam' && $l->question_bank_id) {
-                $l->questions = array_map(function ($q) {
-                    $opts = json_decode($q->options ?? '[]', true) ?: [];
-
-                    return ['id' => $q->id, 'type' => $q->question_type, 'statement' => $q->statement, 'points' => (float) $q->points,
-                        'options' => array_map(fn ($o, $i) => ['key' => (string) $i, 'text' => is_array($o) ? ($o['text'] ?? '') : (string) $o], $opts, array_keys($opts))];
-                }, DB::select("select id, question_type, statement, options, points from questions where question_bank_id = ? and deleted_at is null and status = 'active' order by code nulls last, created_at", [$l->question_bank_id]));
+            if ($l->lesson_type === 'exam') {
+                $cfg = ExamEngine::config($l);
+                $l->num_questions = (int) ($cfg['num_questions'] ?? 0) ?: null;
+                $l->max_attempts = ExamEngine::maxAttempts($l);
+                $l->attempts_used = $e ? ExamEngine::attemptsUsed($e->id, $l->id) : 0;
+                $l->pending_review = $e ? (bool) DB::selectOne("select 1 as ok from quiz_attempts where enrollment_id = ? and lesson_id = ? and deleted_at is null and status = 'submitted'", [$e->id, $l->id]) : false;
+                $open = $e ? ExamEngine::openAttempt($e->id, $l->id) : null;
+                $l->open_attempt = $open && ! ExamEngine::expired($open) ? self::attemptView($open) : null;
+                $last = $e ? DB::selectOne("select score, max_score, grade_label, passed, feedback from quiz_attempts where enrollment_id = ? and lesson_id = ? and deleted_at is null and status = 'graded'
+                                             order by attempt_number desc limit 1", [$e->id, $l->id]) : null;
+                $l->last_result = $last ? ['score_pct' => (float) $last->max_score > 0 ? round((float) $last->score * 100 / (float) $last->max_score, 2) : null, 'label' => $last->grade_label,
+                    'passed' => (bool) $last->passed, 'feedback' => $last->feedback] : null;
             }
+            unset($l->exam_config, $l->question_bank_id, $l->course_id);
         }
 
-        return response()->json(['data' => ['enrollment' => ['id' => $e->id, 'status' => $e->status, 'progress_pct' => (float) $e->progress_pct, 'final_score' => $e->final_score, 'passed' => $e->passed,
-            'certificate_id' => $e->certificate_id],
-            'course' => $course, 'sections' => $sections, 'lessons' => $lessons]]);
+        return ['enrollment' => $e ? ['id' => $e->id, 'status' => $e->status, 'progress_pct' => (float) $e->progress_pct, 'final_score' => $e->final_score, 'final_score_label' => $e->final_score_label,
+            'passed' => $e->passed, 'certificate_id' => $e->certificate_id, 'active_seconds_total' => (int) $e->active_seconds_total] : null,
+            'course' => $course, 'sections' => $sections, 'lessons' => $lessons, 'heartbeat_seconds' => Heartbeats::beatSeconds()];
+    }
+
+    public static function attemptView(object $a): array
+    {
+        $saved = json_decode($a->answers ?? '{}', true) ?: [];
+
+        return ['id' => $a->id, 'attempt_number' => (int) $a->attempt_number, 'started_at' => $a->started_at, 'expires_at' => $a->expires_at,
+            'questions' => ExamEngine::publicQuestions(json_decode($a->question_set ?? '[]', true) ?: []), 'answers' => (object) ($saved['given'] ?? $saved)];
     }
 
     public function done(string $id, string $lesson): JsonResponse
@@ -68,58 +95,61 @@ class AulController extends Controller
             throw new ApiProblem(409, 'conflict', 'Es un examen', 'Esta lección es un examen: se completa al aprobarlo.');
         }
 
-        return response()->json(['data' => $this->mark($e, $l->id, ['done' => true, 'at' => now()->toIso8601String()])]);
+        return response()->json(['data' => Progress::mark($e, $l->id, ['done' => true, 'at' => now()->toIso8601String()])]);
     }
 
+    /** Inicia (o retoma) un intento con las preguntas sorteadas. */
+    public function startAttempt(string $id, string $lesson): JsonResponse
+    {
+        $e = $this->enrollment($id);
+        $l = $this->examLesson($e, $lesson);
+        $a = DB::transaction(fn () => ExamEngine::start($e, $l));
+
+        return response()->json(['data' => self::attemptView($a)], 201);
+    }
+
+    /** Autoguardado de respuestas de un intento abierto. */
+    public function saveAnswers(Request $request, string $id, string $attempt): JsonResponse
+    {
+        $e = $this->enrollment($id);
+        $a = $this->attempt($e, $attempt);
+        ExamEngine::save($a, (array) $request->input('answers', []));
+
+        return response()->json(['data' => ['saved' => true]]);
+    }
+
+    /** Envía el intento {attempt_id?, answers}: sin intento abierto se sortea uno (compatibilidad). */
     public function exam(Request $request, string $id, string $lesson): JsonResponse
     {
         $e = $this->enrollment($id);
-        $l = $this->lesson($e, $lesson);
-        if ($l->lesson_type !== 'exam' || ! $l->question_bank_id) {
-            throw new ApiProblem(409, 'conflict', 'No es un examen', 'Esta lección no tiene examen.');
-        }
-        $attempts = (int) DB::selectOne('select count(*) as n from quiz_attempts where enrollment_id = ? and lesson_id = ? and deleted_at is null', [$e->id, $l->id])->n;
-        if ($l->max_attempts && $attempts >= (int) $l->max_attempts) {
-            throw new ApiProblem(409, 'conflict', 'Sin intentos', "Ya usaste los {$l->max_attempts} intentos de este examen.");
-        }
-        $answers = (array) $request->input('answers', []);
-        $score = 0.0;
-        $max = 0.0;
-        $detail = [];
-        foreach (DB::select("select * from questions where question_bank_id = ? and deleted_at is null and status = 'active'", [$l->question_bank_id]) as $q) {
-            $max += (float) $q->points;
-            $given = $answers[$q->id] ?? null;
-            $ok = false;
-            if ($q->question_type === 'short_answer') {
-                $acc = array_map(fn ($a) => mb_strtolower(trim((string) $a)), json_decode($q->accepted_answers ?? '[]', true) ?: []);
-                $ok = $given !== null && in_array(mb_strtolower(trim((string) $given)), $acc, true);
-            } else {
-                $opts = json_decode($q->options ?? '[]', true) ?: [];
-                $correct = array_map('strval', array_keys(array_filter($opts, fn ($o) => is_array($o) && ! empty($o['correct']))));
-                $chosen = array_map('strval', (array) $given);
-                sort($correct);
-                sort($chosen);
-                $ok = $correct !== [] && $correct === $chosen;
+        $l = $this->examLesson($e, $lesson);
+        $res = DB::transaction(function () use ($request, $e, $l) {
+            $aid = $request->input('attempt_id');
+            $a = is_string($aid) && $aid !== '' ? $this->attempt($e, $aid) : (ExamEngine::openAttempt($e->id, $l->id) ?? ExamEngine::start($e, $l));
+            if ($a->lesson_id !== $l->id) {
+                throw ApiProblem::notFound('El intento no es de esta evaluación.');
             }
-            if ($ok) {
-                $score += (float) $q->points;
-            }
-            $detail[$q->id] = ['given' => $given, 'ok' => $ok];
-        }
-        if ($max <= 0) {
-            throw new ApiProblem(409, 'conflict', 'Examen sin preguntas', 'El examen todavía no tiene preguntas activas.');
-        }
-        $pct = round($score * 100 / $max, 2);
-        $passing = (float) ($l->passing_score ?? DB::selectOne('select passing_score from courses where id = ?', [$e->course_id])?->passing_score ?? 70);
-        $passed = $pct >= $passing;
-        DB::insert(
-            "insert into quiz_attempts (company_id, enrollment_id, lesson_id, source, attempt_number, started_at, submitted_at, score, max_score, passed, answers, graded_at, status, created_by, updated_by)
-             values (?, ?, ?, 'internal', ?, now(), now(), ?, ?, ?, ?::jsonb, now(), 'graded', ?, ?)",
-            [$e->company_id, $e->id, $l->id, $attempts + 1, round($score, 2), round($max, 2), $passed ? 'true' : 'false', json_encode($detail), (string) auth()->id(), (string) auth()->id()]
-        );
-        $state = $passed ? $this->mark($e, $l->id, ['done' => true, 'score' => $pct, 'at' => now()->toIso8601String()]) : null;
 
-        return response()->json(['data' => ['score_pct' => $pct, 'passing' => $passing, 'passed' => $passed, 'attempt' => $attempts + 1, 'enrollment' => $state]]);
+            return ExamEngine::submit($e, $l, $a, $request->has('answers') ? (array) $request->input('answers', []) : null);
+        });
+
+        return response()->json(['data' => $res]);
+    }
+
+    /** Latido de actividad (RN-AUL-07/08/09). */
+    public function heartbeat(Request $request, string $id): JsonResponse
+    {
+        $e = $this->enrollment($id);
+        $d = $request->validate([
+            'client_session_id' => ['required', 'string', 'max:70', 'regex:/^[A-Za-z0-9_\-:.]+$/'], 'lesson_id' => ['nullable', 'uuid'], 'seq' => ['required', 'integer', 'min:1'],
+            'interactions' => ['nullable', 'integer', 'min:0', 'max:10000'], 'video_seconds' => ['nullable', 'integer', 'min:0', 'max:3600'],
+            'visible' => ['boolean'], 'ended' => ['boolean'], 'device_type' => ['nullable', 'in:desktop,mobile,tablet,other'],
+        ]);
+        if (! empty($d['lesson_id'])) {
+            $this->lesson($e, $d['lesson_id']);
+        }
+
+        return response()->json(['data' => DB::transaction(fn () => Heartbeats::beat($e, $d))]);
     }
 
     public function options(Request $request, string $id): JsonResponse
@@ -150,65 +180,6 @@ class AulController extends Controller
         return response()->json(['data' => ['options' => $opts]]);
     }
 
-    /** Guarda el avance de una lección y recalcula el avance del curso. */
-    private function mark(object $e, string $lessonId, array $state): array
-    {
-        $progress = json_decode($e->lesson_progress ?? '{}', true) ?: [];
-        $progress[$lessonId] = array_merge($progress[$lessonId] ?? [], $state);
-        $required = DB::select('select id from course_lessons where course_id = ? and deleted_at is null and is_required', [$e->course_id]);
-        $done = count(array_filter($required, fn ($r) => ! empty($progress[$r->id]['done'])));
-        $pct = $required ? round($done * 100 / count($required), 2) : 100;
-        $complete = $required && $done === count($required);
-        $scores = array_filter(array_map(fn ($p) => $p['score'] ?? null, $progress), fn ($v) => $v !== null);
-        $final = $scores ? round(array_sum($scores) / count($scores), 2) : null;
-        DB::update("update course_enrollments set lesson_progress = ?::jsonb, progress_pct = ?, last_activity_at = now(), started_at = coalesce(started_at, now()),
-                      status = ?, completed_at = case when ? then coalesce(completed_at, now()) else completed_at end, final_score = coalesce(?, final_score), passed = case when ? then true else passed end
-                    where id = ?",
-            [json_encode($progress), $pct, $complete ? 'completed' : 'in_progress', $complete ? 'true' : 'false', $final, $complete ? 'true' : 'false', $e->id]);
-
-        $certificate = $complete ? $this->certificate($e, $final) : null;
-
-        return ['progress_pct' => $pct, 'status' => $complete ? 'completed' : 'in_progress', 'final_score' => $final, 'certificate' => $certificate];
-    }
-
-    /**
-     * Certificado al completar el curso (si el curso emite certificado): con código verificable por QR, como los de
-     * capacitaciones presenciales. Lo valida quien publicó el curso (o quien lo creó). No se duplica.
-     */
-    private function certificate(object $e, ?float $score): ?array
-    {
-        $c = DB::selectOne('select id, title, hours, certificate_enabled, certificate_validity_months, public_verification_enabled, published_by, created_by from courses where id = ?', [$e->course_id]);
-        if (! $c || ! $c->certificate_enabled) {
-            return null;
-        }
-        $existing = DB::selectOne("select certificate_code from training_certificates where course_enrollment_id = ? and deleted_at is null and status <> 'voided'", [$e->id]);
-        if ($existing) {
-            return ['code' => $existing->certificate_code];
-        }
-        $holder = $e->worker_id
-            ? DB::selectOne('select full_name as name, document_last4 as last4 from workers where id = ?', [$e->worker_id])
-            : ($e->external_learner_id ? DB::selectOne("select first_name || ' ' || last_name as name, document_last4 as last4 from external_learners where id = ?", [$e->external_learner_id])
-                : DB::selectOne('select first_name || \' \' || paternal_last_name as name, document_last4 as last4 from contractor_workers where id = ?', [$e->contractor_worker_id]));
-        $year = date('Y');
-        $n = (int) DB::selectOne('select count(*) + 1 as n from training_certificates where certificate_code like ?', ["CERT-{$year}-%"])->n;
-        do {
-            $code = sprintf('CERT-%s-%06d', $year, $n++);
-        } while (DB::selectOne('select 1 as ok from training_certificates where certificate_code = ?', [$code]));
-        $validator = $c->published_by ?? $c->created_by ?? (string) auth()->id();
-        DB::insert(
-            "insert into training_certificates (company_id, course_id, course_enrollment_id, worker_id, contractor_worker_id, external_learner_id, certificate_code, verification_code,
-                holder_name, holder_document_masked, course_title, issued_on, expires_on, hours, score, public_verification_enabled, status, validated_by, validated_at, created_by, updated_by)
-             values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_date, case when ?::int is null then null else (current_date + make_interval(months => ?::int))::date end, ?, ?, ?, 'validated', ?, now(), ?, ?)",
-            [$e->company_id, $c->id, $e->id, $e->worker_id, $e->contractor_worker_id, $e->external_learner_id, $code, strtoupper(substr(hash('sha256', Str::random(40)), 0, 32)),
-                $holder->name ?? 'Participante', ($holder->last4 ?? null) ? '****'.$holder->last4 : null, $c->title, $c->certificate_validity_months, $c->certificate_validity_months,
-                $c->hours, $score, $c->public_verification_enabled ? 'true' : 'false', $validator, (string) auth()->id(), (string) auth()->id()]
-        );
-        $id = DB::selectOne('select id from training_certificates where certificate_code = ?', [$code])->id;
-        DB::update('update course_enrollments set certificate_id = ? where id = ?', [$id, $e->id]);
-
-        return ['code' => $code, 'id' => $id];
-    }
-
     private function me(): array
     {
         $ctx = app(CompanyContext::class);
@@ -232,6 +203,23 @@ class AulController extends Controller
         }
 
         return $e;
+    }
+
+    private function examLesson(object $e, string $lesson): object
+    {
+        $l = $this->lesson($e, $lesson);
+        if ($l->lesson_type !== 'exam' || ! ExamEngine::banks($l)) {
+            throw new ApiProblem(409, 'conflict', 'No es un examen', 'Esta lección no tiene examen.');
+        }
+
+        return $l;
+    }
+
+    private function attempt(object $e, string $attempt): object
+    {
+        $a = Str::isUuid($attempt) ? DB::selectOne('select * from quiz_attempts where id = ? and enrollment_id = ? and deleted_at is null', [$attempt, $e->id]) : null;
+
+        return $a ?? throw ApiProblem::notFound('El intento no existe o es de otra persona.');
     }
 
     private function lesson(object $e, string $lesson): object

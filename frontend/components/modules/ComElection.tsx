@@ -10,6 +10,7 @@ import { api, type ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/Form";
 import { Modal } from "@/components/ui/Modal";
+import { VoteCredentialsModal } from "./ComVoteLinks";
 import { Toast } from "@/components/ui/Toast";
 import { Bar, Card, Chip, type Tone } from "./Summary";
 
@@ -76,7 +77,7 @@ export function ComElection({ readOnly, canCreate }: { readOnly?: boolean; canCr
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<{ m: string; tone?: "ok" | "bad" } | null>(null);
-  const [modal, setModal] = useState<null | "new" | "roll" | "candidate" | "voting" | "cancel" | "close">(null);
+  const [modal, setModal] = useState<null | "new" | "roll" | "candidate" | "voting" | "cancel" | "close" | "credentials">(null);
 
   const load = useCallback(async () => {
     try {
@@ -217,6 +218,11 @@ export function ComElection({ readOnly, canCreate }: { readOnly?: boolean; canCr
                 </Button>
               </>
             )}
+            {manage && (e.step === 1 || e.step === 2) && (
+              <Button icon="key" onClick={() => setModal("credentials")}>
+                Credenciales de voto
+              </Button>
+            )}
             {e.can.close && !readOnly && e.step === 2 && (
               <Button variant="primary" onClick={() => setModal("close")}>
                 Cerrar votación y escrutar
@@ -237,6 +243,7 @@ export function ComElection({ readOnly, canCreate }: { readOnly?: boolean; canCr
       )}
 
       {modal === "new" && <NewElection onClose={() => setModal(null)} onDone={(m) => { setModal(null); setToast({ m }); load(); }} />}
+      {modal === "credentials" && e && <VoteCredentialsModal electionId={e.id} onClose={() => { setModal(null); load(); }} />}
       {modal === "roll" && e && <RollModal e={e} editable={manage && e.step <= 1} onClose={() => { setModal(null); load(); }} />}
       {modal === "candidate" && e && <AddCandidate e={e} onClose={() => setModal(null)} onAdd={(wid) => act("candidates", { worker_id: wid }, "Candidato inscrito: revisa sus requisitos")} />}
       {modal === "voting" && e && <OpenVoting e={e} busy={busy === "open-voting"} onClose={() => setModal(null)} onOpen={(closes) => act("open-voting", { voting_closes_at: closes }, "Votación abierta: se avisó a los electores")} />}

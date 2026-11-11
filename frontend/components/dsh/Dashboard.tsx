@@ -12,6 +12,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Icon } from "@/components/ui/Icon";
 import { ActionsCard, ActivityCard, HeatCard, ManagementPanel, MonthlyCard, PasstCard, type Home } from "@/components/dsh/HomeBlocks";
 import { Onboarding } from "@/components/modules/Onboarding";
+import { ElectionHomeCard } from "@/components/modules/ComVoteLinks";
 
 type Kpi = {
   code: string;
@@ -97,6 +98,8 @@ export function Dashboard() {
   return (
     <div className="space-y-4">
       <Onboarding />
+      {/* Tarjeta «Elección del comité» del inicio del trabajador (docs/07 §5.2): solo con votación abierta. */}
+      {modules.some((m) => m.code === "COM" && m.role_can_use) && <ElectionHomeCard />}
       {/* Cabecera plana (prototipo m-inicio.js) */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1">

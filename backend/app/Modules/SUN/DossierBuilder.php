@@ -14,25 +14,47 @@ use Illuminate\Support\Str;
  * POST /sun/dossiers/{id}/build — arma el expediente para una inspección (M-SUN): revisa con los datos reales de la
  * empresa si cada documento o registro clave existe y está vigente en el periodo, y deja una fila por punto
  * (incluido / falta / vencido) con el registro de origen para abrirlo. El expediente queda «listo» o «listo con brechas».
- * Con {worker_id} agrega el expediente del trabajador (inducción, capacitaciones, aptitud, EPP, RISST, IPERC de su puesto
- * y fotocheck), como lo pide SUNAFIL cuando inspecciona a una persona.
+ * Con {worker_ids: [...]} (o {worker_id}) agrega el expediente de cada trabajador inspeccionado (inducción,
+ * capacitaciones, aptitud, EPP, RISST, IPERC de su puesto y fotocheck), como lo pide SUNAFIL cuando inspecciona a una o
+ * varias personas (SCR-SUN-03/04): una sección por trabajador después de los puntos de la empresa.
  */
 class DossierBuilder extends Controller
 {
+    /** Trabajadores inspeccionados por expediente. */
+    public const MAX_WORKERS = 50;
+
     public function __invoke(Request $request, string $dossier): JsonResponse
     {
         $d = Str::isUuid($dossier) ? DB::selectOne('select * from inspection_dossiers where id = ? and deleted_at is null', [$dossier]) : null;
         if (! $d) {
             throw ApiProblem::notFound('El expediente no existe o es de otra empresa.');
         }
-        // Trabajador del expediente: el que se envía ahora o el que quedó guardado; «null» explícito lo quita.
+        // Trabajadores del expediente: los que se envían ahora (worker_ids, o worker_id) o los que quedaron guardados;
+        // una lista vacía o «null» explícito los quita.
         $scope = json_decode($d->scope ?? '{}', true) ?: [];
-        $workerId = $request->has('worker_id') ? $request->input('worker_id') : ($scope['worker_id'] ?? null);
-        $worker = $workerId && Str::isUuid((string) $workerId)
-            ? DB::selectOne('select id, full_name, current_position_id, current_area_id from workers where id = ? and deleted_at is null', [$workerId]) : null;
-        if ($workerId && ! $worker) {
-            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'El trabajador no existe en esta empresa.', ['errors' => ['worker_id' => ['El trabajador no existe en esta empresa.']]]);
+        $ids = $request->has('worker_ids') ? (array) ($request->input('worker_ids') ?? [])
+            : ($request->has('worker_id') ? array_filter([$request->input('worker_id')])
+                : ($scope['worker_ids'] ?? array_filter([$scope['worker_id'] ?? null])));
+        $ids = array_values(array_unique(array_map('strval', array_filter($ids))));
+        if (count($ids) > self::MAX_WORKERS) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Elige hasta '.self::MAX_WORKERS.' trabajadores por expediente.', ['errors' => ['worker_ids' => ['Elige hasta '.self::MAX_WORKERS.' trabajadores por expediente.']]]);
         }
+        $found = [];
+        if ($ids) {
+            if (array_filter($ids, fn ($x) => ! Str::isUuid($x))) {
+                $this->badWorker();
+            }
+            foreach (DB::select('select id, full_name, current_position_id, current_area_id from workers where deleted_at is null and id = any(?::uuid[])', ['{'.implode(',', $ids).'}']) as $r) {
+                $found[$r->id] = $r;
+            }
+            if (count($found) !== count($ids)) {
+                $this->badWorker();
+            }
+        }
+        // En el orden elegido.
+        $selected = array_map(fn ($x) => $found[$x], $ids);
+        $worker = $selected[0] ?? null;
+        $scope['worker_ids'] = $ids;
         $scope['worker_id'] = $worker?->id;
         DB::update('update inspection_dossiers set scope = ?::jsonb, requested_by = coalesce(requested_by, ?) where id = ?', [json_encode($scope), (string) auth()->id(), $dossier]);
         $from = $d->period_from ?? date('Y').'-01-01';
@@ -117,7 +139,7 @@ class DossierBuilder extends Controller
         $add('16', "Registros obligatorios del periodo (accidentes e incidentes: {$acc}) e investigaciones", 'REG', 'register_exports', null, $openInv === 0 ? 'included' : 'missing',
             $openInv === 0 ? null : "{$openInv} investigación(es) del periodo sin cerrar.");
 
-        if ($worker) {
+        foreach ($selected as $worker) {
             $w = $worker->id;
             $n = $worker->full_name;
             $ind = $one("select c.id from training_certificates c join trainings t on t.id = c.training_id where c.worker_id = ? and t.training_type = 'induction'
@@ -156,6 +178,17 @@ class DossierBuilder extends Controller
         DB::update('update inspection_dossiers set status = ?, gaps = ?::jsonb, built_at = now() where id = ?',
             [$gaps ? 'ready_with_gaps' : 'ready', json_encode(array_map(fn ($g) => ['code' => $g['code'], 'title' => $g['title'], 'gap' => $g['gap']], $gaps), JSON_UNESCAPED_UNICODE), $dossier]);
 
-        return response()->json(['data' => ['items' => $items, 'gaps' => count($gaps), 'total' => count($items), 'worker' => $worker ? ['id' => $worker->id, 'name' => $worker->full_name] : null]]);
+        $first = $selected[0] ?? null;
+
+        return response()->json(['data' => [
+            'items' => $items, 'gaps' => count($gaps), 'total' => count($items),
+            'worker' => $first ? ['id' => $first->id, 'name' => $first->full_name] : null,
+            'workers' => array_map(fn ($x) => ['id' => $x->id, 'name' => $x->full_name], $selected),
+        ]]);
+    }
+
+    private function badWorker(): never
+    {
+        throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'El trabajador no existe en esta empresa.', ['errors' => ['worker_ids' => ['El trabajador no existe en esta empresa.'], 'worker_id' => ['El trabajador no existe en esta empresa.']]]);
     }
 }

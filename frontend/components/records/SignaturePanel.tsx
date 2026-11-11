@@ -12,6 +12,7 @@ import { RefSelect } from "./ModuleRecords";
 import { SignaturePad } from "@/components/addons/SignaturePad";
 import { session } from "@/lib/session";
 import { API_URL } from "@/lib/api";
+import { VerifyResult, type Verification } from "@/components/modules/FirTools";
 
 type Req = {
   id: string; role_in_document: string; status: string; signer_user_id: string | null; signer_worker_id: string | null; signer_name: string | null;
@@ -39,6 +40,8 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
   const [pwd, setPwd] = useState<Record<string, string>>({});
   const [assist, setAssist] = useState<{ id: string; image: string | null } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [checks, setChecks] = useState<Verification[] | null>(null);
+  const [note, setNote] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!enabled) return;
@@ -61,6 +64,25 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
       err(e);
     }
   }
+  // Reenviar recordatorio (SCR-FIR-03) y verificar la integridad de las firmas hechas (SCR-FIR-04).
+  async function remind(r: Req) {
+    setMsg(null);
+    setNote(null);
+    try {
+      const out = await api<{ data: { reminder_count: number } }>(`/fir/requests/${r.id}/remind`, { method: "POST", withCompany: true });
+      setNote(`Recordatorio enviado a ${r.signer_name ?? "el firmante"} (${out.data.reminder_count}.º).`);
+    } catch (e) {
+      err(e);
+    }
+  }
+  async function verify() {
+    setMsg(null);
+    try {
+      setChecks((await api<{ data: Verification[] }>(`/fir/verify/${table}/${id}`, { withCompany: true })).data);
+    } catch (e) {
+      err(e);
+    }
+  }
   async function sign(r: Req) {
     setMsg(null);
     try {
@@ -76,7 +98,10 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
     <section className="space-y-2 rounded-xl border border-line px-4 py-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-semibold">Firmas {items.length > 0 && <span className="font-normal text-muted">· {items.filter((i) => i.status === "signed").length} de {items.length}</span>}</p>
-        {!asking && <Button size="sm" variant="secondary" icon="pen" onClick={() => setAsking(true)}>Pedir firma</Button>}
+        <span className="flex flex-wrap gap-2">
+          {items.some((i) => i.status === "signed") && <Button size="sm" variant="ghost" icon="shield" onClick={() => (checks ? setChecks(null) : verify())}>{checks ? "Ocultar verificación" : "Verificar integridad"}</Button>}
+          {!asking && <Button size="sm" variant="secondary" icon="pen" onClick={() => setAsking(true)}>Pedir firma</Button>}
+        </span>
       </div>
       {items.map((r) => {
         const [label, cls] = STATUS[r.status] ?? [r.status, "bg-bg"];
@@ -98,6 +123,9 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
               )}
               {r.status === "pending" && !r.signer_user_id && assist?.id !== r.id && (
                 <Button size="sm" variant="secondary" onClick={() => setAssist({ id: r.id, image: null })} title="El trabajador está presente y firma en esta pantalla">Firma del trabajador (presente)</Button>
+              )}
+              {r.status === "pending" && !mine && (
+                <Button size="sm" variant="ghost" icon="bell" onClick={() => remind(r)}>Reenviar recordatorio</Button>
               )}
               {r.has_image && r.signature_id && <SignatureThumb id={r.signature_id} />}
               <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${cls}`}>{label}</span>
@@ -140,6 +168,8 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
           <Button size="sm" variant="ghost" onClick={() => setAsking(false)}>Cancelar</Button>
         </div>
       )}
+      {checks && (checks.length === 0 ? <p className="text-muted">No hay firmas hechas que verificar.</p> : checks.map((c) => <VerifyResult key={c.signature_id} v={c} showSubject={false} />))}
+      {note && <p role="status" className="text-ok">{note}</p>}
       {msg && <p className="text-bad">{msg}</p>}
     </section>
   );

@@ -329,6 +329,16 @@ class PeopleRules extends RecordRules
      */
     public static function credentialReasons(?string $type, ?string $worker, ?string $cworker, ?string $expires): array
     {
+        return array_column(self::credentialReasonItems($type, $worker, $cworker, $expires), 'text');
+    }
+
+    /**
+     * Igual que credentialReasons, con el tipo de cada requisito que falta (emo_fitness, training, induction, sctr,
+     * accreditation, expired): portería lo usa para guardar un motivo neutro, sin términos médicos (RN-ING-02).
+     * @return list<array{type: string, text: string}>
+     */
+    public static function credentialReasonItems(?string $type, ?string $worker, ?string $cworker, ?string $expires): array
+    {
         $reasons = [];
         foreach (DB::select('select * from credential_requirements where credential_type_id = ? and deleted_at is null and is_blocking', [$type]) as $r) {
             $ok = match ($r->requirement_type) {
@@ -349,12 +359,12 @@ class PeopleRules extends RecordRules
                 default => true,
             };
             if (! $ok) {
-                $reasons[] = $r->description ?: ['emo_fitness' => 'Aptitud médica vigente', 'training' => 'Capacitación vigente', 'induction' => 'Inducción',
-                    'sctr' => 'SCTR salud y pensión vigentes', 'accreditation' => 'Contratista acreditado'][$r->requirement_type] ?? $r->requirement_type;
+                $reasons[] = ['type' => (string) $r->requirement_type, 'text' => $r->description ?: ['emo_fitness' => 'Aptitud médica vigente', 'training' => 'Capacitación vigente', 'induction' => 'Inducción',
+                    'sctr' => 'SCTR salud y pensión vigentes', 'accreditation' => 'Contratista acreditado'][$r->requirement_type] ?? $r->requirement_type];
             }
         }
         if ($expires && $expires < date('Y-m-d')) {
-            $reasons[] = 'Fotocheck vencido';
+            $reasons[] = ['type' => 'expired', 'text' => 'Fotocheck vencido'];
         }
 
         return $reasons;

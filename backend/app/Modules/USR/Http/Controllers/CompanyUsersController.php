@@ -35,12 +35,30 @@ class CompanyUsersController extends Controller
     {
         $this->can('usr.memberships.read');
 
-        return response()->json(['data' => DB::select(
-            "select m.id, m.status, m.invited_at, m.accepted_at, m.last_access_at, u.id as user_id, u.full_name, u.email, r.code as role_code, r.name as role_name,
+        $rows = DB::select(
+            "select m.id, case when m.status = 'active' and m.expires_at is not null and m.expires_at <= now() then 'expired' else m.status end as status,
+                    m.invited_at, m.accepted_at, coalesce(m.last_access_at, u.last_login_at) as last_access_at, m.expires_at,
+                    u.id as user_id, u.full_name, u.email, u.mfa_enabled, r.code as role_code, r.name as role_name, r.requires_mfa,
                     m.worker_id, w.full_name as worker_name
                from memberships m join users u on u.id = m.user_id join roles r on r.id = m.role_id left join workers w on w.id = m.worker_id
               where m.deleted_at is null and not m.is_support_session order by m.status = 'active' desc, u.full_name"
-        )]);
+        );
+        // Alcance (SCR-USR-02): sin filas en membership_scopes = toda la empresa.
+        $scopes = [];
+        foreach (DB::select(
+            "select s.membership_id, s.scope_type, s.site_id, s.area_id, coalesce(si.name, ar.name, c.legal_name, s.module_code) as name
+               from membership_scopes s left join sites si on si.id = s.site_id left join areas ar on ar.id = s.area_id left join contractors c on c.id = s.contractor_id
+              where s.deleted_at is null order by s.scope_type, 5"
+        ) as $s) {
+            $scopes[$s->membership_id][] = ['type' => $s->scope_type, 'id' => $s->site_id ?? $s->area_id, 'name' => $s->name];
+        }
+        foreach ($rows as $r) {
+            $r->mfa_enabled = (bool) $r->mfa_enabled;
+            $r->requires_mfa = (bool) $r->requires_mfa;
+            $r->scopes = $scopes[$r->id] ?? [];
+        }
+
+        return response()->json(['data' => $rows]);
     }
 
     public function roles(): JsonResponse
@@ -73,6 +91,8 @@ class CompanyUsersController extends Controller
         if ($worker !== null && $worker !== '' && (! Str::isUuid((string) $worker) || ! DB::selectOne('select 1 as ok from workers where id = ? and deleted_at is null', [$worker]))) {
             $errors['worker_id'][] = 'El trabajador no existe.';
         }
+        [$sites, $areas] = $this->scopeInput($request, $errors);
+        $expires = $this->expiresInput($request, $role, $errors);
         if ($errors) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Hay campos por corregir.', ['errors' => $errors]);
         }
@@ -90,11 +110,12 @@ class CompanyUsersController extends Controller
         }
         $active = $user?->status === 'active';
         $membership = DB::selectOne(
-            'insert into memberships (company_id, user_id, role_id, worker_id, status, invited_by, invited_at, accepted_at, created_by)
-             select ?, ?, r.id, ?, ?, ?, now(), ?, ? from roles r where r.account_id is null and r.code = ? returning id',
-            [$ctx->companyId, $userId, $worker ?: null, $active ? 'active' : 'invited', (string) auth()->id(), $active ? now() : null, (string) auth()->id(), $role]
+            'insert into memberships (company_id, user_id, role_id, worker_id, status, invited_by, invited_at, accepted_at, expires_at, created_by)
+             select ?, ?, r.id, ?, ?, ?, now(), ?, ?, ? from roles r where r.account_id is null and r.code = ? returning id',
+            [$ctx->companyId, $userId, $worker ?: null, $active ? 'active' : 'invited', (string) auth()->id(), $active ? now() : null, $expires, (string) auth()->id(), $role]
         )->id;
-        $this->audit('member_invited', $membership, ['email' => $email, 'role' => $role]);
+        $this->saveScopes($membership, $sites, $areas);
+        $this->audit('member_invited', $membership, array_filter(['email' => $email, 'role' => $role, 'sites' => $sites ?: null, 'areas' => $areas ?: null, 'expires_at' => $expires]));
         $this->invitations->send($userId, $email, $user->full_name ?? $name, $ctx->companyId, $ctx->companyName, $membership, ! $active);
 
         return response()->json(['data' => ['id' => $membership, 'status' => $active ? 'active' : 'invited']], 201);
@@ -108,6 +129,15 @@ class CompanyUsersController extends Controller
             throw new ApiProblem(409, 'conflict', 'Tu propio acceso', 'No puedes cambiar tu propio rol ni suspenderte.');
         }
         $changes = [];
+        // La vigencia se valida antes de tocar el rol: un auditor externo nunca queda sin fecha de fin.
+        $expires = null;
+        if ($request->has('expires_on')) {
+            $errors = [];
+            $expires = $this->expiresInput($request, (string) ($request->input('role_code') ?: $m->role_code), $errors);
+            if ($errors) {
+                throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', $errors['expires_on'][0], ['errors' => $errors]);
+            }
+        }
         if ($request->filled('role_code')) {
             $role = (string) $request->input('role_code');
             $errors = [];
@@ -118,8 +148,26 @@ class CompanyUsersController extends Controller
             if ($m->role_code === 'account_admin' && $role !== 'account_admin') {
                 $this->keepAdmin($m->id);
             }
+            if ($role === 'external_auditor' && ! $m->expires_at && ! $request->filled('expires_on')) {
+                throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'El auditor externo necesita una fecha de fin del acceso.', ['errors' => ['expires_on' => ['Indica hasta cuándo tendrá acceso.']]]);
+            }
             DB::update('update memberships set role_id = (select id from roles where account_id is null and code = ?), updated_by = ? where id = ?', [$role, (string) auth()->id(), $m->id]);
             $changes['role'] = ['from' => $m->role_code, 'to' => $role];
+        }
+        // Alcance por sede/área y vigencia (SCR-USR-03): solo si vienen en el pedido.
+        if ($request->has('site_ids') || $request->has('area_ids')) {
+            $errors = [];
+            [$sites, $areas] = $this->scopeInput($request, $errors);
+            if ($errors) {
+                throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Revisa el alcance.', ['errors' => $errors]);
+            }
+            DB::update("update membership_scopes set deleted_at = now(), updated_by = ? where membership_id = ? and scope_type in ('site', 'area') and deleted_at is null", [(string) auth()->id(), $m->id]);
+            $this->saveScopes($m->id, $sites, $areas);
+            $changes['scope'] = ['sites' => $sites, 'areas' => $areas];
+        }
+        if ($request->has('expires_on')) {
+            DB::update('update memberships set expires_at = ?, updated_by = ? where id = ?', [$expires, (string) auth()->id(), $m->id]);
+            $changes['expires_at'] = ['from' => $m->expires_at, 'to' => $expires];
         }
         if ($request->filled('status')) {
             $status = (string) $request->input('status');
@@ -158,7 +206,7 @@ class CompanyUsersController extends Controller
     private function membership(string $id): object
     {
         $m = Str::isUuid($id) ? DB::selectOne(
-            'select m.id, m.user_id, m.status, r.code as role_code, u.email, u.full_name from memberships m join roles r on r.id = m.role_id join users u on u.id = m.user_id
+            'select m.id, m.user_id, m.status, m.expires_at, r.code as role_code, u.email, u.full_name from memberships m join roles r on r.id = m.role_id join users u on u.id = m.user_id
               where m.id = ? and m.deleted_at is null and not m.is_support_session', [$id]) : null;
 
         return $m ?? throw ApiProblem::notFound('Esa persona no tiene acceso a esta empresa.');
@@ -170,6 +218,62 @@ class CompanyUsersController extends Controller
             $errors['role_code'][] = 'Elige un rol válido.';
         } elseif ($role === 'account_admin' && app(CompanyContext::class)->roleCode !== 'account_admin') {
             $errors['role_code'][] = 'Solo un administrador de cuenta puede dar ese rol.';
+        }
+    }
+
+    /** @return array{0: list<string>, 1: list<string>} sedes y áreas del alcance (vacío = toda la empresa) */
+    private function scopeInput(Request $request, array &$errors): array
+    {
+        $ids = fn (string $k) => array_values(array_unique(array_filter(array_map('strval', (array) ($request->input($k) ?? [])))));
+        $sites = $ids('site_ids');
+        $areas = $ids('area_ids');
+        foreach (['site_ids' => [$sites, 'sites', 'Una de las sedes no existe.'], 'area_ids' => [$areas, 'areas', 'Una de las áreas no existe.']] as $field => [$list, $table, $msg]) {
+            if ($list === []) {
+                continue;
+            }
+            $bad = array_filter($list, fn ($id) => ! Str::isUuid($id));
+            $found = $bad ? 0 : (int) DB::selectOne("select count(*) as n from {$table} where deleted_at is null and id = any(?::uuid[])", ['{'.implode(',', $list).'}'])->n;
+            if ($found !== count($list)) {
+                $errors[$field][] = $msg;
+            }
+        }
+
+        return [$sites, $areas];
+    }
+
+    /** Vigencia opcional (obligatoria para el auditor externo, RN-USR-07): fin del día indicado, hora de Lima. */
+    private function expiresInput(Request $request, string $role, array &$errors): ?string
+    {
+        $v = trim((string) $request->input('expires_on'));
+        if ($v === '') {
+            if ($role === 'external_auditor') {
+                $errors['expires_on'][] = 'El auditor externo necesita una fecha de fin del acceso.';
+            }
+
+            return null;
+        }
+        if (! preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $v, $d) || ! checkdate((int) $d[2], (int) $d[3], (int) $d[1])) {
+            $errors['expires_on'][] = 'Usa una fecha válida.';
+
+            return null;
+        }
+        if ($v < now('America/Lima')->toDateString()) {
+            $errors['expires_on'][] = 'La fecha de fin no puede estar en el pasado.';
+
+            return null;
+        }
+
+        return $v.' 23:59:59-05:00';
+    }
+
+    private function saveScopes(string $membership, array $sites, array $areas): void
+    {
+        $company = app(CompanyContext::class)->companyId;
+        foreach ([['site', 'site_id', $sites], ['area', 'area_id', $areas]] as [$type, $col, $list]) {
+            foreach ($list as $id) {
+                DB::insert("insert into membership_scopes (company_id, membership_id, scope_type, {$col}, created_by) values (?, ?, ?, ?, ?)",
+                    [$company, $membership, $type, $id, (string) auth()->id()]);
+            }
         }
     }
 

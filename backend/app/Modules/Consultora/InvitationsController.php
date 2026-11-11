@@ -23,6 +23,9 @@ use Illuminate\Validation\ValidationException;
  *  POST /con/invitations/{id}/revoke        anular una invitación pendiente
  *  GET  /public/con/invitations/{token}     ver la invitación (sin sesión: correo del administrador invitado)
  *  POST /con/invitations/{token}/accept     el administrador de la empresa invitada (empresa activa) acepta la vinculación
+ *  POST /public/con/invitations/{token}/signup  la empresa invitada aún no usa EscudoSST: crea su cuenta desde la
+ *                                           invitación (registro autoservicio en prueba, administrador = correo invitado) y
+ *                                           queda vinculada a la consultora en el mismo paso
  *  POST /con/link/revoke                    la empresa cliente quita el acceso a su consultora (acceso perdido de inmediato)
  *
  * La empresa conserva su plan: la consultora solo sugiere uno y la empresa elige y contrata el suyo (RN-CON-03).
@@ -116,6 +119,7 @@ class InvitationsController extends Controller
             'company_exists' => (bool) $i->existing_company_id,
             'status' => $i->status === 'sent' && strtotime($i->expires_at) < time() ? 'expired' : $i->status,
             'expires_at' => $i->expires_at,
+            'invited_email' => self::maskEmail((string) $i->invited_email),
             'message' => $i->message,
         ]]);
     }
@@ -140,28 +144,96 @@ class InvitationsController extends Controller
         if ($company->managed_by_account_id) {
             throw self::conflict('Tu empresa ya la gestiona otra consultora: primero quítale el acceso.');
         }
-        $this->p()->transaction(function () use ($i, $ctx) {
-            $this->p()->update('update companies set managed_by_account_id = ?, updated_at = now() where id = ? and managed_by_account_id is null', [$i->consultancy_account_id, $ctx->companyId]);
-            $this->p()->update("update client_invitations set status = 'accepted', company_id = ?, responded_at = now(), responded_by = ?, updated_at = now() where id = ?",
-                [$ctx->companyId, (string) auth()->id(), $i->id]);
-        });
-        // Quien invitó entra como consultor asignado (líder). Si ya tenía acceso, solo se registra la asignación.
-        if ($i->invited_by_user_id) {
-            $accounts->withCompany($ctx->companyId, function (ConnectionInterface $db) use ($i, $ctx) {
-                $m = $db->selectOne('select id from memberships where company_id = ? and user_id = ? and deleted_at is null', [$ctx->companyId, $i->invited_by_user_id]);
-                $mid = $m->id ?? $db->selectOne(
-                    "insert into memberships (company_id, user_id, role_id, status, invited_by, invited_at, accepted_at, created_by)
-                     select ?, ?, r.id, 'active', ?, now(), now(), ? from roles r where r.account_id is null and r.code = 'consultant' returning id",
-                    [$ctx->companyId, $i->invited_by_user_id, (string) auth()->id(), (string) auth()->id()])->id;
-                $db->insert(
-                    "insert into consultant_assignments (company_id, consultancy_account_id, consultant_user_id, membership_id, is_lead, created_by)
-                     select ?, ?, ?, ?, true, ? where not exists (select 1 from consultant_assignments where consultant_user_id = ? and status = 'active' and deleted_at is null)",
-                    [$ctx->companyId, $i->consultancy_account_id, $i->invited_by_user_id, $mid, (string) auth()->id(), $i->invited_by_user_id]);
-            });
-        }
+        $this->link($i, $ctx->companyId, (string) auth()->id(), $accounts);
         $accounts->audit((string) auth()->id(), 'client_invitation_accepted', 'client_invitations', $i->id, ['company_id' => $ctx->companyId]);
 
         return response()->json(['data' => ['status' => 'accepted', 'consultancy' => $i->consultancy]]);
+    }
+
+    /**
+     * La empresa invitada aún no usa EscudoSST: crea su cuenta desde la invitación (M-CON §7.1). Reusa el registro
+     * autoservicio (cuenta directa en prueba, el plan lo elige la empresa, RN-CON-03); el administrador es el correo
+     * invitado, que recibe el enlace para crear su contraseña. Al final la empresa queda vinculada a la consultora y
+     * quien invitó entra como consultor asignado. La invitación se usa una sola vez (RN-CON-06).
+     */
+    public function signup(Request $request, string $token, AccountsService $accounts): JsonResponse
+    {
+        if (filled($request->input('website'))) {   // trampa para robots, como en «Prueba gratis»
+            return response()->json(['data' => ['status' => 'accepted']], 201);
+        }
+        $d = $request->validate([
+            'full_name' => ['required', 'string', 'min:3', 'max:120'],
+            'trade_name' => ['nullable', 'string', 'max:160'],
+            'economic_sector' => ['nullable', 'in:construction,mining,agroindustry,manufacturing,retail,services,office,health,education,transport,energy,other'],
+            'headcount' => ['required', 'integer', 'min:1', 'max:1000000'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'accept_legal' => ['accepted'],
+        ], [
+            'full_name.required' => 'Escribe tu nombre completo.', 'headcount.required' => 'Indica cuántos trabajadores tiene la empresa.',
+            'accept_legal.accepted' => 'Debes aceptar los Términos y la Política de privacidad para continuar.',
+        ]);
+        $i = $this->byToken($token);
+        if ($i->status !== 'sent' || strtotime($i->expires_at) < time()) {
+            throw self::conflict($i->status === 'accepted' ? 'Esta invitación ya fue aceptada.' : 'La invitación venció o fue anulada. Pide a tu consultora que te envíe otra.');
+        }
+        if ($i->existing_company_id) {
+            throw self::conflict('Tu empresa ya usa EscudoSST: ingresa con la cuenta de su administrador para aceptar la vinculación.');
+        }
+        $created = $accounts->create([
+            'account_type' => 'direct',
+            'ruc' => trim($i->target_ruc),
+            'legal_name' => trim($i->target_legal_name),
+            'trade_name' => ($d['trade_name'] ?? null) ? trim($d['trade_name']) : null,
+            'economic_sector' => $d['economic_sector'] ?? null,
+            'headcount' => $d['headcount'],
+            'start' => 'trial',
+            'plan' => null,
+            'billing_period' => 'monthly',
+            'admin_name' => trim($d['full_name']),
+            'admin_email' => Str::lower(trim((string) $i->invited_email)),
+            'billing_phone' => $d['phone'] ?? null,
+            'accepted_legal' => true,
+            'ip_hash' => hash_hmac('sha256', (string) $request->ip(), (string) config('app.key')),
+            'user_agent' => mb_substr((string) $request->userAgent(), 0, 300),
+        ], null);
+        $this->link($i, $created['company_id'], $created['admin_user_id'], $accounts);
+        $accounts->audit($created['admin_user_id'], 'client_invitation_accepted', 'client_invitations', $i->id, ['company_id' => $created['company_id'], 'source' => 'signup']);
+
+        return response()->json(['data' => [
+            'status' => 'accepted', 'consultancy' => $i->consultancy, 'company_id' => $created['company_id'],
+            'invitation' => $created['invitation'], 'email' => self::maskEmail((string) $i->invited_email),
+        ]], 201);
+    }
+
+    /** Vincula la empresa a la consultora, marca la invitación aceptada y deja a quien invitó como consultor líder. */
+    private function link(object $i, string $companyId, string $actor, AccountsService $accounts): void
+    {
+        $this->p()->transaction(function () use ($i, $companyId, $actor) {
+            $this->p()->update('update companies set managed_by_account_id = ?, updated_at = now() where id = ? and managed_by_account_id is null', [$i->consultancy_account_id, $companyId]);
+            $this->p()->update("update client_invitations set status = 'accepted', company_id = ?, responded_at = now(), responded_by = ?, updated_at = now() where id = ?",
+                [$companyId, $actor, $i->id]);
+        });
+        // Quien invitó entra como consultor asignado (líder). Si ya tenía acceso, solo se registra la asignación.
+        if ($i->invited_by_user_id) {
+            $accounts->withCompany($companyId, function (ConnectionInterface $db) use ($i, $companyId, $actor) {
+                $m = $db->selectOne('select id from memberships where company_id = ? and user_id = ? and deleted_at is null', [$companyId, $i->invited_by_user_id]);
+                $mid = $m->id ?? $db->selectOne(
+                    "insert into memberships (company_id, user_id, role_id, status, invited_by, invited_at, accepted_at, created_by)
+                     select ?, ?, r.id, 'active', ?, now(), now(), ? from roles r where r.account_id is null and r.code = 'consultant' returning id",
+                    [$companyId, $i->invited_by_user_id, $actor, $actor])->id;
+                $db->insert(
+                    "insert into consultant_assignments (company_id, consultancy_account_id, consultant_user_id, membership_id, is_lead, created_by)
+                     select ?, ?, ?, ?, true, ? where not exists (select 1 from consultant_assignments where consultant_user_id = ? and status = 'active' and deleted_at is null)",
+                    [$companyId, $i->consultancy_account_id, $i->invited_by_user_id, $mid, $actor, $i->invited_by_user_id]);
+            });
+        }
+    }
+
+    private static function maskEmail(string $email): string
+    {
+        [$user, $domain] = array_pad(explode('@', $email, 2), 2, '');
+
+        return mb_substr($user, 0, 1).str_repeat('*', max(2, mb_strlen($user) - 1)).'@'.$domain;
     }
 
     /** La empresa cliente quita el acceso a su consultora (RN-CON-02/08): los datos quedan en la empresa. */
@@ -185,6 +257,19 @@ class InvitationsController extends Controller
             }
         });
         $accounts->audit((string) auth()->id(), 'consultancy_unlinked', 'companies', $ctx->companyId, ['consultancy_account_id' => $account]);
+        // M-CON §10 «Vinculación revocada por el cliente»: aviso inmediato al administrador de la consultora.
+        $client = $this->p()->selectOne('select coalesce(trade_name, legal_name) as n from companies where id = ?', [$ctx->companyId])?->n ?? 'Una empresa cliente';
+        foreach ($this->p()->select('select id from companies where account_id = ? and deleted_at is null', [$account]) as $own) {
+            $accounts->withCompany($own->id, function (ConnectionInterface $db) use ($own, $client, $ctx) {
+                foreach ($db->select("select m.user_id from memberships m join roles r on r.id = m.role_id where m.company_id = ? and m.status = 'active' and m.deleted_at is null and r.code = 'account_admin'", [$own->id]) as $a) {
+                    $db->insert(
+                        "insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, dedupe_key)
+                         values (?, 'con.link_revoked', 'CON', ?, ?, 'Una empresa quitó el acceso', ?, '/m/con', 'high', ?)",
+                        [$own->id, $ctx->companyId, $a->user_id, "{$client} quitó el acceso a tu consultora. Sus datos quedan en la empresa.", 'con.link_revoked:'.$ctx->companyId.':'.$a->user_id.':'.time()]
+                    );
+                }
+            });
+        }
 
         return response()->json(['data' => ['status' => 'unlinked']]);
     }

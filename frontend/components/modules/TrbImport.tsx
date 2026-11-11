@@ -5,8 +5,8 @@
 // existe) → resumen → importa solo las filas válidas (RN-TRB-05) y muestra el resultado con las filas con error
 // descargables. Endpoints: GET /trb/imports/template, POST /trb/imports/preview y POST /trb/imports.
 
-import { useRef } from "react";
-import { API_URL, ApiError } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { api, API_URL, ApiError } from "@/lib/api";
 import { downloadFile } from "@/lib/records";
 import { session } from "@/lib/session";
 import { Button } from "@/components/ui/Button";
@@ -14,9 +14,15 @@ import { ChoiceCards } from "@/components/ui/Form";
 import { Chip } from "./Summary";
 import { SummaryRow, Wizard, type WizardStep } from "./Wizard";
 
-type Row = { row: number; document: string; name: string; site: string; area: string; position: string; action: "create" | "update" | "error"; errors: string[]; result?: string };
+type Row = { row: number; document: string; name: string; site: string; area: string; position: string; action: "create" | "update" | "terminate" | "error"; errors: string[]; result?: string; termination_on?: string | null };
 type Preview = { total: number; valid: number; with_errors: number; rows: Row[] };
-type Data = { mode: "create" | "upsert"; file_name: string; preview: Preview | null };
+type Mode = "create" | "upsert" | "terminate";
+type Data = { mode: Mode; file_name: string; preview: Preview | null };
+type PastImport = {
+  id: string; mode: Mode; status: string; total_rows: number; ok_rows: number; error_rows: number; started_at: string | null; file_name: string | null;
+  started_by_name: string | null; options: { created?: number; updated?: number; terminated?: number };
+};
+const MODE: Record<Mode, string> = { create: "Solo altas", upsert: "Altas y actualización", terminate: "Cesar trabajadores" };
 
 async function postFile<T>(path: string, file: File, fields: Record<string, string>): Promise<T> {
   const body = new FormData();
@@ -49,8 +55,8 @@ function downloadErrors(rows: Row[]) {
 function RowsTable({ rows, result }: { rows: Row[]; result?: boolean }) {
   const label = (r: Row) =>
     result
-      ? r.result === "created" ? ["Creado", "ok"] : r.result === "updated" ? ["Actualizado", "ok"] : ["Con error", "bad"]
-      : r.action === "error" ? ["Con error", "bad"] : r.action === "update" ? ["Se actualiza", "warn"] : ["Se crea", "ok"];
+      ? r.result === "created" ? ["Creado", "ok"] : r.result === "updated" ? ["Actualizado", "ok"] : r.result === "terminated" ? ["Cesado", "warn"] : ["Con error", "bad"]
+      : r.action === "error" ? ["Con error", "bad"] : r.action === "update" ? ["Se actualiza", "warn"] : r.action === "terminate" ? ["Se cesa", "warn"] : ["Se crea", "ok"];
   return (
     <div className="max-h-[46vh] overflow-auto rounded-xl border border-line">
       <table className="w-full text-left text-sm">
@@ -79,6 +85,36 @@ function RowsTable({ rows, result }: { rows: Row[]; result?: boolean }) {
   );
 }
 
+/** Cargas anteriores (bulk_imports): fecha, modo, archivo, quién la hizo y resultado. */
+function PastImports() {
+  const [rows, setRows] = useState<PastImport[] | null>(null);
+  useEffect(() => {
+    api<{ data: PastImport[] }>("/trb/imports", { withCompany: true }).then((r) => setRows(r.data)).catch(() => setRows([]));
+  }, []);
+  if (!rows || rows.length === 0) return null;
+  return (
+    <div>
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Cargas anteriores</p>
+      <ul className="divide-y divide-line rounded-xl border border-line text-sm">
+        {rows.slice(0, 6).map((b) => (
+          <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+            <span className="min-w-0">
+              <b className="block truncate">{b.file_name ?? "Archivo"}</b>
+              <span className="text-xs text-muted">
+                {[b.started_at ? new Date(b.started_at).toLocaleString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null, MODE[b.mode], b.started_by_name].filter(Boolean).join(" · ")}
+              </span>
+            </span>
+            <span className="flex gap-1.5">
+              <Chip tone="ok">{b.ok_rows} aplicada(s)</Chip>
+              {b.error_rows > 0 && <Chip tone="bad">{b.error_rows} con error</Chip>}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function TrbImport({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const file = useRef<File | null>(null);
   const initial: Data = { mode: "create", file_name: "", preview: null };
@@ -91,11 +127,14 @@ export function TrbImport({ onClose, onDone }: { onClose: () => void; onDone: ()
         <div className="space-y-4">
           <Button icon="download" onClick={() => downloadFile("/trb/imports/template", "plantilla-trabajadores.xlsx").catch(() => undefined)}>Descargar plantilla (.xlsx)</Button>
           <p className="text-sm text-muted">Columnas: tipo y número de documento, nombres, apellidos, fecha de nacimiento, sexo, celular, correo, fecha de ingreso, tipo de vínculo, sede, área, puesto y código de empleado. La sede y el puesto deben existir en «Empresa y sedes».</p>
-          <ChoiceCards<"create" | "upsert"> label="Modo de carga" value={d.mode} onChange={(mode) => set({ mode, preview: null })}
+          <ChoiceCards<Mode> label="Modo de carga" value={d.mode} onChange={(mode) => set({ mode, preview: null })}
             options={[
               { value: "create", title: "Solo altas", detail: "Crea trabajadores nuevos; si el documento ya existe, la fila queda con error." },
               { value: "upsert", title: "Altas y actualización", detail: "Crea los nuevos y actualiza los que ya existen por su documento, sin duplicar." },
+              { value: "terminate", title: "Cesar", detail: "Da de baja a los trabajadores listados: número de documento, fecha de cese y motivo de cese." },
             ]} />
+          {d.mode === "terminate" && <p className="rounded-lg bg-bg px-3 py-2 text-sm text-muted">Al cesar se cierra su puesto vigente, se suspenden sus accesos y se revoca su fotocheck. Su historial se conserva.</p>}
+          <PastImports />
         </div>
       ),
     },
@@ -149,20 +188,24 @@ export function TrbImport({ onClose, onDone }: { onClose: () => void; onDone: ()
       summary={(d, goTo) => (
         <div>
           <SummaryRow label="Archivo" value={d.file_name} onEdit={() => goTo(1)} />
-          <SummaryRow label="Modo" value={d.mode === "create" ? "Solo altas" : "Altas y actualización"} onEdit={() => goTo(0)} />
-          <SummaryRow label="Se crearán" value={String(d.preview?.rows.filter((r) => r.action === "create").length ?? 0)} />
+          <SummaryRow label="Modo" value={MODE[d.mode]} onEdit={() => goTo(0)} />
+          {d.mode === "terminate" ? (
+            <SummaryRow label="Se cesarán" value={String(d.preview?.rows.filter((r) => r.action === "terminate").length ?? 0)} />
+          ) : (
+            <SummaryRow label="Se crearán" value={String(d.preview?.rows.filter((r) => r.action === "create").length ?? 0)} />
+          )}
           {d.mode === "upsert" && <SummaryRow label="Se actualizarán" value={String(d.preview?.rows.filter((r) => r.action === "update").length ?? 0)} />}
           <SummaryRow label="No se importan (con error)" value={String(d.preview?.with_errors ?? 0)} onEdit={() => goTo(2)} />
         </div>
       )}
       onConfirm={async (d) => {
         if (!file.current) throw new Error("Vuelve a elegir el archivo para importarlo.");
-        const r = await postFile<{ created: number; updated: number; failed: number; rows: Row[] }>("/trb/imports", file.current, { mode: d.mode });
+        const r = await postFile<{ created: number; updated: number; terminated: number; failed: number; rows: Row[] }>("/trb/imports", file.current, { mode: d.mode });
         onDone();
         return (
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-3">
-              {[["Creados", r.created, "text-ok"], ["Actualizados", r.updated, "text-brand"], ["Con error", r.failed, "text-bad"]].map(([l, v, c]) => (
+              {(d.mode === "terminate" ? [["Cesados", r.terminated, "text-amber-ink"], ["Con error", r.failed, "text-bad"]] : [["Creados", r.created, "text-ok"], ["Actualizados", r.updated, "text-brand"], ["Con error", r.failed, "text-bad"]]).map(([l, v, c]) => (
                 <div key={String(l)} className="rounded-xl border border-line p-3 text-center">
                   <p className="text-xs text-muted">{l}</p>
                   <p className={`font-display text-2xl font-bold ${c}`}>{v}</p>

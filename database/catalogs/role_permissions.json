@@ -2565,7 +2565,9 @@
   "vta.sales_documents.generate",
   "vta.sales_documents.read",
   "vta.sales_documents.update",
-  "vul.work_adjustments.read"
+  "vul.work_adjustments.create",
+  "vul.work_adjustments.read",
+  "vul.work_adjustments.update"
  ],
  "sst_supervisor": [
   "acc.event_notifications.create",

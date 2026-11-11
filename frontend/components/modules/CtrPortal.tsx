@@ -14,6 +14,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
 import { Bar, Card, Chip, Kpi } from "./Summary";
 import { AccreditationChip, type DocState, fmtDate, StateChip } from "./CtrShared";
+import { CtrSctrCard, CtrWorkersImport } from "./CtrPortalExtras";
 
 type ReqItem = {
   id: string;
@@ -68,6 +69,7 @@ export function CtrPortal() {
   const [error, setError] = useState<string | null>(null);
   const [upload, setUpload] = useState<Upload | null>(null);
   const [addWorker, setAddWorker] = useState(false);
+  const [importWorkers, setImportWorkers] = useState(false);
   const [requestAcc, setRequestAcc] = useState(false);
   const [editCompany, setEditCompany] = useState(false);
   const [openWorker, setOpenWorker] = useState<string | null>(null);
@@ -136,7 +138,15 @@ export function CtrPortal() {
         )}
       </Card>
 
-      <Card title="Trabajadores" action={<Button size="sm" variant="primary" icon="plus" onClick={() => setAddWorker(true)}>Agregar trabajador</Button>}>
+      <Card
+        title="Trabajadores"
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" icon="download" onClick={() => setImportWorkers(true)}>Cargar trabajadores desde Excel</Button>
+            <Button size="sm" variant="primary" icon="plus" onClick={() => setAddWorker(true)}>Agregar trabajador</Button>
+          </div>
+        }
+      >
         {data.workers.length === 0 ? (
           <p className="text-sm text-muted">Agrega a las personas que trabajarán en las instalaciones de la empresa principal.</p>
         ) : (
@@ -172,6 +182,8 @@ export function CtrPortal() {
         )}
       </Card>
 
+      <CtrSctrCard key={data.workers.length} />
+
       <Card
         title="Acreditación"
         action={!pendingAcc && <Button size="sm" variant="primary" icon="check" onClick={() => setRequestAcc(true)}>Solicitar acreditación</Button>}
@@ -199,6 +211,7 @@ export function CtrPortal() {
       </Card>
 
       {upload && <UploadModal upload={upload} onClose={() => setUpload(null)} onDone={() => done("Documento cargado: queda en revisión")} />}
+      {importWorkers && <CtrWorkersImport onClose={() => setImportWorkers(false)} onDone={load} />}
       {addWorker && <WorkerModal onClose={() => setAddWorker(false)} onDone={() => done("Trabajador agregado")} />}
       {requestAcc && <AccreditationModal sites={data.sites} defaultService={data.contractor.services_description ?? ""} onClose={() => setRequestAcc(false)} onDone={() => done("Solicitud de acreditación enviada")} />}
       {editCompany && <CompanyModal portal={data} onClose={() => setEditCompany(false)} onDone={() => done("Datos guardados")} />}

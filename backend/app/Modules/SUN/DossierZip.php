@@ -18,7 +18,7 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 class DossierZip extends Controller
 {
     /** tabla de origen => columnas con archivos. */
-    private const FILE_COLUMNS = [
+    public const FILE_COLUMNS = [
         'sst_policies' => ['file_id'], 'risst_versions' => ['file_id'], 'procedure_versions' => ['file_id'], 'document_versions' => ['file_id'],
         'committee_meetings' => ['minutes_file_id'], 'training_certificates' => [], 'annual_plans' => [], 'event_notifications' => ['receipt_file_id'],
         'baseline_assessments' => [], 'iperc_matrices' => [],
@@ -33,8 +33,15 @@ class DossierZip extends Controller
         if (! $d->built_at) {
             throw new ApiProblem(409, 'conflict', 'Arma el expediente', 'Primero arma el expediente.');
         }
-        $company = DB::selectOne('select legal_name, ruc from companies where id = ?', [app(CompanyContext::class)->companyId]);
-        $items = DB::select('select * from dossier_items where dossier_id = ? and deleted_at is null order by sort_order', [$dossier]);
+
+        return response()->download(self::pack($d, app(CompanyContext::class)->companyId), 'expediente-'.Str::slug($d->title).'.zip', ['Content-Type' => 'application/zip'])->deleteFileAfterSend(true);
+    }
+
+    /** Arma el ZIP del expediente en un archivo temporal y devuelve su ruta (también lo usa la descarga del inspector). */
+    public static function pack(object $d, string $companyId): string
+    {
+        $company = DB::selectOne('select legal_name, ruc from companies where id = ?', [$companyId]);
+        $items = DB::select('select * from dossier_items where dossier_id = ? and deleted_at is null order by sort_order', [$d->id]);
         $tmp = tempnam(sys_get_temp_dir(), 'exp');
         $zip = new \ZipArchive;
         $zip->open($tmp, \ZipArchive::OVERWRITE);
@@ -50,7 +57,8 @@ class DossierZip extends Controller
                     $fid = $src?->{$c} ?? null;
                     $f = $fid ? DB::selectOne('select bucket, object_key, original_name from files where id = ? and deleted_at is null and not is_medical', [$fid]) : null;
                     if ($f && Storage::disk($f->bucket)->exists($f->object_key)) {
-                        $name = sprintf('%s/%s', $it->section_code, preg_replace('/[^\w.\- ]+/u', '_', (string) $f->original_name));
+                        // Con varios trabajadores, cada uno tiene su carpeta (W1-xxxxxx) para que sus documentos no se mezclen.
+                        $name = sprintf('%s/%s', $it->section_code.($it->worker_id ? '-'.substr((string) $it->worker_id, -6) : ''), preg_replace('/[^\w.\- ]+/u', '_', (string) $f->original_name));
                         $zip->addFromString($name, Storage::disk($f->bucket)->get($f->object_key));
                         $attached[] = $name;
                         $files++;
@@ -67,6 +75,6 @@ class DossierZip extends Controller
         $zip->addFromString('indice.html', $html);
         $zip->close();
 
-        return response()->download($tmp, 'expediente-'.Str::slug($d->title).'.zip', ['Content-Type' => 'application/zip'])->deleteFileAfterSend(true);
+        return $tmp;
     }
 }

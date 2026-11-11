@@ -14,6 +14,7 @@ import { Dashboard } from "@/components/dsh/Dashboard";
 import { VmdModule } from "@/components/vmd/VmdModule";
 import { IaaModule } from "@/components/addons/IaaModule";
 import { MyCourses } from "@/components/addons/AulLearner";
+import { AulLanding } from "@/components/modules/AulAdmin";
 import { LbaSummary } from "@/components/modules/LbaSummary";
 import { SunSummary } from "@/components/modules/SunSummary";
 import { CapMatrix } from "@/components/modules/CapMatrix";
@@ -27,7 +28,14 @@ import { CtrPortal } from "@/components/modules/CtrPortal";
 import { CtrClientPanel } from "@/components/modules/CtrClient";
 import { IngSummary } from "@/components/modules/IngSummary";
 import { ConsultancyPanel } from "@/components/modules/ConPanel";
+import { ConsultancyLink } from "@/components/modules/ConMatrix";
 import { CompanyAudit, CompanyUsers } from "@/components/usr/CompanyAdmin";
+import { DocModule } from "@/components/modules/DocModule";
+import { PasSchedule } from "@/components/modules/PasSchedule";
+import { FirTools } from "@/components/modules/FirTools";
+import { VulModule } from "@/components/modules/VulModule";
+import { DesModule } from "@/components/modules/DesModule";
+import { MrlModule } from "@/components/modules/MrlCatalog";
 
 export default function ModulePage() {
   const { code } = useParams<{ code: string }>();
@@ -102,7 +110,10 @@ export default function ModulePage() {
       ) : m.code === "DSH" ? (
         <Dashboard />
       ) : m.code === "USR" ? (
-        <CompanyUsers readOnly={m.mode === "read_only"} />
+        <div className="space-y-5">
+          <ConsultancyLink />
+          <CompanyUsers readOnly={m.mode === "read_only"} />
+        </div>
       ) : m.code === "VMD" ? (
         <VmdModule readOnly={m.mode === "read_only"} />
       ) : m.code === "AUD" ? (
@@ -129,6 +140,8 @@ export default function ModulePage() {
           <MapModule readOnly={m.mode === "read_only"} />
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
+      ) : m.code === "MRL" ? (
+        <MrlModule readOnly={m.mode === "read_only"} />
       ) : m.code === "REG" ? (
         <RegRegisters readOnly={m.mode === "read_only"} />
       ) : m.code === "LBA" ? (
@@ -136,13 +149,35 @@ export default function ModulePage() {
           <LbaSummary />
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
+      ) : m.code === "VUL" || m.code === "DES" ? (
+        <div className="space-y-6">
+          {m.code === "VUL" ? <VulModule readOnly={m.mode === "read_only"} /> : <DesModule />}
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
+      ) : m.code === "DOC" || m.code === "PAS" || m.code === "FIR" ? (
+        <div className="space-y-6">
+          {m.code === "DOC" ? <DocModule readOnly={m.mode === "read_only"} /> : m.code === "PAS" ? <PasSchedule readOnly={m.mode === "read_only"} /> : <FirTools readOnly={m.mode === "read_only"} />}
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
       ) : hasModuleWizard(m.code) ? (
         <ModuleWizards code={m.code} readOnly={m.mode === "read_only"} />
       ) : m.code === "AUL" ? (
-        <div className="space-y-5">
-          <MyCourses />
-          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
-        </div>
+        ["worker", "external_learner"].includes(company.role.code) ? (
+          <div className="space-y-5">
+            <MyCourses />
+            <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <AulLanding readOnly={m.mode === "read_only"} />
+            <details className="rounded-xl border border-line bg-surface">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Todos los registros</summary>
+              <div className="border-t border-line p-4">
+                <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+              </div>
+            </details>
+          </div>
+        )
       ) : (
         <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
       )}

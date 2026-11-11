@@ -2,6 +2,7 @@
 
 namespace App\Modules\REC\Rules;
 
+use App\Modules\VUL\MinorGuard;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -91,6 +92,10 @@ class WorkerRules extends RecordRules
         if ($end && $status !== 'terminated' && array_key_exists('termination_on', $values) && ! array_key_exists('status', $values)) {
             $values['status'] = 'terminated';
         }
+        // RN-VUL-03: un menor de edad no se asigna a un puesto con peligros prohibidos para menores.
+        if (array_key_exists('current_position_id', $values) || array_key_exists('birth_on', $values)) {
+            MinorGuard::assertAllowed($this->value($values, $current, 'birth_on'), $this->value($values, $current, 'current_position_id'), 'current_position_id');
+        }
         if (array_key_exists('whatsapp_opt_in', $values) && $values['whatsapp_opt_in'] && ! ($current?->whatsapp_opt_in)) {
             $extra['whatsapp_opt_in_at'] = ['now()', []];
         }
@@ -109,9 +114,12 @@ class WorkerRules extends RecordRules
             $this->fail('ends_on', 'La fecha de fin no puede ser anterior a la de inicio.');
         }
         $worker = $this->value($values, $current, 'worker_id');
-        $w = $worker ? DB::selectOne('select status from workers where id = ?', [$worker]) : null;
+        $w = $worker ? DB::selectOne('select status, birth_on from workers where id = ?', [$worker]) : null;
         if ($w && $w->status === 'terminated' && $current === null) {
             $this->fail('worker_id', 'El trabajador está cesado: no se le puede asignar un puesto.');
+        }
+        if ($w && (array_key_exists('position_id', $values) || $current === null)) {
+            MinorGuard::assertAllowed($w->birth_on, $this->value($values, $current, 'position_id'), 'position_id');
         }
     }
 

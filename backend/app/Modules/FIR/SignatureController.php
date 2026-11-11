@@ -69,7 +69,7 @@ class SignatureController extends Controller
             "insert into signature_requests (company_id, subject_type, subject_id, subject_module, document_hash, signer_user_id, signer_worker_id, role_in_document,
                 sequence_order, status, expires_at, requested_by, created_by, updated_by)
              values (?, ?, ?, ?, decode(?, 'hex'), ?, ?, ?, ?, 'pending', case when ?::int is null then null else now() + make_interval(days => ?::int) end, ?, ?, ?) returning id",
-            [$company, $d['subject_table'], $d['subject_id'], $res['module'], self::hashRow($row), $d['signer_user_id'] ?? null, $d['signer_worker_id'] ?? null,
+            [$company, $d['subject_table'], $d['subject_id'], $res['module'], SignatureService::hash($d['subject_table'], $row), $d['signer_user_id'] ?? null, $d['signer_worker_id'] ?? null,
                 $d['role_in_document'], $order, $d['expires_days'] ?? null, $d['expires_days'] ?? null, (string) auth()->id(), (string) auth()->id(), (string) auth()->id()]
         )->id;
         $accounts->audit((string) auth()->id(), 'signature_requested', $d['subject_table'], $d['subject_id'], ['request' => $id]);
@@ -104,12 +104,12 @@ class SignatureController extends Controller
             $doc = $w->document_last4 ? '****'.$w->document_last4 : null;
         }
         [, $row] = $this->subjectRow($r->subject_type, $r->subject_id);
-        $current = self::hashRow($row);
+        $current = SignatureService::hash($r->subject_type, $row);
         if (! hash_equals(bin2hex(self::bytes($r->document_hash)), $current)) {
             throw new ApiProblem(409, 'conflict', 'El registro cambió', 'El registro cambió después de pedir la firma: vuelve a pedirla para firmar la versión actual.');
         }
         $evidence = ['request_id' => $r->id, 'method' => $method, 'signed_by_user_id' => $uid, 'signer' => $name, 'subject' => "{$r->subject_type}/{$r->subject_id}",
-            'document_hash' => $current, 'ip' => $request->ip(), 'user_agent' => mb_substr((string) $request->userAgent(), 0, 300), 'at' => now()->toIso8601String()];
+            'document_hash' => $current, 'hash_scope' => SignatureService::scope($r->subject_type), 'ip' => $request->ip(), 'user_agent' => mb_substr((string) $request->userAgent(), 0, 300), 'at' => now()->toIso8601String()];
         $sigId = DB::selectOne(
             "insert into signatures (company_id, signature_request_id, subject_type, subject_id, signer_user_id, signer_worker_id, signer_name, signer_document_masked, method,
                 document_hash, evidence_hash, evidence, ip, user_agent, signed_at, created_by)

@@ -21,6 +21,10 @@ import { QuestionOptions } from "@/components/addons/AulLearner";
 import { RiskMapEditor } from "./RiskMapEditor";
 import { InvTreeWithGuide } from "@/components/addons/IaaGuided";
 import { EmoClinical } from "@/components/modules/EmoClinical";
+import { DocFicha } from "@/components/modules/DocModule";
+import { InvScatPanel } from "@/components/modules/InvScat";
+import { InvTeamSignatures } from "@/components/modules/InvSignatures";
+import { DossierSharePanel, ShareLinkDetail } from "@/components/modules/SunShare";
 import { useApp } from "@/components/AppContext";
 import { submitInspectionAnswers } from "@/lib/offline";
 
@@ -142,6 +146,8 @@ export function RecordActions({
   if (res.table === "investigations")
     return (
       <div className="space-y-3">
+        <InvScatPanel row={row} readOnly={readOnly} onChanged={onChanged} />
+        <InvTeamSignatures investigationId={row.id} readOnly={readOnly} />
         <InvTreeWithGuide row={row} readOnly={readOnly} />
         {!readOnly && <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />}
       </div>
@@ -153,6 +159,7 @@ export function RecordActions({
         {!readOnly && <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />}
       </div>
     );
+  if (res.table === "documents") return <DocFicha documentId={row.id} readOnly={readOnly} />;
   if (readOnly) return null;
   if (res.table === "corrective_actions") return <CorrectiveFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "inspections") return <InspectionRun row={row} onChanged={onChanged} />;
@@ -561,7 +568,7 @@ const ACTION_SOURCES: Record<string, string> = {
   change_requests: "Este cambio",
 };
 
-function FindingAction({ table, row, onChanged }: { table: string; row: RecordRow; onChanged: () => void }) {
+export function FindingAction({ table, row, onChanged }: { table: string; row: RecordRow; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", responsible_user_id: "", due_on: "" });
   const [errors, setErrors] = useState<Record<string, string[]>>({});
@@ -1192,29 +1199,17 @@ function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => voi
   const [items, setItems] = useState<DossierItem[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const scope = typeof row.scope === "string" ? (JSON.parse(row.scope || "{}") as { worker_id?: string }) : (row.scope as { worker_id?: string } | null);
+  const scope = typeof row.scope === "string" ? (JSON.parse(row.scope || "{}") as { worker_id?: string; worker_ids?: string[] }) : (row.scope as { worker_id?: string; worker_ids?: string[] } | null);
+  // Varios trabajadores (SCR-SUN-03): «Volver a armar» conserva los del asistente; con uno, se puede cambiar aquí.
+  const several = (scope?.worker_ids?.length ?? 0) > 1;
   const savedWorker = scope?.worker_id ?? "";
   const [worker, setWorker] = useState<string>(savedWorker);
-  const [share, setShare] = useState<{ days: string; name: string; views: string; url: string | null; busy: boolean; msg: string | null }>({ days: "7", name: "", views: "", url: null, busy: false, msg: null });
   const canShare = ["ready", "ready_with_gaps"].includes(String(row.status)) || items !== null;
-  const doShare = async () => {
-    setShare((x) => ({ ...x, busy: true, msg: null }));
-    try {
-      const r = await api<{ data: { url: string } }>(`/sun/dossiers/${row.id}/share`, {
-        method: "POST", withCompany: true, body: { days: Number(share.days), recipient_name: share.name || null, max_views: share.views ? Number(share.views) : null },
-      });
-      setShare((x) => ({ ...x, busy: false, url: r.data.url }));
-      onChanged();
-    } catch (e) {
-      const ae = e as ApiError;
-      setShare((x) => ({ ...x, busy: false, msg: Object.values(ae.errors ?? {})[0]?.[0] ?? ae.detail ?? ae.title }));
-    }
-  };
   const build = async () => {
     setBusy(true);
     setMsg(null);
     try {
-      const r = await api<{ data: { items: DossierItem[]; gaps: number; total: number } }>(`/sun/dossiers/${row.id}/build`, { method: "POST", withCompany: true, body: { worker_id: worker || null } });
+      const r = await api<{ data: { items: DossierItem[]; gaps: number; total: number } }>(`/sun/dossiers/${row.id}/build`, { method: "POST", withCompany: true, body: several ? {} : { worker_id: worker || null } });
       setItems(r.data.items);
       setMsg(r.data.gaps === 0 ? "Expediente completo: todos los puntos están incluidos." : `${r.data.gaps} de ${r.data.total} puntos con brechas. Toca cada uno para resolverlo.`);
       onChanged();
@@ -1230,14 +1225,15 @@ function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => voi
         <span>Revisa con los datos reales de la empresa si cada documento y registro clave existe y está vigente en el periodo.</span>
         <span className="flex gap-2">
           {canShare && <Button variant="secondary" icon="download" onClick={() => downloadFile(`/sun/dossiers/${row.id}/zip`, `expediente-${row.id}.zip`).catch((e: ApiError) => setMsg(e.detail ?? e.title))}>Descargar ZIP</Button>}
+          {canShare && <a href={`/imprimir/expediente/${row.id}`} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center rounded-lg border border-line px-4 font-semibold hover:border-brand">PDF único</a>}
           <Button variant="primary" loading={busy} onClick={build}>{items ? "Volver a armar" : "Armar expediente"}</Button>
         </span>
       </div>
       <div className="max-w-md">
-        <FormField label="Trabajador inspeccionado (opcional)" hint="Agrega su inducción, capacitaciones, aptitud médica, EPP, RISST, IPERC de su puesto y fotocheck.">
+        {several ? <p className="text-muted">{scope?.worker_ids?.length} trabajadores inspeccionados: cada uno tiene su sección en el índice y en el PDF único.</p> : <FormField label="Trabajador inspeccionado (opcional)" hint="Agrega su inducción, capacitaciones, aptitud médica, EPP, RISST, IPERC de su puesto y fotocheck.">
           <RefSelect code="SUN" table="dossier_items" f={{ name: "worker_id", type: "ref", ref: "workers", label: "Trabajador" } as never} value={worker}
             disabled={busy} invalid={false} onChange={(v) => setWorker(String(v ?? ""))} />
-        </FormField>
+        </FormField>}
       </div>
       {msg && <p className="font-semibold text-brand-strong">{msg}</p>}
       {items && (
@@ -1259,40 +1255,13 @@ function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => voi
           })}
         </ul>
       )}
-      {canShare && (
-        <div className="space-y-2 rounded-lg border border-dashed border-line p-3">
-          <p className="font-semibold">Compartir con el inspector</p>
-          <p className="text-xs text-muted">Crea un enlace que vence solo. El inspector ve el índice del expediente sin iniciar sesión. Puedes anularlo en «Enlaces compartidos».</p>
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="text-xs">Para<input className="input mt-1 !w-48" placeholder="Nombre del inspector" value={share.name} onChange={(e) => setShare({ ...share, name: e.target.value })} /></label>
-            <label className="text-xs">Días<input className="input mt-1 !w-20" inputMode="numeric" value={share.days} onChange={(e) => setShare({ ...share, days: e.target.value.replace(/\D/g, "") })} /></label>
-            <label className="text-xs">Visitas máx.<input className="input mt-1 !w-24" inputMode="numeric" placeholder="sin límite" value={share.views} onChange={(e) => setShare({ ...share, views: e.target.value.replace(/\D/g, "") })} /></label>
-            <Button variant="secondary" loading={share.busy} onClick={doShare}>Crear enlace</Button>
-          </div>
-          {share.msg && <p className="text-bad">{share.msg}</p>}
-          {share.url && (
-            <div className="rounded-lg bg-ok-soft px-3 py-2">
-              <p className="font-semibold text-ok">Copia este enlace ahora: no se vuelve a mostrar.</p>
-              <p className="break-all text-xs">{share.url}</p>
-              <button type="button" className="mt-1 text-xs font-semibold text-brand underline" onClick={() => navigator.clipboard?.writeText(share.url ?? "")}>Copiar</button>
-            </div>
-          )}
-        </div>
-      )}
+      {canShare && <DossierSharePanel dossierId={row.id} />}
     </section>
   );
 }
 
 function ShareLinkRevoke({ row, onChanged }: { row: RecordRow; onChanged: () => void }) {
-  const [msg, setMsg] = useState<string | null>(null);
-  if (row.status !== "active") return <p className="rounded-xl bg-bg px-4 py-3 text-sm text-muted">El enlace ya no está activo ({String(row.status)}).</p>;
-  return (
-    <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line px-4 py-3 text-sm">
-      <span>Enlace activo · {String(row.view_count ?? 0)} visita(s). Anúlalo si ya no debe verse.</span>
-      <Button variant="danger-ghost" onClick={() => api(`/sun/share-links/${row.id}/revoke`, { method: "POST", withCompany: true }).then(onChanged).catch((e: ApiError) => setMsg(e.detail ?? e.title))}>Anular enlace</Button>
-      {msg && <p className="w-full text-bad">{msg}</p>}
-    </section>
-  );
+  return <ShareLinkDetail dossierId={String(row.dossier_id ?? "")} linkId={row.id} onChanged={onChanged} />;
 }
 
 

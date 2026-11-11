@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Consultora\AssignmentsController;
 use App\Modules\Consultora\InvitationsController;
 use App\Modules\Consultora\PanelController;
 use App\Modules\Consultora\WhiteLabelController;
@@ -21,5 +22,11 @@ Route::middleware(['auth:sanctum', 'company'])->prefix('con')->group(function ()
     Route::post('invitations/{id}/revoke', [InvitationsController::class, 'revoke'])->whereUuid('id');
     Route::post('invitations/{token}/accept', [InvitationsController::class, 'accept'])->where('token', '[A-Za-z0-9]{48}')->middleware('throttle:login');
     Route::post('link/revoke', [InvitationsController::class, 'unlink']);
+    // Matriz consultor × empresa (SCR-CON-04) y vínculo visto por la empresa cliente.
+    Route::get('assignments', [AssignmentsController::class, 'index'])->middleware('throttle:60,1');
+    Route::post('assignments', [AssignmentsController::class, 'update'])->middleware('throttle:60,1');
+    Route::get('link', [AssignmentsController::class, 'link']);
 });
 Route::middleware('throttle:login')->get('public/con/invitations/{token}', [InvitationsController::class, 'preview'])->where('token', '[A-Za-z0-9]{48}');
+// La empresa invitada que aún no usa EscudoSST crea su cuenta desde la invitación y queda vinculada (M-CON §7.1).
+Route::middleware('throttle:10,1')->post('public/con/invitations/{token}/signup', [InvitationsController::class, 'signup'])->where('token', '[A-Za-z0-9]{48}');

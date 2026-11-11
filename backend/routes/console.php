@@ -202,6 +202,17 @@ Artisan::command('escudo:sst-alerts', function (\App\Modules\NOT\SstAlerts $aler
 Schedule::command('escudo:sst-alerts')->dailyAt('07:00')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:sst-alerts');
 
 /*
+| Vencimientos de contratistas (M-CTR RN-CTR-03, M-SCT): documentos y pólizas SCTR por vencer o vencidos → campana del
+| Jefe SST de la empresa principal y del administrador del contratista.
+| Uso: php artisan escudo:ctr-expiry
+*/
+Artisan::command('escudo:ctr-expiry', function (\App\Modules\CTR\ExpiryAlerts $alerts) {
+    $this->info('Avisos creados: '.$alerts->run());
+})->purpose('Avisa los documentos y pólizas SCTR de contratistas por vencer o vencidos');
+
+Schedule::command('escudo:ctr-expiry')->dailyAt('07:10')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:ctr-expiry');
+
+/*
 | Webhooks del complemento API: envía los eventos pendientes firmados y reintenta los fallidos.
 | Uso: php artisan escudo:webhooks
 */
@@ -210,3 +221,14 @@ Artisan::command('escudo:webhooks', function (\App\Modules\SUS\Services\Accounts
 })->purpose('Envía los webhooks pendientes de las empresas con el complemento API');
 
 Schedule::command('escudo:webhooks')->everyMinute()->withoutOverlapping()->runInBackground()->name('escudo:webhooks');
+
+/*
+| Reglas de recomendación del aula (M-AUL RN-AUL-24..30): certificados por vencer, brecha del puesto, ruta y
+| complementarios → recomendaciones con motivo, sin repetir, respetando consentimiento y límite de envíos.
+| Uso: php artisan escudo:aul-recommendations
+*/
+Artisan::command('escudo:aul-recommendations', function (\App\Modules\AUL\RecommendationEngine $engine) {
+    $this->info('Recomendaciones creadas: '.$engine->run());
+})->purpose('Evalúa las reglas de recomendación de cursos del aula virtual');
+
+Schedule::command('escudo:aul-recommendations')->dailyAt('06:00')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:aul-recommendations');

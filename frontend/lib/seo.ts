@@ -32,6 +32,7 @@ export const PRIVATE_PATHS = [
   "/reportar/",
   "/expediente/",
   "/encuesta/",
+  "/votar/",
   "/imprimir/",
   "/l/",
   "/api/",

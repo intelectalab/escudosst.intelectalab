@@ -92,6 +92,10 @@ class DocsFieldRules extends RecordRules
             $row = DB::selectOne("select * from \"{$t}\" where id = ?", [$id]);
             if ($parent) {
                 DB::update("update \"{$parent}\" set current_version_id = ? where id = ?", [$id, $row->{$col}]);
+                // Un documento con versión vigente queda vigente (deja de ser borrador).
+                if ($parent === 'documents') {
+                    DB::update("update documents set status = 'active' where id = ? and status = 'draft'", [$row->{$col}]);
+                }
             }
         }
         if ($t === 'equipment_checks') {
@@ -170,6 +174,15 @@ class DocsFieldRules extends RecordRules
             if ($author && $author === (string) auth()->id()) {
                 $perm = strtolower((string) (\App\Modules\REC\Registry::data()['resources'][$t]['module'] ?? 'doc')).".{$t}.update";
                 $this->fail('status', 'Quien elaboró la versión no puede aprobarla: la aprueba otra persona (gerencia, comité o supervisor).'.\App\Core\Support\Approvers::hint($perm));
+            }
+            // RN-DOC-03: la categoría del documento decide quién aprueba (también por la API común, no solo la bandeja).
+            if ($t === 'document_versions') {
+                $req = DB::selectOne("select coalesce(c.requires_approval_by, 'sst') as r from documents d left join document_categories c on c.id = d.category_id where d.id = ?",
+                    [$current->document_id])?->r ?? 'sst';
+                [$roles, $label] = \App\Modules\DOC\ApprovalController::APPROVERS[$req] ?? \App\Modules\DOC\ApprovalController::APPROVERS['sst'];
+                if (! in_array(app(\App\Core\Tenancy\CompanyContext::class)->roleCode, $roles, true)) {
+                    $this->fail('status', "Esta versión la aprueba {$label} (según la categoría del documento).");
+                }
             }
             if ($t === 'risst_versions') {
                 $model = DB::selectOne('select sst_model from companies where id = ?', [$current->company_id])?->sst_model;

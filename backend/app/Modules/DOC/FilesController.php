@@ -8,6 +8,7 @@ use App\Core\Tenancy\CompanyContext;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -46,6 +47,17 @@ class FilesController extends Controller
             throw new ApiProblem(422, 'validation_failed', 'Revisa el archivo', 'El archivo pesa más de 15 MB.', ['errors' => ['file' => ['Máximo 15 MB.']]]);
         }
         $module = strtoupper(substr((string) $request->input('module', ''), 0, 3)) ?: null;
+        $id = self::put($file, $mime, $ext, $module);
+
+        return response()->json(['data' => ['id' => $id, 'original_name' => $file->getClientOriginalName(), 'mime_type' => $mime, 'size_bytes' => $file->getSize()]], 201);
+    }
+
+    /**
+     * Guarda un archivo subido en el almacenamiento de la empresa activa (con su huella SHA-256) y devuelve su id.
+     * Lo usan otros módulos que conservan el archivo original (p. ej. la carga masiva de trabajadores).
+     */
+    public static function put(UploadedFile $file, string $mime, string $ext, ?string $module = null, ?string $entityType = null, ?string $entityId = null): string
+    {
         $medical = $module && in_array($module, Permissions::MEDICAL_MODULES, true);
         $ctx = app(CompanyContext::class);
         $disk = config('escudo.files_disk', 'local');
@@ -56,13 +68,14 @@ class FilesController extends Controller
         is_resource($stream) && fclose($stream);
 
         DB::insert(
-            "insert into files (id, company_id, bucket, object_key, original_name, mime_type, size_bytes, sha256, module_code, status, exif_stripped, uploaded_by, is_medical, created_by, updated_by)
-             values (?, ?, ?, ?, ?, ?, ?, decode(?, 'hex'), ?, 'available', false, ?, ?, ?, ?)",
+            "insert into files (id, company_id, bucket, object_key, original_name, mime_type, size_bytes, sha256, module_code, entity_type, entity_id, status, exif_stripped,
+                                uploaded_by, is_medical, created_by, updated_by)
+             values (?, ?, ?, ?, ?, ?, ?, decode(?, 'hex'), ?, ?, ?, 'available', false, ?, ?, ?, ?)",
             [$id, $ctx->companyId, $disk, $path, mb_substr($file->getClientOriginalName(), 0, 200), $mime, $file->getSize(), hash_file('sha256', $file->getRealPath()),
-                $module, (string) auth()->id(), $medical ? 'true' : 'false', (string) auth()->id(), (string) auth()->id()]
+                $module, $entityType, $entityId, (string) auth()->id(), $medical ? 'true' : 'false', (string) auth()->id(), (string) auth()->id()]
         );
 
-        return response()->json(['data' => ['id' => $id, 'original_name' => $file->getClientOriginalName(), 'mime_type' => $mime, 'size_bytes' => $file->getSize()]], 201);
+        return $id;
     }
 
     public function show(string $id): StreamedResponse

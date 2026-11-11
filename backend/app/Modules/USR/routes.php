@@ -6,6 +6,7 @@ use App\Modules\USR\Http\Controllers\CompanyUsersController;
 use App\Modules\USR\Http\Controllers\InvitationController;
 use App\Modules\USR\Http\Controllers\MeController;
 use App\Modules\USR\Http\Controllers\MfaController;
+use App\Modules\USR\Http\Controllers\RolesMatrixController;
 use App\Modules\USR\Http\Controllers\SearchController;
 use App\Modules\USR\Http\Controllers\SupportAccessController;
 use Illuminate\Support\Facades\Route;
@@ -55,6 +56,8 @@ Route::middleware(['auth:sanctum', 'company'])->group(function () {
 Route::middleware(['auth:sanctum', 'company', 'module:USR'])->prefix('company')->group(function () {
     Route::get('users', [CompanyUsersController::class, 'index']);
     Route::get('roles', [CompanyUsersController::class, 'roles']);
+    Route::get('roles/matrix', [RolesMatrixController::class, 'matrix']);
+    Route::get('scope-options', [RolesMatrixController::class, 'scopeOptions']);
     Route::post('users', [CompanyUsersController::class, 'store'])->middleware('throttle:login');
     Route::patch('users/{membership}', [CompanyUsersController::class, 'update'])->whereUuid('membership');
     Route::post('users/{membership}/resend', [CompanyUsersController::class, 'resend'])->whereUuid('membership')->middleware('throttle:login');

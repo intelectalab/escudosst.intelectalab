@@ -171,7 +171,8 @@ final class KpiService
                    from corrective_actions where deleted_at is null and status <> 'cancelled' and due_on between ? and ?".$this->siteSql('site_id'), [$this->from, $this->to],
                 'acciones cerradas dentro de su plazo'),
             'legal_compliance_pct' => $this->ratio(
-                "select count(*) filter (where e.result = 'compliant') as num, count(*) as den from legal_requirements r
+                // RN-MRL-05: un requisito «requiere revisión» por cambio normativo no cuenta como cumplido hasta revisarse.
+                "select count(*) filter (where e.result = 'compliant' and not r.needs_review) as num, count(*) as den from legal_requirements r
                    left join lateral (select result from requirement_evaluations v where v.legal_requirement_id = r.id and v.deleted_at is null
                                        order by v.evaluated_on desc limit 1) e on true
                   where r.deleted_at is null and r.status = 'active' and r.applies and coalesce(e.result, '') <> 'not_applicable'".$this->siteSql('r.site_id', true), [],

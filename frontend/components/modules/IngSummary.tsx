@@ -43,9 +43,13 @@ export function IngSummary({ readOnly }: { readOnly?: boolean }) {
         <Kpi label="Por excepción hoy" value={String(kpis?.overridden_today ?? "—")} color="text-amber-ink" />
         <Kpi label="Dentro ahora" value={String(kpis?.inside ?? "—")} />
       </div>
-      {operate && (
+      {operate ? (
         <Link href="/garita" className="flex h-12 items-center justify-center gap-2 rounded-xl bg-brand px-5 text-base font-semibold text-white hover:bg-brand-strong sm:inline-flex">
           <Icon name="idcard" size={20} /> Abrir portería (escanear QR)
+        </Link>
+      ) : (
+        <Link href="/garita" className="inline-flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-semibold hover:border-brand">
+          <Icon name="idcard" size={18} /> Portería
         </Link>
       )}
       {people === null ? (

@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\AUD\Http\Controllers\CompanyAuditController;
 use App\Modules\AUD\Http\Controllers\PlatformAuditController;
 use Illuminate\Support\Facades\Route;
 
@@ -11,5 +12,8 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal')->group(funct
 
 // Bitácora de la empresa activa (M-AUD).
 Route::middleware(['auth:sanctum', 'company', 'module:AUD'])->group(function () {
-    Route::get('company/audit', \App\Modules\AUD\Http\Controllers\CompanyAuditController::class);
+    Route::get('company/audit', CompanyAuditController::class);
+    Route::get('company/audit/filters', [CompanyAuditController::class, 'filters']);
+    Route::get('company/audit/sensitive', [CompanyAuditController::class, 'sensitive']);
+    Route::get('company/audit/sensitive/export', [CompanyAuditController::class, 'sensitiveExport'])->middleware('throttle:10,1');
 });

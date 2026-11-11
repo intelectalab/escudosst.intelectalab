@@ -179,6 +179,12 @@ class CatalogsService
                 'before' => array_intersect_key((array) $before, $fields),
                 'after' => $fields,
             ]);
+            // Novedades normativas (M-MRL RN-MRL-05): los requisitos vinculados de cada empresa quedan «requiere revisión».
+            if ($reason = \App\Modules\MRL\NormChanges::reason($before, $fields)) {
+                $flagged = app(\App\Modules\MRL\NormChanges::class)->flag($id, $reason);
+
+                return ['id' => $id, 'flagged' => $flagged];
+            }
         }
 
         return ['id' => $id];

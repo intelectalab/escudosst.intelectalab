@@ -461,6 +461,11 @@ final class RecordsService
             } elseif ($f['type'] === 'number' && $v !== null) {
                 $v = (float) $v;
             }
+            // Ingresos antiguos con motivos médicos: fuera de la base médica se ven como «Requisito pendiente» (RN-ING-02).
+            if ($c === 'deny_reasons' && $res['table'] === 'access_events' && is_array($v)
+                && ! in_array(app(CompanyContext::class)->roleCode, ['occupational_doctor', 'health_staff'], true)) {
+                $v = \App\Modules\ING\GateController::safeReasons($v);
+            }
             $out[$c] = $v;
             if (property_exists($row, $c.'__label')) {
                 $out[$c.'__label'] = $row->{$c.'__label'};
@@ -804,10 +809,10 @@ final class RecordsService
     {
         $ctx = app(CompanyContext::class);
         DB::insert(
-            "insert into audit_logs (company_id, actor_user_id, actor_role, actor_type, action, module_code, entity_type, entity_id, changes)
-             values (?, ?, ?, 'user', ?, ?, ?, ?, ?::jsonb)",
+            "insert into audit_logs (company_id, actor_user_id, actor_role, actor_type, action, module_code, entity_type, entity_id, changes, ip, user_agent)
+             values (?, ?, ?, 'user', ?, ?, ?, ?, ?::jsonb, ?::inet, ?)",
             [$ctx->companyId, (string) auth()->id(), $ctx->roleCode, $action, $res['module'], $res['table'], $id,
-                json_encode($changes, JSON_UNESCAPED_UNICODE)]
+                json_encode($changes, JSON_UNESCAPED_UNICODE), request()->ip(), mb_substr((string) request()->userAgent(), 0, 300) ?: null]
         );
     }
 }

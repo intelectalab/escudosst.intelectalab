@@ -65,14 +65,19 @@ class AddonRules extends RecordRules
         $values['occurred_at'] ??= now()->toIso8601String();
         $extra['guard_user_id'] = ['?', [(string) auth()->id()]];
         $type = $values['subject_type'] ?? 'worker';
+        // Motivos neutros (RN-ING-02): el texto y el código se guardan sin términos médicos; la aptitud médica queda
+        // como «Requisito pendiente» en portería, en la lista de ingresos y en cualquier reporte.
         $reasons = [];
+        $codes = [];
         $point = ($values['access_point_id'] ?? null) ? DB::selectOne('select is_active, allows_visitors, requires_credential from access_points where id = ?', [$values['access_point_id']]) : null;
         if ($point && ! $point->is_active) {
             $reasons[] = 'Punto de acceso inactivo';
+            $codes[] = 'point_inactive';
         }
         if ($type === 'visitor' || $type === 'vehicle') {
             if ($point && $type === 'visitor' && ! $point->allows_visitors) {
                 $reasons[] = 'Este punto no admite visitas';
+                $codes[] = 'visitors_not_allowed';
             }
             if (($values['result'] ?? null) === 'overridden') {
                 if (empty($values['override_reason'])) {
@@ -82,6 +87,7 @@ class AddonRules extends RecordRules
                 $values['result'] = $reasons ? 'denied' : 'granted';
             }
             $values['deny_reasons'] = $reasons;
+            $extra['deny_codes'] = ['?::jsonb', [json_encode($codes)]];
 
             return;
         }
@@ -94,9 +100,11 @@ class AddonRules extends RecordRules
             $cw = DB::selectOne('select w.status, w.access_enabled, c.status as contractor_status from contractor_workers w join contractors c on c.id = w.contractor_id where w.id = ?', [$person]);
             if ($cw && ($cw->status !== 'active' || ! $cw->access_enabled)) {
                 $reasons[] = 'Trabajador del contratista bloqueado o sin acceso';
+                $codes[] = 'contractor_worker_blocked';
             }
             if ($cw && $cw->contractor_status !== 'active') {
                 $reasons[] = 'Contratista '.($cw->contractor_status === 'suspended' ? 'suspendido' : 'bloqueado');
+                $codes[] = $cw->contractor_status === 'suspended' ? 'contractor_suspended' : 'contractor_blocked';
             }
         }
         $cred = DB::selectOne("select id, status, credential_type_id, worker_id, contractor_worker_id, expires_on from credentials where {$col} = ? and deleted_at is null and status <> 'revoked'
@@ -104,12 +112,20 @@ class AddonRules extends RecordRules
         if (! $cred) {
             if (! $point || $point->requires_credential) {
                 $reasons[] = 'Sin fotocheck';
+                $codes[] = 'no_credential';
             }
         } else {
             // Se evalúan los requisitos en este momento (un SCTR o una aptitud pudo vencer desde la última revisión).
-            $live = PeopleRules::credentialReasons($cred->credential_type_id, $cred->worker_id, $cred->contractor_worker_id, $cred->expires_on);
-            if ($live) {
-                $reasons[] = 'Fotocheck no habilitado: '.implode(', ', $live);
+            $items = PeopleRules::credentialReasonItems($cred->credential_type_id, $cred->worker_id, $cred->contractor_worker_id, $cred->expires_on);
+            $live = array_column($items, 'text');
+            if ($items) {
+                $neutral = [];
+                foreach ($items as $it) {
+                    [$code, $text] = self::neutralReason($it['type'], $it['text']);
+                    $neutral[] = $text;
+                    $codes[] = $code;
+                }
+                $reasons[] = 'Fotocheck no habilitado: '.implode(', ', array_values(array_unique($neutral)));
             }
             DB::update('update credentials set status = ?, blocking_reasons = ?::jsonb, last_evaluated_at = now() where id = ?',
                 [$live ? 'blocked' : 'active', json_encode($live, JSON_UNESCAPED_UNICODE), $cred->id]);
@@ -123,6 +139,62 @@ class AddonRules extends RecordRules
             $values['result'] = $reasons ? 'denied' : 'granted';
         }
         $values['deny_reasons'] = $reasons;
+        $extra['deny_codes'] = ['?::jsonb', [json_encode(array_values(array_unique($codes)))]];
+    }
+
+    /**
+     * Código y texto neutros de un requisito que falta (RN-ING-02): lo médico (aptitud, EMO, examen) nunca sale de la
+     * base médica; en portería se ve y se guarda como «Requisito pendiente».
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function neutralReason(string $type, string $text): array
+    {
+        if ($type === 'emo_fitness' || preg_match('/m[ée]dic|aptitud|\bEMO\b|examen|salud ocupacional|diagn/iu', $text)) {
+            return ['requirement_pending', 'Requisito pendiente'];
+        }
+
+        return [match ($type) {
+            'training' => 'training_pending', 'induction' => 'induction_pending', 'sctr' => 'sctr_pending',
+            'accreditation' => 'accreditation_pending', 'expired' => 'credential_expired', default => 'requirement_pending',
+        }, $text];
+    }
+
+    /**
+     * Ingreso negado de un trabajador propio: aviso inmediato al jefe de su área (M-ING §10). Jefe = el trabajador
+     * a cargo del área (areas.manager_worker_id) con usuario, y los jefes de área con alcance en esa área o su sede.
+     */
+    public function after(string $op, array $res, string $id, array $values, ?object $current): void
+    {
+        if ($res['table'] !== 'access_events' || $op !== 'create' || ($values['result'] ?? null) !== 'denied' || empty($values['worker_id'])) {
+            return;
+        }
+        $w = DB::selectOne('select w.full_name, w.current_area_id, a.name as area, a.site_id, a.manager_worker_id
+                              from workers w left join areas a on a.id = w.current_area_id where w.id = ?', [$values['worker_id']]);
+        if (! $w || ! $w->current_area_id) {
+            return;
+        }
+        $company = (string) DB::selectOne("select current_setting('app.company_id', true) as c")->c;
+        $to = DB::select(
+            "select distinct u.user_id from (
+                select coalesce(mw.user_id, m.user_id) as user_id from workers mw
+                  left join memberships m on m.worker_id = mw.id and m.status = 'active' and m.deleted_at is null
+                 where mw.id = ?
+                union
+                select m.user_id from memberships m join roles r on r.id = m.role_id join membership_scopes s on s.membership_id = m.id and s.deleted_at is null
+                 where r.code = 'area_lead' and m.status = 'active' and m.deleted_at is null
+                   and ((s.scope_type = 'area' and s.area_id = ?) or (s.scope_type = 'site' and s.site_id = ?))
+             ) u where u.user_id is not null",
+            [$w->manager_worker_id, $w->current_area_id, $w->site_id]);
+        $point = ($values['access_point_id'] ?? null) ? DB::selectOne('select name from access_points where id = ?', [$values['access_point_id']])?->name : null;
+        foreach ($to as $u) {
+            DB::insert(
+                "insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, recipient_worker_id, title, body, link, priority, dedupe_key)
+                 values (?, 'ing.access_denied', 'access_events', ?, ?, ?, 'Ingreso negado en portería', ?, '/m/ing', 'high', ?)",
+                [$company, $id, $u->user_id, $values['worker_id'],
+                    mb_substr("{$w->full_name} ({$w->area}) intentó ingresar".($point ? " por {$point}" : '').' y no estaba habilitado: '.implode('; ', (array) ($values['deny_reasons'] ?? [])).'.', 0, 500),
+                    'ing.denied.'.$id.'.'.$u->user_id]);
+        }
     }
 
     private function vendor(array &$values, ?object $current, array &$extra): void

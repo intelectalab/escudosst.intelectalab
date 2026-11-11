@@ -102,6 +102,9 @@ class EventRules extends RecordRules
         if ($res['table'] === 'sst_events' && ($op === 'create' || array_key_exists('event_type', $values) || array_key_exists('occurred_at', $values))) {
             $this->obligations($id);
         }
+        if ($res['table'] === 'sst_events' && ($op === 'create' || (array_key_exists('event_type', $values) && $values['event_type'] !== ($current?->event_type ?? null)))) {
+            $this->notifyRegistered($id);
+        }
         if ($res['table'] === 'event_people') {
             $event = DB::selectOne('select event_id from event_people where id = ?', [$id])->event_id;
             DB::update('update sst_events set lost_days = (select coalesce(sum(greatest(lost_days, 0)), 0) from event_people where event_id = ? and deleted_at is null and person_role in '.self::AFFECTED.'),
@@ -239,6 +242,46 @@ class EventRules extends RecordRules
                     where c.investigation_id = ? and c.deleted_at is null and a.status not in ('verified','cancelled')", [$current->id])) {
                 $this->fail('status', 'Hay acciones correctivas de las causas sin verificar.');
             }
+        }
+    }
+
+    /**
+     * Aviso al registrar el evento (M-ACC §10, RN-ACC-04): un accidente mortal o incidente peligroso avisa de inmediato,
+     * con prioridad crítica (sin horas de silencio), al Jefe SST, la gerencia y el comité SST; un accidente incapacitante,
+     * con prioridad alta, al Jefe SST y la gerencia; los demás, al Jefe SST. En todos, también al jefe del área del evento.
+     * No se avisa a quien lo registró. La clave incluye el tipo: si el evento se reclasifica a más grave, se vuelve a avisar.
+     */
+    private function notifyRegistered(string $id): void
+    {
+        $e = DB::selectOne('select e.id, e.company_id, e.code, e.event_type, e.occurred_at, e.area_id, s.name as site, a.name as area,
+                                   (select w.user_id from workers w where w.id = a.manager_worker_id and w.deleted_at is null) as area_lead
+                              from sst_events e left join sites s on s.id = e.site_id left join areas a on a.id = e.area_id where e.id = ?', [$id]);
+        [$roles, $priority, $label] = match ($e->event_type) {
+            'fatal_accident' => [['sst_manager', 'management', 'committee_member'], 'critical', 'Accidente mortal'],
+            'dangerous_incident' => [['sst_manager', 'management', 'committee_member'], 'critical', 'Incidente peligroso'],
+            'disabling_accident' => [['sst_manager', 'management'], 'high', 'Accidente incapacitante'],
+            'occupational_disease' => [['sst_manager'], 'high', 'Enfermedad ocupacional'],
+            'minor_accident' => [['sst_manager'], 'normal', 'Accidente leve'],
+            default => [['sst_manager'], 'normal', 'Incidente'],
+        };
+        $users = array_column(DB::select(
+            "select distinct m.user_id from memberships m join roles r on r.id = m.role_id
+              where m.company_id = ? and m.status = 'active' and m.deleted_at is null and r.code = any(?::text[])",
+            [$e->company_id, '{'.implode(',', $roles).'}']), 'user_id');
+        if ($e->area_lead) {
+            $users[] = $e->area_lead;
+        }
+        $me = (string) auth()->id();
+        $where = trim(implode(' · ', array_filter([$e->site, $e->area])));
+        $body = "{$label} {$e->code} el ".date('d/m/Y H:i', strtotime($e->occurred_at)).($where !== '' ? " en {$where}" : '').'.'
+            .($priority === 'critical' ? ' Atiende la notificación obligatoria y la investigación.' : '');
+        foreach (array_unique(array_filter($users, fn ($u) => (string) $u !== $me)) as $u) {
+            DB::insert(
+                "insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, dedupe_key)
+                 values (?, 'acc.event_registered', 'sst_events', ?, ?, ?, ?, ?, ?, ?) on conflict do nothing",
+                [$e->company_id, $e->id, $u, "{$label} registrado: {$e->code}", mb_substr($body, 0, 500), "/m/acc?t=sst_events&open={$e->id}", $priority,
+                    "acc_event:{$e->id}:{$e->event_type}:{$u}"]
+            );
         }
     }
 

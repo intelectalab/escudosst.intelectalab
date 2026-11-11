@@ -14,6 +14,7 @@ import { Modal } from "@/components/ui/Modal";
 import { api, ApiError } from "@/lib/api";
 import { session } from "@/lib/session";
 import { Bar, Card, Chip, Dot, Kpi, toneOf, type Tone } from "./Summary";
+import { ConsultantMatrix } from "./ConMatrix";
 
 type Company = {
   company_id: string; name: string; ruc: string; role: string; is_active: boolean; sector: string | null; workers: number;
@@ -198,6 +199,8 @@ export function ConsultancyPanel({ readOnly = false }: { readOnly?: boolean }) {
           )}
         </Card>
       </div>
+
+      <ConsultantMatrix key={data.kpis.companies} readOnly={readOnly} />
 
       {invites.length > 0 && (
         <Card title="Invitaciones a empresas">

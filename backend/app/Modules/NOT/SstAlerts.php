@@ -103,6 +103,23 @@ final class SstAlerts
             ['ACT', "select id, code as ref, description as name, null as owner, reported_at as due, 'act' as kind from substandard_reports
                       where deleted_at is null and status = 'received' and reported_at < now() - interval '2 days'",
                 'act.untriaged', 'normal', 'Reporte sin revisar', fn ($r) => "El reporte {$r->ref} lleva más de 2 días sin revisar.", '/m/act?t=substandard_reports&open=', self::SST_ROLES, true],
+            // M-VUL §10 / RN-VUL-04: adecuación por vencer («adjustment_notice_days» antes) y vencida; nunca se nombra la condición.
+            ['VUL', "select a.id, w.full_name as ref, '' as name, null as owner, a.ends_on as due, 'adj' as kind from work_adjustments a join workers w on w.id = a.worker_id
+                      where a.deleted_at is null and a.status = 'active' and a.ends_on between current_date and current_date + coalesce((select p.value::int from legal_parameters p
+                            where p.key = 'adjustment_notice_days' and p.deleted_at is null and p.valid_from <= current_date and (p.valid_to is null or p.valid_to >= current_date)
+                              and p.value ~ '^[0-9]+$' order by p.company_id nulls last, p.valid_from desc limit 1), 15)",
+                'vul.adjustment_expiring', 'normal', 'Adecuación de puesto por vencer', fn ($r) => "La adecuación de puesto de {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).': revísala.', '/m/vul?t=work_adjustments&open=', ['sst_manager', 'occupational_doctor'], false],
+            ['VUL', "select a.id, w.full_name as ref, '' as name, null as owner, a.ends_on as due, 'adj_end' as kind from work_adjustments a join workers w on w.id = a.worker_id
+                      where a.deleted_at is null and a.status = 'active' and a.ends_on < current_date",
+                'vul.adjustment_expired', 'high', 'Adecuación de puesto vencida', fn ($r) => "La adecuación de puesto de {$r->ref} venció el ".date('d/m/Y', strtotime($r->due)).': revísala, extiéndela o dala por terminada.', '/m/vul?t=work_adjustments&open=', ['sst_manager', 'occupational_doctor'], true],
+            // M-DES §10: retorno de un descanso por accidente o enfermedad de trabajo (el día siguiente al fin), para el EMO de reintegro.
+            // No se avisa si el descanso se extendió con otra ausencia encadenada (RN-DES-06).
+            ['DES', "select a.id, w.full_name as ref, '' as name, null as owner, (a.ends_on + 1) as due, 'return' as kind from absences a join workers w on w.id = a.worker_id
+                      where a.deleted_at is null and a.status <> 'cancelled' and (a.absence_type in ('occupational_accident', 'occupational_disease') or a.is_work_related)
+                        and a.ends_on + 1 between current_date - 3 and current_date
+                        and not exists (select 1 from absences x where x.worker_id = a.worker_id and x.id <> a.id and x.deleted_at is null and x.status <> 'cancelled'
+                                         and x.starts_on <= a.ends_on + 1 and x.ends_on > a.ends_on)",
+                'des.return_to_work', 'high', 'Retorno de descanso por accidente', fn ($r) => "{$r->ref} retorna el ".date('d/m/Y', strtotime($r->due)).' de su descanso: programa el EMO de reintegro.', '/m/des?t=absences&open=', ['sst_manager', 'occupational_doctor'], false],
         ];
         foreach ($checks as [$module, $sql, $event, $priority, $title, $body, $link, $roles, $weekly]) {
             if (! in_array($module, $enabled, true)) {
@@ -120,13 +137,15 @@ final class SstAlerts
                 $to = array_unique(array_filter([...$team, $r->owner]));
                 $dedupe = $event.':'.$r->id.($weekly ? ':'.$week : '');
                 foreach ($to as $user) {
-                    if ($db->selectOne('select 1 as ok from notifications where company_id = ? and recipient_user_id = ? and dedupe_key = ? and deleted_at is null', [$company, $user, $dedupe])) {
+                    // La llave única de la tabla es (empresa, dedupe_key): incluye a la persona para avisar a cada una sin chocar.
+                    $key = $dedupe.':'.$user;
+                    if ($db->selectOne('select 1 as ok from notifications where company_id = ? and recipient_user_id = ? and dedupe_key in (?, ?) and deleted_at is null', [$company, $user, $key, $dedupe])) {
                         continue;
                     }
                     $nid = $db->selectOne(
                         'insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, due_at, dedupe_key)
                          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id',
-                        [$company, $event, $module, $r->id, $user, $title, mb_substr($body($r), 0, 500), $link.$r->id, $priority, $r->due, $dedupe]
+                        [$company, $event, $module, $r->id, $user, $title, mb_substr($body($r), 0, 500), $link.$r->id, $priority, $r->due, $key]
                     )->id;
                     $byUser[$user][] = ['id' => $nid, 'module' => strtolower($module), 'title' => $title, 'body' => mb_substr($body($r), 0, 500), 'link' => $link.$r->id, 'priority' => $priority];
                     $created++;
