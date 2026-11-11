@@ -38,6 +38,46 @@ Artisan::command('escudo:create-owner {email} {name}', function (\App\Modules\US
     return 0;
 })->purpose('Crea el primer Dueño de la plataforma y le envía el enlace para crear su contraseña');
 
+/*
+| Sesión para las pruebas de interfaz automáticas (frontend/e2e): crea un token de Sanctum «e2e-…» que vence en 2 horas
+| sin pasar por la verificación en dos pasos. Solo en desarrollo o pruebas (APP_ENV local o testing); en cualquier otro
+| entorno se niega. Imprime una línea JSON {token, company_id}. Las pruebas borran sus tokens al terminar.
+| Uso: php artisan escudo:e2e-token corporativo@escudo.test --company=<uuid>
+*/
+Artisan::command('escudo:e2e-token {email} {--company=}', function () {
+    if (! app()->environment(['local', 'testing'])) {
+        $this->error('Solo se puede usar en desarrollo o pruebas (APP_ENV local o testing).');
+
+        return 1;
+    }
+    $found = DB::selectOne('select id from app_auth_lookup_user(?)', [$this->argument('email')]);
+    if ($found === null) {
+        $this->error('No existe un usuario con ese correo.');
+
+        return 1;
+    }
+
+    DbContext::setUser($found->id);
+    try {
+        $user = User::findOrFail($found->id);
+        $companies = array_map(fn ($r) => $r->company_id, DB::select('select company_id from app_my_memberships() order by company_name'));
+        $company = $this->option('company') ?: ($companies[0] ?? null);
+        if ($company !== null && ! in_array($company, $companies, true)) {
+            $this->error('El usuario no tiene acceso activo a esa empresa.');
+
+            return 1;
+        }
+        $token = $user->createToken(name: 'e2e-'.now()->format('YmdHis'), expiresAt: now()->addHours(2));
+        $token->accessToken->forceFill(['last_used_at' => now()])->save();
+    } finally {
+        DbContext::setUser(null);
+    }
+
+    $this->line(json_encode(['token' => $token->plainTextToken, 'company_id' => $company]));
+
+    return 0;
+})->purpose('Solo desarrollo: crea un token de 2 horas para las pruebas de interfaz automáticas');
+
 Artisan::command('escudo:mfa-reset {email}', function (MfaService $mfa) {
     $found = DB::selectOne('select id from app_auth_lookup_user(?)', [$this->argument('email')]);
 

@@ -12,7 +12,14 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
+    // Pruebas de Playwright: sus fixtures llaman a «use», que no es el hook de React.
+    files: ["e2e/**/*.ts"],
+    rules: { "react-hooks/rules-of-hooks": "off" },
+  },
+  {
     ignores: [
+      "e2e-report/**",
+      "test-results/**",
       "node_modules/**",
       ".next/**",
       "out/**",

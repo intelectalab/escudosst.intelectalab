@@ -87,6 +87,9 @@ class FilesController extends Controller
         if ($f->is_medical && ! array_filter(Permissions::effective(), fn ($p) => str_ends_with($p, '.read_sensitive') || str_starts_with($p, 'emo.'))) {
             throw ApiProblem::forbidden('Es un archivo de salud: solo lo ve el personal autorizado.');
         }
+        if (app(CompanyContext::class)->roleCode === 'worker' && ! $this->workerMayRead($f)) {
+            throw ApiProblem::forbidden('Este archivo no es tuyo.');
+        }
         $name = str_replace('"', '', (string) ($f->original_name ?: 'archivo'));
 
         return Storage::disk($f->bucket)->response($f->object_key, $name, [
@@ -94,5 +97,19 @@ class FilesController extends Controller
             'Content-Disposition' => (str_starts_with($f->mime_type, 'image/') || $f->mime_type === 'application/pdf' ? 'inline' : 'attachment')."; filename=\"{$name}\"",
             'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    /** Un trabajador solo abre lo que subió, lo ligado a su ficha y los documentos que la empresa le da a leer y firmar. */
+    private function workerMayRead(object $f): bool
+    {
+        if ((string) $f->uploaded_by === (string) auth()->id()) {
+            return true;
+        }
+        $workerId = \App\Modules\TRB\WorkerSelf::id();
+        if ($f->entity_type === 'workers' && (string) $f->entity_id === $workerId) {
+            return true;
+        }
+
+        return (bool) DB::selectOne('select 1 as ok where exists (select 1 from document_versions where file_id = ?) or exists (select 1 from risst_versions where file_id = ?)', [$f->id, $f->id]);
     }
 }

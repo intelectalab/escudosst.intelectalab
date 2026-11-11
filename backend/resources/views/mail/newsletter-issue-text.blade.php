@@ -1,16 +1,16 @@
-{{ $subjectLine }}
+{!! $subjectLine !!}
 
 @foreach ($blocks as $b)
 @if ($b['t'] === 'h')
-{{ mb_strtoupper($b['text']) }}
+{!! mb_strtoupper($b['text']) !!}
 
 @elseif ($b['t'] === 'ul')
 @foreach ($b['items'] as $it)
-- {{ $it }}
+- {!! $it !!}
 @endforeach
 
 @else
-{{ $b['text'] }}
+{!! $b['text'] !!}
 
 @endif
 @endforeach
@@ -18,5 +18,5 @@
 Información referencial; no reemplaza la lectura de la norma ni la asesoría legal.
 @endif
 
-Ver en el navegador: {{ $webUrl }}
-Darme de baja: {{ $unsubscribeUrl }}
+Ver en el navegador: {!! $webUrl !!}
+Darme de baja: {!! $unsubscribeUrl !!}

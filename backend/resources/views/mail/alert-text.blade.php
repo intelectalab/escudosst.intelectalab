@@ -1,7 +1,7 @@
-Hola, {{ $name }}:
+Hola, {!! $name !!}:
 
-{{ $title }} ({{ $company }})
-{{ $body }}
+{!! $title !!} ({!! $company !!})
+{!! $body !!}
 
-Abrir en EscudoSST: {{ $url }}
+Abrir en EscudoSST: {!! $url !!}
 — EscudoSST · Puedes cambiar estos avisos en tus preferencias de notificación.

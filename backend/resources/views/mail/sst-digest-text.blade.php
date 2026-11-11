@@ -1,11 +1,11 @@
-Hola, {{ $name }}:
+Hola, {!! $name !!}:
 
-Alertas SST de {{ $company }} que requieren tu atención:
+Alertas SST de {!! $company !!} que requieren tu atención:
 
 @foreach($items as $it)
-- {{ $it['title'] }}: {{ $it['body'] }}
-  {{ $it['url'] }}
+- {!! $it['title'] !!}: {!! $it['body'] !!}
+  {!! $it['url'] !!}
 @endforeach
 
-Ir al inicio: {{ $url }}
+Ir al inicio: {!! $url !!}
 — EscudoSST

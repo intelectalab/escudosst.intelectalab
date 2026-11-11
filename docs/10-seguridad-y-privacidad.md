@@ -130,12 +130,23 @@ EscudoSST (GRUPO DE SOLUCIONES CREATIVAS SAC) es **titular** del banco de datos 
 |---|---|
 | MFA | TOTP. Obligatorio para: `platform_owner`, `platform_support`, `account_admin`, `occupational_doctor`, `health_staff`, `consultant`. Recomendado al resto. Códigos de recuperación de un solo uso |
 | Contraseñas | Mínimo 12 caracteres; verificación contra listas de contraseñas filtradas; sin reglas de composición forzadas; Argon2id |
-| Trabajador | DNI + código de activación de un solo uso; luego PIN de 6 dígitos ligado al dispositivo + sesión larga renovable |
+| Trabajador | DNI + código de activación de un solo uso; luego PIN de 6 dígitos ligado al dispositivo + sesión larga renovable (detalle en §5.1) |
 | Bloqueo | Por intentos fallidos con espera creciente (por cuenta y por IP) |
 | Recuperación | Enlace de un solo uso con vencimiento; avisa al usuario por correo |
 | Sesiones | Cookies `HttpOnly`, `Secure`, `SameSite=Lax`. Inactividad: parámetro (más corto para roles médicos). Lista de sesiones activas con cierre remoto |
 | Dispositivos offline | Registrados en `devices`; revocables (ver `16`) |
 | SSO | No en V1 |
+
+### 5.1 App del trabajador: activación y PIN (implementado)
+
+- **Activación.** El responsable SST o RR. HH. (permiso `trb.workers.update`) la genera desde la ficha 360° del trabajador: código de 8 dígitos y enlace `/mi/activar?t=…` (48 caracteres), de un solo uso, con vencimiento `escudo.worker_app.activation_hours` (72 h por defecto). El código solo vale junto con el DNI del trabajador. Se envían por correo (si el trabajador tiene correo personal) y por WhatsApp (solo con la API en vivo y si el trabajador aceptó el canal); siempre se muestran para imprimirlos. Se guardan en la caché solo por su huella SHA-256; la huella de la activación vigente queda en `workers.activation_code_hash`, así que generar una nueva anula la anterior. Un DNI ajeno, un código usado, reemplazado o vencido responden lo mismo (410).
+- **Cuenta.** Al activar se crea (si no existe) el usuario con rol `worker` y la membresía ligada a la ficha (`memberships.worker_id`). Sin correo propio se usa una dirección técnica del dominio reservado `.invalid`, que nunca recibe mensajes.
+- **PIN.** De 6 números; se rechazan los repetidos y los seguidos (111111, 123456). Se guarda con hash (`workers.pin_hash`, el mismo algoritmo de las contraseñas); nunca en claro ni en el navegador.
+- **Equipo.** Al activar, el equipo recibe un secreto aleatorio de 48 caracteres que solo se entrega esa vez; en la base queda su SHA-256 (`devices.credential_hash`, dispositivo `web_pwa` con `pin_bound`). Para ingresar se envían empresa, id del equipo, su secreto, DNI y PIN: sin el secreto del equipo el PIN no sirve. Revocar el dispositivo (M-OFF) lo deja sin acceso; un código nuevo permite activar otro equipo (por ejemplo, si olvidó su PIN) y reemplaza el PIN.
+- **Bloqueo.** Tras `escudo.worker_app.pin_max_attempts` (5) PIN equivocados seguidos, el PIN se bloquea `pin_lock_minutes` (15) minutos. El contador es por trabajador y cuenta el ingreso, las firmas y la re-autenticación médica; vive en la caché para que no se pierda aunque la petición se revierta. Un DNI ajeno en el ingreso cuenta como intento fallido y responde igual que un PIN equivocado.
+- **MFA.** El rol `worker` no exige MFA (docs/05). El ingreso con PIN solo se permite si la persona no tiene otros roles en ninguna empresa, ni MFA activo, ni es del equipo de la plataforma: en ese caso entra con correo o DNI y contraseña. Así el PIN nunca abre accesos de gestión.
+- **Firmas.** Las firmas desde la app (solicitudes de FIR, cargos de documentos y del RISST, recepción de EPP) usan el método `pin` con evidencia completa en `signatures` (huella del registro, IP, navegador, canal `worker_app`).
+- **Datos médicos.** «Mis resultados médicos» exige el PIN (o la contraseña) y emite una clave médica de corta vida ligada al usuario, la empresa y el trabajador; solo devuelve los exámenes del propio trabajador ya revisados por el médico. Cada lectura y descarga queda en `sensitive_access_logs` (rol `worker`) y en el registro de accesos de la base médica.
 
 ## 6. OWASP (Top 10 y ASVS nivel 2 como referencia)
 

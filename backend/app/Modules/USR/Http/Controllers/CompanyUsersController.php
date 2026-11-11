@@ -132,7 +132,7 @@ class CompanyUsersController extends Controller
         )->id;
         $this->saveScopes($membership, $sites, $areas);
         $this->audit('member_invited', $membership, array_filter(['email' => $email, 'role' => $role, 'sites' => $sites ?: null, 'areas' => $areas ?: null, 'expires_at' => $expires]));
-        $this->invitations->send($userId, $email, $user->full_name ?? $name, $ctx->companyId, $ctx->companyName, $membership, ! $active);
+        $this->invitations->send($userId, $email, $user->full_name ?? $name, $ctx->companyId, $ctx->companyName, $membership, ! $active, $roleRow->name);
 
         return response()->json(['data' => ['id' => $membership, 'status' => $active ? 'active' : 'invited']], 201);
     }
@@ -215,7 +215,7 @@ class CompanyUsersController extends Controller
             throw new ApiProblem(409, 'conflict', 'Ya aceptó', 'Esa persona ya aceptó la invitación.');
         }
         $ctx = app(CompanyContext::class);
-        $this->invitations->send($m->user_id, $m->email, $m->full_name, $ctx->companyId, $ctx->companyName, $m->id, true);
+        $this->invitations->send($m->user_id, $m->email, $m->full_name, $ctx->companyId, $ctx->companyName, $m->id, true, $m->role_name);
 
         return response()->json(['data' => ['sent' => true]]);
     }
@@ -223,7 +223,7 @@ class CompanyUsersController extends Controller
     private function membership(string $id): object
     {
         $m = Str::isUuid($id) ? DB::selectOne(
-            'select m.id, m.user_id, m.status, m.expires_at, r.code as role_code, coalesce(r.base_role_code, r.code) as base_role_code, u.email, u.full_name from memberships m join roles r on r.id = m.role_id join users u on u.id = m.user_id
+            'select m.id, m.user_id, m.status, m.expires_at, r.code as role_code, r.name as role_name, coalesce(r.base_role_code, r.code) as base_role_code, u.email, u.full_name from memberships m join roles r on r.id = m.role_id join users u on u.id = m.user_id
               where m.id = ? and m.deleted_at is null and not m.is_support_session', [$id]) : null;
 
         return $m ?? throw ApiProblem::notFound('Esa persona no tiene acceso a esta empresa.');
@@ -237,7 +237,7 @@ class CompanyUsersController extends Controller
     private function assignable(string $role, array &$errors): ?object
     {
         $row = $role === '' ? null : DB::selectOne(
-            'select r.id, r.code, coalesce(r.base_role_code, r.code) as base from roles r
+            'select r.id, r.code, r.name, coalesce(r.base_role_code, r.code) as base from roles r
               where r.code = ? and r.deleted_at is null
                 and (r.account_id is null or r.account_id = (select c.account_id from companies c where c.id = ?))
               order by r.account_id nulls first limit 1',

@@ -6,6 +6,8 @@
 const TOKEN_KEY = "escudo.token";
 const COMPANY_KEY = "escudo.companyId";
 const EXPIRED_KEY = "escudo.expired";
+// Copia del menú y del usuario para mostrar el panel al instante (app/(app)/layout.tsx); se borra con la sesión.
+const SHELL_KEY = "escudo.shell";
 
 function store(): Storage | null {
   if (typeof window === "undefined") return null;
@@ -20,13 +22,21 @@ export const session = {
   setToken: (token: string) => {
     store()?.setItem(TOKEN_KEY, token);
     store()?.removeItem(EXPIRED_KEY);
+    store()?.removeItem(SHELL_KEY);
   },
   getCompanyId: () => store()?.getItem(COMPANY_KEY) ?? null,
-  setCompanyId: (id: string) => store()?.setItem(COMPANY_KEY, id),
-  clearCompany: () => store()?.removeItem(COMPANY_KEY),
+  setCompanyId: (id: string) => {
+    store()?.setItem(COMPANY_KEY, id);
+    store()?.removeItem(SHELL_KEY);
+  },
+  clearCompany: () => {
+    store()?.removeItem(COMPANY_KEY);
+    store()?.removeItem(SHELL_KEY);
+  },
   clear: () => {
     store()?.removeItem(TOKEN_KEY);
     store()?.removeItem(COMPANY_KEY);
+    store()?.removeItem(SHELL_KEY);
   },
   /** La API cerró la sesión (inactividad o vencimiento): se avisa en la pantalla de ingreso. */
   markExpired: () => store()?.setItem(EXPIRED_KEY, "1"),

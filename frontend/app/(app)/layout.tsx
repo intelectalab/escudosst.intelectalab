@@ -59,22 +59,35 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const companyId = session.getCompanyId();
     if (!session.getToken()) return router.replace("/login");
 
-    api<User>("/me")
-      .then(async (user) => {
+    // Rapidez: lo último cargado se muestra al instante (misma pestaña) mientras se confirma con el servidor, y las
+    // tres consultas de arranque viajan a la vez en lugar de una tras otra.
+    const CACHE = "escudo.shell";
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(CACHE) ?? "null");
+      if (cached && cached.company?.company_id === companyId) setState(cached);
+    } catch {
+      /* sin almacenamiento */
+    }
+    const modulesReq = companyId ? api<{ data: ModuleItem[] }>("/me/modules", { withCompany: true }) : null;
+    modulesReq?.catch(() => undefined);
+    Promise.all([api<User>("/me"), api<{ data: CompanyOption[] }>("/me/companies")])
+      .then(async ([user, companies]) => {
         // El equipo de la plataforma solo entra a una empresa con un acceso de soporte autorizado (docs/05 §4.6).
         if (user.is_platform_staff && !companyId) return router.replace("/plataforma");
-        if (!companyId) return router.replace("/select-company");
-        const companies = await api<{ data: CompanyOption[] }>("/me/companies");
+        if (!companyId || !modulesReq) return router.replace("/select-company");
         const company = companies.data.find((c) => c.company_id === companyId);
         if (!company) {
+          try { sessionStorage.removeItem(CACHE); } catch { /* sin almacenamiento */ }
           if (user.is_platform_staff) {
             session.clearCompany();
             return router.replace("/plataforma/soporte");
           }
           return router.replace("/select-company");
         }
-        const modules = await api<{ data: ModuleItem[] }>("/me/modules", { withCompany: true });
-        setState({ user, company, modules: modules.data, companiesCount: companies.data.length });
+        const modules = await modulesReq;
+        const next = { user, company, modules: modules.data, companiesCount: companies.data.length };
+        setState(next);
+        try { sessionStorage.setItem(CACHE, JSON.stringify(next)); } catch { /* sin almacenamiento */ }
       })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) router.replace("/login");
@@ -91,6 +104,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (contractorOnly && !["/m/ctr", "/cuenta", "/soporte"].some((p) => pathname.startsWith(p))) router.replace("/m/ctr");
   }, [contractorOnly, pathname, router]);
 
+  // Trabajador (docs/07 §5.2): su inicio es la app del trabajador (/mi), sin el menú de gestión. Solo su cuenta queda aquí.
+  const workerOnly = state?.company.role.code === "worker";
+  useEffect(() => {
+    if (workerOnly && !pathname.startsWith("/cuenta")) router.replace("/mi");
+  }, [workerOnly, pathname, router]);
+
   function leaveSupport() {
     session.clearCompany();
     router.replace("/plataforma/soporte");
@@ -106,7 +125,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   if (error) return <p className="p-8 text-bad">{error}</p>;
-  if (!state) return <p className="p-8 text-muted">Cargando…</p>;
+  if (!state || (workerOnly && !pathname.startsWith("/cuenta"))) return <p className="p-8 text-muted">Cargando…</p>;
 
   const byCode = new Map(state.modules.map((m) => [m.code, m]));
   const visible = (m: ModuleItem | undefined): m is ModuleItem => !!m && m.role_can_use && m.mode !== "disabled_by_company";

@@ -8,7 +8,7 @@ const VERSION = "escudo-v1";
 const SHELL = `${VERSION}-shell`;
 const STATIC = `${VERSION}-static`;
 const API_PREFIX = "escudo-api-";
-const PRECACHE = ["/inicio", "/login", "/select-company", "/manifest.webmanifest", "/icons/escudo.svg"];
+const PRECACHE = ["/inicio", "/login", "/select-company", "/mi", "/mi/ingresar", "/mi/fotocheck", "/mi/reportar", "/manifest.webmanifest", "/icons/escudo.svg"];
 
 // Consultas de la API que se pueden copiar (solo GET). Ninguna de datos médicos.
 const API_ALLOW = [
@@ -16,6 +16,8 @@ const API_ALLOW = [
   /^\/api\/v1\/me\/(companies|modules)$/,
   /^\/api\/v1\/records\/(INS|ACT|CH5|ATS|EPP|CAP|SIM)(\/[a-z0-9_]+(\/options\/[a-z0-9_]+)?)?$/i,
   /^\/api\/v1\/ins\/inspections\/[0-9a-f-]{36}\/checklist$/,
+  // App del trabajador: inicio, fotocheck (para mostrarlo sin señal), pendientes, capacitaciones, EPP y reportes. Nunca salud.
+  /^\/api\/v1\/me\/worker(\/(credential|pending|trainings|ppe|reports))?$/,
 ];
 const API_DENY = /\/(vmd|emo|medical|med)\//i;
 

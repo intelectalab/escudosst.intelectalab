@@ -29,6 +29,7 @@ class PrintController extends Controller
         if (! $c) {
             throw ApiProblem::notFound('El certificado no existe o es de otra empresa.');
         }
+        $this->ownOnly($c->worker_id, 'El certificado no existe o es de otra empresa.');
         $t = $c->training_id ? DB::selectOne('select title, instructor_name, provider_name from trainings where id = ?', [$c->training_id]) : null;
 
         return response()->json(['data' => [
@@ -51,6 +52,7 @@ class PrintController extends Controller
         if (! $c) {
             throw ApiProblem::notFound('El fotocheck no existe o es de otra empresa.');
         }
+        $this->ownOnly($c->worker_id, 'El fotocheck no existe o es de otra empresa.');
         $p = $c->worker_id
             ? DB::selectOne('select w.full_name, w.document_last4, w.photo_file_id, p.name as position, s.name as site from workers w
                                left join positions p on p.id = w.current_position_id left join sites s on s.id = w.current_site_id where w.id = ?', [$c->worker_id])
@@ -86,6 +88,15 @@ class PrintController extends Controller
         unset($data['blocking_reasons']);
 
         return response()->json(['data' => $data]);
+    }
+
+    /** Rol trabajador: solo imprime su propio certificado o fotocheck (docs/05 §4.3). */
+    private function ownOnly(?string $workerId, string $msg): void
+    {
+        $ctx = app(CompanyContext::class);
+        if ($ctx->roleCode === 'worker' && (! $workerId || DB::selectOne('select worker_id from memberships where id = ?', [$ctx->membershipId])?->worker_id !== $workerId)) {
+            throw ApiProblem::notFound($msg);
+        }
     }
 
     private function company(): array

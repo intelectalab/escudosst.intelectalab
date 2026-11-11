@@ -1,19 +1,19 @@
-Hola, {{ $name }}:
+{!! in_array(mb_strtolower(trim($name)), ['', 'hola'], true) ? 'Hola:' : 'Hola, '.$name.':' !!}
 
-{{ $title }}
+{!! $title !!}
 
-{{ $intro }}
+{!! $intro !!}
 
 @foreach ($rows as [$label, $value])
-- {{ $label }}: {{ $value }}
+- {!! $label !!}: {!! $value !!}
 @endforeach
 
 @if ($note)
-{{ $note }}
+{!! $note !!}
 
 @endif
 @if ($buttonUrl)
-{{ $buttonText }}: {{ $buttonUrl }}
+{!! $buttonText !!}: {!! $buttonUrl !!}
 
 @endif
 — EscudoSST

@@ -23,7 +23,7 @@ class InvitationService
 {
     private const PREFIX = 'invitation:';
 
-    public function send(string $userId, string $email, string $name, string $companyId, string $companyName, string $membershipId, bool $needsPassword): void
+    public function send(string $userId, string $email, string $name, string $companyId, string $companyName, string $membershipId, bool $needsPassword, ?string $roleName = null): void
     {
         $hours = (int) config('escudo.subscriptions.invitation_ttl_hours');
         $url = null;
@@ -40,7 +40,7 @@ class InvitationService
             $url = rtrim(config('escudo.frontend_url'), '/').'/invitacion/'.$token;
         }
 
-        Mail::to($email)->send(new AccountInvitationMail($name, $companyName, $url, $hours));
+        Mail::to($email)->send(new AccountInvitationMail($name, $companyName, $url, $hours, $roleName));
     }
 
     /** @return array{full_name: string, email: string, company_name: string} */

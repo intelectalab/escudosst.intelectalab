@@ -17,14 +17,14 @@
                     <td style="padding:28px 24px;">
                         <p style="margin:0 0 12px;font-size:16px;">Hola, {{ $name }}:</p>
 @if ($url)
-                        <p style="margin:0 0 20px;font-size:15px;line-height:1.5;">El equipo de EscudoSST te registró como <b>administrador de cuenta</b> de <b>{{ $companyName }}</b>. Para empezar, crea tu contraseña:</p>
+                        <p style="margin:0 0 20px;font-size:15px;line-height:1.5;">Te registraron como <b>{{ $roleName ?: 'administrador de cuenta' }}</b> en <b>{{ $companyName }}</b>. Para empezar, crea tu contraseña:</p>
                         <p style="margin:0 0 20px;text-align:center;">
                             <a href="{{ $url }}" style="display:inline-block;background:#0d3b6e;color:#ffffff;border-radius:10px;padding:12px 22px;font-size:15px;font-weight:bold;text-decoration:none;">Crear mi contraseña</a>
                         </p>
-                        <p style="margin:0 0 8px;font-size:14px;color:#6b7684;">El enlace vence en {{ $hours }} horas y sirve una sola vez. Al ingresar por primera vez, configurarás la verificación en dos pasos.</p>
+                        <p style="margin:0 0 8px;font-size:14px;color:#6b7684;">El enlace vence en {{ $hours }} horas y sirve una sola vez.@if (! $roleName) Al ingresar por primera vez, configurarás la verificación en dos pasos.@endif</p>
                         <p style="margin:0;font-size:12px;color:#6b7684;word-break:break-all;">Si el botón no funciona, copia este enlace en tu navegador: {{ $url }}</p>
 @else
-                        <p style="margin:0 0 20px;font-size:15px;line-height:1.5;">El equipo de EscudoSST te dio acceso como <b>administrador de cuenta</b> de <b>{{ $companyName }}</b>. Ingresa con tu correo y contraseña de siempre y elige la empresa.</p>
+                        <p style="margin:0 0 20px;font-size:15px;line-height:1.5;">Te dieron acceso como <b>{{ $roleName ?: 'administrador de cuenta' }}</b> en <b>{{ $companyName }}</b>. Ingresa con tu correo y contraseña de siempre y elige la empresa.</p>
 @endif
                     </td>
                 </tr>

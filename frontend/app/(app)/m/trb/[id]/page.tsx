@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useApp } from "@/components/AppContext";
 import { Icon } from "@/components/ui/Icon";
 import { EnabledChip, RequirementChips, useRequirements } from "@/components/modules/WorkerChecks";
+import { WorkerAppActivation } from "@/components/worker/WorkerAppActivation";
 import { displayValue, records, recordsHref, type ModuleSchema, type RecordField, type RecordRow } from "@/lib/records";
 
 type Tab = { key: string; label: string; module: string; table: string; columns?: string[] };
@@ -93,7 +94,10 @@ export default function WorkerPage() {
           </p>
           {r && <RequirementChips checks={r.checks} />}
         </div>
-        <Link href={recordsHref("TRB", "workers", { open: id })} className="rounded-lg border border-line px-3 py-2 text-sm font-semibold hover:border-brand hover:text-brand-strong">Editar ficha</Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <WorkerAppActivation workerId={id} />
+          <Link href={recordsHref("TRB", "workers", { open: id })} className="rounded-lg border border-line px-3 py-2 text-sm font-semibold hover:border-brand hover:text-brand-strong">Editar ficha</Link>
+        </div>
       </header>
 
       <div role="tablist" aria-label="Secciones de la ficha" className="flex gap-1 overflow-x-auto border-b border-line">

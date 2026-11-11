@@ -214,7 +214,7 @@ export function ResourcePanel({
   const clearAll = () => { setQ(""); setFilters({ ...(fixed ?? {}) }); };
 
   return (
-    <section className="space-y-4" aria-label={res.tab}>
+    <section className="space-y-4" aria-label={res.tab} data-records={res.table} data-nested={nested ? "1" : undefined}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className={nested ? "text-base font-semibold" : "text-lg font-semibold"}>{TAB_LABEL[res.table] ?? res.tab}</h2>

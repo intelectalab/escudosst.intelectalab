@@ -1,10 +1,10 @@
-Hola, {{ $name }}:
+Hola, {!! $name !!}:
 
-{{ $title }}
+{!! $title !!}
 
-{{ $body }}
+{!! $body !!}
 
-Ver en EscudoSST: {{ $url }}
+Ver en EscudoSST: {!! $url !!}
 
-Recibes este aviso porque integras el Comité SST de {{ $companyName }}.
+Recibes este aviso porque integras el Comité SST de {!! $companyName !!}.
 — EscudoSST

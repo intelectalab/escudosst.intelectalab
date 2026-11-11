@@ -222,6 +222,13 @@ class DocsFieldRules extends RecordRules
             $values['status'] = 'received';
             if (empty($values['is_anonymous'])) {
                 $extra['reporter_user_id'] = ['?', [(string) auth()->id()]];
+                // App del trabajador: el reporte queda ligado a su ficha (Mis reportes, aviso al cerrarse).
+                $ctx = app(\App\Core\Tenancy\CompanyContext::class);
+                $own = DB::selectOne('select worker_id from memberships where id = ?', [$ctx->membershipId])?->worker_id;
+                if ($own && ($ctx->roleCode === 'worker' || empty($values['reporter_worker_id']))) {
+                    unset($values['reporter_worker_id']);
+                    $extra['reporter_worker_id'] = ['?', [$own]];
+                }
             }
 
             return;

@@ -205,6 +205,9 @@ export default function LoginPage() {
                 </Link>
               </p>
               <Submit loading={loading} label="Ingresar" busy="Ingresando…" />
+              <p className="text-center text-sm text-muted">
+                ¿Eres trabajador? <Link href="/mi/ingresar" className="font-semibold text-brand hover:underline">Ingresa con tu DNI y PIN</Link>
+              </p>
             </form>
           )}
 

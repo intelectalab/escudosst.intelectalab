@@ -15,7 +15,7 @@
                 </tr>
                 <tr>
                     <td style="padding:28px 24px;">
-                        <p style="margin:0 0 12px;font-size:16px;">Hola, {{ $name }}:</p>
+                        <p style="margin:0 0 12px;font-size:16px;">{{ in_array(mb_strtolower(trim($name)), ['', 'hola'], true) ? 'Hola:' : 'Hola, '.$name.':' }}</p>
                         <p style="margin:0 0 16px;padding:12px 14px;border-radius:10px;background:#e3effb;color:#0d3b6e;font-size:16px;font-weight:bold;">{{ $title }}</p>
                         <p style="margin:0 0 18px;font-size:15px;line-height:1.5;">{{ $intro }}</p>
                         @if (count($rows))

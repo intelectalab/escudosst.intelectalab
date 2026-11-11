@@ -107,7 +107,7 @@ class InvitationController extends Controller
         DB::insert("insert into membership_scopes (company_id, membership_id, scope_type, contractor_id, created_by) values (?, ?, 'contractor', ?, ?)",
             [$ctx->companyId, $membership, $contractor->id, (string) auth()->id()]);
         $this->audit('contractor_invited', $membership, ['email' => $email, 'contractor_id' => $contractor->id, 'role' => 'contractor_admin']);
-        $this->invitations->send($userId, $email, $user->full_name ?? $name, $ctx->companyId, $this->portalName($ctx->companyName), $membership, ! $active);
+        $this->invitations->send($userId, $email, $user->full_name ?? $name, $ctx->companyId, $this->portalName($ctx->companyName), $membership, ! $active, 'Administrador de contratista');
 
         return response()->json(['data' => [
             'contractor_id' => $contractor->id, 'contractor_created' => $created, 'membership_id' => $membership, 'status' => $active ? 'active' : 'invited',
@@ -126,7 +126,7 @@ class InvitationController extends Controller
         if (! $m) {
             throw new ApiProblem(409, 'conflict', 'Sin invitación pendiente', 'Este contratista no tiene una invitación pendiente: ya aceptó o aún no se le invitó.');
         }
-        $this->invitations->send($m->user_id, $m->email, $m->full_name, $ctx->companyId, $this->portalName($ctx->companyName), $m->id, true);
+        $this->invitations->send($m->user_id, $m->email, $m->full_name, $ctx->companyId, $this->portalName($ctx->companyName), $m->id, true, 'Administrador de contratista');
 
         return response()->json(['data' => ['sent' => true]]);
     }

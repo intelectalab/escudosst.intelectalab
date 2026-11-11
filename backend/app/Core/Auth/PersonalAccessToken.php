@@ -15,6 +15,9 @@ use Laravel\Sanctum\PersonalAccessToken as SanctumToken;
  *
  * Inactividad: si el token no se usó en los últimos escudo.auth.idle_minutes, se borra y la sesión se cierra (la
  * persona vuelve a ingresar con contraseña y verificación). Así un navegador olvidado abierto no deja el panel abierto.
+ *
+ * Rapidez: Sanctum anota last_used_at en cada petición (una escritura por cada llamada del panel). Se anota como mucho
+ * una vez por minuto; para la inactividad (minutos) esa precisión basta.
  */
 class PersonalAccessToken extends SanctumToken
 {
@@ -42,5 +45,19 @@ class PersonalAccessToken extends SanctumToken
         }
 
         return $found;
+    }
+
+    public function save(array $options = [])
+    {
+        $dirty = array_keys($this->getDirty());
+        $prev = $this->getOriginal('last_used_at');
+        if ($this->exists && $prev !== null && array_diff($dirty, ['last_used_at', 'updated_at']) === []
+            && \Illuminate\Support\Carbon::parse($prev)->gt(now()->subMinute())) {
+            $this->syncOriginal();
+
+            return true;
+        }
+
+        return parent::save($options);
     }
 }

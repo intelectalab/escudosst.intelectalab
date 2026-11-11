@@ -21,6 +21,15 @@ return [
         ],
     ],
 
+    // App del trabajador (docs/07 §5.2, docs/10 §5): DNI + código de activación de un solo uso, luego PIN en su equipo.
+    'worker_app' => [
+        // Horas de vigencia del código y del enlace de activación.
+        'activation_hours' => (int) env('WORKER_APP_ACTIVATION_HOURS', 72),
+        // PIN equivocados seguidos antes del bloqueo temporal, y minutos de bloqueo.
+        'pin_max_attempts' => (int) env('WORKER_APP_PIN_MAX_ATTEMPTS', 5),
+        'pin_lock_minutes' => (int) env('WORKER_APP_PIN_LOCK_MINUTES', 15),
+    ],
+
     'subscriptions' => [
         // Duración de la prueba gratuita en días (docs/03 §9: «parámetro, por definir»).
         'trial_days' => (int) env('SUBSCRIPTION_TRIAL_DAYS', 14),
