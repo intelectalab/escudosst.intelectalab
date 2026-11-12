@@ -87,7 +87,7 @@ export default function ActivateWorkerAppPage() {
           )}
           <PinField id="act-pin" label="Crea tu PIN (6 números)" value={pin} onChange={setPin} error={fieldErr.pin?.[0]} />
           <PinField id="act-pin2" label="Repite tu PIN" value={pin2} onChange={setPin2} />
-          <p className="text-xs text-muted">No uses números repetidos ni seguidos (como 1111 o 1234). No compartas tu PIN.</p>
+          <p className="text-xs text-muted">No uses números repetidos ni seguidos (como 111111 o 123456). No compartas tu PIN.</p>
           {error && <Alert>{error}</Alert>}
           <BigButton type="submit" loading={busy} disabled={pin.length < 4 || pin2.length < 4 || (!token && (dni.length < 8 || code.length !== 8))}>Activar</BigButton>
         </form>
