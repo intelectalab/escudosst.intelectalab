@@ -34,7 +34,7 @@ it('asistente de evento: evento, afectado, testigo y notificación con constanci
     $id = $ev->json('data.id');
     expect($ev->json('data.code'))->toStartWith('ACC-');
     $this->postJson('/api/v1/records/ACC/event_people', ['event_id' => $id, 'person_role' => 'injured', 'worker_id' => $w1, 'external_person_name' => 'Ana Afectada',
-        'injury_type' => 'Corte', 'body_part' => 'Mano izquierda', 'lost_days' => 2, 'medical_attention_place' => 'Tópico de la sede'], $h)->assertCreated();
+        'injury_type' => 'Corte', 'body_part' => 'Mano izquierda', 'injury_agent' => 'Disco de amoladora', 'lost_days' => 2, 'medical_attention_place' => 'Tópico de la sede'], $h)->assertCreated();
     $this->postJson('/api/v1/records/ACC/event_people', ['event_id' => $id, 'person_role' => 'witness', 'worker_id' => $w2, 'external_person_name' => 'Tito Testigo'], $h)->assertCreated();
     $n = $this->getJson("/api/v1/records/ACC/event_notifications?f[event_id]={$id}", $h)->json('data.0');
     expect($n['status'])->toBe('pending');

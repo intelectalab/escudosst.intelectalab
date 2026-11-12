@@ -39,6 +39,7 @@ type Data = {
   external_name: string;
   injury_type: string;
   body_part: string;
+  injury_agent: string;
   lost_days: string;
   medical_place: string;
   witnesses: { id: string; label: string }[];
@@ -110,7 +111,7 @@ function WorkerCard({ id }: { id: string }) {
 export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const initial: Data = {
     event_type: "minor_accident", occurred_at: toLocalInput(new Date().toISOString()), site_id: "", site_label: "", exact_location: "", description: "",
-    activity_at_time: "", immediate_actions: "", person: "worker", worker_id: "", worker_label: "", external_name: "", injury_type: "", body_part: "",
+    activity_at_time: "", immediate_actions: "", person: "worker", worker_id: "", worker_label: "", external_name: "", injury_type: "", body_part: "", injury_agent: "",
     lost_days: "", medical_place: "", witnesses: [], notified: false, notification_number: "", notified_at: "",
   };
   const needsPerson = (d: Data) => TYPES.find((t) => t.value === d.event_type)?.person ?? false;
@@ -182,7 +183,13 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
     },
     {
       title: "Lesión y testigos",
-      validate: (d) => (d.lost_days && (Number(d.lost_days) < 0 || !Number.isInteger(Number(d.lost_days))) ? "Los días de descanso son un número entero desde 0." : null),
+      validate: (d) =>
+        d.lost_days && (Number(d.lost_days) < 0 || !Number.isInteger(Number(d.lost_days)))
+          ? "Los días de descanso son un número entero desde 0."
+          // RN-ACC-06: en un accidente, la persona lesionada lleva tipo de lesión, parte del cuerpo y agente.
+          : d.person !== "none" && d.event_type.includes("accident") && (!d.injury_type.trim() || !d.body_part || !d.injury_agent.trim())
+            ? "En un accidente indica el tipo de lesión, la parte del cuerpo y el agente que la causó."
+            : null,
       render: (d, set) => (
         <div className="space-y-4">
           {d.person !== "none" && (
@@ -195,6 +202,9 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
                   <option value="">Elige</option>
                   {BODY.map((b) => <option key={b}>{b}</option>)}
                 </select>
+              </FormField>
+              <FormField label="Agente que causó la lesión">
+                <input className="input" value={d.injury_agent} maxLength={200} placeholder="Ej.: herramienta manual, caída de material, máquina" onChange={(e) => set({ injury_agent: e.target.value })} />
               </FormField>
               <FormField label="Días de descanso estimados">
                 <input className="input" type="number" min={0} value={d.lost_days} onChange={(e) => set({ lost_days: e.target.value })} />
@@ -277,7 +287,7 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
           <SummaryRow label="Lugar" value={[d.site_label, d.exact_location].filter(Boolean).join(" · ")} onEdit={() => goTo(0)} />
           <SummaryRow label="Descripción" value={d.description} onEdit={() => goTo(0)} />
           <SummaryRow label="Persona afectada" value={d.person === "worker" ? d.worker_label : d.person === "external" ? d.external_name : "Nadie"} onEdit={() => goTo(1)} />
-          {d.person !== "none" && <SummaryRow label="Lesión" value={[d.injury_type, d.body_part, d.lost_days ? `${d.lost_days} día(s) de descanso` : ""].filter(Boolean).join(" · ")} onEdit={() => goTo(2)} />}
+          {d.person !== "none" && <SummaryRow label="Lesión" value={[d.injury_type, d.body_part, d.injury_agent, d.lost_days ? `${d.lost_days} día(s) de descanso` : ""].filter(Boolean).join(" · ")} onEdit={() => goTo(2)} />}
           <SummaryRow label="Testigos" value={d.witnesses.map((w) => w.label).join(", ") || "Sin testigos"} onEdit={() => goTo(2)} />
           <SummaryRow label="Notificación" value={d.notified ? `Notificado · constancia ${d.notification_number}` : "Pendiente: el sistema controla el plazo"} onEdit={() => goTo(3)} />
         </div>
@@ -301,7 +311,7 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
             event_id: id, person_role: role,
             worker_id: d.person === "worker" ? d.worker_id : null,
             external_person_name: d.person === "external" ? d.external_name.trim() : d.worker_label || null,
-            injury_type: d.injury_type.trim() || null, body_part: d.body_part || null,
+            injury_type: d.injury_type.trim() || null, body_part: d.body_part || null, injury_agent: d.injury_agent.trim() || null,
             lost_days: d.lost_days ? Number(d.lost_days) : null, medical_attention_place: d.medical_place || null,
           });
         }

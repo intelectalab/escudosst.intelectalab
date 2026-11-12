@@ -11,13 +11,15 @@ use Illuminate\Support\Facades\DB;
  */
 final class LegalParams
 {
-    public static function number(string $key, float $default): float
+    /** $asOf: fecha (Y-m-d) a la que debe estar vigente el parámetro; por defecto, hoy. */
+    public static function number(string $key, float $default, ?string $asOf = null): float
     {
         $company = app()->bound(CompanyContext::class) ? app(CompanyContext::class)->companyId : null;
+        $on = $asOf ?: date('Y-m-d');
         $v = DB::selectOne(
-            'select value from legal_parameters where key = ? and (company_id is null or company_id = ?) and valid_from <= current_date
-                and (valid_to is null or valid_to >= current_date) and deleted_at is null order by company_id nulls last, valid_from desc limit 1',
-            [$key, $company]
+            'select value from legal_parameters where key = ? and (company_id is null or company_id = ?) and valid_from <= ?::date
+                and (valid_to is null or valid_to >= ?::date) and deleted_at is null order by company_id nulls last, valid_from desc limit 1',
+            [$key, $company, $on, $on]
         );
 
         return is_numeric($v->value ?? null) ? (float) $v->value : $default;

@@ -365,7 +365,7 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
         'description' => 'Corte en la mano al manipular plancha metálica'], $a)->qaStatus(201);
     expect($ev->json('data.code'))->toStartWith('ACC-')->and($ev->json('data.notification_deadline_at'))->not->toBeNull();
     $ev = $ev->json('data.id');
-    $this->postJson('/api/v1/records/ACC/event_people', ['event_id' => $ev, 'worker_id' => $jorge, 'person_role' => 'injured', 'lost_days' => 5, 'injury_type' => 'Corte', 'body_part' => 'Mano'], $a)->qaStatus(201);
+    $this->postJson('/api/v1/records/ACC/event_people', ['event_id' => $ev, 'worker_id' => $jorge, 'person_role' => 'injured', 'lost_days' => 5, 'injury_type' => 'Corte', 'body_part' => 'Mano', 'injury_agent' => 'Herramienta manual'], $a)->qaStatus(201);
     expect($this->getJson("/api/v1/records/ACC/sst_events/{$ev}", $a)->json('data.lost_days'))->toBe(5);
     $notif = $this->getJson("/api/v1/records/ACC/event_notifications?f[event_id]={$ev}", $a)->qaStatus(200)->json('data.0.id');
     $this->patchJson("/api/v1/records/ACC/event_notifications/{$notif}", ['status' => 'sent', 'notified_at' => now()->toIso8601String(), 'notification_number' => 'SAT-2026-001',
@@ -376,9 +376,15 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
     $basic = $this->postJson('/api/v1/records/INV/investigation_causes', ['investigation_id' => $inv, 'cause_level' => 'basic', 'cause_category' => 'personal_factor', 'description' => 'Falta de capacitación en manipulación'], $a)
         ->qaStatus(201)->json('data.id');
     $this->postJson('/api/v1/records/INV/investigation_team', ['investigation_id' => $inv, 'worker_id' => $rosa, 'role' => 'leader'], $a)->qaStatus(201);
+    // RN-INV-03: el equipo incluye al representante del comité (o al supervisor SST).
+    $rep = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => '45454590', 'first_name' => 'Comité', 'paternal_last_name' => 'Representante'], $a)->qaStatus(201)->json('data.id');
+    $this->postJson('/api/v1/records/INV/investigation_team', ['investigation_id' => $inv, 'worker_id' => $rep, 'role' => 'committee_representative'], $a)->qaStatus(201);
     $this->postJson("/api/v1/acr/from/investigation_causes/{$basic}", ['title' => 'Capacitar en manipulación de planchas', 'responsible_user_id' => $bId, 'due_on' => now()->addDays(15)->toDateString()], $a)->qaStatus(201);
     $this->postJson("/api/v1/acr/from/investigation_causes/{$basic}", ['title' => 'Repetida', 'responsible_user_id' => $bId, 'due_on' => now()->addDays(15)->toDateString()], $a)->assertStatus(409);
-    $this->patchJson("/api/v1/records/INV/investigations/{$inv}", ['status' => 'approved', 'conclusions' => 'Se requiere capacitación y guantes'], $a)->qaStatus(200);
+    // RN-INV-06: sin causa de gestión, se justifica.
+    $this->patchJson("/api/v1/records/INV/investigations/{$inv}", ['status' => 'approved', 'conclusions' => 'Se requiere capacitación y guantes'], $a)->qaStatus(422);
+    $this->patchJson("/api/v1/records/INV/investigations/{$inv}", ['status' => 'approved', 'conclusions' => 'Se requiere capacitación y guantes',
+        'management_cause_justification' => 'La falta de capacitación ya es la causa básica; el programa de capacitación cubre el puesto.'], $a)->qaStatus(200);
     $this->getJson("/api/v1/inv/investigations/{$inv}/report", $a)->qaStatus(200);
 
     // ------------------------------------------------------------ 16. Horas-hombre y cierre del mes (IF, IG, IA)
@@ -459,7 +465,7 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
 
     // ------------------------------------------------------------ 20. Tablero y bitácora con el rastro de todo lo hecho
     $overview = $this->getJson("/api/v1/dsh/overview?year={$year}", $a)->qaStatus(200);
-    expect($overview->json('data.counts.workers'))->toBe(3)->and($overview->json('data.counts.sites'))->toBe($sitesBefore + 2);
+    expect($overview->json('data.counts.workers'))->toBe(4)->and($overview->json('data.counts.sites'))->toBe($sitesBefore + 2);
     $kpis = collect($overview->json('data.kpis'))->keyBy('code');
     expect($kpis['baseline_score']['value'])->not->toBeNull()
         ->and($kpis['substandard_reports']['value'])->not->toBeNull()

@@ -38,7 +38,7 @@ it('un accidente incapacitante calcula su plazo, abre la investigación y no se 
     // Afectado con días perdidos → se suman al evento.
     $worker = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => '40404040', 'first_name' => 'Ana', 'paternal_last_name' => 'Rojas'], $h)->json('data.id');
     $this->postJson('/api/v1/records/ACC/event_people', ['event_id' => $id, 'worker_id' => $worker, 'person_role' => 'injured', 'lost_days' => 5,
-        'injury_type' => 'Corte', 'body_part' => 'Mano'], $h)->assertCreated();
+        'injury_type' => 'Corte', 'body_part' => 'Mano', 'injury_agent' => 'Herramienta manual'], $h)->assertCreated();
     $this->getJson("/api/v1/records/ACC/sst_events/{$id}", $h)->assertJsonPath('data.lost_days', 5);
     // Un testigo no suma días perdidos y no se aceptan días negativos.
     $this->postJson('/api/v1/records/ACC/event_people', ['event_id' => $id, 'worker_id' => $worker, 'person_role' => 'witness', 'lost_days' => -3], $h)
@@ -75,7 +75,14 @@ it('un accidente incapacitante calcula su plazo, abre la investigación y no se 
         ->assertStatus(422)->assertJsonPath('errors.status.0', 'Indica quién lidera la investigación en el equipo investigador.');
     $this->postJson('/api/v1/records/INV/investigation_team', ['investigation_id' => $inv[0]['id'], 'worker_id' => $worker, 'role' => 'leader'], $h)->assertCreated();
     $this->patchJson("/api/v1/records/INV/investigations/{$inv[0]['id']}", ['status' => 'approved'], $h)->assertStatus(422)->assertJsonValidationErrors('conclusions');
+    // RN-INV-03: el equipo incluye al representante del comité.
+    $this->patchJson("/api/v1/records/INV/investigations/{$inv[0]['id']}", ['status' => 'approved', 'conclusions' => 'Falta de procedimiento y de supervisión.'], $h)
+        ->assertStatus(422)->assertJsonPath('errors.status.0', fn ($m) => str_contains($m, 'equipo investigador'));
+    $rep = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => '40404099', 'first_name' => 'Luz', 'paternal_last_name' => 'Comité'], $h)->json('data.id');
+    $this->postJson('/api/v1/records/INV/investigation_team', ['investigation_id' => $inv[0]['id'], 'worker_id' => $rep, 'role' => 'committee_representative'], $h)->assertCreated();
     $this->patchJson("/api/v1/records/INV/investigations/{$inv[0]['id']}", ['status' => 'approved', 'conclusions' => 'Falta de procedimiento y de supervisión.'], $h)->assertOk();
+    // RN-INV-05: aprobado, el informe no cambia (solo adendas).
+    $this->patchJson("/api/v1/records/INV/investigations/{$inv[0]['id']}", ['conclusions' => 'Otra cosa'], $h)->assertStatus(409);
     $this->patchJson("/api/v1/records/INV/investigations/{$inv[0]['id']}", ['status' => 'closed'], $h)
         ->assertStatus(422)->assertJsonPath('errors.status.0', 'Hay acciones correctivas de las causas sin verificar.');
 });

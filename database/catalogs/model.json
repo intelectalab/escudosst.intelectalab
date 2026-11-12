@@ -42607,6 +42607,17 @@
     "comment": "enfermedad ocupacional: id del caso/EMO en escudo_medical (el nombre de la enfermedad nunca se guarda aquí)"
    },
    {
+    "name": "injury_agent",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -42889,7 +42900,8 @@
      "pending",
      "sent",
      "acknowledged",
-     "not_required"
+     "not_required",
+     "overdue"
     ],
     "ref": null,
     "encrypted": false,
@@ -43205,6 +43217,28 @@
      "actions_in_progress",
      "closed"
     ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "management_cause_justification",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "addenda",
+    "type": "jsonb",
+    "not_null": false,
+    "default": null,
+    "values": null,
     "ref": null,
     "encrypted": false,
     "generated": null,
@@ -43952,6 +43986,50 @@
     "default": "0",
     "values": null,
     "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "original_due_on",
+    "type": "date",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "extension_count",
+    "type": "integer",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "extension_reason",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "extension_approved_by",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "users.id",
     "encrypted": false,
     "generated": null,
     "comment": null

@@ -72,7 +72,8 @@ it('calcula el mes estadístico con los factores legales y no lo cierra sin hora
     $ev = $this->postJson('/api/v1/records/ACC/sst_events', ['event_type' => 'disabling_accident', 'occurred_at' => '2026-10-10T09:00:00-05:00', 'site_id' => $site,
         'description' => 'Golpe'], $h)->json('data.id');
     $w = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => '80808080', 'first_name' => 'Pedro', 'paternal_last_name' => 'Soto'], $h)->json('data.id');
-    $this->postJson('/api/v1/records/ACC/event_people', ['event_id' => $ev, 'worker_id' => $w, 'person_role' => 'injured', 'lost_days' => 4], $h)->assertCreated();
+    $this->postJson('/api/v1/records/ACC/event_people', ['event_id' => $ev, 'worker_id' => $w, 'person_role' => 'injured', 'lost_days' => 4,
+        'injury_type' => 'Contusión', 'body_part' => 'Pierna', 'injury_agent' => 'Caída de material'], $h)->assertCreated();
 
     $rows = collect($this->postJson('/api/v1/est/months', ['year' => 2026, 'month' => 10], $h)->assertOk()->json('data'));
     $s = $rows->firstWhere('site_id', $site);

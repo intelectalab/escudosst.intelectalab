@@ -18788,6 +18788,11 @@
      "name": "disease_agent_type",
      "label": "Tipo de agente de la enfermedad",
      "type": "text"
+    },
+    {
+     "name": "injury_agent",
+     "label": "Agente de la lesión",
+     "type": "text"
     }
    ]
   },
@@ -18954,6 +18959,10 @@
       {
        "value": "not_required",
        "label": "No requerido"
+      },
+      {
+       "value": "overdue",
+       "label": "Vencido"
       }
      ],
      "default": "pending",
@@ -19147,6 +19156,17 @@
      ],
      "default": "open",
      "list": true
+    },
+    {
+     "name": "management_cause_justification",
+     "label": "Justificación (sin causa de gestión)",
+     "type": "longtext"
+    },
+    {
+     "name": "addenda",
+     "label": "Adendas",
+     "type": "json",
+     "readonly": true
     }
    ]
   },
@@ -19674,6 +19694,27 @@
      "readonly": true,
      "type": "int",
      "default": 0
+    },
+    {
+     "name": "original_due_on",
+     "label": "Fecha meta original",
+     "type": "date"
+    },
+    {
+     "name": "extension_count",
+     "label": "Cantidad de prórrogas",
+     "type": "int"
+    },
+    {
+     "name": "extension_reason",
+     "label": "Motivo de prórroga",
+     "type": "longtext"
+    },
+    {
+     "name": "extension_approved_by",
+     "label": "Ampliación aprobada por",
+     "type": "ref",
+     "ref": "users"
     }
    ]
   },

@@ -35,7 +35,7 @@ class EventRules extends RecordRules
         'open' => ['analysis', 'committee_review', 'approved'],
         'analysis' => ['committee_review', 'approved', 'open'],
         'committee_review' => ['approved', 'analysis'],
-        'approved' => ['actions_in_progress', 'closed', 'analysis'],
+        'approved' => ['actions_in_progress', 'closed'],
         'actions_in_progress' => ['closed'],
         'closed' => [],
     ];
@@ -79,21 +79,39 @@ class EventRules extends RecordRules
 
     private function investigationOpen(?string $invId): void
     {
-        if ($invId && DB::selectOne("select 1 as ok from investigations where id = ? and status = 'closed'", [$invId])) {
+        $st = $invId ? DB::selectOne('select status from investigations where id = ?', [$invId])?->status : null;
+        if ($st === 'closed') {
             $this->conflict('La investigación está cerrada: no se agregan ni cambian sus causas ni su equipo.');
+        }
+        if (in_array($st, ['approved', 'actions_in_progress'], true)) {
+            $this->conflict('El informe de la investigación está aprobado: no se cambian sus causas ni su equipo. Si hace falta, agrega una adenda.');
         }
     }
 
     private function person(array &$values, ?object $current): void
     {
-        $this->eventOpen($this->value($values, $current, 'event_id'));
+        $eventId = $this->value($values, $current, 'event_id');
+        $this->eventOpen($eventId);
         if (($d = $values['lost_days'] ?? null) !== null && (int) $d < 0) {
             $this->fail('lost_days', 'Los días perdidos no pueden ser negativos.');
+        }
+        // RN-ACC-06: datos de la lesión obligatorios para cada persona lesionada en un accidente (registro R.M. 050).
+        $type = $eventId ? DB::selectOne('select event_type from sst_events where id = ?', [$eventId])?->event_type : null;
+        if (str_contains((string) $type, 'accident') && $this->value($values, $current, 'person_role') === 'injured') {
+            foreach (['injury_type' => 'Indica el tipo de lesión.', 'body_part' => 'Indica la parte del cuerpo lesionada.', 'injury_agent' => 'Indica el agente que causó la lesión.'] as $f => $m) {
+                if (trim((string) ($this->value($values, $current, $f) ?? '')) === '') {
+                    $this->fail($f, $m);
+                }
+            }
         }
     }
 
     private function investigationChild(array &$values, ?object $current): void
     {
+        // Las acciones de las causas se asignan también con el informe aprobado (es lo que se pide al aprobar).
+        if ($current && array_keys($values) === ['corrective_action_id']) {
+            return;
+        }
         $this->investigationOpen($this->value($values, $current, 'investigation_id'));
     }
 
@@ -167,7 +185,7 @@ class EventRules extends RecordRules
                     && ! DB::selectOne("select 1 as ok from event_people where event_id = ? and person_role in ('injured','affected') and deleted_at is null", [$current->id])) {
                     $this->fail('status', 'Registra al menos una persona afectada antes de cerrar el accidente.');
                 }
-                if (DB::selectOne("select 1 as ok from event_notifications where event_id = ? and status = 'pending' and deleted_at is null", [$current->id])) {
+                if (DB::selectOne("select 1 as ok from event_notifications where event_id = ? and status in ('pending', 'overdue') and deleted_at is null", [$current->id])) {
                     $this->fail('status', 'Hay notificaciones obligatorias pendientes.');
                 }
                 $extra['closed_at'] = ['now()', []];
@@ -233,6 +251,24 @@ class EventRules extends RecordRules
                 if (trim((string) $this->value($values, $current, 'conclusions')) === '') {
                     $this->fail('conclusions', 'Escribe las conclusiones de la investigación antes de aprobarla.');
                 }
+                // RN-INV-02: cada causa básica o raíz lleva su acción correctiva.
+                if (DB::selectOne("select 1 as ok from investigation_causes where investigation_id = ? and deleted_at is null
+                                    and cause_level in ('basic', 'root', 'lack_of_control') and corrective_action_id is null", [$current->id])) {
+                    $this->fail('status', 'Cada causa básica o raíz debe tener su acción correctiva antes de aprobar la investigación.');
+                }
+                // RN-INV-03: el equipo incluye al representante del comité (o al supervisor SST).
+                if (! DB::selectOne("select 1 as ok from investigation_team where investigation_id = ? and role = 'committee_representative' and deleted_at is null", [$current->id])) {
+                    $model = DB::selectOne('select sst_model from companies where id = ?', [$current->company_id])?->sst_model;
+                    $this->fail('status', $model === 'supervisor'
+                        ? 'Agrega al supervisor de SST al equipo investigador (rol «Representante del comité»).'
+                        : 'Agrega a un miembro del comité de SST al equipo investigador (rol «Representante del comité»).');
+                }
+                // RN-INV-06: se identifica una causa de gestión (factores del trabajo, sistema de gestión o falta de control) o se justifica.
+                if (! DB::selectOne("select 1 as ok from investigation_causes where investigation_id = ? and deleted_at is null
+                                      and (cause_category in ('job_factor', 'management_system') or cause_level = 'lack_of_control')", [$current->id])
+                    && trim((string) $this->value($values, $current, 'management_cause_justification')) === '') {
+                    $this->fail('management_cause_justification', 'Identifica una causa de gestión (factor del trabajo, sistema de gestión o falta de control) o justifica por qué no la hay.');
+                }
             }
             if ($to === 'approved') {
                 $extra['approved_by'] = ['?', [(string) auth()->id()]];
@@ -241,6 +277,20 @@ class EventRules extends RecordRules
             if ($to === 'closed' && DB::selectOne("select 1 as ok from investigation_causes c join corrective_actions a on a.id = c.corrective_action_id
                     where c.investigation_id = ? and c.deleted_at is null and a.status not in ('verified','cancelled')", [$current->id])) {
                 $this->fail('status', 'Hay acciones correctivas de las causas sin verificar.');
+            }
+        }
+        // RN-INV-05: aprobado el informe, su contenido no cambia; las precisiones van como adenda (se agregan, no se reemplazan).
+        if ($current && in_array($current->status, ['approved', 'actions_in_progress', 'closed'], true)) {
+            $locked = array_diff(array_keys($values), ['status', 'addenda']);
+            if ($locked !== []) {
+                $this->conflict('El informe de la investigación está aprobado: no se modifica. Agrega una adenda con la precisión.');
+            }
+            if (array_key_exists('addenda', $values)) {
+                $old = json_decode((string) ($current->addenda ?? '[]'), true) ?: [];
+                $new = is_array($values['addenda']) ? $values['addenda'] : (json_decode((string) $values['addenda'], true) ?: []);
+                if (count($new) < count($old) || array_slice($new, 0, count($old)) != $old) {
+                    $this->conflict('Las adendas anteriores no se cambian ni se borran: solo se agregan nuevas.');
+                }
             }
         }
     }
@@ -319,13 +369,14 @@ class EventRules extends RecordRules
         $tz = new \DateTimeZone('America/Lima');
         $at = new \DateTimeImmutable($occurred);
         $at = $at->setTimezone($tz);
+        $on = $at->format('Y-m-d');
         switch ($type) {
             case 'fatal_accident':
-                return [$at->modify('+'.(int) LegalParams::number('fatal_accident_notification_hours', 24).' hours')->format(DATE_ATOM), 'fatal_accident_notification_hours'];
+                return [$at->modify('+'.(int) LegalParams::number('fatal_accident_notification_hours', 24, $on).' hours')->format(DATE_ATOM), 'fatal_accident_notification_hours'];
             case 'dangerous_incident':
-                return [$at->modify('+'.(int) LegalParams::number('dangerous_incident_notification_hours', 24).' hours')->format(DATE_ATOM), 'dangerous_incident_notification_hours'];
+                return [$at->modify('+'.(int) LegalParams::number('dangerous_incident_notification_hours', 24, $on).' hours')->format(DATE_ATOM), 'dangerous_incident_notification_hours'];
             case 'occupational_disease':
-                return [$this->businessDays($at, (int) LegalParams::number('occupational_disease_notification_business_days', 5))->setTime(23, 59)->format(DATE_ATOM),
+                return [$this->businessDays($at, (int) LegalParams::number('occupational_disease_notification_business_days', 5, $on))->setTime(23, 59)->format(DATE_ATOM),
                     'occupational_disease_notification_business_days'];
             case 'disabling_accident':
             case 'minor_accident':

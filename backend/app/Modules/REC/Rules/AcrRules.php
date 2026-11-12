@@ -2,6 +2,7 @@
 
 namespace App\Modules\REC\Rules;
 
+use App\Core\Support\LegalParams;
 use App\Modules\REC\TraceService;
 use Illuminate\Support\Facades\DB;
 
@@ -69,6 +70,14 @@ class AcrRules extends RecordRules
         DB::update("update meeting_agreements set status = 'fulfilled', fulfilled_at = now() where corrective_action_id = ? and status not in ('fulfilled','cancelled')", [$id]);
         DB::update("update audit_findings set status = 'resolved' where corrective_action_id = ? and status in ('open','action_assigned')", [$id]);
         DB::update("update management_review_outputs set status = 'done' where corrective_action_id = ? and status in ('open','in_progress')", [$id]);
+        // M-INV criterio 5: la investigación se cierra sola cuando todas las acciones de sus causas están verificadas.
+        DB::update(
+            "update investigations i set status = 'closed', updated_at = now() where i.status in ('approved', 'actions_in_progress')
+                and i.id in (select investigation_id from investigation_causes where corrective_action_id = ?)
+                and not exists (select 1 from investigation_causes c join corrective_actions a on a.id = c.corrective_action_id
+                                 where c.investigation_id = i.id and c.deleted_at is null and a.status not in ('verified', 'cancelled'))",
+            [$id]
+        );
         // RN-INS-07: la inspección se cierra cuando todos sus hallazgos están atendidos.
         DB::update(
             "update inspections i set status = 'closed' where i.status = 'completed' and i.id in (select inspection_id from findings where corrective_action_id = ?)
@@ -106,6 +115,36 @@ class AcrRules extends RecordRules
             }
             $values['status'] = 'open';
         }
+        // RN-ACR-06: cambiar la fecha meta es una ampliación: lleva motivo, guarda la fecha original y, pasado el límite de
+        // «max_extensions_without_approval», solo la aprueba la gerencia.
+        if ($op === 'update' && array_key_exists('due_on', $values) && $values['due_on'] && $current->due_on && $values['due_on'] !== $current->due_on) {
+            if ($values['due_on'] < $today) {
+                $this->fail('due_on', 'La nueva fecha meta no puede ser anterior a hoy.');
+            }
+            if (in_array($current->status, ['verified', 'cancelled'], true)) {
+                $this->conflict('La acción ya está cerrada: su fecha meta no cambia.');
+            }
+            if (trim((string) ($values['extension_reason'] ?? '')) === '') {
+                $this->fail('extension_reason', 'Indica el motivo de la ampliación de plazo.');
+            }
+            $count = (int) $current->extension_count + 1;
+            $extra['extension_count'] = ['?', [$count]];
+            if (! $current->original_due_on) {
+                $extra['original_due_on'] = ['?::date', [$current->due_on]];
+            }
+            if ($count > (int) LegalParams::number('max_extensions_without_approval', 1)) {
+                $role = DB::selectOne("select coalesce(r.base_role_code, r.code) as code from memberships m join roles r on r.id = m.role_id
+                                        where m.user_id = ? and m.company_id = ? and m.status = 'active' and m.deleted_at is null limit 1", [(string) auth()->id(), $current->company_id])?->code;
+                if (! in_array($role, ['management', 'account_admin'], true)) {
+                    $this->fail('due_on', 'Esta acción ya tuvo '.($count - 1).' ampliación(es): la nueva la aprueba la gerencia.');
+                }
+                $extra['extension_approved_by'] = ['?', [(string) auth()->id()]];
+            }
+            if ($current->status === 'overdue') {
+                $values['status'] = $values['status'] ?? 'in_progress';
+            }
+        }
+        unset($values['extension_count'], $values['original_due_on'], $values['extension_approved_by']);
         if ($op === 'update' && $current->status === 'pending_verification'
             && array_intersect(array_keys($values), ['responsible_user_id', 'responsible_worker_id', 'contractor_id']) !== []) {
             $this->conflict('La acción está por verificar: no se cambia el responsable. Si hace falta, devuélvela a «En curso» primero.');

@@ -1204,7 +1204,12 @@
   "xml_file_id": "Archivo XML",
   "y_pct": "Posición Y (%)",
   "year": "Año",
-  "zip_file_id": "Archivo ZIP"
+  "zip_file_id": "Archivo ZIP",
+  "injury_agent": "Agente de la lesión",
+  "management_cause_justification": "Justificación (sin causa de gestión)",
+  "addenda": "Adendas",
+  "original_due_on": "Fecha meta original",
+  "extension_approved_by": "Ampliación aprobada por"
  },
  "values": {
   "A": "Tipo A",

@@ -42,6 +42,12 @@ final class SstAlerts
      */
     public function refreshStatuses(ConnectionInterface $db): void
     {
+        // M-ACC §9: una notificación obligatoria pendiente pasa a «vencida» al pasar su plazo (queda marcada fuera de plazo).
+        $db->update("update event_notifications set status = 'overdue', notification_overdue = true, updated_at = now()
+                      where status = 'pending' and deadline_at < now() and deleted_at is null");
+        // M-ACR RN-ACR-07: una acción abierta o en curso pasa a «vencida» al pasar su fecha meta.
+        $db->update("update corrective_actions set status = 'overdue', updated_at = now()
+                      where status in ('open', 'in_progress') and due_on < (now() at time zone 'America/Lima')::date and deleted_at is null");
         $db->update("update training_certificates set status = 'expired' where deleted_at is null and status = 'validated' and expires_on < current_date");
         // EMO periódico (R.M. 312-2011-MINSA): a quien su aptitud vence en 30 días (o no tiene) y su puesto exige EMO,
         // se le deja una orden «programada» sin fecha para que el área de salud la agende. No se duplica.

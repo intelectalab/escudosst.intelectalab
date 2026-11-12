@@ -10,6 +10,7 @@ beforeEach(function () {
     $GLOBALS['sus_tokens'] = [];
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
     DB::update("update feature_flags set mode = 'enabled' where company_id = ? and module_code in ('PSE', 'INS', 'PTR', 'CAP') and deleted_at is null", [HUAYLAS_ID]);
+    \App\Core\Auth\Permissions::flush();
     $this->h = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
     // Paquete con plantilla de inspección y tipo de permiso globales.
     $this->pack = DB::connection('platform')->selectOne("select p.id from sector_packs p where p.status = 'published' and p.deleted_at is null
@@ -23,7 +24,9 @@ afterEach(function () {
 });
 
 it('muestra qué hará cada ítem, instala copiando el contenido y reinstalar no duplica', function () {
-    $prev = collect($this->getJson("/api/v1/pse/packs/{$this->pack}/preview", $this->h)->assertOk()->json('data.items'));
+    $resp = $this->getJson("/api/v1/pse/packs/{$this->pack}/preview", $this->h);
+    expect($resp->status())->toBe(200, $resp->getContent());
+    $prev = collect($resp->json('data.items'));
     expect($prev)->not->toBeEmpty()->and($prev->pluck('action')->unique()->all())->each->toBeIn(['install', 'link', 'installed', 'unsupported']);
 
     $r = $this->postJson("/api/v1/pse/packs/{$this->pack}/install", [], $this->h)->assertCreated()->json('data');
