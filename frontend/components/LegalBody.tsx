@@ -9,7 +9,7 @@ function Text({ text }: { text: string }) {
     <>
       {parts.map((p, i) => (
         <span key={i}>
-          {i > 0 && <mark className="rounded bg-[#F4B90F]/30 px-1 font-semibold text-[#8A6704]">{TEST_MARK}</mark>}
+          {i > 0 && <mark className="rounded bg-[#F4B90F]/30 px-1 font-semibold text-[#6b5003]">{TEST_MARK}</mark>}
           {p}
         </span>
       ))}

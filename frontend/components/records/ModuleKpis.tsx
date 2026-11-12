@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { MODULE_KPIS, resolveDate, type Kpi } from "@/lib/moduleKpis";
 import { records } from "@/lib/records";
 
-const COLOR: Record<Kpi["color"], string> = { brand: "text-brand", ok: "text-ok", amber: "text-amber-ink", bad: "text-bad", orange: "text-[#F08A24]", teal: "text-[#1FB5A3]" };
+const COLOR: Record<Kpi["color"], string> = { brand: "text-brand", ok: "text-ok", amber: "text-amber-ink", bad: "text-bad", orange: "text-[#b45309]", teal: "text-[#0f766e]" };
 const resolve = (f: Record<string, string> = {}) => Object.fromEntries(Object.entries(f).map(([k, v]) => [k, resolveDate(v)]));
 
 export function ModuleKpis({ code }: { code: string }) {

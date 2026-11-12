@@ -33,6 +33,7 @@ class ActionFromRecord extends Controller
         'behavior_observations' => ['observation', 'id', null],
         'behavior_observation_items' => ['observation', 'observation_id', null],
         'change_requests' => ['change', 'id', null],
+        'environmental_aspects' => ['environmental_aspect', 'id', null],
     ];
 
     public function __invoke(Request $request, string $table, string $id): JsonResponse

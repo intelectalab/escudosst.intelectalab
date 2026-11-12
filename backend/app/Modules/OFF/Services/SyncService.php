@@ -71,12 +71,16 @@ class SyncService
                 throw ApiProblem::forbidden('Tu rol no puede registrar dispositivos para trabajar sin conexión.');
             }
             $platform = in_array($input['platform'] ?? null, ['android', 'ios', 'web_pwa', 'windows', 'other'], true) ? $input['platform'] : 'web_pwa';
+            // Dos registros a la vez del mismo equipo (por ejemplo, al abrir la app) no deben chocar: el segundo usa el del primero.
             $device = DB::selectOne(
                 'insert into devices (company_id, user_id, device_uid, platform, model, app_version, created_by, updated_by)
-                 values (?, ?, ?, ?, ?, ?, ?, ?) returning *',
+                 values (?, ?, ?, ?, ?, ?, ?, ?) on conflict (company_id, device_uid) where deleted_at is null do nothing returning *',
                 [$ctx->companyId, (string) auth()->id(), $uid, $platform, $this->text($input['model'] ?? null, 120),
                     $this->text($input['app_version'] ?? null, 40), (string) auth()->id(), (string) auth()->id()]
-            );
+            ) ?? DB::selectOne('select * from devices where device_uid = ? and deleted_at is null', [$uid]);
+            if (! $device || $device->user_id !== (string) auth()->id()) {
+                throw ApiProblem::forbidden('Este dispositivo está registrado a otra persona. Pide al responsable SST que lo revise.');
+            }
         }
 
         return $device;

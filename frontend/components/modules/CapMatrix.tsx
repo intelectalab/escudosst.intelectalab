@@ -44,7 +44,7 @@ export function CapMatrix() {
           sub={k.matrix_den ? `${k.matrix_num} de ${k.matrix_den} obligatorias por cargo` : "Sin cursos obligatorios por cargo"}
           href={recordsHref("CAP", "position_training_requirements")}
         />
-        <Kpi label="Certificados por validar" value={String(k.certificates_pending)} color="text-[#F08A24]" href={recordsHref("CAP", "training_certificates", { filters: { status: "pending_validation" } })} />
+        <Kpi label="Certificados por validar" value={String(k.certificates_pending)} color="text-[#b45309]" href={recordsHref("CAP", "training_certificates", { filters: { status: "pending_validation" } })} />
         <Kpi label="Certificados por vencer" value={String(k.certificates_expiring)} color="text-bad" sub="En los próximos 30 días" href={recordsHref("CAP", "training_certificates", { filters: { status: "validated" } })} />
       </div>
 
@@ -67,7 +67,7 @@ export function CapMatrix() {
                 <span className="inline-flex items-center gap-1"><Dot tone="bad" /> menos de 70%</span>
                 <span><b>—</b> no exigida</span>
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Matriz de capacitación por puesto">
                 <table className="w-full text-left text-sm">
                   <thead className="border-b border-line text-xs font-semibold text-muted">
                     <tr>

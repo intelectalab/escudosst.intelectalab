@@ -111,7 +111,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
       {SECTIONS.map((s) => (
         <div key={s.title}>
           <div className="relative h-5">
-            <p className={`absolute inset-x-0 top-0 whitespace-nowrap px-3 text-[10.5px] font-bold uppercase tracking-[0.12em] text-white/40 ${fade(mini)}`}>{s.title}</p>
+            <p className={`absolute inset-x-0 top-0 whitespace-nowrap px-3 text-[10.5px] font-bold uppercase tracking-[0.12em] text-white/65 ${fade(mini)}`}>{s.title}</p>
             {mini && <span className="absolute left-4 right-4 top-2 h-px bg-white/10 transition-opacity group-hover/side:opacity-0" aria-hidden="true" />}
           </div>
           <ul className="space-y-0.5">

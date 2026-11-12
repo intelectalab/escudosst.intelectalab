@@ -2,22 +2,23 @@
 
 /* Colores y fuentes tomados del prototipo (prototipo/src/styles.css). */
 :root {
+  /* Tonos con contraste AA (4,5:1) sobre blanco y sobre el fondo gris (revisión de accesibilidad, docs/12). */
   --bg: #eef1f5;
   --surface: #ffffff;
   --line: #e0e5eb;
   --fg: #262b33;
-  --muted: #6b7684;
-  --brand: #1f7fd1;
-  --brand-strong: #1764ab;
+  --muted: #636d7a;
+  --brand: #1b6fb7;
+  --brand-strong: #145e9e;
   --brand-soft: #e3effb;
   --side: #0d3b6e;
-  --ok: #22a35a;
+  --ok: #197b44;
   --ok-soft: #e0f4e8;
-  --bad: #e2453c;
+  --bad: #b8352d;
   --bad-soft: #fce6e4;
   --amber-soft: #fff4d1;
   --amber-ink: #7a5600;
-  --na: #8a94a3;
+  --na: #666d78;
   --na-soft: #edf0f3;
   color-scheme: light;
 }
@@ -198,17 +199,17 @@ h3 {
 .site {
   --site-navy: #0d3b6e;
   --site-navy-title: #00254d;
-  --site-action: #1f7fd1;
-  --site-action-hover: #176bb3;
+  --site-action: #1b6fb7;
+  --site-action-hover: #155c99;
   --site-bg: #eef1f5;
   --site-surface: #f7fafe;
   --site-card: #ffffff;
   --site-amber: #f4b90f;
-  --site-green: #22a35a;
-  --site-red: #e2453c;
+  --site-green: #197b44;
+  --site-red: #b8352d;
   --site-teal: #1fb5a3;
   --site-text: #262b33;
-  --site-text-2: #6b7684;
+  --site-text-2: #636d7a;
   --site-border: rgba(13, 59, 110, 0.08);
   color: var(--site-text);
   background: var(--site-card);

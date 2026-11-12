@@ -45,7 +45,7 @@ export function CertificateSheet({ id }: { id: string }) {
       <Toolbar hint={c.public_verification_enabled ? "El QR permite verificarlo en línea." : "La verificación pública de este certificado está desactivada: actívala en el certificado para que el QR funcione."} />
       <div className="mx-auto flex max-w-4xl flex-col justify-between rounded-2xl border-[6px] border-double border-[#0d3b6e] bg-white p-10 text-center text-gray-900 print:border-[#0d3b6e]" style={{ minHeight: "170mm" }}>
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[#1f7fd1]">{c.company.name}</p>
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[#1b6fb7]">{c.company.name}</p>
           <h1 className="mt-3 text-4xl font-bold text-[#0d3b6e]">CERTIFICADO</h1>
           {c.status === "voided" && <p className="mt-2 text-2xl font-bold text-red-700">ANULADO</p>}
           <p className="mt-6 text-lg">Se certifica que</p>

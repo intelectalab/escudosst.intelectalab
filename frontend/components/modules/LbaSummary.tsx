@@ -105,8 +105,8 @@ export function LbaSummary() {
         {[
           [`Línea base ${String(current?.assessment_on ?? "").slice(0, 4)}`, `${pct.toLocaleString("es-PE", { maximumFractionDigits: 0 })}%`, "text-brand", `Evaluada el ${D(current?.assessment_on)}`, href({})],
           ["Ítems evaluados", String(items?.filter((i) => i.result !== "pending" && i.result !== "not_applicable").length ?? "—"), "text-ok", "", href({})],
-          ["Brechas abiertas", String(open), "text-[#F08A24]", "", href({})],
-          ["Brechas cerradas", String(closed), "text-[#1FB5A3]", "", href({})],
+          ["Brechas abiertas", String(open), "text-[#b45309]", "", href({})],
+          ["Brechas cerradas", String(closed), "text-[#0f766e]", "", href({})],
         ].map(([label, value, color, sub, h]) => (
           <Link key={label} href={h} className="rounded-xl border border-line bg-surface p-4 hover:border-brand/40">
             <p className="text-sm text-muted">{label}</p>

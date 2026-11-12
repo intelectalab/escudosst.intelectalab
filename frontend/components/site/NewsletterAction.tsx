@@ -50,7 +50,7 @@ export function NewsletterAction({ kind, token, issue }: { kind: "confirm" | "un
     </Link>
   );
 
-  if (state === "loading") return box("clock", "bg-[#EAF3FC] text-[#1F7FD1]", "Un momento…", "Estamos procesando tu enlace.");
+  if (state === "loading") return box("clock", "bg-[#EAF3FC] text-[#1b6fb7]", "Un momento…", "Estamos procesando tu enlace.");
   if (state === "error")
     return box(
       "close",
@@ -78,7 +78,7 @@ export function NewsletterAction({ kind, token, issue }: { kind: "confirm" | "un
   if (state === "invalid") return box("close", "bg-[#FDECEB] text-[#C8372F]", "El enlace no es válido", "Puede que ya no estés suscrito. Si sigues recibiendo correos, escríbenos.", again);
   return box(
     "mail",
-    "bg-[#EAF3FC] text-[#1F7FD1]",
+    "bg-[#EAF3FC] text-[#1b6fb7]",
     "¿Darte de baja?",
     "Dejarás de recibir el boletín normativo y los avisos de estado del servicio.",
     <button onClick={run} className="site-btn site-btn-primary min-h-11">

@@ -118,9 +118,9 @@ export function AulCourse({ id, readOnly }: { id: string; readOnly: boolean }) {
       {msg && <p role="status" className={`rounded-lg px-4 py-2 text-sm ${msg.ok ? "bg-ok-soft text-ok" : "bg-bad-soft text-bad"}`}>{msg.text}</p>}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi label="Matriculados" value={String(d.kpis.enrolled)} />
-        <Kpi label="Avance promedio" value={`${d.kpis.avg_progress}%`} color="text-[#1FB5A3]" />
+        <Kpi label="Avance promedio" value={`${d.kpis.avg_progress}%`} color="text-[#0f766e]" />
         <Kpi label="Aprobados" value={String(d.kpis.passed)} color="text-ok" sub={d.kpis.enrolled ? `${Math.round((d.kpis.passed * 100) / d.kpis.enrolled)}% de los matriculados` : "Sin matrículas"} />
-        <Kpi label="Permanencia promedio" value={hm(d.kpis.avg_active_seconds)} color="text-[#F08A24]" sub="Tiempo activo real" />
+        <Kpi label="Permanencia promedio" value={hm(d.kpis.avg_active_seconds)} color="text-[#b45309]" sub="Tiempo activo real" />
       </div>
       <div role="tablist" aria-label="Secciones del curso" className="flex gap-1 overflow-x-auto border-b border-line">
         {TABS.map((t) => (

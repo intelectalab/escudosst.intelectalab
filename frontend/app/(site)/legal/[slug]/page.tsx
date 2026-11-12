@@ -113,7 +113,7 @@ export default async function LegalPage({ params }: { params: Promise<{ slug: st
         <article className="min-w-0 max-w-3xl space-y-8">
           {page.status === "draft" && (
             <div role="note" className="rounded-r-xl border-l-4 border-[var(--site-amber)] bg-[#F4B90F]/12 px-5 py-4">
-              <p className="font-display font-bold text-[#8A6704]">Documento en preparación</p>
+              <p className="font-display font-bold text-[#6b5003]">Documento en preparación</p>
               <p className="mt-1 text-[15px] text-[#6B5200]">Esta política se publicará próximamente.</p>
             </div>
           )}

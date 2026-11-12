@@ -60,7 +60,7 @@ export default async function DemoPage({ searchParams }: { searchParams: Promise
             </a>
           )}
           {agenda.result === "ok" && (
-            <Link href="/demo/agendar" data-track="demo-elegir-horario" className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-[#1F7FD1] to-[#0D3B6E] p-5 text-white shadow-md transition hover:-translate-y-0.5">
+            <Link href="/demo/agendar" data-track="demo-elegir-horario" className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-[#1b6fb7] to-[#0D3B6E] p-5 text-white shadow-md transition hover:-translate-y-0.5">
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/15">
                 <Icon name="clock" size={22} />
               </span>

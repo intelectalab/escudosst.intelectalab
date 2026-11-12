@@ -14,7 +14,7 @@ export function HelpBody({ body, compact = false }: { body: string; compact?: bo
           <ul key={i} className="space-y-1.5 pl-1">
             {n.items.map((it, j) => (
               <li key={j} className="flex gap-2">
-                <span className="mt-[0.6em] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--site-action,#1F7FD1)]" aria-hidden="true" />
+                <span className="mt-[0.6em] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--site-action,#1b6fb7)]" aria-hidden="true" />
                 <span className="min-w-0">{it}</span>
               </li>
             ))}

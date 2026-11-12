@@ -27,7 +27,7 @@ export default function PuntoReporteCartel() {
         <button onClick={() => window.print()} className="rounded-lg bg-[#0d3b6e] px-4 py-2 text-sm font-semibold text-white">Imprimir</button>
       </div>
       <div className="mx-auto flex max-w-md flex-col items-center gap-4 rounded-2xl border-4 border-[#F4B90F] bg-white p-8 text-center text-[#0b2440]">
-        <p className="text-sm font-bold uppercase tracking-[0.25em] text-[#1f7fd1]">Seguridad primero</p>
+        <p className="text-sm font-bold uppercase tracking-[0.25em] text-[#1b6fb7]">Seguridad primero</p>
         <h1 className="text-3xl font-extrabold leading-tight">¿Viste algo inseguro?</h1>
         <p className="text-lg">Escanea con la cámara de tu celular y repórtalo. <b>No necesitas instalar nada.</b></p>
         <div className="rounded-xl bg-white p-2 ring-2 ring-[#0d3b6e]"><QrCode value={link} size={220} /></div>

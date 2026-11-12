@@ -23,7 +23,7 @@ export type StatusData = {
 export const STATUS_LABEL: Record<ComponentStatus, string> = { operational: "Operativo", degraded: "Degradado", partial_outage: "Caída parcial", major_outage: "Caída total", maintenance: "Mantenimiento" };
 export const STATUS_TONE: Record<ComponentStatus, { dot: string; soft: string; text: string; icon: string }> = {
   operational: { dot: "bg-[#22A35A]", soft: "bg-[#E8F7EE]", text: "text-[#17703e]", icon: "check" },
-  maintenance: { dot: "bg-[#1F7FD1]", soft: "bg-[#EAF3FC]", text: "text-[#176bb3]", icon: "clock" },
+  maintenance: { dot: "bg-[#1b6fb7]", soft: "bg-[#EAF3FC]", text: "text-[#176bb3]", icon: "clock" },
   degraded: { dot: "bg-[#F4B90F]", soft: "bg-[#FFF5D6]", text: "text-[#8a6a00]", icon: "bell" },
   partial_outage: { dot: "bg-[#F08A24]", soft: "bg-[#FDEBD9]", text: "text-[#9a4d05]", icon: "bell" },
   major_outage: { dot: "bg-[#E2453C]", soft: "bg-[#FDECEB]", text: "text-[#a3261f]", icon: "close" },

@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 
 // Cada punto describe algo que el sistema ya hace (revisado en el código). No agregar medidas que no existan.
 const MEASURES: [string, string, string, string][] = [
-  ["lock", "Acceso con doble verificación", "Además de la contraseña, al ingresar pedimos un código que llega a tu correo. La sesión se cierra sola tras 30 minutos sin uso.", "from-[#EAF3FC] text-[#1F7FD1]"],
+  ["lock", "Acceso con doble verificación", "Además de la contraseña, al ingresar pedimos un código que llega a tu correo. La sesión se cierra sola tras 30 minutos sin uso.", "from-[#EAF3FC] text-[#1b6fb7]"],
   ["building", "Cada empresa ve solo lo suyo", "La base de datos separa la información por empresa: un usuario no puede ver datos de otra empresa aunque lo intente.", "from-[#E8F7EE] text-[#22A35A]"],
   ["heart", "Datos médicos en una base aparte", "Los datos de salud ocupacional se guardan en una base de datos distinta de la principal, con su propia copia de respaldo y su propia llave de cifrado.", "from-[#FDECEB] text-[#C8372F]"],
   ["database", "Copias de respaldo cifradas", "Hacemos una copia diaria de las bases de datos, cifrada, y la guardamos 30 días.", "from-[#FFF5D6] text-[#B88700]"],
@@ -108,7 +108,7 @@ export default async function ConfianzaPage() {
                   <li key={x.name} className="site-card min-w-0 p-5">
                     <div className="flex flex-wrap items-center gap-2">
                       <b className="font-display text-[17px] text-[var(--site-navy-title)]">{x.name}</b>
-                      <span className="rounded-full bg-[#EAF3FC] px-2.5 py-0.5 text-xs font-semibold text-[#1F7FD1]">{countryName(x.country)}</span>
+                      <span className="rounded-full bg-[#EAF3FC] px-2.5 py-0.5 text-xs font-semibold text-[#1b6fb7]">{countryName(x.country)}</span>
                       {x.to_validate && <span className="rounded-full bg-[#FFF5D6] px-2.5 py-0.5 text-xs font-semibold text-[#8a6a00]">Por validar</span>}
                     </div>
                     <dl className="mt-3 space-y-2 text-sm">

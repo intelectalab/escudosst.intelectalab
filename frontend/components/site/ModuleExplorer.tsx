@@ -9,10 +9,10 @@ import type { PublicModule } from "@/lib/site";
 const GROUP_ICON: Record<number, string> = { 1: "grid", 2: "tag", 3: "shield", 4: "eye", 5: "heart", 6: "history", 7: "building", 8: "star" };
 const PLAN_CHIP: Record<string, string> = {
   E: "bg-[#22A35A]/12 text-[#187A42]",
-  P: "bg-[#1F7FD1]/12 text-[#176BB3]",
+  P: "bg-[#1b6fb7]/12 text-[#176BB3]",
   C: "bg-[#0D3B6E]/10 text-[#0D3B6E]",
-  "+": "bg-[#F4B90F]/20 text-[#8A6704]",
-  K: "bg-[#F4B90F]/20 text-[#8A6704]",
+  "+": "bg-[#F4B90F]/20 text-[#6b5003]",
+  K: "bg-[#F4B90F]/20 text-[#6b5003]",
 };
 
 export function ModuleExplorer({ modules, groups, planNames }: { modules: PublicModule[]; groups: Record<number, string>; planNames: Record<string, string> }) {
@@ -102,7 +102,7 @@ export function ModuleExplorer({ modules, groups, planNames }: { modules: Public
       {shownGroups.map((g) => (
         <section key={g} className="space-y-4">
           <h2 className="flex items-center gap-3 font-display text-xl font-bold text-[var(--site-navy-title)]">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-[#1F7FD1] to-[#0D3B6E] text-white">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-[#1b6fb7] to-[#0D3B6E] text-white">
               <Icon name={GROUP_ICON[g] ?? "grid"} size={18} />
             </span>
             {groups[g]}

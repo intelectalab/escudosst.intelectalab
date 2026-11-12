@@ -35,7 +35,7 @@ export default async function EstadoPage() {
       <ol className="mt-3 space-y-3 border-l-2 border-[#d5dde7] pl-4">
         {i.updates.map((u, k) => (
           <li key={k} className="relative">
-            <span className="absolute -left-[23px] top-1 h-3 w-3 rounded-full border-2 border-white bg-[#1F7FD1]" aria-hidden="true" />
+            <span className="absolute -left-[23px] top-1 h-3 w-3 rounded-full border-2 border-white bg-[#1b6fb7]" aria-hidden="true" />
             <p className="text-sm">
               <b className="text-[var(--site-navy-title)]">{INCIDENT_LABEL[u.status] ?? u.status}</b> <span className="text-xs text-[var(--site-text-2)]">· {when(u.published_at)}</span>
             </p>

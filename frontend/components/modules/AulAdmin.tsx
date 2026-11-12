@@ -39,7 +39,7 @@ export const ENROLL_STATUS: Record<string, [string, ChipTone]> = {
   enrolled: ["Sin iniciar", "na"], in_progress: ["En curso", "amber"], completed: ["Aprobado", "ok"], failed: ["Desaprobado", "bad"], expired: ["Vencido", "bad"], cancelled: ["De baja", "na"],
 };
 export const CATEGORIES = ["Inducción", "General", "Operación", "Alto riesgo", "Emergencias", "Gestión SST"];
-const BANDS = ["#E2453C", "#1F7FD1", "#22A35A", "#F08A24", "#1FB5A3", "#C99A06", "#0D3B6E"];
+const BANDS = ["#b8352d", "#1b6fb7", "#197b44", "#b45309", "#0f766e", "#8a6a04", "#0D3B6E"];
 export const bandOf = (code: string) => BANDS[[...code].reduce((a, ch) => a + ch.charCodeAt(0), 0) % BANDS.length];
 export const hm = (seconds: number | null | undefined) => {
   const m = Math.round((seconds ?? 0) / 60);
@@ -147,9 +147,9 @@ export function AulLanding({ readOnly }: { readOnly: boolean }) {
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi label="Cursos publicados" value={String(k.published)} sub={`${k.drafts} en borrador`} />
-        <Kpi label="Matrículas activas" value={String(k.active_enrollments)} color="text-[#1FB5A3]" sub="En curso o sin iniciar" />
+        <Kpi label="Matrículas activas" value={String(k.active_enrollments)} color="text-[#0f766e]" sub="En curso o sin iniciar" />
         <Kpi label="Aprobados" value={String(k.passed)} color="text-ok" sub="Generan constancia en Capacitaciones" />
-        <Kpi label="Horas acreditadas del mes" value={fmtNum(k.hours_month, k.hours_month % 1 ? 1 : 0)} color="text-[#F08A24]" sub="Por cursos aprobados este mes" />
+        <Kpi label="Horas acreditadas del mes" value={fmtNum(k.hours_month, k.hours_month % 1 ? 1 : 0)} color="text-[#b45309]" sub="Por cursos aprobados este mes" />
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div role="tablist" aria-label="Filtrar cursos" className="inline-flex rounded-lg border border-line bg-surface p-0.5 text-sm">

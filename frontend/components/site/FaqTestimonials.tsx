@@ -62,7 +62,7 @@ export function TestimonialCards({ items }: { items: Testimonial[] }) {
               <b className="block text-[var(--site-navy-title)]">{t.author_name}</b>
               <span className="text-[var(--site-text-2)]">{[t.author_role, t.company_name].filter(Boolean).join(" · ")}</span>
             </span>
-            {t.is_example && <span className="rounded-md bg-[#F4B90F]/20 px-2 py-0.5 text-[11px] font-bold uppercase text-[#8A6704]">Ejemplo</span>}
+            {t.is_example && <span className="rounded-md bg-[#F4B90F]/20 px-2 py-0.5 text-[11px] font-bold uppercase text-[#6b5003]">Ejemplo</span>}
           </footer>
         </li>
       ))}

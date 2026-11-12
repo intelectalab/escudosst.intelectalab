@@ -13,6 +13,7 @@ Route::middleware(['auth:sanctum', 'company', 'module:IAA'])->prefix('iaa')->gro
     Route::post('suggestions/{id}/accept', [\App\Modules\IAA\GuidedController::class, 'accept'])->whereUuid('id');
     Route::post('suggestions/{id}/reject', [\App\Modules\IAA\GuidedController::class, 'reject'])->whereUuid('id');
     Route::get('history', [\App\Modules\IAA\GuidedController::class, 'history']);
+    Route::get('usage', [\App\Modules\IAA\GuidedController::class, 'usage']);
     Route::get('requests/{id}/suggestions', [\App\Modules\IAA\GuidedController::class, 'suggestions'])->whereUuid('id');
 });
 

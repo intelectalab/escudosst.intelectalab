@@ -45,7 +45,7 @@ export default async function AyudaArticuloPage({ params }: Props) {
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ld).replace(/</g, "\\u003c") }} />
       <section className="relative overflow-hidden bg-gradient-to-b from-[#EAF3FC] to-white px-4 pb-8 pt-8 sm:pt-12 lg:px-8">
-        <div className="absolute -right-32 -top-32 h-80 w-80 rounded-full bg-[#1F7FD1]/12 blur-3xl" aria-hidden="true" />
+        <div className="absolute -right-32 -top-32 h-80 w-80 rounded-full bg-[#1b6fb7]/12 blur-3xl" aria-hidden="true" />
         <div className="relative mx-auto max-w-[1200px]">
           <nav aria-label="Migas de pan" className="text-sm">
             <ol className="flex flex-wrap items-center gap-1 text-[var(--site-text-2)]">
@@ -92,7 +92,7 @@ export default async function AyudaArticuloPage({ params }: Props) {
                 </ul>
               </div>
             )}
-            <div className="site-card bg-gradient-to-br from-[#0D3B6E] to-[#1F7FD1] p-5 text-white">
+            <div className="site-card bg-gradient-to-br from-[#0D3B6E] to-[#1b6fb7] p-5 text-white">
               <p className="font-display font-bold">¿Sigues con dudas?</p>
               <p className="mt-1 text-sm text-white/80">Escríbenos y una persona del equipo te ayuda.</p>
               <div className="mt-3 flex flex-wrap gap-2">

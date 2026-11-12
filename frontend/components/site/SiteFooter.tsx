@@ -161,7 +161,7 @@ export function SiteFooter({ site }: { site: SiteData }) {
       {site.products.length > 0 && (
         <div className="border-t border-white/10">
           <div className="mx-auto max-w-[1360px] px-4 py-6 lg:px-8">
-            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-white/50">Otros productos de {s.legal_name}</p>
+            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-white/75">Otros productos de {s.legal_name}</p>
             <ul className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-white/75">
               {site.products.map((p) => (
                 <li key={p.name}>{p.url ? <a href={p.url} target="_blank" rel="noopener" className="hover:text-white">{p.name}</a> : p.name}</li>
@@ -172,7 +172,7 @@ export function SiteFooter({ site }: { site: SiteData }) {
       )}
 
       <div className="border-t border-white/10">
-        <div className="mx-auto flex max-w-[1360px] flex-col gap-1 px-4 py-5 text-xs text-white/55 sm:flex-row sm:justify-between lg:px-8">
+        <div className="mx-auto flex max-w-[1360px] flex-col gap-1 px-4 py-5 text-xs text-white/75 sm:flex-row sm:justify-between lg:px-8">
           <span>
             © {year} {s.legal_name} · RUC {s.ruc}
             {s.legal_address ? ` · ${s.legal_address}` : ""}

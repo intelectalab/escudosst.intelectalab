@@ -45,7 +45,7 @@ export default function ExpedienteCompartido() {
   return (
     <main className="min-h-screen bg-[#EEF4FB] px-4 py-8 text-[#0b2440]">
       <div className="mx-auto max-w-3xl space-y-4">
-        <p className="text-sm font-bold uppercase tracking-wider text-[#1f7fd1]">Expediente para inspección · SUNAFIL</p>
+        <p className="text-sm font-bold uppercase tracking-wider text-[#1b6fb7]">Expediente para inspección · SUNAFIL</p>
         {error && <div className="rounded-2xl bg-white p-6 shadow">{error}</div>}
         {!error && !data && <div className="rounded-2xl bg-white p-6 shadow">Cargando…</div>}
         {data && (

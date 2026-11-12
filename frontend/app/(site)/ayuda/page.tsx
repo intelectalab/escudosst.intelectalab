@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 
 type Props = { searchParams: Promise<{ q?: string; categoria?: string }> };
 
-const TONES = ["from-[#EAF3FC] text-[#1F7FD1]", "from-[#E8F7EE] text-[#22A35A]", "from-[#FFF5D6] text-[#B88700]", "from-[#E5F7F4] text-[#16897b]", "from-[#FDECEB] text-[#C8372F]", "from-[#EEEAFB] text-[#5B47C9]"];
+const TONES = ["from-[#EAF3FC] text-[#1b6fb7]", "from-[#E8F7EE] text-[#22A35A]", "from-[#FFF5D6] text-[#B88700]", "from-[#E5F7F4] text-[#16897b]", "from-[#FDECEB] text-[#C8372F]", "from-[#EEEAFB] text-[#5B47C9]"];
 
 export default async function AyudaPage({ searchParams }: Props) {
   const sp = await searchParams;
@@ -34,7 +34,7 @@ export default async function AyudaPage({ searchParams }: Props) {
           {cat && <input type="hidden" name="categoria" value={cat} />}
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">Buscar en la ayuda</span>
-            <Icon name="search" size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#6b7684]" />
+            <Icon name="search" size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#636d7a]" />
             <input
               name="q"
               defaultValue={q}
@@ -53,7 +53,7 @@ export default async function AyudaPage({ searchParams }: Props) {
         <div className="mx-auto max-w-[1360px] space-y-10">
           {cats.length === 0 ? (
             <div className="site-card mx-auto max-w-2xl p-10 text-center">
-              <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#EAF3FC] text-[#1F7FD1]">
+              <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#EAF3FC] text-[#1b6fb7]">
                 <Icon name="book" size={26} />
               </span>
               <h2 className="mt-4 font-display text-xl font-bold text-[var(--site-navy-title)]">Estamos preparando las guías</h2>
@@ -70,7 +70,7 @@ export default async function AyudaPage({ searchParams }: Props) {
                       <Link
                         href={active ? "/ayuda" : `/ayuda?categoria=${c.slug}`}
                         aria-current={active ? "true" : undefined}
-                        className={`site-card site-card-hover flex h-full items-start gap-3 p-4 ${active ? "ring-2 ring-[#1F7FD1]" : ""}`}
+                        className={`site-card site-card-hover flex h-full items-start gap-3 p-4 ${active ? "ring-2 ring-[#1b6fb7]" : ""}`}
                       >
                         <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br to-white ${TONES[i % TONES.length]}`}>
                           <Icon name={c.icon ?? "book"} size={20} />

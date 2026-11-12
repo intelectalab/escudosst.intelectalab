@@ -60,7 +60,7 @@ const STATUS: Record<Meeting["status"], [string, "amber" | "ok" | "brand" | "na"
   no_show: ["No asistió", "bad"],
 };
 const WEEKDAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
-const COLORS = ["#1F7FD1", "#22A35A", "#F08A24", "#5B47C9", "#C8372F", "#16897b"];
+const COLORS = ["#1b6fb7", "#22A35A", "#F08A24", "#5B47C9", "#C8372F", "#16897b"];
 const dayKey = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: TZ });
 const time = (iso: string) => new Date(iso).toLocaleTimeString("es-PE", { hour: "numeric", minute: "2-digit", timeZone: TZ });
 const long = (iso: string) => {
@@ -228,7 +228,7 @@ export default function AgendaPage() {
                               key={m.id}
                               onClick={() => setOpen(m)}
                               className={`block w-full truncate rounded px-1 py-0.5 text-left text-[11px] font-semibold text-white ${m.status === "cancelled" ? "line-through opacity-50" : ""}`}
-                              style={{ background: hostOf(m.host_id)?.color ?? "#6b7684" }}
+                              style={{ background: hostOf(m.host_id)?.color ?? "#636d7a" }}
                               title={`${time(m.starts_at)} · ${m.company_name}`}
                             >
                               {m.status === "proposed" && "● "}
@@ -249,7 +249,7 @@ export default function AgendaPage() {
                 {meetings.map((m) => (
                   <li key={m.id}>
                     <button onClick={() => setOpen(m)} className="flex w-full flex-wrap items-center gap-2 px-2 py-3 text-left hover:bg-bg">
-                      <span className="h-8 w-1.5 shrink-0 rounded-full" style={{ background: hostOf(m.host_id)?.color ?? "#6b7684" }} />
+                      <span className="h-8 w-1.5 shrink-0 rounded-full" style={{ background: hostOf(m.host_id)?.color ?? "#636d7a" }} />
                       <span className="min-w-0 flex-1">
                         <b className="block truncate text-sm">{m.company_name}</b>
                         <span className="text-xs text-muted">
@@ -268,7 +268,7 @@ export default function AgendaPage() {
               <p className="mt-3 flex flex-wrap gap-3 text-xs text-muted">
                 {hosts.map((h) => (
                   <span key={h.id} className="inline-flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: h.color ?? "#6b7684" }} /> {h.display_name}
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: h.color ?? "#636d7a" }} /> {h.display_name}
                   </span>
                 ))}
                 <span>● = por confirmar</span>
@@ -720,7 +720,7 @@ function HostsTab({ data, owner, onEdit, onDone, onError }: { data: Data; owner:
             {data.hosts.list.map((h) => (
               <li key={h.id} className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
                 <div className="flex items-start gap-3">
-                  <span className="mt-1 h-4 w-4 shrink-0 rounded-full" style={{ background: h.color ?? "#6b7684" }} />
+                  <span className="mt-1 h-4 w-4 shrink-0 rounded-full" style={{ background: h.color ?? "#636d7a" }} />
                   <span className="min-w-0 flex-1">
                     <b className="block">{h.display_name}</b>
                     <span className="block truncate text-xs text-muted">

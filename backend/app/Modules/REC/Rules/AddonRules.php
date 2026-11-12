@@ -2,6 +2,8 @@
 
 namespace App\Modules\REC\Rules;
 
+use App\Core\Support\LegalParams;
+
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -28,6 +30,7 @@ class AddonRules extends RecordRules
             // Pregunta nueva: alternativas vacías; se completan con «Alternativas» (editor del aula virtual).
             'questions' => $current === null ? $extra[($values['question_type'] ?? '') === 'short_answer' ? 'accepted_answers' : 'options'] = ["'[]'::jsonb", []] : null,
             'environmental_aspects' => $this->aspect($values, $current, $extra),
+            'waste_records' => $this->waste($values, $current),
             'work_adjustments' => ($values['status'] ?? null) === 'active' ? $extra['approved_by'] = ['?', [(string) auth()->id()]] : null,
             'signature_requests' => $this->signature($op, $values, $current, $extra),
             default => null,
@@ -221,9 +224,41 @@ class AddonRules extends RecordRules
         }
     }
 
+    /**
+     * M-AMB. RN-AMB-01: la significancia se calcula (severidad × probabilidad contra el umbral configurable
+     * «amb_significance_threshold» de los parámetros); RN-AMB-03: un aspecto significativo exige sus controles.
+     */
     private function aspect(array &$values, ?object $current, array &$extra): void
     {
-        unset($values['significance_score']);   // columna calculada por la base (severidad × probabilidad)
+        unset($values['significance_score'], $values['is_significant']);   // los calcula el sistema
+        $sev = (int) ($this->value($values, $current, 'severity_value') ?? 0);
+        $prob = (int) ($this->value($values, $current, 'probability_value') ?? 0);
+        $significant = $sev > 0 && $prob > 0 && $sev * $prob >= LegalParams::number('amb_significance_threshold', 9);
+        $extra['is_significant'] = ['?', [$significant ? 'true' : 'false']];
+        if ($significant && trim((string) ($this->value($values, $current, 'controls') ?? '')) === '') {
+            $this->fail('controls', 'Este aspecto es significativo: describe los controles que se aplican.');
+        }
+    }
+
+    /**
+     * M-AMB. RN-AMB-02: un residuo peligroso no se transfiere ni se da por dispuesto sin número de manifiesto y la EO-RS
+     * (nombre y RUC); RN-AMB-05: un registro cerrado («Dispuesto») ya no se edita.
+     */
+    private function waste(array &$values, ?object $current): void
+    {
+        if ($current && $current->status === 'disposed' && $values !== []) {
+            $this->conflict('Este residuo ya se dispuso: el registro está cerrado y no se edita.');
+        }
+        $type = $this->value($values, $current, 'waste_type');
+        $status = $this->value($values, $current, 'status') ?? 'stored';
+        if (in_array($type, ['hazardous', 'biocontaminated'], true) && in_array($status, ['transferred', 'disposed'], true)) {
+            foreach (['manifest_number' => 'Indica el número de manifiesto del residuo peligroso.', 'eo_rs_name' => 'Indica la EO-RS que recoge el residuo peligroso.',
+                'eo_rs_ruc' => 'Indica el RUC de la EO-RS.'] as $field => $msg) {
+                if (trim((string) ($this->value($values, $current, $field) ?? '')) === '') {
+                    $this->fail($field, $msg);
+                }
+            }
+        }
     }
 
     private function signature(string $op, array &$values, ?object $current, array &$extra): void

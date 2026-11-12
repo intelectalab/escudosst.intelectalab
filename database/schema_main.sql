@@ -5338,7 +5338,7 @@ CREATE TABLE IF NOT EXISTS corrective_actions (
   id uuid NOT NULL DEFAULT uuidv7(),
   company_id uuid NOT NULL,
   code text NOT NULL,
-  source_type text NOT NULL CHECK (source_type IN ('inspection', 'finding', 'audit', 'event', 'investigation', 'report', 'baseline', 'legal_requirement', 'committee_agreement', 'management_review', 'monitoring', 'iperc', 'drill', 'observation', 'change', 'other')),
+  source_type text NOT NULL CHECK (source_type IN ('inspection', 'finding', 'audit', 'event', 'investigation', 'report', 'baseline', 'legal_requirement', 'committee_agreement', 'management_review', 'monitoring', 'iperc', 'drill', 'observation', 'change', 'environmental_aspect', 'other')),
   source_id uuid,
   action_type text NOT NULL DEFAULT 'corrective' CHECK (action_type IN ('corrective', 'preventive', 'improvement')),
   control_hierarchy text CHECK (control_hierarchy IN ('elimination', 'substitution', 'engineering', 'administrative', 'signage', 'ppe')),

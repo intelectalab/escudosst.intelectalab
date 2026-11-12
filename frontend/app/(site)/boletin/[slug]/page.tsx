@@ -27,7 +27,7 @@ export default async function BoletinEdicionPage({ params }: Props) {
           <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--site-text-2)]">
             Enviado el {nlDate(i.sent_at)}
             {i.topics_json.map((t) => (
-              <span key={t} className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-[#1F7FD1]">
+              <span key={t} className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-[#1b6fb7]">
                 {NL_TOPICS[t] ?? t}
               </span>
             ))}
@@ -40,7 +40,7 @@ export default async function BoletinEdicionPage({ params }: Props) {
             <HelpBody body={i.body} />
             <p className="mt-6 text-sm text-[var(--site-text-2)]">Información referencial; no reemplaza la lectura de la norma ni la asesoría legal.</p>
           </article>
-          <div className="site-card flex flex-col items-start gap-3 bg-gradient-to-br from-[#0D3B6E] to-[#1F7FD1] p-6 text-white sm:flex-row sm:items-center">
+          <div className="site-card flex flex-col items-start gap-3 bg-gradient-to-br from-[#0D3B6E] to-[#1b6fb7] p-6 text-white sm:flex-row sm:items-center">
             <p className="flex-1 font-display text-lg font-bold">¿Quieres recibir la próxima edición en tu correo?</p>
             <Link href="/boletin#suscribirme" className="site-btn site-btn-light min-h-11">
               Suscribirme

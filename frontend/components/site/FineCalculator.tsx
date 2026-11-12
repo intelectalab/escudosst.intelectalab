@@ -181,7 +181,7 @@ function ResultCard({ r, p, input }: { r: Result; p: Params; input: { company_si
 
   return (
     <>
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0D3B6E] to-[#1F7FD1] p-6 text-white shadow-lg">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0D3B6E] to-[#1b6fb7] p-6 text-white shadow-lg">
         <p className="text-sm text-white/75">Multa referencial</p>
         <p className="mt-1 font-display text-[28px] font-bold leading-tight sm:text-[32px]">
           {pen(r.result_min_pen)} <span className="text-white/70">a</span> {pen(r.result_max_pen)}

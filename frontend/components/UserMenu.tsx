@@ -42,14 +42,14 @@ export function UserMenu({ name, email, role, company, canSeeSupport, canSwitch,
         aria-expanded={open}
         className={`flex h-10 items-center gap-2 rounded-xl border pl-1 pr-2 transition sm:pr-3 ${open ? "border-brand/40 bg-brand-soft" : "border-line bg-surface hover:bg-bg"}`}
       >
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-[#0d3b6e] to-[#1f7fd1] text-xs font-bold text-white">{initials}</span>
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-[#0d3b6e] to-[#1b6fb7] text-xs font-bold text-white">{initials}</span>
         <span className="hidden max-w-[11rem] truncate text-sm font-semibold sm:block">{name}</span>
         <Icon name="chevronDown" size={15} className={`hidden text-muted transition-transform sm:block ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
         <div role="menu" className="absolute right-0 z-50 mt-2 w-72 overflow-hidden rounded-2xl border border-line bg-surface shadow-xl">
           <div className="flex items-center gap-3 border-b border-line bg-gradient-to-r from-brand-soft to-surface p-4">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#0d3b6e] to-[#1f7fd1] text-sm font-bold text-white">{initials}</span>
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#0d3b6e] to-[#1b6fb7] text-sm font-bold text-white">{initials}</span>
             <div className="min-w-0">
               <p className="truncate font-semibold">{name}</p>
               {email && <p className="truncate text-xs text-muted">{email}</p>}

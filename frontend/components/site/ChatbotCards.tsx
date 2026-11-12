@@ -9,7 +9,7 @@ import { Icon } from "@/components/ui/Icon";
 export type CardItem = { title?: string; desc?: string; href?: string; answer?: string; target_type?: string; target_key?: string; label?: string; price?: string; starts_at?: string; name?: string; status?: string; ask?: string; whatsapp?: boolean };
 export type Card = { type: "plans" | "slots" | "guide" | "list" | "status" | "choices" | "buttons" | "source"; items?: CardItem[]; href?: string; title?: string; steps?: string[]; summary?: string | null; more?: { title: string; href: string }[]; overall?: string; term?: string; label?: string };
 
-const TONE: Record<string, string> = { operational: "bg-[#22A35A]", maintenance: "bg-[#1F7FD1]", degraded: "bg-[#F4B90F]", partial_outage: "bg-[#F08A24]", major_outage: "bg-[#E2453C]" };
+const TONE: Record<string, string> = { operational: "bg-[#22A35A]", maintenance: "bg-[#1b6fb7]", degraded: "bg-[#F4B90F]", partial_outage: "bg-[#F08A24]", major_outage: "bg-[#E2453C]" };
 const when = (iso: string) => {
   const t = new Date(iso).toLocaleString("es-PE", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "America/Lima" });
   return t.charAt(0).toUpperCase() + t.slice(1);

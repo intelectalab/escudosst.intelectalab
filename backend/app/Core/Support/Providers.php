@@ -25,9 +25,9 @@ final class Providers
         'whatsapp' => ['WhatsApp', ['meta' => 'API Cloud de Meta', 'twilio' => 'Twilio', 'bsp_peru' => 'Proveedor (BSP) en Perú', 'other' => 'Otro'],
             ['phone' => 'Número que envía', 'phone_id' => 'ID del número de teléfono', 'waba_id' => 'ID de la cuenta de WhatsApp Business', 'template_lang' => 'Idioma de las plantillas',
                 'template_alert' => 'Plantilla: alerta', 'template_digest' => 'Plantilla: resumen diario', 'template_vote' => 'Plantilla: enlace de votación', 'template_report' => 'Plantilla: respuesta a un reporte',
-                'template_test' => 'Plantilla: prueba'],
-            ['token' => 'Token de acceso'],
-            'Avisos por WhatsApp (alertas críticas, resumen diario, enlaces de votación y respuesta a reportes) a quienes lo aceptaron.',
+                'template_test' => 'Plantilla: prueba', 'verify_token' => 'Token de verificación del webhook'],
+            ['token' => 'Token de acceso', 'app_secret' => 'Clave secreta de la app (firma del webhook)'],
+            'Avisos por WhatsApp (alertas críticas, resumen diario, enlaces de votación y respuesta a reportes) a quienes lo aceptaron, y reportes de actos y condiciones por chat desde el QR.',
             'No se envía nada por WhatsApp: los avisos llegan a la campana de la app y por correo.'],
         'esign' => ['Firma digital certificada', ['llama_pe' => 'Llama.pe', 'reniec' => 'RENIEC (DNIe)', 'other' => 'Otro'], ['account' => 'Cuenta', 'api_url' => 'Dirección de la API'], ['api_key' => 'Clave de la API'],
             'Firma con certificado digital (además de la firma electrónica simple que ya trae EscudoSST).',
@@ -70,6 +70,8 @@ final class Providers
         ],
         'whatsapp' => [
             'required' => ['phone_id', 'template_alert'],
+            // La clave de la app solo hace falta para recibir reportes por chat; los avisos salen sin ella.
+            'optional_secrets' => ['app_secret'],
             'hints' => [
                 'phone' => 'Formato internacional, por ejemplo +51 987 654 321.',
                 'phone_id' => 'Meta › WhatsApp › Configuración de la API: «Identificador del número de teléfono».',
@@ -80,7 +82,11 @@ final class Providers
                 'template_vote' => 'Opcional. Variables: {{1}} elección, {{2}} enlace para votar. Sin ella se usa la de alerta.',
                 'template_report' => 'Opcional. Variables: {{1}} código del reporte, {{2}} enlace. Sin ella se usa la de alerta.',
                 'template_test' => 'Para «Probar». Vacío = hello_world (la plantilla de ejemplo de Meta, en inglés).',
+                'verify_token' => 'Una palabra que inventas y pegas también en Meta › Webhooks › Token de verificación.',
+                'app_secret' => 'Meta › Configuración de la app › Básica › Clave secreta de la app. Sin ella no se aceptan mensajes entrantes.',
             ],
+            'webhook' => '/api/v1/webhooks/whatsapp',
+            'webhook_note' => 'Pégala en Meta › WhatsApp › Configuración › Webhook y suscríbete al campo «messages»: así llegan los reportes por chat desde el QR.',
             'test_input' => ['key' => 'to', 'label' => 'Número para la prueba', 'placeholder' => '+51 987 654 321',
                 'hint' => 'Vacío: solo se verifica el número y el token. Con un número: se envía la plantilla de prueba.'],
             'notice' => 'Solo se usa la API oficial de WhatsApp Business (plantillas aprobadas por Meta y aceptación de cada persona). No se conectan apps que vinculan un teléfono con código QR: no son oficiales y Meta puede bloquear el número. El envío automático funciona hoy con la API Cloud de Meta; con Twilio u otro BSP falta integrarlo.',

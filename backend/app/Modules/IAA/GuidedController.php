@@ -39,6 +39,7 @@ class GuidedController extends Controller
 
     public function iperc(Request $request): JsonResponse
     {
+        Usage::guard();
         $d = $request->validate([
             'position_id' => ['required', 'uuid'],
             'matrix_id' => ['nullable', 'uuid'],
@@ -213,6 +214,7 @@ class GuidedController extends Controller
 
     public function investigation(Request $request): JsonResponse
     {
+        Usage::guard();
         $d = $request->validate([
             'investigation_id' => ['required', 'uuid'],
             'answers' => ['nullable', 'array', 'max:10'],
@@ -397,6 +399,31 @@ class GuidedController extends Controller
     }
 
     /** Sugerencias pendientes de una solicitud (para retomar desde el historial). */
+    /**
+     * SCR-IAA-06 «Consumo» y §11: solicitudes del mes contra el cupo del plan, por mes y caso de uso (últimos 6 meses),
+     * por persona y la tasa de aceptación de las propuestas. Sin precios.
+     */
+    public function usage(): JsonResponse
+    {
+        ['used' => $used, 'limit' => $limit] = Usage::month();
+        $months = DB::select("select to_char(date_trunc('month', created_at at time zone 'America/Lima'), 'YYYY-MM') as month, feature, count(*)::int as n
+                                from ai_requests where deleted_at is null and created_at >= date_trunc('month', now()) - interval '5 months'
+                               group by 1, 2 order by 1, 2");
+        $people = DB::select("select coalesce(u.full_name, 'Sin usuario') as name, count(*)::int as n,
+                                     count(*) filter (where exists (select 1 from ai_suggestions s where s.ai_request_id = r.id and s.status = 'accepted'))::int as accepted
+                                from ai_requests r left join users u on u.id = r.user_id
+                               where r.deleted_at is null and r.created_at >= date_trunc('month', now()) - interval '5 months'
+                               group by 1 order by 2 desc limit 20");
+        $s = DB::selectOne("select count(*) filter (where status = 'accepted')::int as accepted, count(*) filter (where status = 'rejected')::int as rejected,
+                                   count(*) filter (where status = 'pending')::int as pending from ai_suggestions where deleted_at is null
+                               and created_at >= date_trunc('month', now()) - interval '5 months'");
+        $decided = $s->accepted + $s->rejected;
+
+        return response()->json(['data' => ['used' => $used, 'limit' => $limit, 'months' => $months, 'people' => $people,
+            'suggestions' => ['accepted' => $s->accepted, 'rejected' => $s->rejected, 'pending' => $s->pending,
+                'acceptance_pct' => $decided ? round(100 * $s->accepted / $decided) : null]]]);
+    }
+
     public function suggestions(string $id): JsonResponse
     {
         if (! Str::isUuid($id)) {

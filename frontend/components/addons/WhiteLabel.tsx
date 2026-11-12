@@ -59,7 +59,7 @@ export function CompanyBrand({ companyId, compact = false }: { companyId: string
         )}
         <span className="font-display text-xl font-semibold text-white">{b.brand_name}</span>
       </div>
-      {b.show_powered_by && <p className="text-[10px] uppercase tracking-wider text-white/50">Con tecnología EscudoSST</p>}
+      {b.show_powered_by && <p className="text-[10px] uppercase tracking-wider text-white/75">Con tecnología EscudoSST</p>}
     </div>
   );
 }
@@ -72,7 +72,7 @@ export function WhiteLabelPanel({ bare = false }: { bare?: boolean } = {}) {
   const [forbidden, setForbidden] = useState<string | null>(null);
   const load = useCallback(() => {
     api<{ data: Brand | null; clients: number }>("/con/white-label", { withCompany: true })
-      .then((r) => { setD(r.data ?? { brand_name: "", logo: null, primary_color: "#1F7FD1", secondary_color: "#0D3B6E", pdf_footer_text: "", show_powered_by: true, active: false }); setClients(r.clients); })
+      .then((r) => { setD(r.data ?? { brand_name: "", logo: null, primary_color: "#1b6fb7", secondary_color: "#0D3B6E", pdf_footer_text: "", show_powered_by: true, active: false }); setClients(r.clients); })
       .catch((e: ApiError) => setForbidden(e.detail ?? e.title));
   }, []);
   useEffect(load, [load]);
@@ -102,7 +102,7 @@ export function WhiteLabelPanel({ bare = false }: { bare?: boolean } = {}) {
           <FormField label="Logo (PNG o JPG, menos de 300 KB)">
             <input type="file" accept="image/png,image/jpeg" className="input" onChange={(e) => e.target.files?.[0] && pickLogo(e.target.files[0])} />
           </FormField>
-          <FormField label="Color principal"><input type="color" className="input h-10 p-1" value={d.primary_color ?? "#1F7FD1"} onChange={(e) => setD({ ...d, primary_color: e.target.value.toUpperCase() })} /></FormField>
+          <FormField label="Color principal"><input type="color" className="input h-10 p-1" value={d.primary_color ?? "#1b6fb7"} onChange={(e) => setD({ ...d, primary_color: e.target.value.toUpperCase() })} /></FormField>
           <FormField label="Color oscuro"><input type="color" className="input h-10 p-1" value={d.secondary_color ?? "#0D3B6E"} onChange={(e) => setD({ ...d, secondary_color: e.target.value.toUpperCase() })} /></FormField>
           <div className="sm:col-span-2"><FormField label="Pie de página en documentos (opcional)"><input className="input" maxLength={200} value={d.pdf_footer_text ?? ""} onChange={(e) => setD({ ...d, pdf_footer_text: e.target.value })} /></FormField></div>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={d.show_powered_by} onChange={(e) => setD({ ...d, show_powered_by: e.target.checked })} /> Mostrar «Con tecnología EscudoSST»</label>
@@ -116,7 +116,7 @@ export function WhiteLabelPanel({ bare = false }: { bare?: boolean } = {}) {
               {d.logo && <span className="rounded bg-white px-1"><img src={d.logo} alt="" className="h-7 object-contain" /></span>}
               <span className="font-display font-semibold text-white">{d.brand_name || "Tu consultora"}</span>
             </div>
-            <p className="mt-3 rounded-md px-2 py-1 text-xs font-semibold text-white" style={{ background: d.primary_color ?? "#1F7FD1" }}>Inicio</p>
+            <p className="mt-3 rounded-md px-2 py-1 text-xs font-semibold text-white" style={{ background: d.primary_color ?? "#1b6fb7" }}>Inicio</p>
           </div>
           {d.logo && <button type="button" className="text-xs font-semibold text-bad" onClick={() => setD({ ...d, logo: null, newLogo: null, remove_logo: true })}>Quitar logo</button>}
         </div>

@@ -10,7 +10,7 @@ export const API_CONTAINER = process.env.E2E_API_CONTAINER ?? "escudo_api";
 export const DB_CONTAINER = process.env.E2E_DB_CONTAINER ?? "escudo_pg_main";
 export const DEMO_COMPANY = "01900000-0000-7000-8000-000000000102";
 
-export type UserKey = "jefe" | "aprobador" | "medico" | "esencial" | "plataforma";
+export type UserKey = "jefe" | "aprobador" | "medico" | "esencial" | "plataforma" | "trabajador";
 
 export const USERS: Record<UserKey, { email: () => string; company?: string }> = {
   jefe: { email: () => "corporativo@escudo.test", company: DEMO_COMPANY },
@@ -18,6 +18,7 @@ export const USERS: Record<UserKey, { email: () => string; company?: string }> =
   medico: { email: () => "rev-c-medico@escudo.test", company: DEMO_COMPANY },
   esencial: { email: () => "esencial@escudo.test" },
   plataforma: { email: platformEmail },
+  trabajador: { email: () => "rev-c-trabajador@escudo.test", company: DEMO_COMPANY },
 };
 
 export type Session = { token: string; company_id: string | null; at: number };

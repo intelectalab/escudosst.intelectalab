@@ -183,7 +183,7 @@ final class IpercWorkflow
         $rows = DB::select(
             'select r.id, r.row_number, r.process, r.activity, r.task, r.is_routine, r.position_id, p.name as position_name, r.hazard_catalog_id,
                     r.hazard, r.risk, r.consequence, r.exposed_workers, r.probability_value, r.probability_detail, r.severity_value, r.risk_score,
-                    r.risk_level, r.is_significant, r.residual_probability, r.residual_severity, r.residual_score, r.residual_level, r.notes
+                    r.risk_level, r.is_significant, r.residual_probability, r.residual_severity, r.residual_score, r.residual_level, r.notes, r.ai_assisted
                from iperc_rows r left join positions p on p.id = r.position_id
               where r.iperc_version_id = ? and r.deleted_at is null order by r.row_number',
             [$versionId]

@@ -206,7 +206,7 @@ export function AulTimeReport({ courseId }: { courseId: string }) {
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi label="Participantes" value={String(d.summary.participants)} />
-        <Kpi label="Permanencia promedio" value={hm(d.summary.avg_active_seconds)} color="text-[#F08A24]" sub="Tiempo activo real" />
+        <Kpi label="Permanencia promedio" value={hm(d.summary.avg_active_seconds)} color="text-[#b45309]" sub="Tiempo activo real" />
         <Kpi label="Cumplen el mínimo" value={d.required_seconds ? String(d.summary.complying) : "—"} color="text-ok" />
         <Kpi label="No cumplen" value={d.required_seconds ? String(d.summary.not_complying) : "—"} color="text-bad" />
       </div>

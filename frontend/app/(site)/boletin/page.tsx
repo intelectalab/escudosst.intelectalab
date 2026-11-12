@@ -30,7 +30,7 @@ export default async function BoletinPage() {
             <ul className="space-y-3">
               {WHAT.map(([icon, t, d]) => (
                 <li key={t} className="site-card flex items-start gap-3 p-4">
-                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#EAF3FC] to-white text-[#1F7FD1]">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#EAF3FC] to-white text-[#1b6fb7]">
                     <Icon name={icon} size={20} />
                   </span>
                   <span className="min-w-0">
@@ -63,7 +63,7 @@ export default async function BoletinPage() {
                     <span className="mt-1.5 text-sm text-[var(--site-text-2)]">{i.preheader ?? i.excerpt}</span>
                     <span className="mt-3 flex flex-wrap gap-1.5">
                       {i.topics_json.map((t) => (
-                        <span key={t} className="rounded-full bg-[#EAF3FC] px-2.5 py-0.5 text-xs font-semibold text-[#1F7FD1]">
+                        <span key={t} className="rounded-full bg-[#EAF3FC] px-2.5 py-0.5 text-xs font-semibold text-[#1b6fb7]">
                           {NL_TOPICS[t] ?? t}
                         </span>
                       ))}

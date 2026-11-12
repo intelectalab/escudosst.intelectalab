@@ -29,6 +29,7 @@ class AssistantController extends Controller
         if (preg_match('/\b(diagn[oó]stico|hipertensi[oó]n|diabetes|embarazo|gestante|VIH|c[aá]ncer|depresi[oó]n)\b/iu', $d['text'])) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa el texto', 'No escribas datos de salud de personas: el asistente no los necesita.', ['errors' => ['text' => ['No escribas datos de salud de personas: el asistente no los necesita.']]]);
         }
+        Usage::guard();
         $started = microtime(true);
         [$items, $note, $matched] = $this->answer($d['feature'], $d['text']);
 

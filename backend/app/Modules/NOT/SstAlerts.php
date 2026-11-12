@@ -103,6 +103,13 @@ final class SstAlerts
             ['ACT', "select id, code as ref, description as name, null as owner, reported_at as due, 'act' as kind from substandard_reports
                       where deleted_at is null and status = 'received' and reported_at < now() - interval '2 days'",
                 'act.untriaged', 'normal', 'Reporte sin revisar', fn ($r) => "El reporte {$r->ref} lleva más de 2 días sin revisar.", '/m/act?t=substandard_reports&open=', self::SST_ROLES, true],
+            // M-AMB §10: residuo peligroso sin manifiesto pasados «waste_manifest_days» desde que se generó.
+            ['AMB', "select id, coalesce(description, 'Residuo peligroso') as ref, '' as name, null as owner, generated_on as due, 'manifest' as kind from waste_records
+                      where deleted_at is null and waste_type in ('hazardous', 'biocontaminated') and coalesce(manifest_number, '') = '' and status <> 'disposed'
+                        and generated_on < current_date - coalesce((select p.value::int from legal_parameters p
+                            where p.key = 'waste_manifest_days' and p.deleted_at is null and p.valid_from <= current_date and (p.valid_to is null or p.valid_to >= current_date)
+                              and p.value ~ '^[0-9]+$' order by p.company_id nulls last, p.valid_from desc limit 1), 30)",
+                'amb.manifest_missing', 'normal', 'Residuo peligroso sin manifiesto', fn ($r) => "«{$r->ref}», generado el ".date('d/m/Y', strtotime($r->due)).', aún no tiene manifiesto.', '/m/amb?t=waste_records&open=', self::SST_ROLES, true],
             // M-VUL §10 / RN-VUL-04: adecuación por vencer («adjustment_notice_days» antes) y vencida; nunca se nombra la condición.
             ['VUL', "select a.id, w.full_name as ref, '' as name, null as owner, a.ends_on as due, 'adj' as kind from work_adjustments a join workers w on w.id = a.worker_id
                       where a.deleted_at is null and a.status = 'active' and a.ends_on between current_date and current_date + coalesce((select p.value::int from legal_parameters p

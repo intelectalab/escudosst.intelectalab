@@ -1893,7 +1893,8 @@
   "zip": "ZIP",
   "psychosocial_surveys.instrument.custom": "Cuestionario base EscudoSST",
   "psychosocial_surveys.instrument.istas21": "ISTAS21 (requiere licencia)",
-  "psychosocial_surveys.instrument.copsoq": "CoPsoQ (requiere licencia)"
+  "psychosocial_surveys.instrument.copsoq": "CoPsoQ (requiere licencia)",
+  "environmental_aspect": "Aspecto ambiental"
  },
  "tables": {
   "absences": "Ausencias",

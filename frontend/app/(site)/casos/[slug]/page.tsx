@@ -25,7 +25,7 @@ export default async function CasoPage({ params }: Props) {
   return (
     <>
       <section className="relative overflow-hidden bg-gradient-to-b from-[#EAF3FC] to-white px-4 pb-12 pt-10 sm:pt-14 lg:px-8">
-        <div className="absolute -right-32 -top-32 h-80 w-80 rounded-full bg-[#1F7FD1]/12 blur-3xl" aria-hidden="true" />
+        <div className="absolute -right-32 -top-32 h-80 w-80 rounded-full bg-[#1b6fb7]/12 blur-3xl" aria-hidden="true" />
         <div className="relative mx-auto max-w-[1000px] space-y-5">
           <Link href="/casos" className="inline-flex items-center gap-1 text-sm font-bold text-[var(--site-action)] hover:underline">
             ← Todos los casos

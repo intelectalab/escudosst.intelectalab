@@ -11,11 +11,11 @@ export const metadata: Metadata = {
 };
 
 const ADDON_ART: Record<string, { icon: string; from: string; to: string }> = {
-  IAA: { icon: "star", from: "#6250D6", to: "#1F7FD1" },
+  IAA: { icon: "star", from: "#6250D6", to: "#1b6fb7" },
   OFF: { icon: "eye", from: "#1FB5A3", to: "#0D3B6E" },
   PSE: { icon: "box", from: "#F4B90F", to: "#EB6834" },
-  MOC: { icon: "swap", from: "#1F7FD1", to: "#0D3B6E" },
-  ISO: { icon: "shield", from: "#0D3B6E", to: "#1F7FD1" },
+  MOC: { icon: "swap", from: "#1b6fb7", to: "#0D3B6E" },
+  ISO: { icon: "shield", from: "#0D3B6E", to: "#1b6fb7" },
   AMB: { icon: "globe", from: "#22A35A", to: "#1FB5A3" },
   HOM: { icon: "building", from: "#EB6834", to: "#E2453C" },
 };
@@ -30,7 +30,7 @@ export default async function ComplementosPage() {
       <section className="bg-[var(--site-surface)] px-4 py-14 lg:px-8">
         <ul className="grid-cols-1 mx-auto grid max-w-[1360px] gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {pricing.addons.map((a) => {
-            const art = ADDON_ART[a.code] ?? { icon: "box", from: "#1F7FD1", to: "#0D3B6E" };
+            const art = ADDON_ART[a.code] ?? { icon: "box", from: "#1b6fb7", to: "#0D3B6E" };
             return (
               <li key={a.code} className="site-card site-card-hover flex flex-col overflow-hidden">
                 <div className="relative flex h-28 items-end p-5 text-white" style={{ background: `linear-gradient(135deg, ${art.from}, ${art.to})` }}>

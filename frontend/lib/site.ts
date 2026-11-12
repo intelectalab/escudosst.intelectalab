@@ -204,7 +204,7 @@ export type SavingsCalculator = { assumptions: { minutes_saved_per_record: numbe
 export const getSavingsCalculator = () => get<SavingsCalculator>("tools/savings-calculator", null);
 
 export const UPDATE_CATEGORIES: Record<ProductUpdate["category"], [string, string]> = {
-  new: ["Nuevo", "bg-[#1F7FD1]/12 text-[#0D3B6E]"],
+  new: ["Nuevo", "bg-[#1b6fb7]/12 text-[#0D3B6E]"],
   improvement: ["Mejora", "bg-[#22A35A]/12 text-[#167A42]"],
   fix: ["Corrección", "bg-[#F4B90F]/20 text-[#6B5200]"],
 };

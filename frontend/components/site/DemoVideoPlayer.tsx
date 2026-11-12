@@ -48,7 +48,7 @@ export function DemoVideoPlayer({ video }: { video: HomeVideo | null }) {
           </div>
           <div className="flex flex-1 flex-col gap-3">
             <div className="grid grid-cols-3 gap-2 sm:gap-3">
-              {["bg-[#F4B90F]/70", "bg-[#3fb27f]/70", "bg-[#1f7fd1]/80"].map((c) => (
+              {["bg-[#F4B90F]/70", "bg-[#3fb27f]/70", "bg-[#1b6fb7]/80"].map((c) => (
                 <div key={c} className="space-y-1.5 rounded-xl bg-white/[0.08] p-2 sm:p-2.5">
                   <i className={`block h-1.5 w-1/2 rounded ${c}`} />
                   <i className="block h-3 w-3/4 rounded bg-white/20 sm:h-4" />

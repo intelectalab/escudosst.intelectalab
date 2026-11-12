@@ -182,7 +182,7 @@ export function LineChart({ series, labels, aria }: { series: Series[]; labels: 
   );
 }
 
-const BRAND = "#1F7FD1";
+const BRAND = "#1b6fb7";
 const AMBER = "#F4B90F";
 const RED = "#E2453C";
 const GREY = "#8A93A0";

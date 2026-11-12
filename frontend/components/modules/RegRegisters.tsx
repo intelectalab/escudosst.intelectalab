@@ -137,13 +137,12 @@ export function RegRegisters({ readOnly }: { readOnly: boolean }) {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <Card>
           <h3 className="mb-2 font-display text-base font-semibold">1. Elige el registro</h3>
-          <ul className="space-y-0.5" role="listbox" aria-label="Registro">
+          <ul className="space-y-0.5" aria-label="Registro">
             {REGISTERS.map(([v, l], i) => (
               <li key={v}>
                 <button
                   type="button"
-                  role="option"
-                  aria-selected={v === type}
+                  aria-pressed={v === type}
                   onClick={() => setType(v)}
                   className={`flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left text-sm ${v === type ? "bg-brand-soft font-semibold text-brand-strong" : "hover:bg-bg"}`}
                 >
@@ -171,7 +170,7 @@ export function RegRegisters({ readOnly }: { readOnly: boolean }) {
 
         <div className="min-w-0 space-y-2">
           <h3 className="font-display text-base font-semibold">Vista previa</h3>
-          <div className="overflow-x-auto rounded-xl border border-line bg-surface p-4 text-xs">
+          <div className="overflow-x-auto rounded-xl border border-line bg-surface p-4 text-xs" tabIndex={0} role="region" aria-label="Vista previa del registro">
             {loading && !prev ? (
               <div className="h-48 animate-pulse rounded-lg bg-bg" />
             ) : !prev ? (

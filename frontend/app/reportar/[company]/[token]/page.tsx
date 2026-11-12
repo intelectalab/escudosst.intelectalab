@@ -7,7 +7,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 
-type Point = { company: string | null; point: string; site: string | null; location: string | null; allow_anonymous: boolean };
+type Point = { company: string | null; point: string; site: string | null; location: string | null; allow_anonymous: boolean; whatsapp_url?: string | null };
 
 const TYPES: [string, string, string][] = [
   ["unsafe_condition", "Condición insegura", "Algo del lugar que puede causar un accidente (cables, pisos, máquinas, falta de señal)."],
@@ -58,7 +58,7 @@ export default function ReportarPage() {
   const shell = (children: React.ReactNode) => (
     <main className="min-h-screen bg-[#EEF4FB] px-4 py-6 text-[#0b2440]">
       <div className="mx-auto max-w-md space-y-4">
-        <p className="text-center text-sm font-bold uppercase tracking-wider text-[#1f7fd1]">Reporte de seguridad</p>
+        <p className="text-center text-sm font-bold uppercase tracking-wider text-[#1b6fb7]">Reporte de seguridad</p>
         {children}
         <p className="text-center text-xs text-[#5b6b7c]">Con EscudoSST · Tu reporte llega al área de Seguridad y Salud en el Trabajo.</p>
       </div>
@@ -73,7 +73,7 @@ export default function ReportarPage() {
         <p className="text-4xl" aria-hidden="true">✅</p>
         <h1 className="text-xl font-bold">¡Gracias por reportar!</h1>
         <p>Tu reporte <b>{done}</b> llegó al área de Seguridad. Lo revisarán y tomarán acción.</p>
-        <button type="button" className="font-semibold text-[#1f7fd1] underline" onClick={() => { setDone(null); setType(""); setDescription(""); setLocation(""); }}>
+        <button type="button" className="font-semibold text-[#1b6fb7] underline" onClick={() => { setDone(null); setType(""); setDescription(""); setLocation(""); }}>
           Hacer otro reporte
         </button>
       </div>,
@@ -89,10 +89,16 @@ export default function ReportarPage() {
         </p>
       </div>
 
+      {point.whatsapp_url && (
+        <a href={point.whatsapp_url} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-[#1f9d55] px-4 font-semibold text-[#14713c]">
+          Reportar por WhatsApp
+        </a>
+      )}
+
       <fieldset className="space-y-2">
         <legend className="mb-1 font-semibold">¿Qué quieres reportar?</legend>
         {TYPES.map(([v, label, help]) => (
-          <label key={v} className={`flex cursor-pointer gap-3 rounded-xl border-2 p-3 ${type === v ? "border-[#1f7fd1] bg-[#EEF4FB]" : "border-[#dbe4ee]"}`}>
+          <label key={v} className={`flex cursor-pointer gap-3 rounded-xl border-2 p-3 ${type === v ? "border-[#1b6fb7] bg-[#EEF4FB]" : "border-[#dbe4ee]"}`}>
             <input type="radio" name="type" value={v} checked={type === v} onChange={() => setType(v)} className="mt-1" />
             <span>
               <span className="block font-semibold">{label}</span>

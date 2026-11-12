@@ -34,6 +34,8 @@ export type IpercControl = {
 export type IpercRow = {
   id: string;
   row_number: number;
+  /** Fila propuesta por el Asistente IA (RN-IAA-05): conserva la marca de origen. */
+  ai_assisted?: boolean;
   process: string | null;
   activity: string;
   task: string;

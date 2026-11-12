@@ -6,6 +6,10 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/lib/api";
 
+// RN-ISO-01/03: cobertura derivada por cláusula.
+const COVERAGE: Record<string, [string, string]> = {
+  covered: ["Cubierta", "bg-ok-soft text-ok"], review: ["Por revisar", "bg-amber-soft text-amber-ink"], none: ["Sin evidencia", "bg-bad-soft text-bad"], not_applicable: ["No aplica", "bg-bg text-muted"],
+};
 const ISO_ST: Record<string, [string, string]> = {
   implemented: ["Implementado", "bg-ok-soft text-ok"], verified: ["Verificado", "bg-ok-soft text-ok"], in_progress: ["En curso", "bg-amber-soft text-amber-ink"],
   not_started: ["Sin evidencia", "bg-bad-soft text-bad"], not_applicable: ["No aplica", "bg-bg text-muted"],
@@ -13,7 +17,7 @@ const ISO_ST: Record<string, [string, string]> = {
 
 export function IsoAssess({ onDone }: { onDone: () => void }) {
   const [std, setStd] = useState("ISO45001");
-  const [res, setRes] = useState<{ standard: string; implemented: number; total: number; clauses: { clause: string; title: string; status: string; evidence: string }[] } | null>(null);
+  const [res, setRes] = useState<{ standard: string; implemented: number; total: number; review?: number; clauses: { clause: string; title: string; status: string; coverage?: string; evidence: string }[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const run = () => {
@@ -38,10 +42,10 @@ export function IsoAssess({ onDone }: { onDone: () => void }) {
       {msg && <p className="text-bad">{msg}</p>}
       {res && (
         <>
-          <p className="font-semibold">{res.standard}: {res.implemented} de {res.total} cláusulas con evidencia suficiente.</p>
+          <p className="font-semibold">{res.standard}: {res.implemented} de {res.total} cláusulas cubiertas{res.review ? ` · ${res.review} por revisar` : ""}.</p>
           <ul className="space-y-1">
             {res.clauses.map((c) => {
-              const [l, cls] = ISO_ST[c.status] ?? [c.status, "bg-bg"];
+              const [l, cls] = (c.coverage ? COVERAGE[c.coverage] : undefined) ?? ISO_ST[c.status] ?? [c.status, "bg-bg"];
               return (
                 <li key={c.clause} className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-line px-3 py-2">
                   <span><b>{c.clause}. {c.title}</b><span className="block text-xs text-muted">{c.evidence}</span></span>

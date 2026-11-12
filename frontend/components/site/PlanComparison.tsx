@@ -18,11 +18,11 @@ export function PlanComparison({ pricing, groups }: { pricing: Pricing; groups: 
 
   const Mark = ({ yes }: { yes: boolean }) =>
     yes ? (
-      <span className="mx-auto grid h-6 w-6 place-items-center rounded-full bg-[#22A35A]/15 text-[#187A42]" aria-label="Incluido">
+      <span className="mx-auto grid h-6 w-6 place-items-center rounded-full bg-[#22A35A]/15 text-[#187A42]" role="img" aria-label="Incluido">
         <Icon name="check" size={14} />
       </span>
     ) : (
-      <span className="mx-auto block h-0.5 w-3 rounded bg-[#D5DCE5]" aria-label="No incluido" />
+      <span className="mx-auto block h-0.5 w-3 rounded bg-[#D5DCE5]" role="img" aria-label="No incluido" />
     );
 
   return (

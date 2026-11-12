@@ -9,3 +9,7 @@ Route::middleware('throttle:10,1')->prefix('public/report/{company}/{token}')->g
     Route::get('/', [ReportPointController::class, 'show']);
     Route::post('/', [ReportPointController::class, 'store']);
 });
+
+// Conversación de reportes por WhatsApp (SCR-ACT-03): Meta llama a esta dirección.
+Route::middleware('throttle:120,1')->get('webhooks/whatsapp', [\App\Modules\ACT\WhatsAppWebhookController::class, 'verify']);
+Route::middleware('throttle:600,1')->post('webhooks/whatsapp', [\App\Modules\ACT\WhatsAppWebhookController::class, 'receive']);

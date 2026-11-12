@@ -90,6 +90,18 @@ export const MODULE_KPIS: Record<string, Kpi[]> = {
     { label: "EPP en catálogo", table: "ppe_items", filters: { is_active: "true" }, color: "teal" },
     { label: "Exigencias por puesto", table: "ppe_position_requirements", color: "orange" },
   ],
+  AMB: [
+    { label: "Aspectos vigentes", table: "environmental_aspects", filters: { status: "active" }, color: "brand" },
+    { label: "Aspectos significativos", table: "environmental_aspects", filters: { status: "active", is_significant: "true" }, color: "bad" },
+    { label: "Residuos peligrosos almacenados", table: "waste_records", filters: { waste_type: "hazardous,biocontaminated", status: "stored" }, color: "amber" },
+    { label: "Residuos del mes", table: "waste_records", filters: { generated_on__gte: "monthStart" }, color: "teal" },
+  ],
+  ISO: [
+    { label: "Cláusulas con evidencia", table: "iso_evidences", filters: { status: "implemented,verified" }, color: "ok" },
+    { label: "En proceso", table: "iso_evidences", filters: { status: "in_progress" }, color: "amber" },
+    { label: "Sin evidencia", table: "iso_evidences", filters: { status: "not_started" }, color: "bad" },
+    { label: "No aplican", table: "iso_evidences", filters: { status: "not_applicable" }, color: "teal" },
+  ],
   EQE: [
     { label: "Equipos operativos", table: "emergency_equipment", filters: { status: "operational" }, color: "ok" },
     { label: "Por mantener (30 días)", table: "emergency_equipment", filters: { next_maintenance_on__lte: "+30d" }, color: "amber" },

@@ -183,7 +183,7 @@ export function Dashboard() {
                       <p className="line-clamp-2 min-h-[2.5rem] text-[13px] font-semibold leading-snug">{k.name}</p>
                       <div className="mt-1 flex items-end justify-between gap-2">
                         <p className={`font-display font-bold leading-none ${k.value === null || k.value === undefined ? "text-lg text-muted" : `text-3xl ${c ? c.text : "text-brand"}`}`}>{k.label}</p>
-                        <span className="hidden text-[11px] font-semibold text-brand opacity-70 group-hover:opacity-100 sm:inline">Ver →</span>
+                        <span className="hidden text-[11px] font-semibold text-brand sm:inline">Ver →</span>
                       </div>
                       {pct !== null && (
                         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-bg" aria-hidden="true">

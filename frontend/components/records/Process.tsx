@@ -566,6 +566,7 @@ const ACTION_SOURCES: Record<string, string> = {
   measurements: "Esta medición",
   behavior_observations: "Esta observación",
   change_requests: "Este cambio",
+  environmental_aspects: "Este aspecto ambiental",
 };
 
 export function FindingAction({ table, row, onChanged }: { table: string; row: RecordRow; onChanged: () => void }) {

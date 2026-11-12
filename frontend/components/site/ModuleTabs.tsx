@@ -140,7 +140,7 @@ const TABS: Tab[] = [
         </div>
         <div className="flex h-20 items-end gap-1.5 rounded-lg bg-[var(--site-surface)] p-2" aria-hidden="true">
           {[30, 55, 20, 40, 15, 25, 10, 18, 8, 12, 6, 9].map((h, k) => (
-            <i key={k} className="flex-1 rounded-t bg-[#1F7FD1]/70" style={{ height: `${h + 20}%` }} />
+            <i key={k} className="flex-1 rounded-t bg-[#1b6fb7]/70" style={{ height: `${h + 20}%` }} />
           ))}
         </div>
         <p className="text-xs text-[var(--site-text-2)]">Índice de frecuencia por mes</p>

@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function AgendarDemoPage() {
   return (
     <section className="relative overflow-hidden bg-gradient-to-b from-[var(--site-surface)] to-white px-4 py-10 sm:py-14 lg:px-8">
-      <div className="absolute -right-32 top-10 h-72 w-72 rounded-full bg-[#1F7FD1]/12 blur-3xl" aria-hidden="true" />
+      <div className="absolute -right-32 top-10 h-72 w-72 rounded-full bg-[#1b6fb7]/12 blur-3xl" aria-hidden="true" />
       <div className="relative mx-auto max-w-[1200px] space-y-8">
         <div className="max-w-2xl space-y-2">
           <Link href="/demo" className="text-sm font-bold text-[var(--site-action)] hover:underline">

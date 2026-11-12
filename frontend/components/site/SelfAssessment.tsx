@@ -194,7 +194,7 @@ function ResultView({ r }: { r: Result }) {
   const [color, msg] = LEVEL_STYLE[r.level];
   return (
     <div className="space-y-5">
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0D3B6E] to-[#1F7FD1] p-6 text-white shadow-lg sm:p-8">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0D3B6E] to-[#1b6fb7] p-6 text-white shadow-lg sm:p-8">
         <p className="text-sm text-white/75">Tu nivel de cumplimiento</p>
         <div className="mt-1 flex flex-wrap items-end gap-4">
           <span className="font-display text-[56px] font-bold leading-none">{Math.round(r.score_total)}%</span>

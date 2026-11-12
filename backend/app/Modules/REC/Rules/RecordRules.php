@@ -94,6 +94,7 @@ abstract class RecordRules
         'vendor_evaluation_templates' => AddonRules::class,
         'questions' => AddonRules::class,
         'environmental_aspects' => AddonRules::class,
+        'waste_records' => AddonRules::class,
         'work_adjustments' => AddonRules::class,
         'signature_requests' => AddonRules::class,
         'risk_maps' => DocsFieldRules::class,

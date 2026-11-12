@@ -56,7 +56,7 @@ export default function AficheMapa() {
       <div className="mx-auto grid max-w-6xl gap-4 bg-white p-6 print:max-w-none print:p-0" style={{ gridTemplateColumns: "minmax(0,1fr) 17rem" }}>
         <header className="col-span-2 flex flex-wrap items-end justify-between gap-3 border-b-4 border-[#F4B90F] pb-2">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#1f7fd1]">Seguridad y Salud en el Trabajo</p>
+            <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#1b6fb7]">Seguridad y Salud en el Trabajo</p>
             <h1 className="text-3xl font-extrabold">MAPA DE RIESGOS</h1>
             <p className="text-lg font-semibold">{map.title} · {map.place}</p>
           </div>

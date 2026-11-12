@@ -46,10 +46,10 @@ export default async function ComoFuncionaPage() {
     <>
       <PageHero eyebrow="Cómo funciona" title="Tu sistema de gestión SST, paso a paso" text="Así pasas del Excel y el papel a un sistema ordenado que te avisa, te guía y te deja listo para una inspección." />
       <section className="px-4 py-16 lg:px-8">
-        <ol className="relative mx-auto max-w-5xl space-y-8 before:absolute before:bottom-10 before:left-[27px] before:top-10 before:hidden before:w-0.5 before:bg-gradient-to-b before:from-[#1F7FD1] before:to-[#1FB5A3] md:before:block">
+        <ol className="relative mx-auto max-w-5xl space-y-8 before:absolute before:bottom-10 before:left-[27px] before:top-10 before:hidden before:w-0.5 before:bg-gradient-to-b before:from-[#1b6fb7] before:to-[#1FB5A3] md:before:block">
           {STEPS.map((s, i) => (
             <li key={s.title} className="grid-cols-1 relative grid gap-5 md:grid-cols-[56px_1fr]">
-              <span className="relative z-10 hidden h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-[#1F7FD1] to-[#0D3B6E] font-display text-xl font-bold text-white shadow-lg md:grid">{i + 1}</span>
+              <span className="relative z-10 hidden h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-[#1b6fb7] to-[#0D3B6E] font-display text-xl font-bold text-white shadow-lg md:grid">{i + 1}</span>
               <article className="grid-cols-1 site-card site-card-hover grid items-center gap-6 p-6 sm:grid-cols-[1fr_auto] sm:p-8">
                 <div className="space-y-3">
                   <p className="site-eyebrow md:hidden">Paso {i + 1}</p>

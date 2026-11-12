@@ -81,11 +81,22 @@ class IsoPseController extends Controller
                 DB::insert('insert into iso_evidences (company_id, iso_clause_id, description, status, last_reviewed_on, created_by, updated_by) values (?, ?, ?, ?, current_date, ?, ?)',
                     [$company, $c->id, $desc, $status, (string) auth()->id(), (string) auth()->id()]);
             }
-            $out[] = ['clause' => $c->clause_code, 'title' => $c->title, 'status' => $ev && in_array($ev->status, ['verified', 'not_applicable'], true) ? $ev->status : $status, 'evidence' => $desc];
+            $final = $ev && in_array($ev->status, ['verified', 'not_applicable'], true) ? $ev->status : $status;
+            // RN-ISO-01/03: cubierta con al menos una evidencia vigente; «por revisar» si su evidencia quedó obsoleta (documento
+            // obsoleto o eliminado); si no, sin evidencia. Cuentan la evidencia automática y las que la persona vinculó.
+            $manual = DB::select("select e.status, e.document_id, d.status as doc_status, d.deleted_at as doc_deleted from iso_evidences e
+                                    left join documents d on d.id = e.document_id
+                                   where e.iso_clause_id = ? and e.deleted_at is null and (e.source_type is not null or e.document_id is not null)", [$c->id]);
+            $obsolete = fn ($m) => $m->document_id && ($m->doc_deleted || in_array($m->doc_status, ['obsolete', 'archived'], true));
+            $current = in_array($final, ['implemented', 'verified'], true) || ($found && $final !== 'not_applicable')
+                || array_filter($manual, fn ($m) => in_array($m->status, ['implemented', 'verified'], true) && ! $obsolete($m));
+            $coverage = $final === 'not_applicable' ? 'not_applicable' : ($current ? 'covered' : (array_filter($manual, $obsolete) ? 'review' : 'none'));
+            $out[] = ['clause' => $c->clause_code, 'title' => $c->title, 'status' => $final, 'coverage' => $coverage, 'evidence' => $desc];
         }
 
         return response()->json(['data' => ['standard' => $std->name, 'clauses' => $out,
-            'implemented' => count(array_filter($out, fn ($o) => in_array($o['status'], ['implemented', 'verified'], true))), 'total' => count($out)]]);
+            'implemented' => count(array_filter($out, fn ($o) => $o['coverage'] === 'covered')),
+            'review' => count(array_filter($out, fn ($o) => $o['coverage'] === 'review')), 'total' => count($out)]]);
     }
 
     public function packs(): JsonResponse

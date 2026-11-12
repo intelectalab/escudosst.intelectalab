@@ -67,7 +67,7 @@ export function HelpFeedback({ slug, compact = false }: { slug: string; compact?
             onClick={() => choose(v as boolean)}
             aria-pressed={vote === v}
             className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-sm font-semibold transition ${
-              vote === v ? (v ? "border-[#22a35a] bg-[#E8F7EE] text-[#17703e]" : "border-[#E2453C] bg-[#FDECEB] text-[#a3261f]") : "border-[rgba(13,59,110,0.15)] bg-white hover:border-[#1F7FD1]"
+              vote === v ? (v ? "border-[#22a35a] bg-[#E8F7EE] text-[#17703e]" : "border-[#E2453C] bg-[#FDECEB] text-[#a3261f]") : "border-[rgba(13,59,110,0.15)] bg-white hover:border-[#1b6fb7]"
             }`}
           >
             <Icon name={icon as string} size={16} /> {label as string}
@@ -77,16 +77,16 @@ export function HelpFeedback({ slug, compact = false }: { slug: string; compact?
       {(state === "comment" || state === "sending" || state === "error") && (
         <form onSubmit={submit} className="mt-3 space-y-2">
           <label className="block text-sm">
-            <span className="text-[var(--site-text-2,#6b7684)]">{vote ? "¿Algo que agregarías? (opcional)" : "¿Qué faltó o qué no se entendió? (opcional)"}</span>
+            <span className="text-[var(--site-text-2,#636d7a)]">{vote ? "¿Algo que agregarías? (opcional)" : "¿Qué faltó o qué no se entendió? (opcional)"}</span>
             <textarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               maxLength={1000}
               rows={3}
-              className="mt-1 w-full rounded-xl border border-[rgba(13,59,110,0.15)] bg-white px-3 py-2 text-sm outline-none focus:border-[#1F7FD1] focus:ring-2 focus:ring-[#1F7FD1]/20"
+              className="mt-1 w-full rounded-xl border border-[rgba(13,59,110,0.15)] bg-white px-3 py-2 text-sm outline-none focus:border-[#1b6fb7] focus:ring-2 focus:ring-[#1b6fb7]/20"
             />
           </label>
-          <p className="text-xs text-[var(--site-text-2,#6b7684)]">No escribas datos personales ni de tu empresa. No te pediremos tu correo.</p>
+          <p className="text-xs text-[var(--site-text-2,#636d7a)]">No escribas datos personales ni de tu empresa. No te pediremos tu correo.</p>
           {state === "error" && <p className="text-sm font-medium text-[#E2453C]">No se pudo enviar. Inténtalo de nuevo.</p>}
           <button type="submit" disabled={state === "sending"} className="site-btn site-btn-primary min-h-11 disabled:opacity-60">
             {state === "sending" ? "Enviando…" : "Enviar opinión"}

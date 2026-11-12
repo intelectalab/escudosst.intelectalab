@@ -40,7 +40,7 @@ function BlockView({ b, modules, alt }: { b: Block; modules: Mod[]; alt: boolean
     case "hero":
       return (
         <section className="relative overflow-hidden bg-gradient-to-b from-[#EAF3FC] to-white px-5 py-14 @2xl:py-20 @5xl:px-8">
-          <div className="absolute -right-32 -top-32 h-80 w-80 rounded-full bg-[#1F7FD1]/12 blur-3xl" aria-hidden="true" />
+          <div className="absolute -right-32 -top-32 h-80 w-80 rounded-full bg-[#1b6fb7]/12 blur-3xl" aria-hidden="true" />
           <div className="relative mx-auto max-w-[1200px] space-y-4">
             {b.eyebrow && <p className="site-eyebrow">{b.eyebrow}</p>}
             <h1 className="max-w-3xl font-display text-[30px] font-bold leading-[1.15] text-[var(--site-navy-title)] @2xl:text-[46px]">{b.title}</h1>
@@ -76,7 +76,7 @@ function BlockView({ b, modules, alt }: { b: Block; modules: Mod[]; alt: boolean
         <Wrap alt={alt}>
           <div className="flex flex-wrap items-center gap-3">
             <Title>{b.title}</Title>
-            <span className="rounded-md bg-[#F4B90F]/20 px-2 py-0.5 text-xs font-bold text-[#8A6704]">Referencial · a validar con un especialista</span>
+            <span className="rounded-md bg-[#F4B90F]/20 px-2 py-0.5 text-xs font-bold text-[#6b5003]">Referencial · a validar con un especialista</span>
           </div>
           <ul className="space-y-2">
             {b.items.map((t) => (
@@ -99,7 +99,7 @@ function BlockView({ b, modules, alt }: { b: Block; modules: Mod[]; alt: boolean
                 <p className="font-display font-bold text-[var(--site-navy-title)]">{m.name}</p>
                 {m.solves && <p className="mt-1.5 flex-1 text-sm leading-relaxed text-[var(--site-text-2)]">{m.solves}</p>}
                 <p className="mt-3">
-                  <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${m.is_addon ? "bg-[#F4B90F]/20 text-[#8A6704]" : "bg-[var(--site-action)]/10 text-[var(--site-navy)]"}`}>
+                  <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${m.is_addon ? "bg-[#F4B90F]/20 text-[#6b5003]" : "bg-[var(--site-action)]/10 text-[var(--site-navy)]"}`}>
                     {m.is_addon ? "Complemento (se agrega aparte)" : m.from_plan ? `Incluido desde el plan ${PLAN[m.from_plan] ?? m.from_plan}` : "Plan Consultora"}
                   </span>
                 </p>
@@ -194,7 +194,7 @@ function BlockView({ b, modules, alt }: { b: Block; modules: Mod[]; alt: boolean
       const [label, href] = CTA_BUTTONS[b.button] ?? CTA_BUTTONS.demo;
       return (
         <section className="px-5 py-12 @5xl:px-8">
-          <div className="relative mx-auto max-w-[1200px] overflow-hidden rounded-3xl bg-gradient-to-br from-[#0D3B6E] via-[#0f4a8a] to-[#1F7FD1] px-6 py-12 text-center text-white @2xl:px-12">
+          <div className="relative mx-auto max-w-[1200px] overflow-hidden rounded-3xl bg-gradient-to-br from-[#0D3B6E] via-[#0f4a8a] to-[#1b6fb7] px-6 py-12 text-center text-white @2xl:px-12">
             <div className="site-dots absolute inset-0" aria-hidden="true" />
             <div className="relative mx-auto max-w-2xl space-y-4">
               <h2 className="font-display text-[26px] font-bold leading-tight @2xl:text-[34px]">{b.title}</h2>

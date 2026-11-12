@@ -55,7 +55,7 @@ export function NewsletterForm() {
   if (sent) {
     return (
       <div className="site-card p-8 text-center" role="status">
-        <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#EAF3FC] text-[#1F7FD1]">
+        <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#EAF3FC] text-[#1b6fb7]">
           <Icon name="mail" size={26} />
         </span>
         <h2 className="mt-4 font-display text-2xl font-bold text-[var(--site-navy-title)]">Revisa tu correo</h2>

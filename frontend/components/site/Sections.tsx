@@ -19,7 +19,7 @@ export function PageHero({ eyebrow, title, text, children }: { eyebrow: string; 
   return (
     <section className="relative overflow-hidden bg-[var(--site-navy)] text-white">
       <div className="site-dots absolute inset-0" aria-hidden="true" />
-      <div className="absolute -right-24 -top-24 h-80 w-80 rounded-full bg-[#1F7FD1]/40 blur-3xl" aria-hidden="true" />
+      <div className="absolute -right-24 -top-24 h-80 w-80 rounded-full bg-[#1b6fb7]/40 blur-3xl" aria-hidden="true" />
       <div className="relative mx-auto max-w-[1360px] px-4 py-16 sm:py-20 lg:px-8">
         <p className="site-eyebrow !text-[var(--site-amber)]">{eyebrow}</p>
         <h1 className="mt-3 max-w-3xl font-display text-[32px] font-bold leading-[1.15] sm:text-[44px]">{title}</h1>
@@ -34,7 +34,7 @@ export function PageHero({ eyebrow, title, text, children }: { eyebrow: string; 
 export function FinalCta({ s }: { s: SiteSettings }) {
   return (
     <section className="px-4 py-16 lg:px-8">
-      <div className="relative mx-auto max-w-[1360px] overflow-hidden rounded-3xl bg-gradient-to-br from-[#0D3B6E] via-[#0f4a8a] to-[#1F7FD1] px-6 py-14 text-center text-white sm:px-12">
+      <div className="relative mx-auto max-w-[1360px] overflow-hidden rounded-3xl bg-gradient-to-br from-[#0D3B6E] via-[#0f4a8a] to-[#1b6fb7] px-6 py-14 text-center text-white sm:px-12">
         <div className="site-dots absolute inset-0" aria-hidden="true" />
         <div className="site-stripe absolute inset-x-0 top-0 h-1.5" aria-hidden="true" />
         <div className="relative mx-auto max-w-2xl space-y-5">
@@ -56,7 +56,7 @@ export function FinalCta({ s }: { s: SiteSettings }) {
 
 const PLAN_STYLE: Record<string, { ring: string; badge?: string; bar: string }> = {
   E: { ring: "", bar: "#22A35A" },
-  P: { ring: "ring-2 ring-[var(--site-action)]", badge: "Recomendado", bar: "#1F7FD1" },
+  P: { ring: "ring-2 ring-[var(--site-action)]", badge: "Recomendado", bar: "#1b6fb7" },
   C: { ring: "", bar: "#0D3B6E" },
   K: { ring: "", bar: "#F4B90F" },
 };
@@ -90,7 +90,7 @@ export function PlanCards({
             <div className="flex items-start justify-between gap-2">
               <h3 className="font-display text-xl font-bold text-[var(--site-navy-title)]">{p.name}</h3>
               {st.badge && <span className="rounded-md bg-[var(--site-action)] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">{st.badge}</span>}
-              {p.code === "K" && <span className="rounded-md bg-[var(--site-amber)]/25 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-[#8A6704]">Consultoras</span>}
+              {p.code === "K" && <span className="rounded-md bg-[var(--site-amber)]/25 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-[#6b5003]">Consultoras</span>}
             </div>
             <p className="mt-2 min-h-[3rem] text-sm leading-relaxed text-[var(--site-text-2)]">{p.description}</p>
             <div className="my-5">

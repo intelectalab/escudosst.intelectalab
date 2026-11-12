@@ -84,7 +84,7 @@ export default async function HomePage() {
     <>
       {/* Héroe: claro y cercano (fondo suave, maqueta del panel y avisos flotantes) */}
       <section className="relative overflow-hidden bg-gradient-to-b from-[#EAF3FC] via-[#F5F9FE] to-white">
-        <div className="absolute -right-40 -top-40 h-[30rem] w-[30rem] rounded-full bg-[#1F7FD1]/12 blur-3xl" aria-hidden="true" />
+        <div className="absolute -right-40 -top-40 h-[30rem] w-[30rem] rounded-full bg-[#1b6fb7]/12 blur-3xl" aria-hidden="true" />
         <div className="absolute -left-24 bottom-0 h-72 w-72 rounded-full bg-[#F4B90F]/15 blur-3xl" aria-hidden="true" />
         <div className="relative mx-auto grid max-w-[1360px] grid-cols-1 items-center gap-12 px-4 py-14 sm:py-20 lg:grid-cols-[1.05fr_1fr] lg:px-8 lg:py-24">
           <div className="space-y-6">
@@ -119,7 +119,7 @@ export default async function HomePage() {
               ))}
             </ul>
             <div className="flex flex-col gap-3 pt-2 sm:flex-row">
-              <a href={contactHref(s, "trial")} data-track="portada-prueba-1" className="site-btn site-btn-primary shadow-[0_10px_24px_-10px_#1F7FD1]">
+              <a href={contactHref(s, "trial")} data-track="portada-prueba-1" className="site-btn site-btn-primary shadow-[0_10px_24px_-10px_#1b6fb7]">
                 Prueba gratis <Icon name="chevron" size={16} />
               </a>
               <a href={contactHref(s, "demo")} data-track="portada-demo-2" className="site-btn site-btn-outline bg-white">
@@ -143,7 +143,7 @@ export default async function HomePage() {
               </span>
             </div>
             <div className="site-float-late absolute -bottom-4 right-0 hidden items-center gap-2.5 rounded-2xl bg-white px-3.5 py-2.5 text-sm shadow-lg ring-1 ring-[var(--site-border)] sm:flex">
-              <span className="grid h-8 w-8 place-items-center rounded-xl bg-[#F4B90F]/20 text-[#8A6704]">
+              <span className="grid h-8 w-8 place-items-center rounded-xl bg-[#F4B90F]/20 text-[#6b5003]">
                 <Icon name="bell" size={16} />
               </span>
               <span>
@@ -199,10 +199,9 @@ export default async function HomePage() {
           <div className="grid-cols-1 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {PILLARS.map(([icon, title, text], i) => (
               <article key={title} className="site-card site-card-hover group relative overflow-hidden p-6">
-                <span className="absolute right-4 top-3 font-display text-5xl font-bold text-[var(--site-surface)] transition-colors group-hover:text-[#1F7FD1]/10" aria-hidden="true">
-                  0{i + 1}
-                </span>
-                <span className="relative grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-[#1F7FD1] to-[#0D3B6E] text-white shadow-md">
+                {/* Número decorativo dibujado por CSS (no es texto del contenido). */}
+                <span data-n={`0${i + 1}`} className="absolute right-4 top-3 font-display text-5xl font-bold text-[var(--site-surface)] transition-colors before:content-[attr(data-n)] group-hover:text-[#1b6fb7]/10" aria-hidden="true" />
+                <span className="relative grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-[#1b6fb7] to-[#0D3B6E] text-white shadow-md">
                   <Icon name={icon} size={22} />
                 </span>
                 <h3 className="relative mt-4 font-display text-lg font-bold text-[var(--site-navy-title)]">{title}</h3>

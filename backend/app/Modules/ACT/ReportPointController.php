@@ -53,6 +53,8 @@ class ReportPointController extends Controller
 
             return response()->json(['data' => [
                 'company' => $c?->name, 'point' => $p->name, 'site' => $p->site_name, 'location' => $p->location_description, 'allow_anonymous' => (bool) $p->allow_anonymous,
+                // Enlace «Reportar por WhatsApp» (solo con WhatsApp en vivo): abre el chat con el código del punto ya escrito.
+                'whatsapp_url' => WhatsAppIntake::link($p->company_id, self::token($p->company_id, $p->id)),
             ]]);
         });
     }

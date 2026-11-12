@@ -540,6 +540,7 @@ function GridEditor({ ws, editable, onOpen, onSaved, onError }: { ws: Workspace;
                   <button type="button" onClick={() => onOpen(r)} className="rounded-md px-1.5 py-0.5 font-semibold text-brand hover:bg-brand-soft" title="Ver el detalle de la fila" aria-label={`Abrir la fila ${r.row_number}`}>
                     {r.row_number}
                   </button>
+                  {r.ai_assisted && <span className="mt-1 block whitespace-nowrap rounded bg-brand-soft px-1.5 py-0.5 text-[10px] font-semibold text-brand-strong" title="Fila propuesta por el Asistente IA: revísala antes de aprobar la versión">Sugerencia IA</span>}
                 </td>
                 {TEXT_COLS.map(([k, l, req], i) => (
                   <td key={k} className={`px-1 py-1.5 ${i === 0 ? "border-l border-line" : ""}`}>

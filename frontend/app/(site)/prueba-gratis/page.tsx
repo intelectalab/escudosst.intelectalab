@@ -19,7 +19,7 @@ const STEPS: [string, string, string][] = [
 export default function PruebaGratisPage() {
   return (
     <section className="relative overflow-hidden bg-gradient-to-b from-[var(--site-surface)] to-white px-4 py-12 sm:py-16 lg:px-8">
-      <div className="absolute -left-32 top-10 h-72 w-72 rounded-full bg-[#1F7FD1]/10 blur-3xl" aria-hidden="true" />
+      <div className="absolute -left-32 top-10 h-72 w-72 rounded-full bg-[#1b6fb7]/10 blur-3xl" aria-hidden="true" />
       <div className="relative mx-auto grid max-w-[1200px] grid-cols-1 gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-14">
         <div className="space-y-7 lg:pt-6">
           <div className="space-y-3">

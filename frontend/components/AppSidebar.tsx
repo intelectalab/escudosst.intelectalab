@@ -137,7 +137,7 @@ export function AppSidebar({ groups, showHome, brand, brandCompact, collapsed, m
                   className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left font-semibold text-white/90 transition hover:bg-white/10">
                   <Icon name={g.icon} size={17} className="shrink-0 text-white/70" />
                   <span className="flex-1 truncate">{g.title}</span>
-                  <Icon name="chevronDown" size={14} className={`shrink-0 text-white/50 transition-transform ${o ? "" : "-rotate-90"}`} />
+                  <Icon name="chevronDown" size={14} className={`shrink-0 text-white/75 transition-transform ${o ? "" : "-rotate-90"}`} />
                 </button>
                 {o && (
                   <ul className="mb-1 mt-0.5 space-y-0.5 pl-[1.9rem]">
@@ -174,7 +174,7 @@ function Item({ m, active }: { m: ModuleItem; active: boolean }) {
   return (
     <Link href={hrefOf(m)} aria-current={active ? "page" : undefined}
       title={locked ? `Disponible en ${availableIn(m.required_plan, m.name)}` : (m.solves ?? m.name)}
-      className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 transition ${active ? "bg-white font-semibold text-side" : locked ? "text-white/40 hover:bg-white/5" : "text-white/80 hover:bg-white/10 hover:text-white"}`}>
+      className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 transition ${active ? "bg-white font-semibold text-side" : locked ? "text-white/65 hover:bg-white/5" : "text-white/80 hover:bg-white/10 hover:text-white"}`}>
       <span className="min-w-0 flex-1 truncate">{m.name}</span>
       {locked && <Icon name="lock" size={13} className="shrink-0" />}
       {m.mode === "read_only" && <span className="shrink-0 rounded bg-white/10 px-1 text-[9px] font-bold uppercase">Lectura</span>}
@@ -189,7 +189,7 @@ function Solo({ href, icon, label, active, collapsed, highlight, locked, title }
   return (
     <Link href={href} title={collapsed ? label : title} aria-label={collapsed ? label : undefined} aria-current={active ? "page" : undefined}
       className={`flex items-center rounded-lg font-semibold transition ${collapsed ? "h-10 justify-center" : "gap-2.5 px-2.5 py-2"} ${
-        active ? "bg-white text-side" : highlight ? "text-amber-300 hover:bg-white/10" : locked ? "text-white/40 hover:bg-white/5" : "text-white/90 hover:bg-white/10"}`}>
+        active ? "bg-white text-side" : highlight ? "text-amber-300 hover:bg-white/10" : locked ? "text-white/65 hover:bg-white/5" : "text-white/90 hover:bg-white/10"}`}>
       <Icon name={icon} size={collapsed ? 19 : 17} className="shrink-0" />
       {!collapsed && <span className="min-w-0 flex-1 truncate">{label}</span>}
       {!collapsed && locked && <Icon name="lock" size={13} className="shrink-0" />}

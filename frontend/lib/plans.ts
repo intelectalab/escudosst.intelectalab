@@ -30,7 +30,7 @@ export const LIMIT_LABELS: Record<keyof PlanLimits, { label: string; unit?: stri
 /** Colores de acento por plan (paleta del prototipo). */
 export const PLAN_ACCENT: Record<string, { bar: string; soft: string; text: string }> = {
   E: { bar: "#22a35a", soft: "var(--ok-soft)", text: "var(--ok)" },
-  P: { bar: "#1f7fd1", soft: "var(--brand-soft)", text: "var(--brand-strong)" },
+  P: { bar: "#1b6fb7", soft: "var(--brand-soft)", text: "var(--brand-strong)" },
   C: { bar: "#0d3b6e", soft: "var(--na-soft)", text: "var(--fg)" },
   K: { bar: "#f4b90f", soft: "var(--amber-soft)", text: "var(--amber-ink)" },
 };

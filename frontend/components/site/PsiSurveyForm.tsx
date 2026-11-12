@@ -62,11 +62,11 @@ export function PsiSurveyForm({ path }: { path: string }) {
 
   return (
     <Card>
-      <p className="text-xs font-semibold uppercase tracking-wider text-[#1f7fd1]">{s.company}</p>
+      <p className="text-xs font-semibold uppercase tracking-wider text-[#1b6fb7]">{s.company}</p>
       <h1 className="text-xl font-bold">{s.title}</h1>
       {step >= 0 && (
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#e6ecf3]" aria-hidden="true">
-          <div className="h-full bg-[#1f7fd1] transition-all" style={{ width: `${(Math.min(step, dims.length) / dims.length) * 100}%` }} />
+          <div className="h-full bg-[#1b6fb7] transition-all" style={{ width: `${(Math.min(step, dims.length) / dims.length) * 100}%` }} />
         </div>
       )}
 

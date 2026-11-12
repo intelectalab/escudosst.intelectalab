@@ -420,9 +420,13 @@ function GeneralAudit({ filters }: { filters: AuditFilters }) {
                 const expanded = open === r.id;
                 return (
                   <Fragment key={r.id}>
-                    <tr tabIndex={0} aria-expanded={expanded} onClick={() => setOpen(expanded ? null : r.id)} onKeyDown={(e) => e.key === "Enter" && setOpen(expanded ? null : r.id)}
+                    <tr onClick={() => setOpen(expanded ? null : r.id)}
                       className={`cursor-pointer border-b border-line hover:bg-brand-soft/40 ${expanded ? "bg-bg" : ""}`}>
-                      <td className="whitespace-nowrap px-4 py-3">{fmtAudit(r.occurred_at)}</td>
+                      {/* El botón lleva el estado abierto/cerrado (una fila de tabla no puede tener aria-expanded). */}
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <button type="button" aria-expanded={expanded} className="text-left focus-visible:outline-2 focus-visible:outline-brand"
+                          onClick={(e) => { e.stopPropagation(); setOpen(expanded ? null : r.id); }}>{fmtAudit(r.occurred_at)}</button>
+                      </td>
                       <td className="px-4 py-3">
                         {r.actor_name ?? "Sistema"}
                         {r.is_support_session && <span className="ml-1 text-xs text-amber-ink">(soporte)</span>}

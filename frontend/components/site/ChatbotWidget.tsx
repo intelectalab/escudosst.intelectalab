@@ -224,7 +224,7 @@ export function ChatbotWidget({ hasWhatsApp }: { hasWhatsApp: boolean }) {
           aria-label="Chat de EscudoSST"
           className="fixed inset-0 z-50 flex flex-col bg-white sm:inset-auto sm:bottom-6 sm:right-6 sm:h-[560px] sm:max-h-[calc(100vh-48px)] sm:w-[380px] sm:overflow-hidden sm:rounded-2xl sm:shadow-2xl"
         >
-          <header className="flex items-center gap-3 bg-gradient-to-r from-[#0D3B6E] to-[#1F7FD1] px-4 py-3 text-white">
+          <header className="flex items-center gap-3 bg-gradient-to-r from-[#0D3B6E] to-[#1b6fb7] px-4 py-3 text-white">
             <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-white/15">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {avatar ? <img src={avatar} alt={cfg.avatar_alt_text ?? ""} className="h-full w-full object-cover" /> : <Icon name="help" size={20} />}

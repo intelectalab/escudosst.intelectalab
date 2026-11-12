@@ -138,7 +138,7 @@ export default function SaludPage() {
         <Icon name={problems ? "lock" : "check"} size={20} className="shrink-0" />
         <p className="text-sm">
           <b>{problems ? `${problems} ${problems === 1 ? "parte tiene" : "partes tienen"} un error.` : "Todo lo configurado funciona."}</b>{" "}
-          <span className="opacity-80">Revisado el {formatDate(h.checked_at, true)}.</span>
+          <span>Revisado el {formatDate(h.checked_at, true)}.</span>
         </p>
       </div>
 

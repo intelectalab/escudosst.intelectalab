@@ -20,6 +20,7 @@ final class TraceService
         'investigation' => 'investigations', 'report' => 'substandard_reports', 'baseline' => 'baseline_gaps',
         'legal_requirement' => 'legal_requirements', 'committee_agreement' => 'meeting_agreements', 'management_review' => 'management_reviews',
         'monitoring' => 'measurements', 'iperc' => 'iperc_rows', 'drill' => 'drills', 'observation' => 'behavior_observations', 'change' => 'change_requests',
+        'environmental_aspect' => 'environmental_aspects',
     ];
 
     /** Referencias que no son parte del proceso (personas, catálogos, estructura): no se muestran como «viene de». */

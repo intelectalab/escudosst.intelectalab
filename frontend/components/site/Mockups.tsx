@@ -2,7 +2,7 @@
 // Son HTML/SVG propios, livianos y nítidos en cualquier tamaño; no son capturas reales ni de empresas reales.
 
 function Example() {
-  return <span className="rounded-md bg-[var(--site-amber)]/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#8A6704]">Ejemplo</span>;
+  return <span className="rounded-md bg-[var(--site-amber)]/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#6b5003]">Ejemplo</span>;
 }
 
 function Window({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
@@ -24,7 +24,7 @@ function Window({ title, children, className = "" }: { title: string; children: 
 
 const chip = {
   ok: "bg-[#22A35A]/12 text-[#187A42]",
-  warn: "bg-[#F4B90F]/20 text-[#8A6704]",
+  warn: "bg-[#F4B90F]/20 text-[#6b5003]",
   bad: "bg-[#E2453C]/12 text-[#B3261E]",
 };
 
@@ -43,7 +43,7 @@ export function DashboardMock() {
             <text x="50" y="49" textAnchor="middle" fontSize="20" fontWeight="700" fill="#00254D">
               {pct}%
             </text>
-            <text x="50" y="64" textAnchor="middle" fontSize="8" fill="#6B7684">
+            <text x="50" y="64" textAnchor="middle" fontSize="8" fill="#636d7a">
               cumplimiento
             </text>
           </svg>
@@ -66,7 +66,7 @@ export function DashboardMock() {
       </div>
       <div className="mt-4 flex items-end gap-1.5 rounded-xl bg-[var(--site-surface)] p-3">
         {[40, 55, 48, 62, 70, 66, 78].map((h, i) => (
-          <span key={i} className="flex-1 rounded-t-[4px] bg-[#1F7FD1]" style={{ height: `${h * 0.7}px`, opacity: 0.45 + i * 0.08 }} />
+          <span key={i} className="flex-1 rounded-t-[4px] bg-[#1b6fb7]" style={{ height: `${h * 0.7}px`, opacity: 0.45 + i * 0.08 }} />
         ))}
         <span className="ml-2 self-center text-[11px] font-semibold text-[var(--site-text-2)]">Inspecciones cerradas por mes</span>
       </div>
@@ -83,7 +83,7 @@ export function SunafilMock() {
           <p className="text-sm font-bold text-[var(--site-navy-title)]">Periodo: enero – octubre</p>
           <p className="text-xs text-[var(--site-text-2)]">9 de 11 evidencias encontradas</p>
         </div>
-        <span className="rounded-lg bg-[#1F7FD1] px-3 py-1.5 text-xs font-bold text-white">Compartir enlace</span>
+        <span className="rounded-lg bg-[#1b6fb7] px-3 py-1.5 text-xs font-bold text-white">Compartir enlace</span>
       </div>
       <div className="mb-3 h-2 overflow-hidden rounded-full bg-[#E3EAF3]">
         <div className="h-full w-[82%] rounded-full bg-[#22A35A]" />
@@ -112,7 +112,7 @@ export function FotocheckMock() {
   const cells = "1110111010011101101110010111011100101101011101101011101001110111";
   return (
     <div className="relative mx-auto w-full max-w-sm" aria-hidden="true">
-      <div className="absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-[#1FB5A3]/25 to-[#1F7FD1]/20 blur-2xl" />
+      <div className="absolute -inset-6 -z-10 rounded-[32px] bg-gradient-to-br from-[#1FB5A3]/25 to-[#1b6fb7]/20 blur-2xl" />
       <div className="overflow-hidden rounded-2xl bg-white shadow-[0_24px_60px_-20px_rgba(13,59,110,.45)]">
         <div className="site-stripe h-2" />
         <div className="flex items-center justify-between bg-[var(--site-navy)] px-5 py-3 text-white">
@@ -177,9 +177,9 @@ export function StepArt({ step }: { step: number }) {
       return (
         <svg {...common}>
           <rect x="18" y="14" width="84" height="68" rx="10" fill="#F7FAFE" stroke="#0D3B6E" strokeOpacity=".15" />
-          <rect x="30" y="28" width="60" height="10" rx="5" fill="#1F7FD1" opacity=".25" />
+          <rect x="30" y="28" width="60" height="10" rx="5" fill="#1b6fb7" opacity=".25" />
           <rect x="30" y="46" width="44" height="10" rx="5" fill="#0D3B6E" opacity=".15" />
-          <rect x="30" y="62" width="34" height="10" rx="5" fill="#1F7FD1" />
+          <rect x="30" y="62" width="34" height="10" rx="5" fill="#1b6fb7" />
           <circle cx="92" cy="70" r="14" fill="#22A35A" />
           <path d="M85 70l5 5 9-10" stroke="#fff" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
@@ -199,7 +199,7 @@ export function StepArt({ step }: { step: number }) {
       return (
         <svg {...common}>
           <rect x="14" y="18" width="40" height="60" rx="8" fill="#F7FAFE" stroke="#0D3B6E" strokeOpacity=".15" />
-          <rect x="66" y="18" width="40" height="28" rx="8" fill="#1F7FD1" opacity=".18" />
+          <rect x="66" y="18" width="40" height="28" rx="8" fill="#1b6fb7" opacity=".18" />
           <rect x="66" y="50" width="40" height="28" rx="8" fill="#F4B90F" opacity=".35" />
           <path d="M24 34h20M24 46h20M24 58h12" stroke="#0D3B6E" strokeOpacity=".4" strokeWidth="4" strokeLinecap="round" />
         </svg>
@@ -209,7 +209,7 @@ export function StepArt({ step }: { step: number }) {
         <svg {...common}>
           <rect x="38" y="10" width="44" height="76" rx="10" fill="#0D3B6E" />
           <rect x="44" y="20" width="32" height="50" rx="4" fill="#F7FAFE" />
-          <path d="M50 34h20M50 44h20M50 54h12" stroke="#1F7FD1" strokeWidth="4" strokeLinecap="round" />
+          <path d="M50 34h20M50 44h20M50 54h12" stroke="#1b6fb7" strokeWidth="4" strokeLinecap="round" />
           <circle cx="92" cy="26" r="10" fill="#F4B90F" />
           <path d="M92 21v6M92 30v.5" stroke="#0D3B6E" strokeWidth="3" strokeLinecap="round" />
         </svg>
@@ -218,7 +218,7 @@ export function StepArt({ step }: { step: number }) {
       return (
         <svg {...common}>
           <path d="M60 8l38 14v24c0 22-16 36-38 42-22-6-38-20-38-42V22z" fill="#0D3B6E" />
-          <path d="M60 18l28 10v18c0 16-12 27-28 32-16-5-28-16-28-32V28z" fill="#1F7FD1" />
+          <path d="M60 18l28 10v18c0 16-12 27-28 32-16-5-28-16-28-32V28z" fill="#1b6fb7" />
           <path d="M47 48l9 9 18-20" stroke="#fff" strokeWidth="6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );

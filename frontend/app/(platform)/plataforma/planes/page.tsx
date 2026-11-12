@@ -274,7 +274,7 @@ export default function PlanesPage() {
             >
               <Icon name={icon} size={16} />
               {label}
-              <span className={`rounded-full px-2 py-0.5 text-xs ${tab === k ? "bg-white/20" : "bg-bg"}`}>{n}</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs ${tab === k ? "bg-white font-semibold text-brand-strong" : "bg-bg"}`}>{n}</span>
             </button>
           ))}
         </div>

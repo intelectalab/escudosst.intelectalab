@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 };
 
 const BENEFITS: [string, string, string, string][] = [
-  ["people", "Ordena a todos tus clientes", "Con EscudoSST cada empresa que asesoras tiene su SST al día y tú lo ves desde un solo lugar.", "from-[#EAF3FC] text-[#1F7FD1]"],
+  ["people", "Ordena a todos tus clientes", "Con EscudoSST cada empresa que asesoras tiene su SST al día y tú lo ves desde un solo lugar.", "from-[#EAF3FC] text-[#1b6fb7]"],
   ["tag", "Recompensa por referido", "Por cada empresa que se registra con tu código y contrata. El tipo y el monto están por definir y te los confirmamos al aprobarte.", "from-[#FFF5D6] text-[#B88700]"],
   ["star", "Tu propio código y enlace", "Lo compartes con tus clientes y cada registro con él queda a tu nombre.", "from-[#E8F7EE] text-[#22A35A]"],
 ];
@@ -53,8 +53,8 @@ export default function PartnersPage() {
             <ol className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {STEPS.map(([title, text], i) => (
                 <li key={title} className="site-card relative min-w-0 overflow-hidden p-6">
-                  <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#1F7FD1] to-[#1FB5A3]" aria-hidden="true" />
-                  <b className="font-display text-[34px] leading-none text-[#1F7FD1]/25">0{i + 1}</b>
+                  <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#1b6fb7] to-[#1FB5A3]" aria-hidden="true" />
+                  <b className="font-display text-[34px] leading-none text-[#1b6fb7]/25">0{i + 1}</b>
                   <h3 className="mt-2 font-display text-[17px] font-bold text-[var(--site-navy-title)]">{title}</h3>
                   <p className="mt-1 text-sm text-[var(--site-text-2)]">{text}</p>
                 </li>

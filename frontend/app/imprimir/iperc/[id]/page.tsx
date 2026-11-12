@@ -39,7 +39,7 @@ function Sheet() {
       <div className="mx-auto max-w-6xl space-y-3 bg-white p-6 text-[11px] print:max-w-none print:p-0">
         <header className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-[#0d3b6e] pb-2">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#1f7fd1]">Matriz IPERC · Ley 29783 y R.M. 050-2013-TR</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#1b6fb7]">Matriz IPERC · Ley 29783 y R.M. 050-2013-TR</p>
             <h1 className="text-lg font-extrabold">{ws.matrix.code} · {ws.matrix.title}</h1>
             <p>{[ws.matrix.position_name, ws.matrix.area_name, ws.matrix.site_name, ws.matrix.process].filter(Boolean).join(" · ") || "Toda la empresa"}</p>
           </div>

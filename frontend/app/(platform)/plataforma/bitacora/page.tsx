@@ -104,7 +104,7 @@ export default function BitacoraPage() {
               {verify.ok
                 ? `Se revisaron ${verify.checked} eventos: ninguno fue modificado, borrado ni cambiado de orden.`
                 : verify.problems.map((p) => `Evento n.° ${p.chain_seq}: ${p.problem}`).join(" · ")}{" "}
-              <span className="opacity-80">Verificado el {formatDate(verify.verified_at, true)}</span>
+              <span>Verificado el {formatDate(verify.verified_at, true)}</span>
             </p>
           </div>
         </div>

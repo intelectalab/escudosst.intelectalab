@@ -52,6 +52,23 @@ final class WhatsAppCloud
     }
 
     /**
+     * Respuesta de texto dentro de una conversación que inició la persona (ventana de 24 horas de Meta: ahí no hace falta
+     * plantilla). Lo usa la conversación de reportes (ACT/WhatsAppIntake).
+     *
+     * @return array{ok: bool, id: ?string, error: ?string, code: ?string}
+     */
+    public function sendText(string $to, string $text): array
+    {
+        $number = self::normalize($to);
+        if (! $number) {
+            return ['ok' => false, 'id' => null, 'error' => 'Número de WhatsApp no válido.', 'code' => 'invalid_number'];
+        }
+
+        return $this->post(['messaging_product' => 'whatsapp', 'recipient_type' => 'individual', 'to' => $number, 'type' => 'text',
+            'text' => ['preview_url' => false, 'body' => mb_substr($text, 0, 4000)]]);
+    }
+
+    /**
      * Envía una plantilla.
      *
      * @param  list<string>  $params  variables del cuerpo {{1}}, {{2}}…
