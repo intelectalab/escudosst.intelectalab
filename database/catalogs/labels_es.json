@@ -1213,7 +1213,10 @@
   "late_signature": "Firma tardía",
   "is_high_risk": "Tarea de alto riesgo",
   "is_overrun": "Sobreejecución",
-  "overrun_reason": "Motivo de la sobreejecución"
+  "overrun_reason": "Motivo de la sobreejecución",
+  "ratio_to_limit": "Razón medición / límite",
+  "introduces_new_hazards": "Introduce peligros nuevos",
+  "temporary_until": "Cambio temporal hasta"
  },
  "values": {
   "A": "Tipo A",

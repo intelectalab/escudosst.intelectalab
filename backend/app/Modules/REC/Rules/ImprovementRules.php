@@ -32,6 +32,8 @@ class ImprovementRules extends RecordRules
             'management_reviews' => $this->review($values, $current, $extra),
             'measurements' => $this->measurement($values, $current),
             'change_requests' => $this->change($op, $values, $current),
+            'monitoring_campaigns' => $this->campaign($values, $current),
+            'ergonomic_assessments' => $this->ergonomic($values, $current),
             'change_reviews' => $values['reviewed_at'] ??= now()->toIso8601String(),
             default => null,
         };
@@ -192,20 +194,104 @@ class ImprovementRules extends RecordRules
 
     private function measurement(array &$values, ?object $current): void
     {
+        if ($current && $current->corrective_action_id && array_intersect(array_keys($values), ['value', 'unit', 'exposure_limit_id', 'measured_at']) !== []) {
+            $this->conflict('La medición ya originó su acción correctiva: no se cambia su valor. Registra una nueva medición.');
+        }
+        // RN-MAG-01: sin límite elegido, se usa el límite vigente del agente a la fecha de la medición.
         $limitId = $this->value($values, $current, 'exposure_limit_id');
+        $agent = $this->value($values, $current, 'agent_type_id');
+        $at = substr((string) ($this->value($values, $current, 'measured_at') ?? date('Y-m-d')), 0, 10);
+        if (! $limitId && $agent) {
+            $limitId = DB::selectOne('select id from exposure_limits where agent_type_id = ? and deleted_at is null and (valid_from is null or valid_from <= ?::date)
+                                        and (valid_to is null or valid_to >= ?::date) order by valid_from desc nulls last limit 1', [$agent, $at, $at])?->id;
+            if ($limitId) {
+                $values['exposure_limit_id'] = $limitId;
+            }
+        }
         $value = $this->value($values, $current, 'value');
         if (! $limitId || $value === null) {
             return;
         }
-        $limit = DB::selectOne('select limit_value, unit from exposure_limits where id = ?', [$limitId]);
-        $unit = $this->value($values, $current, 'unit');
-        if ($limit?->limit_value !== null && (! $unit || ! $limit->unit || mb_strtolower($unit) === mb_strtolower($limit->unit))) {
-            $values['result'] = (float) $value > (float) $limit->limit_value ? 'exceeds_limit' : 'within_limit';
+        $limit = DB::selectOne('select limit_value, unit, valid_from, valid_to from exposure_limits where id = ?', [$limitId]);
+        if ($limit && (($limit->valid_from && $limit->valid_from > $at) || ($limit->valid_to && $limit->valid_to < $at))) {
+            $this->fail('exposure_limit_id', 'Ese límite no estaba vigente en la fecha de la medición: elige el límite vigente.');
         }
+        // RN-MAG-04: la medición se compara en la misma unidad del límite.
+        $unit = $this->value($values, $current, 'unit');
+        if ($unit && $limit?->unit && mb_strtolower(trim($unit)) !== mb_strtolower(trim($limit->unit))) {
+            $this->fail('unit', "La medición está en «{$unit}» y el límite en «{$limit->unit}»: regístrala en la unidad del límite.");
+        }
+        if (! $unit && $limit?->unit) {
+            $values['unit'] = $limit->unit;
+        }
+        // RN-MAG-02: razón medición/límite y nivel de acción (fracción del límite, parámetro a confirmar).
+        if ($limit?->limit_value !== null && (float) $limit->limit_value > 0) {
+            $ratio = round((float) $value / (float) $limit->limit_value, 4);
+            $values['ratio_to_limit'] = $ratio;
+            $action = (float) \App\Core\Support\LegalParams::number('action_level_ratio', 0.5);
+            $values['result'] = $ratio > 1 ? 'exceeds_limit' : ($ratio >= $action ? 'action_level' : 'within_limit');
+        }
+    }
+
+    /** RN-MAG-05: la campaña se cierra con el informe del laboratorio y al menos una medición. */
+    private function campaign(array &$values, ?object $current): void
+    {
+        if (! in_array($values['status'] ?? null, ['report_received', 'closed'], true) || ! $current) {
+            return;
+        }
+        if (! $this->value($values, $current, 'report_file_id')) {
+            $this->fail('report_file_id', 'Adjunta el informe del laboratorio o proveedor del monitoreo.');
+        }
+        if (($values['status'] ?? null) === 'closed' && ! DB::selectOne('select 1 as ok from measurements where campaign_id = ? and deleted_at is null', [$current->id])) {
+            $this->fail('status', 'La campaña no tiene mediciones registradas.');
+        }
+    }
+
+    /** RN-PSI-03: completar la evaluación exige el nivel de riesgo; alto o muy alto genera su acción (en after). */
+    private function ergonomic(array &$values, ?object $current): void
+    {
+        if (($values['status'] ?? null) === 'completed' && ! $this->value($values, $current, 'risk_level')) {
+            $this->fail('risk_level', 'Indica el nivel de riesgo resultante de la evaluación.');
+        }
+        if ($current && $current->status === 'reviewed' && $values !== []) {
+            $this->conflict('La evaluación ya fue revisada: no se modifica.');
+        }
+        $values['assessor_user_id'] = $this->value($values, $current, 'assessor_user_id') ?? (string) auth()->id();
     }
 
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
     {
+        // RN-MAG-03: una medición sobre el límite crea su acción correctiva (prioridad alta) para el responsable de la campaña.
+        if ($res['table'] === 'measurements') {
+            $m = DB::selectOne('select m.*, c.responsible_user_id, p.site_id, p.area_id, p.name as point, a.name as agent from measurements m
+                                  left join monitoring_campaigns c on c.id = m.campaign_id left join monitoring_points p on p.id = m.monitoring_point_id
+                                  left join agent_types a on a.id = m.agent_type_id where m.id = ?', [$id]);
+            if ($m && $m->result === 'exceeds_limit' && ! $m->corrective_action_id) {
+                $action = \App\Modules\ACR\AutoAction::create($m->company_id, 'monitoring', $id,
+                    'Controlar la exposición sobre el límite: '.trim(($m->agent ?? 'agente').' en '.($m->point ?? 'el punto medido')),
+                    "Medido {$m->value} {$m->unit} (".round((float) $m->ratio_to_limit * 100).' % del límite).', $m->responsible_user_id, null, 'high', $m->site_id, $m->area_id);
+                DB::update('update measurements set corrective_action_id = ? where id = ?', [$action, $id]);
+            }
+        }
+        // RN-PSI-03: una evaluación ergonómica de riesgo alto o muy alto genera su acción correctiva.
+        if ($res['table'] === 'ergonomic_assessments') {
+            $e = DB::selectOne('select e.*, p.name as position from ergonomic_assessments e left join positions p on p.id = e.position_id where e.id = ?', [$id]);
+            if ($e && $e->status !== 'draft' && in_array($e->risk_level, ['high', 'very_high'], true) && ! $e->corrective_action_id) {
+                $action = \App\Modules\ACR\AutoAction::create($e->company_id, 'other', $id, 'Reducir el riesgo ergonómico'.($e->position ? " del puesto {$e->position}" : ''),
+                    $e->recommendations ?: $e->findings, $e->assessor_user_id, null, $e->risk_level === 'very_high' ? 'critical' : 'high', null, $e->area_id);
+                DB::update('update ergonomic_assessments set corrective_action_id = ? where id = ?', [$action, $id]);
+            }
+        }
+        // RN-MOC-05: las condiciones de una revisión que aprueba con condiciones se vuelven acciones para quien pidió el cambio.
+        if ($res['table'] === 'change_reviews' && $op === 'create') {
+            $r = DB::selectOne('select r.*, c.company_id as cid, c.code, c.requested_by, c.planned_implementation_on, c.site_id, c.area_id from change_reviews r
+                                  join change_requests c on c.id = r.change_request_id where r.id = ?', [$id]);
+            if ($r->decision === 'approve_with_conditions' && trim((string) $r->conditions) !== ''
+                && ! DB::selectOne("select 1 as ok from corrective_actions where source_type = 'change' and source_id = ? and description = ? and deleted_at is null", [$r->change_request_id, $r->conditions])) {
+                \App\Modules\ACR\AutoAction::create($r->cid, 'change', $r->change_request_id, "Cumplir la condición del cambio {$r->code}", $r->conditions,
+                    $r->requested_by, $r->planned_implementation_on, 'medium', $r->site_id, $r->area_id);
+            }
+        }
         // Sin límite comparable, el resultado lo indica quien registra la medición.
         if ($res['table'] === 'measurements' && DB::selectOne('select result from measurements where id = ?', [$id])?->result === null) {
             $this->fail('result', 'Indica el resultado de la medición (no hay un límite de exposición comparable).');
@@ -223,7 +309,12 @@ class ImprovementRules extends RecordRules
             }
             $values['status'] = 'draft';
             $values['requested_on'] ??= date('Y-m-d');
-
+        }
+        // RN-MOC-04: un cambio temporal tiene fecha de fin.
+        if ($this->value($values, $current, 'is_temporary') && ! $this->value($values, $current, 'temporary_until')) {
+            $this->fail('temporary_until', 'Un cambio temporal necesita su fecha de fin (cuando se revierte o se vuelve permanente).');
+        }
+        if ($op === 'create') {
             return;
         }
         $to = $values['status'] ?? null;
@@ -236,6 +327,17 @@ class ImprovementRules extends RecordRules
         if ($to === 'approved'
             && ! DB::selectOne("select 1 as ok from change_reviews where change_request_id = ? and deleted_at is null and decision in ('approve','approve_with_conditions')", [$current->id])) {
             $this->fail('status', 'Registra la revisión que aprueba el cambio (en «Revisiones») antes de aprobarlo.');
+        }
+        // RN-MOC-02: si el cambio introduce peligros nuevos, se implementa con la versión del IPERC actualizada y aprobada.
+        if ($to === 'implemented' && $this->value($values, $current, 'introduces_new_hazards')) {
+            $v = $this->value($values, $current, 'iperc_version_id');
+            if (! $v || ! in_array(DB::selectOne('select status from iperc_versions where id = ?', [$v])?->status, ['approved', 'current', 'active'], true)) {
+                $this->fail('iperc_version_id', 'El cambio introduce peligros nuevos: vincula la versión del IPERC actualizada y aprobada antes de implementarlo.');
+            }
+        }
+        // RN-MOC-05: no se cierra con condiciones pendientes.
+        if ($to === 'closed' && DB::selectOne("select 1 as ok from corrective_actions where source_type = 'change' and source_id = ? and deleted_at is null and status not in ('verified', 'closed', 'cancelled')", [$current->id])) {
+            $this->fail('status', 'Hay condiciones del cambio (acciones correctivas) sin cumplir.');
         }
         if ($to === 'implemented' && ! $this->value($values, $current, 'risk_assessment') && ! $this->value($values, $current, 'iperc_version_id')) {
             $this->fail('risk_assessment', 'Antes de implementar el cambio, registra su evaluación de riesgos o vincula la versión del IPERC actualizada.');

@@ -20827,6 +20827,17 @@
     "comment": null
    },
    {
+    "name": "ratio_to_limit",
+    "type": "numeric",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -22306,6 +22317,28 @@
    {
     "name": "closure_notes",
     "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "introduces_new_hazards",
+    "type": "boolean",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "temporary_until",
+    "type": "date",
     "not_null": false,
     "default": null,
     "values": null,

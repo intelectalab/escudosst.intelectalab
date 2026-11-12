@@ -7607,6 +7607,11 @@
      "name": "notes",
      "label": "Notas",
      "type": "longtext"
+    },
+    {
+     "name": "ratio_to_limit",
+     "label": "Razón medición / límite",
+     "type": "number"
     }
    ]
   },
@@ -8447,6 +8452,16 @@
      "name": "closure_notes",
      "label": "Notas de cierre",
      "type": "longtext"
+    },
+    {
+     "name": "introduces_new_hazards",
+     "label": "Introduce peligros nuevos",
+     "type": "bool"
+    },
+    {
+     "name": "temporary_until",
+     "label": "Cambio temporal hasta",
+     "type": "date"
     }
    ]
   },

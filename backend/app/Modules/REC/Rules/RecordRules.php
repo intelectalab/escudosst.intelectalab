@@ -82,6 +82,8 @@ abstract class RecordRules
         'measurements' => ImprovementRules::class,
         'change_requests' => ImprovementRules::class,
         'change_reviews' => ImprovementRules::class,
+        'monitoring_campaigns' => ImprovementRules::class,
+        'ergonomic_assessments' => ImprovementRules::class,
         'fitness_status' => PeopleRules::class,
         'medical_exam_orders' => PeopleRules::class,
         'absences' => PeopleRules::class,

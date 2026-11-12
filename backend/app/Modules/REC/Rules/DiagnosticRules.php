@@ -166,17 +166,9 @@ class DiagnosticRules extends RecordRules
     {
         $req = DB::selectOne("select r.article, r.requirement, r.responsible_user_id, concat_ws(' ', n.norm_type, n.number) as norm
                                 from legal_requirements r left join legal_norms n on n.id = r.legal_norm_id where r.id = ?", [$e->legal_requirement_id]);
-        $days = (int) LegalParams::number('legal_gap_action_days', 30);
-        $n = (int) DB::selectOne('select count(*) + 1 as n from corrective_actions where extract(year from created_at) = extract(year from now())')->n;
-        do {
-            $code = sprintf('AC-%s-%04d', date('Y'), $n++);
-        } while (DB::selectOne('select 1 as ok from corrective_actions where code = ? and deleted_at is null', [$code]));
-        $action = DB::selectOne(
-            "insert into corrective_actions (company_id, code, source_type, source_id, action_type, title, description, responsible_user_id, due_on, priority, status, created_by, updated_by)
-             values (?, ?, 'legal_requirement', ?, 'corrective', ?, ?, ?, current_date + ?::int, ?, 'open', ?, ?) returning id",
-            [$e->company_id, $code, $e->legal_requirement_id, mb_substr('Cumplir el requisito legal: '.trim(implode(' ', array_filter([$req->norm ?? null, $req->article ?? null]))).' — '.$req->requirement, 0, 500),
-                $e->evidence_notes, $req->responsible_user_id ?? $e->evaluator_user_id ?? (string) auth()->id(), $days, $e->result === 'non_compliant' ? 'high' : 'medium', (string) auth()->id(), (string) auth()->id()]
-        )->id;
+        $action = \App\Modules\ACR\AutoAction::create($e->company_id, 'legal_requirement', $e->legal_requirement_id,
+            'Cumplir el requisito legal: '.trim(implode(' ', array_filter([$req->norm ?? null, $req->article ?? null]))).' — '.$req->requirement,
+            $e->evidence_notes, $req->responsible_user_id ?? $e->evaluator_user_id, null, $e->result === 'non_compliant' ? 'high' : 'medium');
         DB::update('update requirement_evaluations set corrective_action_id = ? where id = ?', [$action, $e->id]);
     }
 
