@@ -16,7 +16,7 @@ it('verifica públicamente un certificado solo si la empresa lo habilitó', func
         'certificate_validity_months' => 12], $h)->json('data.id');
     $s = $this->postJson('/api/v1/records/CAP/training_sessions', ['training_id' => $t, 'session_number' => 1, 'starts_at' => now()->subHours(5)->toIso8601String(),
         'ends_at' => now()->subHour()->toIso8601String(), 'site_id' => $site], $h)->json('data.id');
-    $this->postJson('/api/v1/records/CAP/training_attendances', ['session_id' => $s, 'worker_id' => $w, 'hours' => 4], $h)->assertCreated();
+    $this->postJson('/api/v1/records/CAP/training_attendances', ['session_id' => $s, 'worker_id' => $w, 'hours' => 4, 'check_in_method' => 'list'], $h)->assertCreated();
     $this->patchJson("/api/v1/records/CAP/training_sessions/{$s}", ['status' => 'held'], $h)->assertOk();
     $this->postJson("/api/v1/cap/trainings/{$t}/certificates", [], $h)->assertOk();
     $cert = $this->getJson("/api/v1/records/CAP/training_certificates?f[training_id]={$t}", $h)->json('data.0.id');

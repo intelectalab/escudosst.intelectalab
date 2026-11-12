@@ -188,10 +188,13 @@ export function RecordActions({
   if (res.table === "dossier_share_links") return <ShareLinkRevoke row={row} onChanged={onChanged} />;
   if (res.table === "training_certificates")
     return (
-      <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line px-4 py-3 text-sm">
-        <span>Imprime o guarda en PDF el certificado con su QR. {row.public_verification_enabled ? "La verificación pública está activa." : "Activa «Verificación pública» para que el QR funcione."}</span>
-        <a href={`/imprimir/certificado/${row.id}`} target="_blank" rel="noreferrer" className="rounded-lg bg-brand px-4 py-2 font-semibold text-white">Imprimir certificado</a>
-      </section>
+      <div className="space-y-3">
+        <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line px-4 py-3 text-sm">
+          <span>Imprime o guarda en PDF el certificado con su QR. {row.public_verification_enabled ? "La verificación pública está activa." : "Activa «Verificación pública» para que el QR funcione."}</span>
+          <a href={`/imprimir/certificado/${row.id}`} target="_blank" rel="noreferrer" className="rounded-lg bg-brand px-4 py-2 font-semibold text-white">Imprimir certificado</a>
+        </section>
+        {row.status === "validated" && res.can.update && <ReissueCertificate row={row} onChanged={onChanged} />}
+      </div>
     );
   if (res.table === "risk_maps")
     return (
@@ -816,13 +819,55 @@ function IssueCertificates({ row, onChanged }: { row: RecordRow; onChanged: () =
   };
   return (
     <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line px-4 py-3 text-sm">
-      <span>Emite un certificado a cada asistente de una sesión realizada (y con evaluación aprobada si la capacitación exige nota).</span>
+      <span>Emite un certificado a cada asistente de una sesión realizada. En una capacitación presencial cuenta la asistencia firmada y con las horas mínimas de la sesión; si la capacitación exige nota, también la evaluación aprobada.</span>
       <Button variant="primary" loading={busy} onClick={issue}>Emitir certificados</Button>
       {msg && <p className="w-full text-brand-strong">{msg}</p>}
     </section>
   );
 }
 
+/** RN-CAP-11: un certificado validado no se corrige; se reemite uno nuevo que lo reemplaza y el anterior queda anulado. */
+function ReissueCertificate({ row, onChanged }: { row: RecordRow; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(String(row.holder_name ?? ""));
+  const [hours, setHours] = useState(row.hours == null ? "" : String(row.hours));
+  const [reason, setReason] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const send = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api<{ data: { certificate_code: string } }>(`/cap/certificates/${row.id}/reissue`, {
+        method: "POST", withCompany: true, body: { reason, holder_name: name || null, hours: hours === "" ? null : Number(hours) },
+      });
+      setMsg(`Se emitió el certificado ${r.data.certificate_code}; este quedó anulado.`);
+      setOpen(false);
+      onChanged();
+    } catch (e) {
+      setMsg((e as ApiError).detail ?? (e as ApiError).title);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="space-y-2 rounded-xl border border-line px-4 py-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span>¿Hay un error en el nombre o en las horas? El certificado validado no se corrige: se reemite uno nuevo que lo reemplaza.</span>
+        <Button onClick={() => setOpen(!open)}>Reemitir</Button>
+      </div>
+      {open && (
+        <div className="grid gap-2 sm:grid-cols-3">
+          <FormField label="Nombre del titular"><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></FormField>
+          <FormField label="Horas"><input className="input" type="number" min={0} step="0.5" value={hours} onChange={(e) => setHours(e.target.value)} /></FormField>
+          <FormField label="Motivo de la reemisión"><input className="input" value={reason} onChange={(e) => setReason(e.target.value)} /></FormField>
+          <div className="sm:col-span-3"><Button variant="primary" loading={busy} disabled={!reason.trim()} onClick={send}>Reemitir certificado</Button></div>
+        </div>
+      )}
+      {msg && <p className="text-brand-strong">{msg}</p>}
+    </section>
+  );
+}
 
 // ─────────────── ACC: plazo de notificación ───────────────
 

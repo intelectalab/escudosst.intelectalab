@@ -103,6 +103,9 @@ class PeopleRules extends RecordRules
                 DB::update("update medical_exam_orders set status = 'fitness_issued' where id = ? and status <> 'cancelled'", [$f->medical_exam_order_id]);
             }
         }
+        if ($res['table'] === 'absences') {
+            self::syncLeave(DB::connection(), DB::selectOne('select worker_id from absences where id = ?', [$id])->worker_id);
+        }
         if (in_array($res['table'], ['budget_lines', 'budget_executions'], true)) {
             $line = $res['table'] === 'budget_lines' ? $id : DB::selectOne('select budget_line_id from budget_executions where id = ?', [$id])->budget_line_id;
             DB::update('update budget_lines set executed_amount = (select coalesce(sum(amount), 0) from budget_executions where budget_line_id = ? and deleted_at is null) where id = ?', [$line, $line]);
@@ -180,9 +183,52 @@ class PeopleRules extends RecordRules
         if (in_array($type, ['occupational_accident', 'occupational_disease'], true)) {
             $values['is_work_related'] = true;
         }
+        // RN-DES-02: un descanso por accidente de trabajo se vincula al evento registrado en ACC.
+        if ($type === 'occupational_accident' && ! $this->value($values, $current, 'sst_event_id')) {
+            $this->fail('sst_event_id', 'Vincula el accidente de trabajo registrado que originó este descanso.');
+        }
+        $worker = $this->value($values, $current, 'worker_id');
+        $status = $this->value($values, $current, 'status') ?? 'registered';
+        // RN-DES-06: la prórroga continúa el descanso anterior del mismo trabajador, desde el día siguiente a su fin.
+        if ($prev = $this->value($values, $current, 'previous_absence_id')) {
+            $p = DB::selectOne('select worker_id, ends_on, status from absences where id = ? and deleted_at is null', [$prev]);
+            if (! $p || $p->worker_id !== $worker || $p->status === 'cancelled') {
+                $this->fail('previous_absence_id', 'La prórroga debe continuar un descanso vigente del mismo trabajador.');
+            }
+            if ($s && $s !== date('Y-m-d', strtotime($p->ends_on.' +1 day'))) {
+                $this->fail('starts_on', 'La prórroga empieza el día siguiente al fin del descanso anterior ('.date('d/m/Y', strtotime($p->ends_on.' +1 day')).').');
+            }
+        }
+        // RN-DES-04: los descansos del mismo trabajador no se superponen.
+        if ($worker && $s && $e && $status !== 'cancelled') {
+            $other = DB::selectOne(
+                "select starts_on, ends_on from absences where worker_id = ? and id <> ? and status <> 'cancelled' and deleted_at is null
+                    and daterange(starts_on, ends_on, '[]') && daterange(?::date, ?::date, '[]') limit 1",
+                [$worker, $current?->id ?? '00000000-0000-0000-0000-000000000000', $s, $e]
+            );
+            if ($other) {
+                $this->fail('starts_on', 'Se cruza con otro descanso del trabajador (del '.date('d/m/Y', strtotime($other->starts_on)).' al '.date('d/m/Y', strtotime($other->ends_on)).'). Si es una prórroga, regístrala desde el día siguiente.');
+            }
+        }
         if ($current === null) {
             $extra['registered_by'] = ['?', [(string) auth()->id()]];
         }
+    }
+
+    /**
+     * RN-DES-05: con un descanso vigente el trabajador queda «en licencia»; al terminar su último descanso vuelve a «activo».
+     * Sin $worker revisa a todos (lo usa la revisión diaria). No toca a cesados ni inactivos.
+     */
+    public static function syncLeave(\Illuminate\Database\ConnectionInterface $db, ?string $worker = null): void
+    {
+        $today = "(now() at time zone 'America/Lima')::date";
+        $current = "select 1 from absences a where a.worker_id = w.id and a.deleted_at is null and a.status in ('registered', 'validated')
+                      and a.starts_on <= {$today} and a.ends_on >= {$today}";
+        $filter = $worker ? ' and w.id = ?' : '';
+        $args = $worker ? [$worker] : [];
+        $db->update("update workers w set status = 'on_leave', updated_at = now() where w.status = 'active' and w.deleted_at is null and exists ({$current}){$filter}", $args);
+        $db->update("update workers w set status = 'active', updated_at = now() where w.status = 'on_leave' and w.deleted_at is null and not exists ({$current})
+                       and exists (select 1 from absences a where a.worker_id = w.id and a.deleted_at is null){$filter}", $args);
     }
 
     // ── Contratistas y fotocheck ──
@@ -279,10 +325,16 @@ class PeopleRules extends RecordRules
         $type = $this->value($values, $current, 'credential_type_id');
         $worker = $this->value($values, $current, 'worker_id');
         $cworker = $this->value($values, $current, 'contractor_worker_id');
+        $explicitExpiry = ! empty($values['expires_on']);
         if (! $worker && ! $cworker) {
             $this->fail('worker_id', 'Elige al trabajador (propio o del contratista).');
         }
         if ($op === 'create') {
+            // RN-FOT-09: varias credenciales de tipos distintos, pero una sola vigente por tipo.
+            if (DB::selectOne("select 1 as ok from credentials where credential_type_id = ? and (worker_id = ? or contractor_worker_id = ?)
+                                 and status in ('draft', 'issued', 'active', 'blocked') and deleted_at is null", [$type, $worker, $cworker])) {
+                $this->fail('credential_type_id', 'El trabajador ya tiene un fotocheck vigente de este tipo: revoca el anterior antes de emitir otro.');
+            }
             $n = (int) DB::selectOne('select count(*) + 1 as n from credentials')->n;
             do {
                 $num = sprintf('FOT-%s-%05d', date('Y'), $n++);
@@ -295,9 +347,7 @@ class PeopleRules extends RecordRules
             $extra['qr_payload_version'] = ['?', [1]];
             $extra['issued_by'] = ['?', [(string) auth()->id()]];
             $extra['issued_at'] = ['now()', []];
-            $months = (int) (DB::selectOne('select validity_months from credential_types where id = ?', [$type])?->validity_months ?? 12);
             $values['valid_from'] ??= date('Y-m-d');
-            $values['expires_on'] ??= date('Y-m-d', strtotime("+{$months} months"));
         }
         if (($values['status'] ?? null) === 'revoked') {
             if (! $this->value($values, $current, 'revoked_reason')) {
@@ -311,10 +361,23 @@ class PeopleRules extends RecordRules
             $this->conflict('El fotocheck está revocado.');
         }
         // Evaluación de requisitos (RN-FOT): activo si cumple todos los bloqueantes; si no, bloqueado con motivos.
-        $reasons = self::credentialReasons($type, $worker, $cworker, $this->value($values, $current, 'expires_on'));
+        // RN-FOT-02: vence con el primero de sus requisitos que venza (sin pasar la vigencia del tipo), salvo fecha indicada a mano.
+        $expires = $explicitExpiry ? $values['expires_on'] : self::credentialExpiry($type, $this->value($values, $current, 'valid_from'), $worker, $cworker);
+        $values['expires_on'] = $expires;
+        $reasons = self::credentialReasons($type, $worker, $cworker, $expires);
         $values['status'] = $reasons ? 'blocked' : 'active';
         $values['blocking_reasons'] = $reasons;
         $extra['last_evaluated_at'] = ['now()', []];
+    }
+
+    /** RN-FOT-02: fin de vigencia del fotocheck = lo que vence primero entre la vigencia del tipo y sus requisitos cumplidos. */
+    public static function credentialExpiry(?string $type, ?string $validFrom, ?string $worker, ?string $cworker): string
+    {
+        $months = (int) (DB::selectOne('select validity_months from credential_types where id = ?', [$type])?->validity_months ?? 12);
+        $base = date('Y-m-d', strtotime(($validFrom ?: date('Y-m-d'))." +{$months} months"));
+        $until = self::credentialEvaluation($type, $worker, $cworker, null)['until'];
+
+        return $until && $until < $base ? $until : $base;
     }
 
     /** Token del QR: depende de la empresa y del número (dos empresas pueden tener el mismo número). */
@@ -339,35 +402,88 @@ class PeopleRules extends RecordRules
      */
     public static function credentialReasonItems(?string $type, ?string $worker, ?string $cworker, ?string $expires): array
     {
+        return self::credentialEvaluation($type, $worker, $cworker, $expires)['reasons'];
+    }
+
+    /**
+     * Evalúa los requisitos bloqueantes del tipo de fotocheck:
+     *  - RN-FOT-01: solo los que aplican al puesto del trabajador (sin puesto en el requisito = aplica a todos).
+     *  - RN-FOT-13: un requisito con días de gracia no bloquea a quien ingresó hace menos de esos días.
+     *  - RN-FOT-02: «until» = el vencimiento más próximo de los requisitos cumplidos (null si ninguno vence).
+     * @return array{reasons: list<array{type: string, text: string}>, until: ?string}
+     */
+    public static function credentialEvaluation(?string $type, ?string $worker, ?string $cworker, ?string $expires): array
+    {
         $reasons = [];
-        foreach (DB::select('select * from credential_requirements where credential_type_id = ? and deleted_at is null and is_blocking', [$type]) as $r) {
+        $dates = [];
+        $w = $worker ? DB::selectOne('select current_position_id, hire_on from workers where id = ?', [$worker]) : null;
+        $today = date('Y-m-d');
+        $reqs = DB::select('select * from credential_requirements where credential_type_id = ? and deleted_at is null and is_blocking
+                              and (position_id is null or position_id = ?)', [$type, $w?->current_position_id]);
+        foreach ($reqs as $r) {
+            $until = null;
             $ok = match ($r->requirement_type) {
-                'emo_fitness' => $worker
-                    ? (bool) DB::selectOne("select 1 as ok from fitness_status where worker_id = ? and is_current and status in ('fit','fit_with_restrictions') and (valid_until is null or valid_until >= current_date) and deleted_at is null", [$worker])
-                    : (bool) DB::selectOne("select 1 as ok from contractor_workers where id = ? and emo_fitness in ('fit','fit_with_restrictions') and (emo_valid_until is null or emo_valid_until >= current_date)", [$cworker]),
-                'training', 'induction' => $r->training_id
-                    && (bool) DB::selectOne("select 1 as ok from training_certificates where (worker_id = ? or contractor_worker_id = ?) and training_id = ? and status = 'validated'
-                                              and (expires_on is null or expires_on >= current_date) and deleted_at is null", [$worker, $cworker, $r->training_id]),
-                'sctr' => (int) DB::selectOne("select count(distinct p.coverage_kind) as n from sctr_coverages c join sctr_policies p on p.id = c.sctr_policy_id
-                                                 where (c.worker_id = ? or c.contractor_worker_id = ?) and c.status = 'covered' and c.deleted_at is null
-                                                   and (c.covered_from is null or c.covered_from <= current_date) and (c.covered_until is null or c.covered_until >= current_date)
-                                                   and p.deleted_at is null and p.status in ('active', 'expiring') and (p.ends_on is null or p.ends_on >= current_date)
-                                                   and p.coverage_kind in ('health', 'pension')", [$worker, $cworker])->n === 2,
-                'accreditation' => $cworker
-                    ? (bool) DB::selectOne("select 1 as ok from contractor_accreditations a join contractor_workers w on w.contractor_id = a.contractor_id where w.id = ? and a.status = 'accredited' and (a.expires_on is null or a.expires_on >= current_date) and a.deleted_at is null", [$cworker])
-                    : true,
+                'emo_fitness' => (function () use ($worker, $cworker, &$until) {
+                    $f = $worker
+                        ? DB::selectOne("select valid_until from fitness_status where worker_id = ? and is_current and status in ('fit','fit_with_restrictions') and (valid_until is null or valid_until >= current_date) and deleted_at is null", [$worker])
+                        : DB::selectOne("select emo_valid_until as valid_until from contractor_workers where id = ? and emo_fitness in ('fit','fit_with_restrictions') and (emo_valid_until is null or emo_valid_until >= current_date)", [$cworker]);
+                    $until = $f?->valid_until;
+
+                    return (bool) $f;
+                })(),
+                'training', 'induction' => (function () use ($r, $worker, $cworker, &$until) {
+                    if (! $r->training_id) {
+                        return false;
+                    }
+                    $c = DB::selectOne("select count(*) as n, bool_or(expires_on is null) as forever, max(expires_on) as until from training_certificates
+                                         where (worker_id = ? or contractor_worker_id = ?) and training_id = ? and status = 'validated'
+                                           and (expires_on is null or expires_on >= current_date) and deleted_at is null", [$worker, $cworker, $r->training_id]);
+                    $until = $c->forever ? null : $c->until;
+
+                    return (int) $c->n > 0;
+                })(),
+                'sctr' => (function () use ($worker, $cworker, &$until) {
+                    $kinds = DB::select("select p.coverage_kind, max(least(coalesce(c.covered_until, 'infinity'::date), coalesce(p.ends_on, 'infinity'::date))) as until
+                                           from sctr_coverages c join sctr_policies p on p.id = c.sctr_policy_id
+                                          where (c.worker_id = ? or c.contractor_worker_id = ?) and c.status = 'covered' and c.deleted_at is null
+                                            and (c.covered_from is null or c.covered_from <= current_date) and (c.covered_until is null or c.covered_until >= current_date)
+                                            and p.deleted_at is null and p.status in ('active', 'expiring') and (p.ends_on is null or p.ends_on >= current_date)
+                                            and p.coverage_kind in ('health', 'pension') group by p.coverage_kind", [$worker, $cworker]);
+                    $ends = array_filter(array_column($kinds, 'until'), fn ($d) => $d && $d !== 'infinity');
+                    $until = $ends ? min($ends) : null;
+
+                    return count($kinds) === 2;
+                })(),
+                'accreditation' => (function () use ($cworker, &$until) {
+                    if (! $cworker) {
+                        return true;
+                    }
+                    $a = DB::selectOne("select bool_or(a.expires_on is null) as forever, max(a.expires_on) as until, count(*) as n from contractor_accreditations a join contractor_workers w on w.contractor_id = a.contractor_id
+                                         where w.id = ? and a.status = 'accredited' and (a.expires_on is null or a.expires_on >= current_date) and a.deleted_at is null", [$cworker]);
+                    $until = $a->forever ? null : $a->until;
+
+                    return (int) $a->n > 0;
+                })(),
                 default => true,
             };
-            if (! $ok) {
-                $reasons[] = ['type' => (string) $r->requirement_type, 'text' => $r->description ?: ['emo_fitness' => 'Aptitud médica vigente', 'training' => 'Capacitación vigente', 'induction' => 'Inducción',
-                    'sctr' => 'SCTR salud y pensión vigentes', 'accreditation' => 'Contratista acreditado'][$r->requirement_type] ?? $r->requirement_type];
+            if ($ok) {
+                if ($until) {
+                    $dates[] = substr((string) $until, 0, 10);
+                }
+
+                continue;
             }
+            if ((int) $r->grace_days > 0 && $w?->hire_on && date('Y-m-d', strtotime($w->hire_on.' +'.(int) $r->grace_days.' days')) >= $today) {
+                continue;
+            }
+            $reasons[] = ['type' => (string) $r->requirement_type, 'text' => $r->description ?: ['emo_fitness' => 'Aptitud médica vigente', 'training' => 'Capacitación vigente', 'induction' => 'Inducción',
+                'sctr' => 'SCTR salud y pensión vigentes', 'accreditation' => 'Contratista acreditado'][$r->requirement_type] ?? $r->requirement_type];
         }
-        if ($expires && $expires < date('Y-m-d')) {
+        if ($expires && $expires < $today) {
             $reasons[] = ['type' => 'expired', 'text' => 'Fotocheck vencido'];
         }
 
-        return $reasons;
+        return ['reasons' => $reasons, 'until' => $dates ? min($dates) : null];
     }
 
     // ── Permisos de trabajo ──

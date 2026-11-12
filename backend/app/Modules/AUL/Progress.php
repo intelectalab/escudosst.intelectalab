@@ -32,11 +32,15 @@ final class Progress
             }
         }
         $final = $w > 0 ? round($sum / $w, 2) : null;
-        $c = DB::selectOne('select hours, min_active_time_pct from courses where id = ?', [$e->course_id]);
+        $c = DB::selectOne('select hours, min_active_time_pct, passing_score from courses where id = ?', [$e->course_id]);
         $needSeconds = ($c && $c->min_active_time_pct !== null && $c->hours !== null) ? (int) ceil((float) $c->hours * 3600 * (float) $c->min_active_time_pct / 100) : 0;
         $timeOk = (int) $e->active_seconds_total >= $needSeconds;
-        $complete = $required && $done === count($required) && $timeOk;
-        $label = $final !== null ? Grading::label($final, Grading::scaleOf($e->course_id)) : null;
+        $scale = Grading::scaleOf($e->course_id);
+        // RN-AUL-10: con evaluaciones, la nota final debe alcanzar la mínima del curso.
+        $needScore = $exams ? Grading::passingPct(null, $c?->passing_score !== null ? (float) $c->passing_score : null, $scale) : null;
+        $scoreOk = $needScore === null || ($final !== null && $final >= $needScore);
+        $complete = $required && $done === count($required) && $timeOk && $scoreOk;
+        $label = $final !== null ? Grading::label($final, $scale) : null;
         $status = $complete ? 'completed' : ($e->status === 'failed' ? 'failed' : 'in_progress');
         DB::update("update course_enrollments set lesson_progress = ?::jsonb, progress_pct = ?, last_activity_at = now(), started_at = coalesce(started_at, now()),
                       status = ?, completed_at = case when ? then coalesce(completed_at, now()) else completed_at end, final_score = coalesce(?, final_score),
@@ -47,7 +51,7 @@ final class Progress
         $certificate = $complete ? self::certificate($e, $final) : null;
 
         return ['progress_pct' => $pct, 'status' => $status, 'final_score' => $final, 'final_score_label' => $label, 'certificate' => $certificate,
-            'missing_active_seconds' => max(0, $needSeconds - (int) $e->active_seconds_total)];
+            'missing_active_seconds' => max(0, $needSeconds - (int) $e->active_seconds_total), 'score_below_passing' => ! $scoreOk && $final !== null];
     }
 
     /**
@@ -74,11 +78,13 @@ final class Progress
             $code = sprintf('CERT-%s-%06d', $year, $n++);
         } while (DB::selectOne('select 1 as ok from training_certificates where certificate_code = ?', [$code]));
         $validator = $c->published_by ?? $c->created_by ?? (string) auth()->id();
+        // RN-AUL-18 / RN-CAP-04: el certificado cuenta para la capacitación de CAP ligada al curso (matriz, fotocheck, permisos).
+        $training = DB::selectOne('select id from trainings where course_id = ? and deleted_at is null order by created_at limit 1', [$c->id])?->id;
         DB::insert(
-            "insert into training_certificates (company_id, course_id, course_enrollment_id, worker_id, contractor_worker_id, external_learner_id, certificate_code, verification_code,
+            "insert into training_certificates (company_id, course_id, training_id, course_enrollment_id, worker_id, contractor_worker_id, external_learner_id, certificate_code, verification_code,
                 holder_name, holder_document_masked, course_title, issued_on, expires_on, hours, score, public_verification_enabled, status, validated_by, validated_at, created_by, updated_by)
-             values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_date, case when ?::int is null then null else (current_date + make_interval(months => ?::int))::date end, ?, ?, ?, 'validated', ?, now(), ?, ?)",
-            [$e->company_id, $c->id, $e->id, $e->worker_id, $e->contractor_worker_id, $e->external_learner_id, $code, strtoupper(substr(hash('sha256', Str::random(40)), 0, 32)),
+             values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_date, case when ?::int is null then null else (current_date + make_interval(months => ?::int))::date end, ?, ?, ?, 'validated', ?, now(), ?, ?)",
+            [$e->company_id, $c->id, $e->external_learner_id ? null : $training, $e->id, $e->worker_id, $e->contractor_worker_id, $e->external_learner_id, $code, strtoupper(substr(hash('sha256', Str::random(40)), 0, 32)),
                 $holder->name ?? 'Participante', ($holder->last4 ?? null) ? '****'.$holder->last4 : null, $c->title, $c->certificate_validity_months, $c->certificate_validity_months,
                 $c->hours, $score, $c->public_verification_enabled ? 'true' : 'false', $validator, (string) auth()->id(), (string) auth()->id()]
         );

@@ -34,6 +34,9 @@ class WorkerRules extends RecordRules
     {
         if ($res['table'] === 'workers') {
             $this->syncAssignment($id, $values, $current);
+            if ($current && ($values['current_position_id'] ?? null) && $values['current_position_id'] !== $current->current_position_id) {
+                self::recheckAdjustments($id, $values['current_position_id']);
+            }
             // Cese (M-TRB §7 paso 3, RN-EMO-08): orden de EMO de retiro, desde la ficha o desde la carga masiva «Cesar».
             if ($current && $current->status !== 'terminated' && ($values['status'] ?? null) === 'terminated') {
                 // Cese desde la ficha o desde la carga «Cesar»: cierra la asignación vigente, suspende sus accesos
@@ -61,8 +64,44 @@ class WorkerRules extends RecordRules
               where worker_id = ? and id <> ? and is_primary and ends_on is null and deleted_at is null and starts_on <= ?::date",
             [$a->starts_on, $a->worker_id, $id, $a->starts_on]
         );
+        $before = DB::selectOne('select current_position_id from workers where id = ?', [$a->worker_id])?->current_position_id;
         DB::update('update workers set current_site_id = ?, current_area_id = ?, current_position_id = ? where id = ?',
             [$a->site_id, $a->area_id, $a->position_id, $a->worker_id]);
+        if ($a->position_id && $a->position_id !== $before) {
+            self::recheckAdjustments($a->worker_id, $a->position_id);
+        }
+    }
+
+    /**
+     * M-VUL RN-VUL-02: al cambiar de puesto se vuelven a cruzar sus adecuaciones vigentes con el IPERC del nuevo puesto;
+     * si hay peligros de familias restringidas se avisa al Jefe SST para reubicar o justificar.
+     */
+    public static function recheckAdjustments(string $worker, string $position): void
+    {
+        $adj = DB::select("select id, restricted_hazard_families from work_adjustments where worker_id = ? and status in ('proposed', 'active')
+                             and deleted_at is null and coalesce(array_length(restricted_hazard_families, 1), 0) > 0", [$worker]);
+        if ($adj === []) {
+            return;
+        }
+        $vul = app(\App\Modules\VUL\VulController::class);
+        $name = DB::selectOne('select full_name from workers where id = ?', [$worker])?->full_name;
+        $team = array_column(DB::select("select m.user_id from memberships m join roles r on r.id = m.role_id
+                                          where m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = 'sst_manager'"), 'user_id');
+        foreach ($adj as $a) {
+            $families = array_filter(explode(',', trim((string) $a->restricted_hazard_families, '{}')));
+            $conflicts = $vul->conflicts($position, array_map(fn ($f) => trim($f, '"'), $families));
+            if (! $conflicts) {
+                continue;
+            }
+            DB::update('update work_adjustments set compatibility_justification = null, updated_at = now() where id = ?', [$a->id]);
+            foreach (array_unique($team) as $u) {
+                DB::insert("insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, dedupe_key)
+                            values (?, 'vul.incompatible', 'VUL', ?, ?, 'Nuevo puesto incompatible con una adecuación', ?, ?, 'high', ?) on conflict do nothing",
+                    [app(\App\Core\Tenancy\CompanyContext::class)->companyId, $a->id, $u,
+                        mb_substr("El nuevo puesto de {$name} tiene ".count($conflicts).' peligro(s) que su adecuación restringe: reubícalo o justifica por qué se mantiene.', 0, 500),
+                        '/m/vul?t=work_adjustments&open='.$a->id, 'vul.incompatible:'.$a->id.':'.$u.':'.date('Y-m-d')]);
+            }
+        }
     }
 
     private function worker(array &$values, ?object $current, array &$extra): void

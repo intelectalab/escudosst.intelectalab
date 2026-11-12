@@ -35,6 +35,7 @@ abstract class RecordRules
         'training_sessions' => ProgramRules::class,
         'training_attendances' => ProgramRules::class,
         'training_certificates' => ProgramRules::class,
+        'training_evaluations' => ProgramRules::class,
         'sst_events' => EventRules::class,
         'event_people' => EventRules::class,
         'event_notifications' => EventRules::class,

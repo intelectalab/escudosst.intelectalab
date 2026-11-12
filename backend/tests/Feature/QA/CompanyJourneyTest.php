@@ -331,7 +331,7 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
         'ends_at' => now()->subHour()->toIso8601String(), 'site_id' => $site], $a)->qaStatus(201)->json('data.id');
     $this->postJson("/api/v1/cap/trainings/{$tr}/certificates", [], $a)->assertStatus(409);   // aún no se dictó
     foreach ([$rosa, $jorge] as $w) {
-        $this->postJson('/api/v1/records/CAP/training_attendances', ['session_id' => $sess, 'worker_id' => $w, 'hours' => 2], $a)->qaStatus(201);
+        $this->postJson('/api/v1/records/CAP/training_attendances', ['session_id' => $sess, 'worker_id' => $w, 'hours' => 2, 'check_in_method' => 'list'], $a)->qaStatus(201);
     }
     $this->patchJson("/api/v1/records/CAP/training_sessions/{$sess}", ['status' => 'held'], $a)->qaStatus(200);
     expect($this->getJson("/api/v1/records/PCA/training_program_items/{$pcaItems[0]}", $a)->json('data.status'))->toBe('done');

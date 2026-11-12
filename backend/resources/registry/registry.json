@@ -13125,6 +13125,13 @@
      "name": "void_reason",
      "label": "Motivo de anulación",
      "type": "longtext"
+    },
+    {
+     "name": "replaces_certificate_id",
+     "label": "Reemplaza al certificado",
+     "readonly": true,
+     "type": "ref",
+     "ref": "training_certificates"
     }
    ]
   },
@@ -16713,6 +16720,12 @@
      ],
      "default": "registered",
      "list": true
+    },
+    {
+     "name": "previous_absence_id",
+     "label": "Prórroga de",
+     "type": "ref",
+     "ref": "absences"
     }
    ]
   },

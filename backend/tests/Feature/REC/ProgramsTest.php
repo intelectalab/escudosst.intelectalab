@@ -88,7 +88,7 @@ it('exige el mínimo legal de capacitaciones y marca el tema ejecutado con la se
         'ends_at' => now()->subHour()->toIso8601String(), 'site_id' => $site], $h)->assertCreated()->json('data.id');
     $this->patchJson("/api/v1/records/CAP/training_sessions/{$session}", ['status' => 'held'], $h)
         ->assertStatus(422)->assertJsonPath('errors.status.0', 'Registra al menos una asistencia antes de marcar la sesión como realizada.');
-    $this->postJson('/api/v1/records/CAP/training_attendances', ['session_id' => $session, 'worker_id' => $worker, 'hours' => 2], $h)->assertCreated();
+    $this->postJson('/api/v1/records/CAP/training_attendances', ['session_id' => $session, 'worker_id' => $worker, 'hours' => 2, 'check_in_method' => 'list'], $h)->assertCreated();
     $this->postJson("/api/v1/cap/trainings/{$tid}/certificates", [], $h)->assertStatus(409);
     $this->patchJson("/api/v1/records/CAP/training_sessions/{$session}", ['status' => 'held'], $h)->assertOk();
 

@@ -41,6 +41,7 @@ class ProgramRules extends RecordRules
             'training_sessions' => $this->session($op, $values, $current),
             'training_attendances' => $this->attendance($values, $current),
             'training_certificates' => $this->certificate($op, $values, $current, $extra),
+            'training_evaluations' => $this->evaluation($values, $current),
             default => null,
         };
     }
@@ -211,6 +212,37 @@ class ProgramRules extends RecordRules
         if ($current === null && ! array_key_exists('attended', $values)) {
             $values['attended'] = true;
         }
+        // RN-CAP-16: la misma persona no puede estar en dos sesiones que se cruzan en horario.
+        $who = $this->value($values, $current, 'worker_id') ? 'worker_id' : 'contractor_worker_id';
+        $clash = DB::selectOne(
+            "select t.title, o.starts_at from training_attendances a join training_sessions o on o.id = a.session_id and o.status <> 'cancelled' and o.deleted_at is null
+               join trainings t on t.id = o.training_id
+               join training_sessions s on s.id = ? and s.id <> o.id
+              where a.{$who} = ? and a.deleted_at is null and a.id <> ? and o.starts_at < s.ends_at and s.starts_at < o.ends_at limit 1",
+            [$this->value($values, $current, 'session_id'), $this->value($values, $current, $who), $current?->id ?? '00000000-0000-0000-0000-000000000000']
+        );
+        if ($clash) {
+            $this->fail($who, 'Esta persona ya está en otra sesión a la misma hora («'.$clash->title.'», '.date('d/m/Y H:i', strtotime($clash->starts_at)).').');
+        }
+    }
+
+    /** RN-CAP-02: la evaluación final tiene un número máximo de intentos (parámetro training_max_attempts). */
+    private function evaluation(array &$values, ?object $current): void
+    {
+        if ($current !== null || ($values['evaluation_type'] ?? 'post') !== 'post') {
+            return;
+        }
+        $who = ! empty($values['worker_id']) ? 'worker_id' : 'contractor_worker_id';
+        $max = (int) LegalParams::number('training_max_attempts', 3);
+        $used = (int) DB::selectOne("select count(*) as n from training_evaluations where training_id = ? and {$who} = ? and evaluation_type = 'post' and deleted_at is null",
+            [$values['training_id'] ?? null, $values[$who] ?? null])->n;
+        if ($max > 0 && $used >= $max) {
+            $this->conflict("Ya usó los {$max} intentos de la evaluación final de esta capacitación.");
+        }
+        if (DB::selectOne("select 1 as ok from training_evaluations where training_id = ? and {$who} = ? and evaluation_type = 'post' and passed and deleted_at is null",
+            [$values['training_id'] ?? null, $values[$who] ?? null])) {
+            $this->conflict('Ya aprobó la evaluación final de esta capacitación.');
+        }
     }
 
     private function sessionOpen(?string $session): void
@@ -238,6 +270,14 @@ class ProgramRules extends RecordRules
         }
         if ($current && $current->status === 'voided' && $values !== []) {
             $this->conflict('El certificado está anulado: no se modifica.');
+        }
+        // RN-CAP-11: el texto de un certificado validado no se edita; por un error de datos se reemite (uno nuevo que lo reemplaza).
+        if ($current && $current->status === 'validated') {
+            foreach (['holder_name', 'holder_document_masked', 'course_title', 'issued_on', 'expires_on', 'hours', 'score', 'score_label', 'worker_id', 'training_id'] as $f) {
+                if (array_key_exists($f, $values) && (string) $values[$f] !== (string) $current->{$f}) {
+                    $this->fail($f, 'El certificado ya está validado: no se corrige su texto. Usa «Reemitir» para emitir uno nuevo que lo reemplace.');
+                }
+            }
         }
     }
 

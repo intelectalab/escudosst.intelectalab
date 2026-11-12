@@ -10,6 +10,8 @@ beforeEach(function () {
     $GLOBALS['sus_tokens'] = [];
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
     DB::update("update feature_flags set mode = 'enabled' where company_id = ? and module_code in ('AMB', 'IAA', 'ACR') and deleted_at is null", [HUAYLAS_ID]);
+    app('auth')->forgetGuards();
+    \App\Core\Auth\Permissions::flush();
     $this->h = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
     $this->site = DB::selectOne('select id from sites where company_id = ? order by is_main desc limit 1', [HUAYLAS_ID])->id;
 });

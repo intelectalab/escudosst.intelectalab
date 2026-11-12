@@ -31989,6 +31989,17 @@
     "comment": null
    },
    {
+    "name": "replaces_certificate_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "training_certificates.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -38660,6 +38671,17 @@
      "cancelled"
     ],
     "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "previous_absence_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "absences.id",
     "encrypted": false,
     "generated": null,
     "comment": null

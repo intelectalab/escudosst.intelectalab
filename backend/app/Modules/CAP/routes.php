@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'company', 'module:CAP', 'permission:cap.trainings.read'])->prefix('cap')->group(function () {
     Route::get('matrix', \App\Modules\CAP\MatrixController::class);
     Route::post('trainings/{training}/certificates', [CertificatesController::class, 'issue'])->whereUuid('training');
+    Route::post('certificates/{id}/reissue', [CertificatesController::class, 'reissue'])->whereUuid('id');
 });
 
 // Impresión (con sesión) y verificación pública (sin sesión, con límite) de certificados y fotochecks.

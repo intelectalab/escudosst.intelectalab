@@ -1216,7 +1216,9 @@
   "overrun_reason": "Motivo de la sobreejecución",
   "ratio_to_limit": "Razón medición / límite",
   "introduces_new_hazards": "Introduce peligros nuevos",
-  "temporary_until": "Cambio temporal hasta"
+  "temporary_until": "Cambio temporal hasta",
+  "previous_absence_id": "Prórroga de",
+  "replaces_certificate_id": "Reemplaza al certificado"
  },
  "values": {
   "A": "Tipo A",

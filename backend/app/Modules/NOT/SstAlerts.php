@@ -66,11 +66,18 @@ final class SstAlerts
                 and (f.id is null or f.valid_until <= current_date + 30)
                 and not exists (select 1 from medical_exam_orders o where o.worker_id = w.id and o.deleted_at is null and o.status in ('scheduled', 'attended', 'results_received'))"
         );
-        foreach ($db->select("select id, credential_type_id, worker_id, contractor_worker_id, expires_on, status from credentials where deleted_at is null and status in ('active','blocked')") as $c) {
-            $reasons = \App\Modules\REC\Rules\PeopleRules::credentialReasons($c->credential_type_id, $c->worker_id, $c->contractor_worker_id, $c->expires_on);
+        // M-EMO RN-EMO-07: la aptitud que llegó a su fecha sin un nuevo examen queda «vencida» (luego se reevalúan los fotochecks).
+        $db->update("update fitness_status set status = 'expired', updated_at = now()
+                      where is_current and status in ('fit', 'fit_with_restrictions') and valid_until < current_date and deleted_at is null");
+        // M-DES RN-DES-05: en licencia mientras dure su descanso; vuelve a activo al terminar.
+        \App\Modules\REC\Rules\PeopleRules::syncLeave($db);
+        foreach ($db->select("select id, credential_type_id, worker_id, contractor_worker_id, valid_from, expires_on, status from credentials where deleted_at is null and status in ('active','blocked')") as $c) {
+            // RN-FOT-02: el fin de vigencia sigue al requisito que vence primero (si se renovó, se extiende hasta la vigencia del tipo).
+            $expires = \App\Modules\REC\Rules\PeopleRules::credentialExpiry($c->credential_type_id, $c->valid_from, $c->worker_id, $c->contractor_worker_id);
+            $reasons = \App\Modules\REC\Rules\PeopleRules::credentialReasons($c->credential_type_id, $c->worker_id, $c->contractor_worker_id, $expires);
             $status = $reasons ? 'blocked' : 'active';
-            $db->update('update credentials set status = ?, blocking_reasons = ?::jsonb, last_evaluated_at = '.($status !== $c->status ? 'now()' : 'last_evaluated_at').' where id = ?',
-                [$status, json_encode($reasons, JSON_UNESCAPED_UNICODE), $c->id]);
+            $db->update('update credentials set status = ?, expires_on = ?, blocking_reasons = ?::jsonb, last_evaluated_at = '.($status !== $c->status ? 'now()' : 'last_evaluated_at').' where id = ?',
+                [$status, $expires, json_encode($reasons, JSON_UNESCAPED_UNICODE), $c->id]);
         }
     }
 
