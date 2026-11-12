@@ -47,10 +47,20 @@ final class ExpiryAlerts
               returning id, contractor_id, contractor_worker_id, requirement_id, expires_on"
         );
         foreach ($expired as $d) {
-            if ($d->contractor_worker_id && $db->selectOne('select 1 as ok from contractor_requirements where id = ? and is_mandatory', [$d->requirement_id])) {
+            $mandatory = (bool) $db->selectOne('select 1 as ok from contractor_requirements where id = ? and is_mandatory', [$d->requirement_id]);
+            if ($d->contractor_worker_id && $mandatory) {
                 $db->update('update contractor_workers set access_enabled = false, updated_at = now() where id = ?', [$d->contractor_worker_id]);
             }
+            // Documento obligatorio de la empresa contratista vencido: su acreditación queda suspendida hasta renovarlo.
+            if (! $d->contractor_worker_id && $mandatory) {
+                $db->update("update contractor_accreditations set status = 'suspended', suspended_reason = ?, updated_at = now()
+                              where contractor_id = ? and status in ('accredited', 'expiring') and deleted_at is null",
+                    ['Venció un documento obligatorio de la empresa ('.date('d/m/Y', strtotime($d->expires_on)).')', $d->contractor_id]);
+            }
         }
+        // La acreditación que pasó su vigencia queda «vencida».
+        $db->update("update contractor_accreditations set status = 'expired', updated_at = now()
+                      where status in ('accredited', 'expiring', 'suspended') and coalesce(expires_on, ends_on) < current_date and deleted_at is null");
         $db->update(
             "update sctr_policies set status = case when ends_on < current_date then 'expired' else 'expiring' end, updated_at = now()
               where deleted_at is null and status in ('active', 'expiring') and contractor_id is not null

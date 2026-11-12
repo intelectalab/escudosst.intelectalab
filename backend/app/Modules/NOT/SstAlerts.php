@@ -55,6 +55,8 @@ final class SstAlerts
         $db->update("update first_aid_kits k set status = 'expired_items' where k.status in ('complete', 'incomplete') and k.deleted_at is null
                       and exists (select 1 from first_aid_kit_items i where i.kit_id = k.id and i.deleted_at is null and i.expires_on < current_date)");
         $db->update("update training_certificates set status = 'expired' where deleted_at is null and status = 'validated' and expires_on < current_date");
+        // M-HOM RN-HOM-05: la homologación aprobada que pasó su vigencia queda «vencida».
+        $db->update("update vendor_evaluations set status = 'expired', updated_at = now() where deleted_at is null and status = 'approved' and valid_until < current_date");
         // EMO periódico (R.M. 312-2011-MINSA): a quien su aptitud vence en 30 días (o no tiene) y su puesto exige EMO,
         // se le deja una orden «programada» sin fecha para que el área de salud la agende. No se duplica.
         $db->insert(
@@ -110,6 +112,10 @@ final class SstAlerts
             ['EPP', "select d.id, w.full_name as ref, i.name as name, null as owner, d.expires_on as due, 'ppe' as kind from ppe_deliveries d join workers w on w.id = d.worker_id join ppe_items i on i.id = d.ppe_item_id
                       where d.deleted_at is null and d.status = 'delivered' and d.expires_on between current_date and current_date + 15",
                 'epp.expiring', 'low', 'EPP por reponer', fn ($r) => "{$r->name} de {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/epp?t=ppe_deliveries&open=', self::SST_ROLES, false],
+            // M-HOM RN-HOM-05: la calificación del proveedor por vencer se alerta (vendor_notice_days).
+            ['HOM', "select e.id, coalesce(e.vendor_name, e.vendor_ruc) as ref, '' as name, e.evaluator_user_id as owner, e.valid_until as due, 'hom' as kind from vendor_evaluations e
+                      where e.deleted_at is null and e.status = 'approved' and e.valid_until between current_date and current_date + ".(int) \App\Core\Support\LegalParams::number('vendor_notice_days', 30),
+                'hom.expiring', 'normal', 'Homologación de proveedor por vencer', fn ($r) => "La homologación de {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/hom?t=vendor_evaluations&open=', self::SST_ROLES, false],
             ['FOT', "select c.id, c.credential_number as ref, '' as name, null as owner, c.expires_on as due, 'fot' as kind from credentials c
                       where c.deleted_at is null and c.status = 'active' and c.expires_on between current_date and current_date + 15",
                 'fot.expiring', 'low', 'Fotocheck por vencer', fn ($r) => "El fotocheck {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/fot?t=credentials&open=', self::SST_ROLES, false],

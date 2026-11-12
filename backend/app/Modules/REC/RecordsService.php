@@ -276,6 +276,14 @@ final class RecordsService
                 $sql .= " and not (r.company_id is null and exists (select 1 from \"{$target}\" o where o.company_id is not null and o.code = r.code"
                     .(Registry::softDelete($target) ? ' and o.deleted_at is null' : '').'))';
             }
+            // Para registros nuevos no se ofrecen cesados (RN-TRB-07) ni sedes temporales ya terminadas (RN-TEN-07);
+            // su historial sigue mostrando la etiqueta (búsqueda por id).
+            if ($id === null && $target === 'workers') {
+                $sql .= " and r.status <> 'terminated'";
+            }
+            if ($id === null && $target === 'sites') {
+                $sql .= " and not (coalesce(r.is_temporary, false) and r.ends_on < (now() at time zone 'America/Lima')::date)";
+            }
         }
         if ($id !== null) {
             if (! Str::isUuid($id)) {

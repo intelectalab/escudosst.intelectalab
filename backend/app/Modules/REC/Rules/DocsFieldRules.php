@@ -98,6 +98,9 @@ class DocsFieldRules extends RecordRules
                 // Un documento con versión vigente queda vigente (deja de ser borrador).
                 if ($parent === 'documents') {
                     DB::update("update documents set status = 'active' where id = ? and status = 'draft'", [$row->{$col}]);
+                    // RN-DOC-04: la próxima revisión se calcula con la vigencia de la categoría (si la tiene).
+                    DB::update("update documents d set next_review_on = ((now() at time zone 'America/Lima')::date + make_interval(months => coalesce(c.default_validity_months, c.review_period_months)))::date
+                                  from document_categories c where d.id = ? and c.id = d.category_id and coalesce(c.default_validity_months, c.review_period_months) is not null", [$row->{$col}]);
                 }
             }
         }

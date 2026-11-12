@@ -59,6 +59,11 @@ class TenRules extends RecordRules
 
     private function site(array &$values, ?object $current): void
     {
+        // RN-TEN-07: una sede temporal ya terminada queda en solo lectura (solo se puede ampliar su fecha de fin o inactivarla).
+        if ($current && $current->is_temporary && $current->ends_on && $current->ends_on < date('Y-m-d')
+            && array_diff(array_keys($values), ['ends_on', 'status']) !== []) {
+            $this->conflict('La sede temporal terminó el '.date('d/m/Y', strtotime($current->ends_on)).': queda en solo lectura. Amplía su fecha de fin si la obra sigue.');
+        }
         $status = $this->value($values, $current, 'status') ?? 'active';
         if ($current && $current->status === 'active' && $status !== 'active' && $this->otherActiveSites($current->id) === 0) {
             $this->fail('status', 'Es la única sede activa de la empresa: no puede quedar inactiva.');
@@ -102,6 +107,11 @@ class TenRules extends RecordRules
                 }
             }
             $depth = (int) $p->depth + 1;
+            // RN-TEN-08: profundidad máxima del árbol de áreas (parámetro max_area_depth; el primer nivel es 1).
+            $max = (int) \App\Core\Support\LegalParams::number('max_area_depth', 5);
+            if ($max > 0 && $depth + 1 > $max) {
+                $this->fail('parent_area_id', "El árbol de áreas admite hasta {$max} niveles: elige un área superior de un nivel más alto.");
+            }
         }
         if ($current && array_key_exists('site_id', $values) && $values['site_id'] !== $current->site_id
             && DB::selectOne('select 1 as ok from areas where parent_area_id = ? and deleted_at is null limit 1', [$current->id])) {

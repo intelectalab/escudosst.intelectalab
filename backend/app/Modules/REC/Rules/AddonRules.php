@@ -45,7 +45,8 @@ class AddonRules extends RecordRules
             $this->fail('ends_on', 'La fecha de fin no puede ser anterior a la de inicio.');
         }
         if ($e && ($this->value($values, $current, 'status') ?? 'active') !== 'cancelled') {
-            $values['status'] = $e < date('Y-m-d') ? 'expired' : ($e <= date('Y-m-d', strtotime('+30 days')) ? 'expiring' : 'active');
+            $notice = (int) \App\Core\Support\LegalParams::number('sctr_policy_notice_days', 15);
+            $values['status'] = $e < date('Y-m-d') ? 'expired' : ($e <= date('Y-m-d', strtotime("+{$notice} days")) ? 'expiring' : 'active');
         }
     }
 
@@ -61,6 +62,19 @@ class AddonRules extends RecordRules
         }
         $until = $values['covered_until'];
         $values['status'] = $policy?->status === 'cancelled' || ($until && $until < date('Y-m-d')) ? 'expired' : 'covered';
+        // RN-SCT-08: una sola cobertura por trabajador, tipo (salud / pensión) y periodo.
+        $who = $this->value($values, $current, 'worker_id') ? 'worker_id' : 'contractor_worker_id';
+        $dup = DB::selectOne(
+            "select p.policy_number from sctr_coverages c join sctr_policies p on p.id = c.sctr_policy_id and p.deleted_at is null
+              where c.{$who} = ? and c.id <> ? and c.deleted_at is null and c.status = 'covered'
+                and p.coverage_kind = (select coverage_kind from sctr_policies where id = ?)
+                and daterange(c.covered_from, c.covered_until, '[]') && daterange(?::date, ?::date, '[]') limit 1",
+            [$this->value($values, $current, $who), $current?->id ?? '00000000-0000-0000-0000-000000000000', $this->value($values, $current, 'sctr_policy_id'),
+                $this->value($values, $current, 'covered_from'), $until]
+        );
+        if ($dup) {
+            $this->fail($who, "El trabajador ya tiene cobertura de este tipo en ese periodo (póliza N.° {$dup->policy_number}).");
+        }
     }
 
     private function access(array &$values, array &$extra): void
@@ -202,6 +216,18 @@ class AddonRules extends RecordRules
 
     private function vendor(array &$values, ?object $current, array &$extra): void
     {
+        // RN-HOM-04: una evaluación aprobada no se edita (solo puede pasar a vencida).
+        if ($current && $current->status === 'approved' && array_diff(array_keys($values), ['status']) !== []) {
+            $this->conflict('La evaluación está aprobada: no se edita. Crea una nueva para volver a evaluar al proveedor.');
+        }
+        if ($current && $current->status === 'approved' && ($values['status'] ?? 'approved') !== 'expired' && ($values['status'] ?? 'approved') !== 'approved') {
+            $this->fail('status', 'Una evaluación aprobada solo puede pasar a vencida.');
+        }
+        // RN-HOM-03: al aprobarse vale hasta la fecha de evaluación + vendor_validity_months.
+        if (($values['status'] ?? null) === 'approved' && $current?->status !== 'approved' && ! $this->value($values, $current, 'valid_until')) {
+            $months = (int) \App\Core\Support\LegalParams::number('vendor_validity_months', 12);
+            $values['valid_until'] = date('Y-m-d', strtotime(($this->value($values, $current, 'evaluated_on') ?? date('Y-m-d'))." +{$months} months"));
+        }
         if ($current === null) {
             $extra['scores'] = ["'{}'::jsonb", []];   // se califican después con «Calificar»
         }

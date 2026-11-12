@@ -249,6 +249,18 @@ class AccountsService
             throw $this->validation('plan', 'Ese plan no está activo.');
         }
         $account = $this->findAccount($accountId);
+        // RN-TEN-02: la cuenta no supera el número de empresas activas que permite su plan vigente (si el plan lo limita).
+        $limit = $this->db()->selectOne(
+            "select max(p.max_companies) as m, count(*) filter (where p.max_companies is null) as unlimited from companies c
+               join subscriptions s on s.company_id = c.id and s.deleted_at is null and s.status in ('trialing', 'active', 'past_due', 'grace')
+               join plans p on p.id = s.plan_id
+              where c.account_id = ? and c.deleted_at is null and c.status = 'active'", [$accountId]);
+        if ($limit && (int) $limit->unlimited === 0 && $limit->m !== null) {
+            $active = (int) $this->db()->selectOne("select count(*) as n from companies where account_id = ? and deleted_at is null and status = 'active'", [$accountId])->n;
+            if ($active >= (int) $limit->m) {
+                throw $this->validation('plan', "El plan de la cuenta permite hasta {$limit->m} empresa(s) activa(s): mejora el plan para agregar otra.");
+            }
+        }
 
         $ids = $this->db()->transaction(function () use ($accountId, $account, $data, $ruc, $plan, $actorUserId) {
             $this->db()->select("select set_config('app.user_id', ?, true)", [$actorUserId]);
