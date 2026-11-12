@@ -1894,7 +1894,11 @@
   "psychosocial_surveys.instrument.custom": "Cuestionario base EscudoSST",
   "psychosocial_surveys.instrument.istas21": "ISTAS21 (requiere licencia)",
   "psychosocial_surveys.instrument.copsoq": "CoPsoQ (requiere licencia)",
-  "environmental_aspect": "Aspecto ambiental"
+  "environmental_aspect": "Aspecto ambiental",
+  "installed": "Instalado",
+  "update_available": "Actualización disponible",
+  "updated": "Actualizado",
+  "uninstalled": "Desinstalado"
  },
  "tables": {
   "absences": "Ausencias",

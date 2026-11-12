@@ -23518,15 +23518,23 @@
      "type": "enum",
      "options": [
       {
-       "value": "active",
-       "label": "Activo"
+       "value": "installed",
+       "label": "Instalado"
       },
       {
-       "value": "removed",
-       "label": "Retirado"
+       "value": "update_available",
+       "label": "Actualización disponible"
+      },
+      {
+       "value": "updated",
+       "label": "Actualizado"
+      },
+      {
+       "value": "uninstalled",
+       "label": "Desinstalado"
       }
      ],
-     "default": "active",
+     "default": "installed",
      "list": true
     }
    ]

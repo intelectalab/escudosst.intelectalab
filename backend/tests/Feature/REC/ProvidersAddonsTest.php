@@ -89,9 +89,10 @@ it('ISO evalúa las cláusulas con los datos de los módulos y PSE aplica el paq
     expect($this->getJson('/api/v1/records/ISO/iso_evidences', $h)->json('meta.total'))->toBe($r->json('data.total'));
 
     $pack = collect($this->getJson('/api/v1/pse/packs', $h)->assertOk()->json('data'))->firstWhere('code', 'PSE-CONST');
-    $a = $this->postJson("/api/v1/pse/packs/{$pack['id']}/apply", [], $h)->assertOk()->json('data.applied');
-    expect(collect($a)->pluck('type')->all())->toContain('Capacitación');
-    $this->postJson("/api/v1/pse/packs/{$pack['id']}/apply", [], $h)->assertStatus(409);
+    $a = $this->postJson("/api/v1/pse/packs/{$pack['id']}/apply", [], $h)->assertCreated()->json('data');
+    expect(collect([...$a['installed'], ...$a['linked']])->pluck('type')->all())->toContain('Capacitación');
+    // Reinstalar no duplica (RN-PSE-02): ya no queda nada por instalar.
+    expect($this->postJson("/api/v1/pse/packs/{$pack['id']}/apply", [], $h)->assertCreated()->json('data.installed'))->toBe([]);
 });
 
 it('venta de cursos con pago manual: pedido, pago con número de operación, matrícula de la persona y licencia de la empresa', function () {

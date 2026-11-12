@@ -52049,10 +52049,12 @@
     "name": "status",
     "type": "text",
     "not_null": true,
-    "default": "'active'",
+    "default": "'installed'",
     "values": [
-     "active",
-     "removed"
+     "installed",
+     "update_available",
+     "updated",
+     "uninstalled"
     ],
     "ref": null,
     "encrypted": false,
