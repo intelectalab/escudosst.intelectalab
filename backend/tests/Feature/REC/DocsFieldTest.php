@@ -79,6 +79,7 @@ it('el simulacro evaluado vinculado al PASST registra su ejecución sola', funct
     $prog = $this->postJson('/api/v1/records/PAS/annual_programs', ['year' => (int) now()->year + 2, 'title' => 'PASST'], $h)->json('data.id');
     $act = $this->postJson('/api/v1/records/PAS/program_activities', ['program_id' => $prog, 'code' => 'SIM-1', 'title' => 'Simulacro de sismo',
         'activity_type' => 'drill', 'goal_quantity' => 2], $h)->json('data.id');
+    linkProgramObjective($prog, ANDINAS_ID);
     $this->patchJson("/api/v1/records/PAS/annual_programs/{$prog}", ['status' => 'approved'], $h)->assertOk();
 
     $site = $this->postJson('/api/v1/records/TEN/sites', ['code' => 'SIM-S', 'name' => 'Sede simulacro'], $h)->json('data.id');
@@ -86,7 +87,8 @@ it('el simulacro evaluado vinculado al PASST registra su ejecución sola', funct
         'scheduled_at' => now()->toIso8601String(), 'program_activity_id' => $act], $h)->assertCreated()->json('data.id');
     $this->patchJson("/api/v1/records/SIM/drills/{$d}", ['status' => 'evaluated'], $h)->assertStatus(422);
     $this->patchJson("/api/v1/records/SIM/drills/{$d}", ['status' => 'executed'], $h)->assertOk();
-    $this->patchJson("/api/v1/records/SIM/drills/{$d}", ['status' => 'evaluated', 'result' => 'satisfactory'], $h)->assertOk();
+    $report = $this->post('/api/v1/files', ['file' => \Illuminate\Http\UploadedFile::fake()->create('informe.pdf', 20, 'application/pdf'), 'module' => 'SIM'], $h + ['Accept' => 'application/json'])->assertCreated()->json('data.id');
+    $this->patchJson("/api/v1/records/SIM/drills/{$d}", ['status' => 'evaluated', 'result' => 'satisfactory', 'report_file_id' => $report], $h)->assertOk();
 
     $this->getJson("/api/v1/records/PAS/program_activities/{$act}", $h)->assertJsonPath('data.executed_quantity', 1)->assertJsonPath('data.progress_pct', 50);
     $tr = $this->getJson("/api/v1/records/SIM/drills/{$d}/trace", $h)->json('data');
@@ -106,6 +108,7 @@ it('la revisión de un equipo de emergencia actualiza su estado y próximo mante
 
 it('calcula el logro de la meta de un objetivo', function () {
     $h = df();
+    currentPolicy(ANDINAS_ID);
     $obj = $this->postJson('/api/v1/records/POL/sst_objectives', ['year' => 2026, 'code' => 'OBJ-1', 'title' => 'Reducir accidentes', 'target_value' => 0], $h)->json('data.id');
     $t = $this->postJson('/api/v1/records/POL/objective_targets', ['objective_id' => $obj, 'period_label' => 'Semestre 1', 'target_value' => 10, 'actual_value' => 8], $h)
         ->assertCreated();

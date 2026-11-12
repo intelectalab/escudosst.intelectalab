@@ -33,6 +33,20 @@ class WorkerRequirements extends Controller
         if (count($ids) > 50) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Revisa hasta 50 trabajadores a la vez.', ['errors' => ['ids' => ['Revisa hasta 50 trabajadores a la vez.']]]);
         }
+        $out = $this->evaluate($ids);
+        if ($out === []) {
+            throw ApiProblem::notFound('Los trabajadores no existen en esta empresa.');
+        }
+
+        return response()->json(['data' => $out]);
+    }
+
+    /** Semáforo de requisitos de los trabajadores indicados (lo usan esta ruta y la aprobación del PETAR, RN-PTR-01). */
+    public function evaluate(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
         $this->today = DB::selectOne("select (now() at time zone 'America/Lima')::date as d")->d;
         $this->soon = date('Y-m-d', strtotime($this->today.' +'.self::SOON_DAYS.' days'));
 
@@ -65,11 +79,8 @@ class WorkerRequirements extends Controller
                 'checks' => $checks,
             ];
         }
-        if ($out === []) {
-            throw ApiProblem::notFound('Los trabajadores no existen en esta empresa.');
-        }
 
-        return response()->json(['data' => $out]);
+        return $out;
     }
 
     private function byDate(?string $until): string

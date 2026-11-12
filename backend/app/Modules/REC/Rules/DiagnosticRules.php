@@ -43,8 +43,12 @@ class DiagnosticRules extends RecordRules
             $this->gaps($id);
         }
         if ($res['table'] === 'requirement_evaluations') {
-            $e = DB::selectOne('select legal_requirement_id, evaluated_on, next_evaluation_on from requirement_evaluations where id = ?', [$id]);
+            $e = DB::selectOne('select * from requirement_evaluations where id = ?', [$id]);
             DB::update('update legal_requirements set next_evaluation_on = ? where id = ?', [$e->next_evaluation_on, $e->legal_requirement_id]);
+            // RN-MRL-04: «parcial» o «no cumple» sin acción vinculada crea su acción correctiva (responsable: quien evaluó).
+            if (in_array($e->result, ['partial', 'non_compliant'], true) && ! $e->corrective_action_id) {
+                $this->actionForEvaluation($e);
+            }
         }
     }
 
@@ -96,6 +100,11 @@ class DiagnosticRules extends RecordRules
         $result = $this->value($values, $current, 'result') ?? 'pending';
         if ($result === 'not_applicable' && ! $this->value($values, $current, 'evidence_notes')) {
             $this->fail('evidence_notes', 'Si el ítem no aplica, explica por qué en las notas.');
+        }
+        // RN-LBA-04: con «require_evidence_on_compliance» activo, un «cumple» lleva evidencia (archivo o nota que remita al registro).
+        if ($result === 'compliant' && LegalParams::number('require_evidence_on_compliance', 0) > 0
+            && ! $this->value($values, $current, 'evidence_file_id') && ! trim((string) $this->value($values, $current, 'evidence_notes'))) {
+            $this->fail('evidence_file_id', 'Para marcar «cumple» adjunta la evidencia o indica en las notas el registro que lo demuestra.');
         }
         $extra['score'] = array_key_exists($result, self::SCORE) ? ['?', [self::SCORE[$result]]] : ['null', []];
     }
@@ -151,6 +160,24 @@ class DiagnosticRules extends RecordRules
         if ($status === 'not_applicable') {
             $values['applies'] = false;
         }
+    }
+
+    private function actionForEvaluation(object $e): void
+    {
+        $req = DB::selectOne("select r.article, r.requirement, r.responsible_user_id, concat_ws(' ', n.norm_type, n.number) as norm
+                                from legal_requirements r left join legal_norms n on n.id = r.legal_norm_id where r.id = ?", [$e->legal_requirement_id]);
+        $days = (int) LegalParams::number('legal_gap_action_days', 30);
+        $n = (int) DB::selectOne('select count(*) + 1 as n from corrective_actions where extract(year from created_at) = extract(year from now())')->n;
+        do {
+            $code = sprintf('AC-%s-%04d', date('Y'), $n++);
+        } while (DB::selectOne('select 1 as ok from corrective_actions where code = ? and deleted_at is null', [$code]));
+        $action = DB::selectOne(
+            "insert into corrective_actions (company_id, code, source_type, source_id, action_type, title, description, responsible_user_id, due_on, priority, status, created_by, updated_by)
+             values (?, ?, 'legal_requirement', ?, 'corrective', ?, ?, ?, current_date + ?::int, ?, 'open', ?, ?) returning id",
+            [$e->company_id, $code, $e->legal_requirement_id, mb_substr('Cumplir el requisito legal: '.trim(implode(' ', array_filter([$req->norm ?? null, $req->article ?? null]))).' — '.$req->requirement, 0, 500),
+                $e->evidence_notes, $req->responsible_user_id ?? $e->evaluator_user_id ?? (string) auth()->id(), $days, $e->result === 'non_compliant' ? 'high' : 'medium', (string) auth()->id(), (string) auth()->id()]
+        )->id;
+        DB::update('update requirement_evaluations set corrective_action_id = ? where id = ?', [$action, $e->id]);
     }
 
     private function evaluation(string $op, array &$values): void

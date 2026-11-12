@@ -4946,10 +4946,19 @@
       {
        "value": "signed",
        "label": "Firmado"
+      },
+      {
+       "value": "voided",
+       "label": "Anulado"
       }
      ],
      "default": "pending",
      "list": true
+    },
+    {
+     "name": "void_reason",
+     "label": "Motivo de anulación",
+     "type": "longtext"
     }
    ]
   },
@@ -6042,6 +6051,16 @@
      "readonly": true,
      "type": "ref",
      "ref": "users"
+    },
+    {
+     "name": "is_overrun",
+     "label": "Sobreejecución",
+     "type": "bool"
+    },
+    {
+     "name": "overrun_reason",
+     "label": "Motivo de la sobreejecución",
+     "type": "longtext"
     }
    ]
   },
@@ -10007,6 +10026,11 @@
      ],
      "default": "draft",
      "list": true
+    },
+    {
+     "name": "is_high_risk",
+     "label": "Tarea de alto riesgo",
+     "type": "bool"
     }
    ]
   },
@@ -10149,6 +10173,11 @@
      "label": "Firmado el",
      "type": "datetime",
      "list": true
+    },
+    {
+     "name": "late_signature",
+     "label": "Firma tardía",
+     "type": "bool"
     }
    ]
   },
@@ -10382,8 +10411,7 @@
     {
      "name": "crew",
      "label": "Cuadrilla",
-     "type": "json",
-     "readonly": true
+     "type": "json"
     },
     {
      "name": "requested_by",
@@ -10420,14 +10448,12 @@
     {
      "name": "gas_measurements",
      "label": "Mediciones de gases",
-     "type": "json",
-     "readonly": true
+     "type": "json"
     },
     {
      "name": "isolation_points",
      "label": "Puntos de aislamiento",
-     "type": "json",
-     "readonly": true
+     "type": "json"
     },
     {
      "name": "status",
@@ -19472,6 +19498,10 @@
       {
        "value": "other",
        "label": "Otro"
+      },
+      {
+       "value": "equipment_check",
+       "label": "Revisión de equipo de emergencia"
       }
      ],
      "required": true,

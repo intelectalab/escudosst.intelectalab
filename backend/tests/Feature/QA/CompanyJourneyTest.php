@@ -259,8 +259,16 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
     $prog = $this->postJson('/api/v1/records/PAS/annual_programs', ['year' => $year, 'title' => "PASST {$year}"], $a)->qaStatus(201)->json('data.id');
     $act = $this->postJson('/api/v1/records/PAS/program_activities', ['program_id' => $prog, 'code' => 'A-1', 'title' => 'Inspecciones de orden y limpieza',
         'activity_type' => 'inspection', 'goal_quantity' => 4, 'planned_months' => [1, 4, 7, 10]], $a)->qaStatus(201)->json('data.id');
+    // Cada actividad se liga a un objetivo de la política vigente (RN-PAS-06, RN-POL-05).
+    $this->patchJson("/api/v1/records/PAS/annual_programs/{$prog}", ['status' => 'approved'], $a)->assertStatus(422);
+    $obj = $this->postJson('/api/v1/records/POL/sst_objectives', ['year' => $year, 'code' => 'OBJ-1', 'title' => 'Cero accidentes incapacitantes'], $a)->qaStatus(201)
+        ->assertJsonPath('data.policy_id', $pol)->json('data.id');
+    $this->patchJson("/api/v1/records/PAS/program_activities/{$act}", ['objective_id' => $obj], $a)->qaStatus(200);
     $this->patchJson("/api/v1/records/PAS/annual_programs/{$prog}", ['status' => 'approved'], $a)->qaStatus(200);
-    $this->postJson('/api/v1/records/PAS/activity_executions', ['activity_id' => $act, 'executed_on' => $today, 'quantity' => 1, 'description' => 'Primera inspección'], $a)->qaStatus(201);
+    // La ejecución lleva su evidencia (RN-PAS-04).
+    $acta = $this->post('/api/v1/files', ['file' => \Illuminate\Http\UploadedFile::fake()->create('acta.pdf', 20, 'application/pdf'), 'module' => 'PAS'], $a + ['Accept' => 'application/json'])->qaStatus(201)->json('data.id');
+    $this->postJson('/api/v1/records/PAS/activity_executions', ['activity_id' => $act, 'executed_on' => $today, 'quantity' => 1, 'description' => 'Primera inspección',
+        'evidence_file_id' => $acta], $a)->qaStatus(201);
     expect($this->getJson("/api/v1/records/PAS/annual_programs/{$prog}", $a)->json('data.status'))->toBe('in_execution');
     $pca = $this->postJson('/api/v1/records/PCA/training_programs', ['year' => $year, 'title' => "Capacitaciones {$year}"], $a)->qaStatus(201)->json('data.id');
     $pcaItems = [];

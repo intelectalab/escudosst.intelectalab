@@ -48,6 +48,12 @@ final class SstAlerts
         // M-ACR RN-ACR-07: una acción abierta o en curso pasa a «vencida» al pasar su fecha meta.
         $db->update("update corrective_actions set status = 'overdue', updated_at = now()
                       where status in ('open', 'in_progress') and due_on < (now() at time zone 'America/Lima')::date and deleted_at is null");
+        // M-PTR RN-PTR-05: un permiso aprobado (o esperando aprobación) cuyo horario terminó sin iniciarse queda «vencido».
+        $db->update("update work_permits set status = 'expired', updated_at = now()
+                      where status in ('pending_approval', 'approved') and valid_until < now() and deleted_at is null");
+        // M-EQE RN-EQE-04: un botiquín con ítems vencidos pasa a «con vencidos».
+        $db->update("update first_aid_kits k set status = 'expired_items' where k.status in ('complete', 'incomplete') and k.deleted_at is null
+                      and exists (select 1 from first_aid_kit_items i where i.kit_id = k.id and i.deleted_at is null and i.expires_on < current_date)");
         $db->update("update training_certificates set status = 'expired' where deleted_at is null and status = 'validated' and expires_on < current_date");
         // EMO periódico (R.M. 312-2011-MINSA): a quien su aptitud vence en 30 días (o no tiene) y su puesto exige EMO,
         // se le deja una orden «programada» sin fecha para que el área de salud la agende. No se duplica.

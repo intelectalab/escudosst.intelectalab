@@ -132,6 +132,11 @@ class PpeCommitteeRules extends RecordRules
         if ($emp + $wrk === 0 || ($emp + $wrk) % 2 !== 0 || $emp !== $wrk) {
             $this->fail('status', "Para activar el comité, los titulares deben ser pares y mitad por cada lado (hoy: {$emp} del empleador y {$wrk} de los trabajadores).");
         }
+        // RN-COM-01: entre el mínimo y el máximo de titulares (D.S. 005-2012-TR art. 43; parámetros a confirmar).
+        [$min, $max] = [(int) \App\Core\Support\LegalParams::number('committee_min_members', 4), (int) \App\Core\Support\LegalParams::number('committee_max_members', 12)];
+        if ($emp + $wrk < $min || $emp + $wrk > $max) {
+            $this->fail('status', "El comité tiene entre {$min} y {$max} miembros titulares (hoy: ".($emp + $wrk).').');
+        }
         $values['installation_on'] ??= date('Y-m-d');
     }
 

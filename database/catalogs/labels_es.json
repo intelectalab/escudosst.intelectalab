@@ -1209,7 +1209,11 @@
   "management_cause_justification": "Justificación (sin causa de gestión)",
   "addenda": "Adendas",
   "original_due_on": "Fecha meta original",
-  "extension_approved_by": "Ampliación aprobada por"
+  "extension_approved_by": "Ampliación aprobada por",
+  "late_signature": "Firma tardía",
+  "is_high_risk": "Tarea de alto riesgo",
+  "is_overrun": "Sobreejecución",
+  "overrun_reason": "Motivo de la sobreejecución"
  },
  "values": {
   "A": "Tipo A",
@@ -1903,7 +1907,8 @@
   "installed": "Instalado",
   "update_available": "Actualización disponible",
   "updated": "Actualizado",
-  "uninstalled": "Desinstalado"
+  "uninstalled": "Desinstalado",
+  "equipment_check": "Revisión de equipo de emergencia"
  },
  "tables": {
   "absences": "Ausencias",

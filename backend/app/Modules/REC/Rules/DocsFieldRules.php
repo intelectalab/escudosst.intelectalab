@@ -48,6 +48,9 @@ class DocsFieldRules extends RecordRules
         match ($t) {
             'substandard_reports' => $this->report($op, $values, $current, $extra),
             'safety_talks' => $this->talk($values, $current),
+            'talk_attendances' => $this->attendance($values, $current),
+            'ats_steps' => $this->atsChild($values, $current, false),
+            'ats_participants' => $this->atsChild($values, $current, true),
             'ats_forms' => $this->ats($op, $values, $current, $extra),
             'drills' => $this->drill($op, $values, $current),
             'objective_targets' => $this->target($values, $current, $extra),
@@ -261,9 +264,49 @@ class DocsFieldRules extends RecordRules
             }
             $values['status'] ??= 'scheduled';
         }
+        // RN-CH5-04: una charla realizada no se modifica (su asistencia es evidencia de capacitación).
+        if ($current && $current->status === 'held' && $values !== []) {
+            $this->conflict('La charla ya se realizó: no se modifica. Si hubo un error, registra una nueva charla.');
+        }
+        // RN-CH5-01: se marca «realizada» con al menos un asistente que firmó (o registrado por QR o lista física).
         if (($values['status'] ?? null) === 'held' && $current
-            && ! DB::selectOne('select 1 as ok from talk_attendances where safety_talk_id = ? and deleted_at is null', [$current->id])) {
-            $this->fail('status', 'Registra la asistencia de la charla antes de marcarla como realizada.');
+            && ! DB::selectOne("select 1 as ok from talk_attendances where safety_talk_id = ? and deleted_at is null and (signature_id is not null or method <> 'signature')", [$current->id])) {
+            $this->fail('status', DB::selectOne('select 1 as ok from talk_attendances where safety_talk_id = ? and deleted_at is null', [$current->id])
+                ? 'Ningún asistente firmó todavía: registra al menos una firma antes de marcar la charla como realizada.'
+                : 'Registra la asistencia de la charla antes de marcarla como realizada.');
+        }
+    }
+
+    /** RN-CH5-04: la asistencia de una charla realizada o cancelada ya no cambia. */
+    private function attendance(array &$values, ?object $current): void
+    {
+        $talk = $this->value($values, $current, 'safety_talk_id');
+        $st = $talk ? DB::selectOne('select status from safety_talks where id = ?', [$talk])?->status : null;
+        if (in_array($st, ['held', 'cancelled'], true)) {
+            $this->conflict($st === 'held' ? 'La charla ya se realizó: su asistencia no se modifica.' : 'La charla está cancelada.');
+        }
+    }
+
+    /** RN-ATS-04: un ATS firmado o en ejecución no cambia sus pasos; los participantes que llegan tarde firman con marca de firma tardía. */
+    private function atsChild(array &$values, ?object $current, bool $participant): void
+    {
+        unset($values['late_signature']);   // la marca la pone el sistema
+        $ats = $this->value($values, $current, 'ats_form_id');
+        $st = $ats ? DB::selectOne('select status from ats_forms where id = ?', [$ats])?->status : null;
+        if (in_array($st, ['closed', 'cancelled'], true)) {
+            $this->conflict('El ATS está cerrado: no se modifica.');
+        }
+        if (in_array($st, ['signed', 'in_execution'], true)) {
+            if (! $participant) {
+                $this->conflict('El ATS ya fue firmado: sus pasos, peligros y controles no se cambian. Si la tarea cambió, haz un ATS nuevo.');
+            }
+            if ($current && $current->signed_at && $values !== []) {
+                $this->conflict('Esta firma ya está registrada: no se modifica.');
+            }
+            // RN-ATS-02: quien se suma después de firmado el ATS firma con marca de «firma tardía».
+            if ($current === null || ($values['signed_at'] ?? null)) {
+                $values['late_signature'] = true;
+            }
         }
     }
 
@@ -280,6 +323,15 @@ class DocsFieldRules extends RecordRules
         if ($current && $to && $to !== $current->status && ! in_array($to, $flow[$current->status] ?? [], true)) {
             $this->fail('status', $current->status === 'draft' ? 'Primero firma el ATS con todos los participantes.' : 'Ese cambio de estado no está permitido.');
         }
+        // RN-ATS-07: una tarea de alto riesgo necesita su PETAR vinculado.
+        if (in_array($to, ['signed', 'in_execution'], true) && $current && $this->value($values, $current, 'is_high_risk') && ! $this->value($values, $current, 'work_permit_id')) {
+            $this->fail('work_permit_id', 'Es una tarea de alto riesgo: vincula su permiso de trabajo (PETAR) antes de firmar el ATS.');
+        }
+        // RN-ATS-04: firmado o en ejecución, el ATS solo cambia de estado.
+        if ($current && in_array($current->status, ['signed', 'in_execution'], true)
+            && array_diff(array_keys($values), ['status', 'started_at', 'closed_at', 'work_permit_id']) !== [] && ($to === null || $to === $current->status)) {
+            $this->conflict('El ATS ya fue firmado: no se edita. Si la tarea cambió, devuélvelo a borrador (antes de iniciar) o haz un ATS nuevo.');
+        }
         if ($to === 'signed' && $current) {
             $unsigned = (int) DB::selectOne('select count(*) as n from ats_participants where ats_form_id = ? and deleted_at is null and signed_at is null', [$current->id])->n;
             if ($unsigned > 0) {
@@ -293,6 +345,10 @@ class DocsFieldRules extends RecordRules
             if (! DB::selectOne('select 1 as ok from ats_participants where ats_form_id = ? and deleted_at is null', [$current->id])) {
                 $this->fail('status', 'Registra a los trabajadores que participan antes de firmar el ATS.');
             }
+        }
+        // RN-ATS-01: lo firma el supervisor responsable y al menos un ejecutante.
+        if ($to === 'signed' && $current && ! $this->value($values, $current, 'supervisor_user_id')) {
+            $this->fail('supervisor_user_id', 'Indica al supervisor responsable que firma el ATS.');
         }
         if ($to === 'in_execution') {
             $values['started_at'] = $this->value($values, $current, 'started_at') ?? now()->toIso8601String();
@@ -313,6 +369,10 @@ class DocsFieldRules extends RecordRules
                 $values['code'] = sprintf('SIM-%s-%04d', date('Y'), $n++);
             } while (DB::selectOne('select 1 as ok from drills where code = ? and deleted_at is null', [$values['code']]));
         }
+        // RN-SIM-05: evaluado (o cancelado) el simulacro ya no se edita.
+        if ($current && in_array($current->status, ['evaluated', 'cancelled'], true) && $values !== []) {
+            $this->conflict($current->status === 'evaluated' ? 'El simulacro ya fue evaluado: no se modifica.' : 'El simulacro está cancelado.');
+        }
         $to = $values['status'] ?? null;
         if ($to === 'executed') {
             $values['executed_at'] = $this->value($values, $current, 'executed_at') ?? now()->toIso8601String();
@@ -323,6 +383,9 @@ class DocsFieldRules extends RecordRules
             }
             if (! $this->value($values, $current, 'result')) {
                 $this->fail('result', 'Para evaluar el simulacro indica el resultado.');
+            }
+            if (! $this->value($values, $current, 'report_file_id')) {
+                $this->fail('report_file_id', 'Para evaluar el simulacro adjunta su informe: qué salió bien, qué falló y qué se mejora.');
             }
         }
     }
@@ -347,8 +410,28 @@ class DocsFieldRules extends RecordRules
         if (DB::selectOne('select status from risst_versions where id = ?', [$version])?->status !== 'current') {
             $this->fail('risst_version_id', 'Solo se entrega la versión vigente del RISST.');
         }
+        // RN-RIS-07: una entrega firmada no cambia; un error se anula con motivo y se hace una nueva entrega.
+        if ($current && in_array($current->status, ['signed', 'voided'], true)) {
+            if ($current->status === 'voided' || array_diff(array_keys($values), ['status', 'void_reason']) !== [] || ($values['status'] ?? null) !== 'voided') {
+                $this->conflict($current->status === 'voided' ? 'La entrega está anulada.' : 'La entrega ya está firmada: no se modifica. Si hubo un error, anúlala con el motivo y registra otra.');
+            }
+        }
+        if (($values['status'] ?? null) === 'voided') {
+            if (! trim((string) $this->value($values, $current, 'void_reason'))) {
+                $this->fail('void_reason', 'Indica por qué se anula la entrega.');
+            }
+
+            return;
+        }
+        // RN-RIS-05: la entrega física se respalda con el cargo firmado escaneado.
+        if ($this->value($values, $current, 'method') === 'physical_signed' && ! $this->value($values, $current, 'acknowledgement_file_id')) {
+            $this->fail('acknowledgement_file_id', 'Adjunta el cargo de entrega firmado por el trabajador (escaneado o foto).');
+        }
         $values['delivered_on'] = $this->value($values, $current, 'delivered_on') ?? date('Y-m-d');
         $values['status'] = $this->value($values, $current, 'status') ?? 'delivered';
+        if ($this->value($values, $current, 'method') === 'physical_signed' && $values['status'] === 'delivered') {
+            $values['status'] = 'signed';
+        }
     }
 
     private function ack(array &$values): void

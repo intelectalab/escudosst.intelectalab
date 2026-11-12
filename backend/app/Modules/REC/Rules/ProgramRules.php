@@ -120,6 +120,13 @@ class ProgramRules extends RecordRules
                 }
             }
         }
+        // RN-PAS-06: cada actividad del PASST está ligada a un objetivo SST.
+        if (in_array($to, ['committee_review', 'approved'], true) && $table === 'annual_programs') {
+            $loose = (int) DB::selectOne("select count(*) as n from program_activities where program_id = ? and deleted_at is null and status <> 'cancelled' and objective_id is null", [$current->id])->n;
+            if ($loose > 0) {
+                $this->fail('status', "Hay {$loose} actividad(es) sin objetivo SST: vincula cada actividad a su objetivo.");
+            }
+        }
         if ($to === 'approved') {
             $model = DB::selectOne('select sst_model from companies where id = ?', [$current->company_id])?->sst_model;
             if ($model === 'committee' && ! $this->value($values, $current, 'committee_meeting_id')) {
@@ -153,6 +160,15 @@ class ProgramRules extends RecordRules
         }
         if (! $this->value($values, $current, 'description') && ! $this->value($values, $current, 'source_id')) {
             $this->fail('description', 'Describe la evidencia de lo ejecutado (o vincula el registro de origen).');
+        }
+        // RN-PAS-04: toda ejecución tiene evidencia: un archivo o el registro del sistema que la respalda.
+        if (! $this->value($values, $current, 'evidence_file_id') && ! $this->value($values, $current, 'source_id')) {
+            $this->fail('evidence_file_id', 'Adjunta la evidencia de lo ejecutado (acta, fotos, lista) o vincula el registro de origen.');
+        }
+        // RN-PAS-08: registra la ejecución el responsable de la actividad o el Jefe SST.
+        $owner = DB::selectOne('select responsible_user_id from program_activities where id = ?', [$activity])?->responsible_user_id;
+        if ($op === 'create' && $owner && (string) $owner !== (string) auth()->id() && ! in_array(app(\App\Core\Tenancy\CompanyContext::class)->roleCode, ['sst_manager', 'account_admin'], true)) {
+            $this->fail('activity_id', 'La ejecución la registra el responsable de la actividad o el Jefe SST.');
         }
         if (($q = $this->value($values, $current, 'quantity')) !== null && (float) $q <= 0) {
             $this->fail('quantity', 'La cantidad ejecutada debe ser mayor que cero.');

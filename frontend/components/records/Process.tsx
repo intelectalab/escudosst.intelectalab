@@ -170,6 +170,8 @@ export function RecordActions({
         <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />
       </div>
     );
+  // Una revisión de equipo conforme no necesita acción (RN-EQE-03: solo la observada o inoperativa).
+  if (res.table === "equipment_checks" && row.result === "ok") return null;
   if (ACTION_SOURCES[res.table]) return <FindingAction table={res.table} row={row} onChanged={onChanged} />;
   if (res.table === "baseline_assessments") return <BaselineFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "monthly_statistics") return <CloseMonth row={row} onChanged={onChanged} />;
@@ -420,8 +422,10 @@ type Item = {
   answer_type: string;
   weight: number;
   is_critical: boolean;
+  requires_photo_on_fail: boolean;
   answer: string | null;
   comment: string | null;
+  photo_file_id: string | null;
 };
 type Checklist = {
   inspection: { status: string; score_pct: number | null; template_name: string | null };
@@ -439,14 +443,14 @@ const CHOICES: Record<string, [string, string][]> = {
 function InspectionRun({ row, onChanged }: { row: RecordRow; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<Checklist | null>(null);
-  const [answers, setAnswers] = useState<Record<string, { answer: string; comment: string }>>({});
+  const [answers, setAnswers] = useState<Record<string, { answer: string; comment: string; photo_file_id?: string | null; photo_name?: string }>>({});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = () =>
     api<{ data: Checklist }>(`/ins/inspections/${row.id}/checklist`, { withCompany: true }).then((r) => {
       setData(r.data);
-      setAnswers(Object.fromEntries(r.data.items.map((i) => [i.id, { answer: i.answer ?? "", comment: i.comment ?? "" }])));
+      setAnswers(Object.fromEntries(r.data.items.map((i) => [i.id, { answer: i.answer ?? "", comment: i.comment ?? "", photo_file_id: i.photo_file_id }])));
     });
   useEffect(() => {
     load().catch(() => setData(null));
@@ -460,7 +464,7 @@ function InspectionRun({ row, onChanged }: { row: RecordRow; onChanged: () => vo
     setBusy(true);
     setMsg(null);
     try {
-      const list = Object.entries(answers).filter(([, a]) => a.answer).map(([item_id, a]) => ({ item_id, answer: a.answer, comment: a.comment || null }));
+      const list = Object.entries(answers).filter(([, a]) => a.answer).map(([item_id, a]) => ({ item_id, answer: a.answer, comment: a.comment || null, ...(a.photo_file_id ? { photo_file_id: a.photo_file_id } : {}) }));
       if (list.length) await submitInspectionAnswers(row.id, list);
       if (finish) {
         const r = await api<{ data: { score_pct: number | null; findings_created: number; critical: boolean } }>(`/ins/inspections/${row.id}/finish`, { method: "POST", body: {}, withCompany: true });
@@ -542,6 +546,28 @@ function InspectionRun({ row, onChanged }: { row: RecordRow; onChanged: () => vo
                 )}
                 <input className="input !h-9 text-sm" placeholder="Comentario (opcional)" aria-label={`Comentario de ${it.question}`} disabled={!data.editable}
                   value={answers[it.id]?.comment ?? ""} onChange={(e) => setAnswers((x) => ({ ...x, [it.id]: { ...x[it.id], comment: e.target.value } }))} />
+                {["no", "noncompliant"].includes(answers[it.id]?.answer ?? "") && (it.is_critical || it.requires_photo_on_fail) && (
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    {answers[it.id]?.photo_file_id ? (
+                      <span className="text-ok">📷 Foto adjunta{answers[it.id]?.photo_name ? `: ${answers[it.id]?.photo_name}` : ""}</span>
+                    ) : (
+                      <span className="font-semibold text-bad">Este «no cumple» necesita foto de evidencia.</span>
+                    )}
+                    {data.editable && (
+                      <input type="file" accept="image/*" capture="environment" aria-label={`Foto de ${it.question}`} className="input !h-9 !w-56 text-xs"
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          try {
+                            const up = await uploadFile(f, "INS");
+                            setAnswers((x) => ({ ...x, [it.id]: { ...x[it.id], photo_file_id: up.id, photo_name: up.original_name } }));
+                          } catch (err) {
+                            setMsg((err as ApiError).detail ?? "No se pudo subir la foto.");
+                          }
+                        }} />
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -567,6 +593,8 @@ const ACTION_SOURCES: Record<string, string> = {
   behavior_observations: "Esta observación",
   change_requests: "Este cambio",
   environmental_aspects: "Este aspecto ambiental",
+  equipment_checks: "Esta revisión del equipo",
+  drills: "Este simulacro",
 };
 
 export function FindingAction({ table, row, onChanged }: { table: string; row: RecordRow; onChanged: () => void }) {
@@ -696,6 +724,7 @@ function ProgramFlow({ code, table, row, canEdit, onChanged }: { code: string; t
 
 function ActivityExecution({ row, onChanged }: { row: RecordRow; onChanged: () => void }) {
   const [form, setForm] = useState({ executed_on: new Date().toISOString().slice(0, 10), quantity: "1", description: "" });
+  const [file, setFile] = useState<File | null>(null);
   const [list, setList] = useState<RecordRow[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -706,8 +735,14 @@ function ActivityExecution({ row, onChanged }: { row: RecordRow; onChanged: () =
     setBusy(true);
     setMsg(null);
     try {
-      await records.create("PAS", "activity_executions", { activity_id: row.id, executed_on: form.executed_on, quantity: Number(form.quantity), description: form.description });
+      // RN-PAS-04: la ejecución lleva su evidencia (archivo).
+      const up = file ? await uploadFile(file, "PAS") : null;
+      await records.create("PAS", "activity_executions", {
+        activity_id: row.id, executed_on: form.executed_on, quantity: Number(form.quantity), description: form.description || (file ? `Evidencia adjunta: ${file.name}` : ""),
+        ...(up ? { evidence_file_id: up.id } : {}),
+      });
       setForm({ ...form, description: "" });
+      setFile(null);
       onChanged();
     } catch (e) {
       const err = e as ApiError;
@@ -730,9 +765,13 @@ function ActivityExecution({ row, onChanged }: { row: RecordRow; onChanged: () =
       <div className="grid gap-2 sm:grid-cols-[9rem_6rem_1fr_auto]">
         <input className="input" type="date" aria-label="Fecha de ejecución" value={form.executed_on} onChange={(e) => setForm({ ...form, executed_on: e.target.value })} />
         <input className="input" type="number" min={1} aria-label="Cantidad" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
-        <input className="input" placeholder="Evidencia (acta, informe, registro)" aria-label="Evidencia" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-        <Button variant="primary" loading={busy} onClick={add}>Registrar ejecución</Button>
+        <input className="input" placeholder="Qué se hizo (acta, informe, registro)" aria-label="Descripción de lo ejecutado" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        <Button variant="primary" loading={busy} disabled={!file} onClick={add}>Registrar ejecución</Button>
       </div>
+      <label className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="font-semibold">Evidencia (obligatoria):</span>
+        <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.docx" aria-label="Archivo de evidencia" className="input !h-9 !w-64 text-xs" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+      </label>
       {msg && <p role="alert" className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{msg}</p>}
     </section>
   );
@@ -1006,8 +1045,20 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
       { from: ["in_execution"], label: "Cerrar ATS", body: { status: "closed" } },
     ],
   },
+  risst_deliveries: {
+    help: "La entrega física se respalda con el cargo firmado escaneado. Una entrega firmada no se modifica: si hubo un error, anúlala con el motivo y registra otra.",
+    steps: [{ from: ["delivered", "signed", "pending"], label: "Anular entrega", body: { status: "voided" }, ask: "void_reason" }],
+  },
+  behavior_observations: {
+    help: "Registra los comportamientos observados (seguro o en riesgo): los conteos se calculan solos. Enviada ya no se edita; la revisa otra persona.",
+    steps: [
+      { from: ["draft"], label: "Enviar observación", body: { status: "submitted" }, primary: true },
+      { from: ["submitted"], label: "Marcar revisada", body: { status: "reviewed" }, primary: true },
+      { from: ["submitted"], label: "Devolver a borrador", body: { status: "draft" } },
+    ],
+  },
   drills: {
-    help: "Planificado → ejecutado → evaluado (con resultado). Si está vinculado a una actividad del PASST, su ejecución se registra sola.",
+    help: "Planificado → ejecutado → evaluado (con resultado e informe adjunto en el campo «Informe»). Evaluado ya no se modifica. Si está vinculado a una actividad del PASST, su ejecución se registra sola.",
     steps: [
       { from: ["planned"], label: "Marcar ejecutado", body: { status: "executed" }, primary: true },
       { from: ["executed"], label: "Evaluar: satisfactorio", body: { status: "evaluated", result: "satisfactory" }, primary: true },
@@ -1077,12 +1128,12 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
     ],
   },
   work_permits: {
-    help: "Borrador → solicitado → aprobado (sin aprobaciones pendientes ni verificaciones previas en «No») → activo (vigente y con ATS si el tipo lo exige) → cerrado con el área segura.",
+    help: "Borrador → solicitado → aprobado (aprobaciones en orden, ejecutantes con sus requisitos SST, sin verificaciones en «No») → activo (vigente, con ATS y gases en rango si el tipo lo exige) → cerrado con el área segura.",
     steps: [
       { from: ["draft"], label: "Solicitar aprobación", body: { status: "pending_approval" }, primary: true },
       { from: ["pending_approval"], label: "Aprobar", body: { status: "approved" }, primary: true },
       { from: ["pending_approval", "approved"], label: "Rechazar", body: { status: "rejected" } },
-      { from: ["approved", "suspended"], label: "Activar trabajo", body: { status: "active" }, primary: true },
+      { from: ["approved", "suspended"], label: "Activar trabajo", body: { status: "active" }, primary: true, ask: "gas_measurements" },
       { from: ["active"], label: "Suspender", body: { status: "suspended" }, ask: "suspended_reason" },
       { from: ["active", "suspended"], label: "Cerrar (área segura)", body: { status: "closed", area_left_safe: true } },
     ],
@@ -1139,7 +1190,12 @@ function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; t
   const [msg, setMsg] = useState<string | null>(null);
   const [asking, setAsking] = useState<Step | null>(null);
   const [text, setText] = useState("");
+  const [gas, setGas] = useState<Record<string, string>>({ o2: "", lel: "", co: "", h2s: "" });
   const options = cfg.steps.filter((x) => x.from.includes(st));
+  const gasBody = () => {
+    const v = Object.fromEntries(Object.entries(gas).filter(([, x]) => x.trim() !== "").map(([k, x]) => [k, Number(x.replace(",", "."))]));
+    return Object.keys(v).length ? { gas_measurements: v } : {};
+  };
   const run = (x: Step, extra: Record<string, unknown> = {}) =>
     records
       .update(code, table, row.id, { ...x.body, ...extra })
@@ -1171,7 +1227,21 @@ function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; t
             ))}
           </div>
         )}
-        {asking && (
+        {asking?.ask === "gas_measurements" && (
+          <div className="space-y-2 rounded-lg border border-line p-3">
+            <p className="text-muted">Medición de gases antes de iniciar (déjala en blanco si este trabajo no la exige). Rangos: O₂ 19.5–22.5 %, LEL menos de 10 %, CO menos de 25 ppm, H₂S menos de 10 ppm.</p>
+            <div className="flex flex-wrap gap-2">
+              {([["o2", "O₂ (%)"], ["lel", "LEL (%)"], ["co", "CO (ppm)"], ["h2s", "H₂S (ppm)"]] as const).map(([k, l]) => (
+                <label key={k} className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold">{l}</span>
+                  <input className="input !h-9 !w-24" inputMode="decimal" aria-label={l} value={gas[k]} onChange={(e) => setGas((g) => ({ ...g, [k]: e.target.value }))} />
+                </label>
+              ))}
+            </div>
+            <Button variant="primary" onClick={() => run(asking, gasBody())}>{asking.label}</Button>
+          </div>
+        )}
+        {asking && asking.ask !== "gas_measurements" && (
           <div className="flex flex-wrap gap-2">
             <input autoFocus className="input flex-1" placeholder="Motivo" aria-label="Motivo" value={text} onChange={(e) => setText(e.target.value)} />
             <Button variant="danger" disabled={!text.trim()} onClick={() => run(asking, { [asking.ask!]: text })}>

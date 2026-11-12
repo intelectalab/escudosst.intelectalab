@@ -279,7 +279,7 @@ function ExecutionModal({ activity, month, year, canRegister, canReschedule, cur
             {canMove && <Button variant="secondary" onClick={() => { setMsg(null); setResched({ to: String(targets[0]), reason: "" }); }}>Reprogramar</Button>}
             <Button variant="ghost" onClick={onClose}>Cancelar</Button>
             {canRegister && !future && (
-              <Button variant="primary" loading={busy} disabled={!form.description.trim() && !file} onClick={save}>Registrar ejecución</Button>
+              <Button variant="primary" loading={busy} disabled={!file} onClick={save}>Registrar ejecución</Button>
             )}
           </div>
         ) : undefined

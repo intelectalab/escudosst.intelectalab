@@ -25,7 +25,7 @@ final class InspectionService
         $i = $this->inspection($id);
         $items = $i->template_id ? DB::select(
             'select t.id, t.section, t.item_code, t.question, t.answer_type, t.weight, t.is_critical, t.requires_photo_on_fail, t.legal_reference,
-                    a.answer, a.numeric_value, a.comment, a.is_compliant
+                    a.answer, a.numeric_value, a.comment, a.is_compliant, a.photo_file_id
                from inspection_template_items t
                left join inspection_answers a on a.template_item_id = t.id and a.inspection_id = ? and a.deleted_at is null
               where t.template_id = ? and t.deleted_at is null order by t.sort_order nulls last, t.item_code',
@@ -58,15 +58,20 @@ final class InspectionService
             }
             [$answer, $numeric, $compliant] = $this->evaluate($item, $a['answer'] ?? null);
             $comment = isset($a['comment']) ? mb_substr(trim((string) $a['comment']), 0, 2000) : null;
+            // RN-INS-02: la foto del «no cumple» se adjunta con la respuesta (archivo ya subido).
+            $photo = isset($a['photo_file_id']) && is_string($a['photo_file_id']) && Str::isUuid($a['photo_file_id']) ? $a['photo_file_id'] : null;
+            if ($photo && ! DB::selectOne('select 1 as ok from files where id = ? and deleted_at is null', [$photo])) {
+                throw $this->invalid('answers', "La foto de «{$item->question}» no existe.");
+            }
             $existing = DB::selectOne('select id from inspection_answers where inspection_id = ? and template_item_id = ? and deleted_at is null', [$id, $item->id]);
             if ($existing) {
-                DB::update('update inspection_answers set answer = ?, numeric_value = ?, is_compliant = ?, comment = ?, updated_by = ? where id = ?',
-                    [$answer, $numeric, $this->bool($compliant), $comment, (string) auth()->id(), $existing->id]);
+                DB::update('update inspection_answers set answer = ?, numeric_value = ?, is_compliant = ?, comment = ?, photo_file_id = coalesce(?::uuid, photo_file_id), updated_by = ? where id = ?',
+                    [$answer, $numeric, $this->bool($compliant), $comment, $photo, (string) auth()->id(), $existing->id]);
             } else {
                 DB::insert(
-                    'insert into inspection_answers (company_id, inspection_id, template_item_id, question_snapshot, answer, numeric_value, is_compliant, is_critical, comment, created_by, updated_by)
-                     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [$i->company_id, $id, $item->id, $item->question, $answer, $numeric, $this->bool($compliant), $item->is_critical ? 'true' : 'false', $comment,
+                    'insert into inspection_answers (company_id, inspection_id, template_item_id, question_snapshot, answer, numeric_value, is_compliant, is_critical, comment, photo_file_id, created_by, updated_by)
+                     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [$i->company_id, $id, $item->id, $item->question, $answer, $numeric, $this->bool($compliant), $item->is_critical ? 'true' : 'false', $comment, $photo,
                         (string) auth()->id(), (string) auth()->id()]
                 );
             }
@@ -91,6 +96,16 @@ final class InspectionService
         if ($missing !== []) {
             throw new ApiProblem(422, 'validation_failed', 'Faltan respuestas', 'Responde todos los ítems antes de finalizar ('.count($missing).' pendiente(s)).',
                 ['missing' => array_values(array_column($missing, 'id'))]);
+        }
+        // RN-INS-02: un «no cumple» de un ítem crítico o que pide foto necesita su foto de evidencia.
+        $noPhoto = array_filter($data['items'], fn ($it) => $it['is_compliant'] === false && ($it['is_critical'] || $it['requires_photo_on_fail']) && ! $it['photo_file_id']);
+        if ($noPhoto !== []) {
+            throw new ApiProblem(422, 'validation_failed', 'Falta la foto', 'Adjunta la foto de evidencia de: '.implode('; ', array_slice(array_column($noPhoto, 'question'), 0, 3))
+                .(count($noPhoto) > 3 ? '…' : '').'.', ['missing_photo' => array_values(array_column($noPhoto, 'id'))]);
+        }
+        // RN-INS-08: una inspección con participación del comité incluye al menos a un miembro vigente del comité.
+        if ($i->committee_participation && ! $this->hasCommitteeMember($i)) {
+            throw new ApiProblem(422, 'validation_failed', 'Falta el comité', 'Esta inspección es con participación del comité: registra entre los participantes a un miembro vigente del comité SST.');
         }
 
         $total = 0.0;
@@ -123,6 +138,9 @@ final class InspectionService
         DB::update("update inspections set status = 'completed', score_pct = ?, completed_at = now(), started_at = coalesce(started_at, now()),
                     summary = coalesce(?, summary), updated_by = ? where id = ?", [$score, $summary ? mb_substr($summary, 0, 4000) : null, (string) auth()->id(), $id]);
         $this->audit('finish', $id, ['score_pct' => $score, 'findings' => $created, 'critical' => $critical]);
+        if ($critical) {
+            $this->notifyCritical($i);
+        }
         \App\Modules\REC\Rules\DocsFieldRules::programExecutionFor('inspections', $id, 'INS');
         \App\Modules\API\Webhooks::queue('inspections', 'update', $id, ['status' => 'completed']);
 
@@ -205,6 +223,37 @@ final class InspectionService
         }
 
         return [mb_substr($a, 0, 2000), null, null];
+    }
+
+    /** Participantes (jsonb: lista de {worker_id} o de ids) o inspector que sean miembros vigentes del comité SST. */
+    private function hasCommitteeMember(object $i): bool
+    {
+        $p = json_decode($i->participants ?? '[]', true) ?: [];
+        $ids = array_filter(array_map(fn ($x) => is_array($x) ? ($x['worker_id'] ?? null) : $x, is_array($p) ? $p : []), fn ($x) => is_string($x) && Str::isUuid($x));
+        if ($i->inspector_worker_id) {
+            $ids[] = $i->inspector_worker_id;
+        }
+        $ids = array_values(array_unique($ids));
+        if ($ids === []) {
+            return false;
+        }
+
+        return (bool) DB::selectOne("select 1 as ok from committee_members where deleted_at is null and status = 'active' and (ends_on is null or ends_on >= current_date)
+                                        and worker_id in (".implode(',', array_fill(0, count($ids), '?')).')', $ids);
+    }
+
+    /** RN-INS-03: un ítem crítico que no cumple avisa de inmediato al jefe SST (y al supervisor SST). */
+    private function notifyCritical(object $i): void
+    {
+        $users = DB::select(
+            "select distinct m.user_id from memberships m join roles r on r.id = m.role_id
+              where m.company_id = ? and m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) in ('sst_manager', 'sst_supervisor')", [$i->company_id]);
+        foreach ($users as $u) {
+            DB::insert("insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, dedupe_key)
+                        values (?, 'ins.critical', 'INS', ?, ?, ?, ?, ?, 'critical', ?) on conflict do nothing",
+                [$i->company_id, $i->id, $u->user_id, 'Ítem crítico que no cumple', mb_substr(($i->code ?? '').' · '.$i->title.': revisa el hallazgo crítico y detén el trabajo si es necesario.', 0, 500),
+                    '/m/ins?t=inspections&open='.$i->id, 'ins.critical:'.$i->id.':'.$u->user_id]);
+        }
     }
 
     private function inspection(string $id): object

@@ -30,6 +30,7 @@ it('reprograma un mes atrasado con motivo y lo muestra en el cronograma', functi
 
     // Programa en borrador: no se reprograma.
     $this->postJson("/api/v1/pas/activities/{$a}/reschedule", ['from_month' => $past, 'to_month' => 12, 'reason' => 'Instructor no disponible'], $h)->assertStatus(422);
+    linkProgramObjective($prog, ANDINAS_ID);
     $this->patchJson("/api/v1/records/PAS/annual_programs/{$prog}", ['status' => 'approved'], $h)->assertOk();
 
     // Motivo obligatorio, mes nuevo no pasado, mes original programado.
@@ -70,8 +71,9 @@ it('no reprograma un mes que ya tiene ejecución', function () {
     $prog = $this->postJson('/api/v1/records/PAS/annual_programs', ['year' => $year, 'title' => "PASST {$year}"], $h)->assertCreated()->json('data.id');
     $a = $this->postJson('/api/v1/records/PAS/program_activities', ['program_id' => $prog, 'code' => 'R2', 'title' => 'Inspección', 'activity_type' => 'inspection',
         'goal_quantity' => 1, 'planned_months' => [1]], $h)->assertCreated()->json('data.id');
+    linkProgramObjective($prog, ANDINAS_ID);
     $this->patchJson("/api/v1/records/PAS/annual_programs/{$prog}", ['status' => 'approved'], $h)->assertOk();
-    $this->postJson('/api/v1/records/PAS/activity_executions', ['activity_id' => $a, 'executed_on' => "{$year}-01-15", 'quantity' => 1, 'description' => 'Acta INS-01'], $h)->assertCreated();
+    $this->postJson('/api/v1/records/PAS/activity_executions', ['activity_id' => $a, 'executed_on' => "{$year}-01-15", 'quantity' => 1, 'description' => 'Acta INS-01', 'evidence_file_id' => evidenceFile($h)], $h)->assertCreated();
     $this->postJson("/api/v1/pas/activities/{$a}/reschedule", ['from_month' => 1, 'to_month' => 12, 'reason' => 'Motivo de prueba'], $h)->assertStatus(422)->assertJsonValidationErrors('from_month');
     $this->postJson('/api/v1/pas/activities/00000000-0000-0000-0000-000000000000/reschedule', ['from_month' => 1, 'to_month' => 12, 'reason' => 'Motivo de prueba'], $h)->assertNotFound();
 });

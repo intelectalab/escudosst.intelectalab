@@ -24,7 +24,7 @@ class ActionFromRecord extends Controller
         'findings' => ['finding', 'id', 'action_assigned'],
         'investigation_causes' => ['investigation', 'investigation_id', null],
         'meeting_agreements' => ['committee_agreement', 'id', 'in_progress'],
-        'baseline_gaps' => ['baseline', 'id', null],
+        'baseline_gaps' => ['baseline', 'id', 'in_progress'],
         'substandard_reports' => ['report', 'id', 'action_assigned'],
         'requirement_evaluations' => ['legal_requirement', 'legal_requirement_id', null],
         'audit_findings' => ['audit', 'id', 'action_assigned'],
@@ -34,6 +34,9 @@ class ActionFromRecord extends Controller
         'behavior_observation_items' => ['observation', 'observation_id', null],
         'change_requests' => ['change', 'id', null],
         'environmental_aspects' => ['environmental_aspect', 'id', null],
+        // M-EQE RN-EQE-03: la revisión con equipo inoperativo; M-SIM RN-SIM-06: las observaciones negativas del simulacro.
+        'equipment_checks' => ['equipment_check', 'id', null],
+        'drills' => ['drill', 'id', null],
     ];
 
     public function __invoke(Request $request, string $table, string $id): JsonResponse

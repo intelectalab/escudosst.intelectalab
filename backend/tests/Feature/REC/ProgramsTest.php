@@ -25,10 +25,17 @@ it('aprueba el PASST, congela su estructura y calcula el avance con las ejecucio
     $this->patchJson("/api/v1/records/PAS/annual_programs/{$prog}", ['status' => 'approved'], $h)
         ->assertStatus(422)->assertJsonPath('errors.status.0', 'El programa no tiene actividades.');
 
+    // RN-PAS-06: cada actividad va ligada a un objetivo SST.
+    $obj = DB::selectOne("insert into sst_objectives (company_id, year, code, title, status) values (?, ?, 'OBJ-PAS', 'Cero accidentes', 'active') returning id", [ANDINAS_ID, $year])->id;
     $a1 = $this->postJson('/api/v1/records/PAS/program_activities', ['program_id' => $prog, 'code' => 'A1', 'title' => 'Inspecciones mensuales',
         'activity_type' => 'inspection', 'goal_quantity' => 4, 'planned_months' => [1, 4, 7, 10]], $h)->assertCreated()->json('data.id');
-    $this->postJson('/api/v1/records/PAS/program_activities', ['program_id' => $prog, 'code' => 'A2', 'title' => 'Simulacro', 'activity_type' => 'drill',
-        'goal_quantity' => 1, 'planned_months' => [6]], $h)->assertCreated();
+    $a2 = $this->postJson('/api/v1/records/PAS/program_activities', ['program_id' => $prog, 'code' => 'A2', 'title' => 'Simulacro', 'activity_type' => 'drill',
+        'goal_quantity' => 1, 'planned_months' => [6]], $h)->assertCreated()->json('data.id');
+    $this->patchJson("/api/v1/records/PAS/annual_programs/{$prog}", ['status' => 'approved'], $h)
+        ->assertStatus(422)->assertJsonPath('errors.status.0', fn ($m) => str_contains($m, 'sin objetivo'));
+    foreach ([$a1, $a2] as $a) {
+        $this->patchJson("/api/v1/records/PAS/program_activities/{$a}", ['objective_id' => $obj], $h)->assertOk();
+    }
 
     // Antes de aprobar no se registran ejecuciones.
     $this->postJson('/api/v1/records/PAS/activity_executions', ['activity_id' => $a1, 'executed_on' => now()->toDateString(), 'quantity' => 1, 'description' => 'x'], $h)
@@ -40,8 +47,12 @@ it('aprueba el PASST, congela su estructura y calcula el avance con las ejecucio
 
     $this->postJson('/api/v1/records/PAS/activity_executions', ['activity_id' => $a1, 'executed_on' => now()->toDateString(), 'quantity' => 1], $h)
         ->assertStatus(422)->assertJsonPath('errors.description.0', 'Describe la evidencia de lo ejecutado (o vincula el registro de origen).');
+    // RN-PAS-04: la ejecución lleva su evidencia.
     $this->postJson('/api/v1/records/PAS/activity_executions', ['activity_id' => $a1, 'executed_on' => now()->toDateString(), 'quantity' => 2, 'description' => 'Actas INS-01 e INS-02'], $h)
-        ->assertCreated();
+        ->assertStatus(422)->assertJsonValidationErrors('evidence_file_id');
+    $file = $this->post('/api/v1/files', ['file' => \Illuminate\Http\UploadedFile::fake()->create('actas.pdf', 20, 'application/pdf'), 'module' => 'PAS'], $h + ['Accept' => 'application/json'])->json('data.id');
+    $this->postJson('/api/v1/records/PAS/activity_executions', ['activity_id' => $a1, 'executed_on' => now()->toDateString(), 'quantity' => 2, 'description' => 'Actas INS-01 e INS-02',
+        'evidence_file_id' => $file], $h)->assertCreated();
 
     $this->getJson("/api/v1/records/PAS/program_activities/{$a1}", $h)->assertJsonPath('data.progress_pct', 50)->assertJsonPath('data.status', 'in_progress');
     $this->getJson("/api/v1/records/PAS/annual_programs/{$prog}", $h)->assertJsonPath('data.status', 'in_execution')->assertJsonPath('data.progress_pct', 25);

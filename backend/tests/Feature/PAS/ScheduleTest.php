@@ -32,9 +32,10 @@ it('arma el cronograma actividad × mes con estados y avance por objetivo', func
     $draft = $this->getJson("/api/v1/pas/schedule?year={$year}", $h)->assertOk();
     expect($draft->json('data.program.id'))->toBe($prog)->and($draft->json('data.can_register'))->toBeFalse();
 
+    $obj2 = linkProgramObjective($prog, ANDINAS_ID);   // el simulacro va a otro objetivo (RN-PAS-06)
     $this->patchJson("/api/v1/records/PAS/annual_programs/{$prog}", ['status' => 'approved'], $h)->assertOk();
-    $this->postJson('/api/v1/records/PAS/activity_executions', ['activity_id' => $a1, 'executed_on' => "{$year}-03-20", 'quantity' => 1, 'description' => 'Acta INS-01'], $h)->assertCreated();
-    $this->postJson('/api/v1/records/PAS/activity_executions', ['activity_id' => $a1, 'executed_on' => "{$year}-04-02", 'quantity' => 1, 'description' => 'Acta INS-02'], $h)->assertCreated();
+    $this->postJson('/api/v1/records/PAS/activity_executions', ['activity_id' => $a1, 'executed_on' => "{$year}-03-20", 'quantity' => 1, 'description' => 'Acta INS-01', 'evidence_file_id' => evidenceFile($h)], $h)->assertCreated();
+    $this->postJson('/api/v1/records/PAS/activity_executions', ['activity_id' => $a1, 'executed_on' => "{$year}-04-02", 'quantity' => 1, 'description' => 'Acta INS-02', 'evidence_file_id' => evidenceFile($h)], $h)->assertCreated();
 
     $d = $this->getJson("/api/v1/pas/schedule?year={$year}", $h)->assertOk()->json('data');
     expect($d['can_register'])->toBeTrue()->and($d['cutoff_month'])->toBe(12);
@@ -44,7 +45,7 @@ it('arma el cronograma actividad × mes con estados y avance por objetivo', func
     expect($d['progress'])->toMatchArray(['due' => 3, 'done' => 1, 'pct' => 33, 'overdue' => 2]);
     $o = collect($d['objectives'])->firstWhere('id', $obj);
     expect($o)->toMatchArray(['due' => 2, 'done' => 1, 'pct' => 50]);
-    expect(collect($d['objectives'])->firstWhere('id', null)['pct'])->toBe(0);
+    expect(collect($d['objectives'])->firstWhere('id', $obj2)['pct'])->toBe(0);
 });
 
 it('sin programa del año responde vacío y valida el programa', function () {

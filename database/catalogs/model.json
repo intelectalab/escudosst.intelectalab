@@ -15531,8 +15531,20 @@
     "values": [
      "pending",
      "delivered",
-     "signed"
+     "signed",
+     "voided"
     ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "void_reason",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
     "ref": null,
     "encrypted": false,
     "generated": null,
@@ -17705,6 +17717,28 @@
     "default": null,
     "values": null,
     "ref": "users.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "is_overrun",
+    "type": "boolean",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "overrun_reason",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
     "encrypted": false,
     "generated": null,
     "comment": null
@@ -25429,6 +25463,17 @@
     "comment": null
    },
    {
+    "name": "is_high_risk",
+    "type": "boolean",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -25864,6 +25909,17 @@
    {
     "name": "signed_at",
     "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "late_signature",
+    "type": "boolean",
     "not_null": false,
     "default": null,
     "values": null,
@@ -43736,7 +43792,8 @@
      "observation",
      "change",
      "environmental_aspect",
-     "other"
+     "other",
+     "equipment_check"
     ],
     "ref": null,
     "encrypted": false,

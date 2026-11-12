@@ -387,11 +387,15 @@ class PeopleRules extends RecordRules
                 $hours = (int) (DB::selectOne('select validity_hours from permit_types where id = ?', [$values['permit_type_id']])?->validity_hours ?? 12);
                 $values['valid_until'] = date(DATE_ATOM, strtotime($values['valid_from']) + $hours * 3600);
             }
+            $this->permitOverlap($values, null);
 
             return;
         }
         if (in_array($current->status, ['closed', 'rejected', 'expired'], true) && $values !== []) {
             $this->conflict('El permiso está cerrado: no se modifica.');
+        }
+        if (array_intersect(array_keys($values), ['executor_leader_worker_id', 'crew', 'valid_from', 'valid_until']) !== []) {
+            $this->permitOverlap($values, $current);
         }
         $to = $values['status'] ?? null;
         if (! $to || $to === $current->status) {
@@ -417,6 +421,21 @@ class PeopleRules extends RecordRules
             if (DB::selectOne("select 1 as ok from permit_approvals where work_permit_id = ? and decision <> 'approved' and deleted_at is null", [$current->id])) {
                 $this->fail('status', 'Hay aprobaciones pendientes o rechazadas en «Aprobaciones».');
             }
+            // RN-PTR-01: cada ejecutante (líder y cuadrilla) cumple sus requisitos SST: inducción, aptitud, SCTR, capacitaciones y EPP.
+            $people = $this->permitWorkers($values, $current);
+            if ($people === []) {
+                $this->fail('executor_leader_worker_id', 'Indica al líder ejecutante del trabajo antes de aprobar el permiso.');
+            }
+            $blocked = [];
+            foreach (app(\App\Modules\TRB\WorkerRequirements::class)->evaluate($people) as $w) {
+                if (! $w['enabled']) {
+                    $bad = array_column(array_filter($w['checks'], fn ($c) => $c['status'] === 'bad'), 'label');
+                    $blocked[] = $w['name'].($bad ? ' ('.implode(', ', $bad).')' : ($w['worker_status'] === 'terminated' ? ' (cesado)' : ''));
+                }
+            }
+            if ($blocked) {
+                $this->fail('status', 'Hay ejecutantes que no cumplen sus requisitos SST: '.implode('; ', array_slice($blocked, 0, 4)).(count($blocked) > 4 ? '…' : '').'.');
+            }
         }
         if ($to === 'active') {
             $until = $this->value($values, $current, 'valid_until');
@@ -439,6 +458,20 @@ class PeopleRules extends RecordRules
             if ($type?->requires_gas_test && (empty($gas) || $gas === '[]' || $gas === '{}')) {
                 $this->fail('gas_measurements', 'Este trabajo exige medición de gases (O₂, LEL, CO, H₂S) antes de iniciarlo.');
             }
+            // RN-PTR-06: reanudar un trabajo suspendido exige una nueva verificación y lo autoriza la supervisión SST.
+            if ($current->status === 'suspended') {
+                $mine = app(\App\Core\Tenancy\CompanyContext::class)->roleCode;
+                if (! in_array($mine, ['sst_supervisor', 'sst_manager', 'account_admin'], true)) {
+                    $this->fail('status', 'Un trabajo suspendido lo reanuda el supervisor o el jefe SST.');
+                }
+                if ($type?->requires_gas_test && ! array_key_exists('gas_measurements', $values)) {
+                    $this->fail('gas_measurements', 'Para reanudar el trabajo registra una nueva medición de gases.');
+                }
+            }
+            // RN-PTR-03: los gases medidos deben estar dentro de los rangos permitidos.
+            foreach ($this->gasOutOfRange($gas) as $msg) {
+                $this->fail('gas_measurements', $msg);
+            }
             $values['activated_at'] = now()->toIso8601String();
         }
         if ($to === 'suspended' && ! $this->value($values, $current, 'suspended_reason')) {
@@ -455,6 +488,79 @@ class PeopleRules extends RecordRules
             $values['closed_at'] = now()->toIso8601String();
             $extra['closed_by'] = ['?', [(string) auth()->id()]];
         }
+    }
+
+    /** Trabajadores del permiso: el líder ejecutante y la cuadrilla (incluye vigía). */
+    private function permitWorkers(array $values, ?object $current): array
+    {
+        $crew = $this->value($values, $current, 'crew');
+        $crew = is_string($crew) ? (json_decode($crew, true) ?: []) : ($crew ?: []);
+        $ids = array_merge([$this->value($values, $current, 'executor_leader_worker_id')], array_column(is_array($crew) ? $crew : [], 'worker_id'));
+
+        return array_values(array_unique(array_filter($ids, fn ($i) => is_string($i) && \Illuminate\Support\Str::isUuid($i))));
+    }
+
+    /** RN-PTR-09: un trabajador no está en dos permisos vigentes con horarios que se cruzan. */
+    private function permitOverlap(array $values, ?object $current): void
+    {
+        $from = $this->value($values, $current, 'valid_from');
+        $until = $this->value($values, $current, 'valid_until');
+        $people = $this->permitWorkers($values, $current);
+        if (! $from || ! $until || $people === []) {
+            return;
+        }
+        foreach ($people as $w) {
+            $other = DB::selectOne(
+                "select code from work_permits where deleted_at is null and id <> coalesce(?::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
+                    and status in ('pending_approval', 'approved', 'active', 'suspended')
+                    and tstzrange(valid_from, valid_until) && tstzrange(?::timestamptz, ?::timestamptz)
+                    and (executor_leader_worker_id = ?::uuid or coalesce(crew, '[]'::jsonb) @> jsonb_build_array(jsonb_build_object('worker_id', ?::text)))
+                  limit 1", [$current?->id, $from, $until, $w, $w]);
+            if ($other) {
+                $name = DB::selectOne('select full_name from workers where id = ?', [$w])?->full_name ?? 'Un trabajador';
+                $this->fail('crew', "{$name} ya está en el permiso {$other->code} en ese mismo horario.");
+            }
+        }
+    }
+
+    /** Gases fuera de rango (parámetros legales a confirmar: O₂ 19.5–22.5 %, LEL < 10 %, CO < 25 ppm, H₂S < 10 ppm). */
+    private function gasOutOfRange(mixed $gas): array
+    {
+        $gas = is_string($gas) ? (json_decode($gas, true) ?: []) : ($gas ?: []);
+        if (! is_array($gas) || $gas === []) {
+            return [];
+        }
+        $read = [];
+        $put = function ($k, $v) use (&$read) {
+            $k = mb_strtolower(str_replace(['₂', ' ', '%', '_pct', '_ppm'], ['2', '', '', '', ''], (string) $k));
+            $k = ['oxygen' => 'o2', 'oxigeno' => 'o2', 'oxígeno' => 'o2', 'lie' => 'lel'][$k] ?? $k;
+            if (in_array($k, ['o2', 'lel', 'co', 'h2s'], true) && is_numeric($v)) {
+                $read[$k] = (float) $v;
+            }
+        };
+        foreach ($gas as $k => $v) {
+            if (is_array($v)) {
+                $put($v['gas'] ?? $v['code'] ?? $v['name'] ?? '', $v['value'] ?? $v['reading'] ?? null);
+            } else {
+                $put($k, $v);
+            }
+        }
+        $P = \App\Core\Support\LegalParams::class;
+        $out = [];
+        if (isset($read['o2'])) {
+            [$min, $max] = [$P::number('gas_o2_min_pct', 19.5), $P::number('gas_o2_max_pct', 22.5)];
+            if ($read['o2'] < $min || $read['o2'] > $max) {
+                $out[] = "El oxígeno medido ({$read['o2']} %) está fuera del rango permitido ({$min}–{$max} %): no se inicia el trabajo.";
+            }
+        }
+        foreach (['lel' => ['gas_lel_max_pct', 10, '%', 'LEL'], 'co' => ['gas_co_max_ppm', 25, 'ppm', 'CO'], 'h2s' => ['gas_h2s_max_ppm', 10, 'ppm', 'H₂S']] as $g => [$key, $def, $unit, $label]) {
+            $max = $P::number($key, $def);
+            if (isset($read[$g]) && $read[$g] >= $max) {
+                $out[] = "{$label} medido ({$read[$g]} {$unit}) alcanza o supera el límite ({$max} {$unit}): no se inicia el trabajo.";
+            }
+        }
+
+        return $out;
     }
 
     /** Preguntas de la lista del tipo de permiso (fase dada) que no tienen respuesta «Sí» o «No aplica». */
@@ -492,6 +598,21 @@ class PeopleRules extends RecordRules
             if ($role && $role !== $mine && ! in_array($mine, ['sst_manager', 'account_admin'], true)) {
                 $this->fail('decision', 'Este paso lo aprueba el rol «'.$role.'».');
             }
+            // RN-PTR-04: los pasos se aprueban en orden; una misma persona no firma dos pasos ni aprueba si es ejecutante.
+            $step = (int) $this->value($values, $current, 'step_order');
+            $permitId = $this->value($values, $current, 'work_permit_id');
+            if (DB::selectOne("select 1 as ok from permit_approvals where work_permit_id = ? and step_order < ? and decision = 'pending' and deleted_at is null", [$permitId, $step])) {
+                $this->fail('decision', 'Antes se debe decidir el paso anterior de la cadena de aprobación.');
+            }
+            if (DB::selectOne("select 1 as ok from permit_approvals where work_permit_id = ? and approver_user_id = ? and decision <> 'pending' and deleted_at is null
+                                and id <> coalesce(?::uuid, '00000000-0000-0000-0000-000000000000'::uuid)", [$permitId, (string) auth()->id(), $current?->id])) {
+                $this->fail('decision', 'Ya firmaste otro paso de este permiso: este paso lo aprueba otra persona.');
+            }
+            $w = DB::selectOne('select executor_leader_worker_id, crew from work_permits where id = ?', [$permitId]);
+            $executors = $this->permitWorkers(['executor_leader_worker_id' => $w->executor_leader_worker_id, 'crew' => $w->crew], null);
+            if ($executors && DB::selectOne('select 1 as ok from workers where user_id = ? and id in ('.implode(',', array_fill(0, count($executors), '?')).')', [(string) auth()->id(), ...$executors])) {
+                $this->fail('decision', 'Eres ejecutante de este trabajo: el permiso lo aprueba otra persona.');
+            }
             $values['approver_user_id'] = (string) auth()->id();
             $values['decided_at'] = now()->toIso8601String();
         }
@@ -515,6 +636,16 @@ class PeopleRules extends RecordRules
         }
         if ((float) $this->value($values, $current, 'amount') <= 0) {
             $this->fail('amount', 'El monto debe ser mayor que cero.');
+        }
+        // RN-PRE-04: un gasto que hace pasar la línea de su monto se confirma con un motivo y queda marcado como sobreejecución.
+        $line = DB::selectOne('select planned_amount, (select coalesce(sum(amount), 0) from budget_executions e where e.budget_line_id = l.id and e.deleted_at is null
+                                  and e.id <> coalesce(?::uuid, \'00000000-0000-0000-0000-000000000000\'::uuid)) as spent from budget_lines l where l.id = ?',
+            [$current?->id, $this->value($values, $current, 'budget_line_id')]);
+        $over = $line && (float) $line->spent + (float) $this->value($values, $current, 'amount') > (float) $line->planned_amount;
+        unset($values['is_overrun']);
+        $extra['is_overrun'] = ['?', [$over ? 'true' : 'false']];
+        if ($over && ! trim((string) $this->value($values, $current, 'overrun_reason'))) {
+            $this->fail('overrun_reason', 'Este gasto supera el monto de la línea (S/ '.number_format((float) $line->planned_amount, 2).'): confírmalo indicando el motivo de la sobreejecución.');
         }
         $values['executed_on'] ??= date('Y-m-d');
         if ($current === null) {
