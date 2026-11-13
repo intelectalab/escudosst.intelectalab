@@ -18,6 +18,7 @@ import { AulLanding } from "@/components/modules/AulAdmin";
 import { LbaSummary } from "@/components/modules/LbaSummary";
 import { SunSummary } from "@/components/modules/SunSummary";
 import { CapMatrix } from "@/components/modules/CapMatrix";
+import { PcaOverview } from "@/components/modules/PcaOverview";
 import { FotIssue } from "@/components/modules/FotIssue";
 import { RegRegisters } from "@/components/modules/RegRegisters";
 import { EstSummary } from "@/components/modules/EstSummary";
@@ -130,9 +131,9 @@ export default function ModulePage() {
           {m.code === "COM" ? <ComModule readOnly={m.mode === "read_only"} /> : m.code === "CTR" ? <CtrClientPanel readOnly={m.mode === "read_only"} /> : <IngSummary readOnly={m.mode === "read_only"} />}
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
-      ) : m.code === "SUN" || m.code === "CAP" || m.code === "FOT" || m.code === "EST" ? (
+      ) : m.code === "SUN" || m.code === "CAP" || m.code === "FOT" || m.code === "EST" || m.code === "PCA" ? (
         <div className="space-y-6">
-          {m.code === "SUN" ? <SunSummary readOnly={m.mode === "read_only"} /> : m.code === "CAP" ? <CapMatrix /> : m.code === "FOT" ? <FotIssue readOnly={m.mode === "read_only"} /> : <EstSummary />}
+          {m.code === "SUN" ? <SunSummary readOnly={m.mode === "read_only"} /> : m.code === "CAP" ? <CapMatrix /> : m.code === "PCA" ? <PcaOverview /> : m.code === "FOT" ? <FotIssue readOnly={m.mode === "read_only"} /> : <EstSummary />}
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
       ) : m.code === "MAP" ? (

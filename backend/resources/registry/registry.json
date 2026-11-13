@@ -4734,6 +4734,17 @@
      ],
      "default": "planned",
      "list": true
+    },
+    {
+     "name": "reschedule_reason",
+     "label": "Motivo de la reprogramación",
+     "type": "longtext"
+    },
+    {
+     "name": "original_month",
+     "label": "Mes programado originalmente",
+     "readonly": true,
+     "type": "int"
     }
    ]
   },

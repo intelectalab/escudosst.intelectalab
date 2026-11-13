@@ -20,3 +20,6 @@ Route::middleware('throttle:30,1')->prefix('public/verify')->group(function () {
     Route::get('certificate/{code}', [\App\Modules\CAP\PrintController::class, 'verifyCertificate'])->where('code', '[A-Za-z0-9-]{4,40}');
     Route::get('credential/{token}', [\App\Modules\CAP\PrintController::class, 'verifyCredential'])->where('token', '[A-Za-z0-9]{8,64}');
 });
+
+// Programa de capacitación (M-PCA SCR-PCA-01/03): vista anual temas × meses y matriz puesto × tema.
+Route::middleware(['auth:sanctum', 'company', 'module:PCA'])->get('pca/overview', \App\Modules\CAP\ProgramOverviewController::class);

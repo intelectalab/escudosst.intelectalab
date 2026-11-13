@@ -1226,7 +1226,9 @@
   "requires_validation": "Requiere validación del Jefe SST",
   "steps": "Pasos, riesgos y controles",
   "required_training_ids": "Capacitaciones requeridas",
-  "iperc_row_ids": "Filas del IPERC vinculadas"
+  "iperc_row_ids": "Filas del IPERC vinculadas",
+  "reschedule_reason": "Motivo de la reprogramación",
+  "original_month": "Mes programado originalmente"
  },
  "values": {
   "A": "Tipo A",

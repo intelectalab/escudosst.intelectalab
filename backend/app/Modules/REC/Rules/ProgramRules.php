@@ -35,7 +35,7 @@ class ProgramRules extends RecordRules
         match ($res['table']) {
             'annual_programs', 'training_programs' => $this->program($res['table'], $op, $values, $current, $extra),
             'program_activities' => $this->structure('annual_programs', $this->value($values, $current, 'program_id'), 'actividades'),
-            'training_program_items' => $this->structure('training_programs', $this->value($values, $current, 'training_program_id'), 'temas'),
+            'training_program_items' => $this->programItem($op, $values, $current, $extra),
             'activity_executions' => $this->execution($op, $values, $current, $extra),
             'trainings' => $this->training($op, $values),
             'training_sessions' => $this->session($op, $values, $current),
@@ -140,6 +140,38 @@ class ProgramRules extends RecordRules
         }
         if ($to === 'closed' && $table === 'annual_programs') {
             $extra['closed_at'] = ['now()', []];
+        }
+    }
+
+    /**
+     * Tema del programa de capacitación: con el programa aprobado no cambia (RN-PCA-06), salvo reprogramar dentro del año, con
+     * motivo, un tema de un mes ya cerrado que no se ejecutó (RN-PCA-08).
+     */
+    private function programItem(string $op, array &$values, ?object $current, array &$extra): void
+    {
+        $programId = $this->value($values, $current, 'training_program_id');
+        $p = $programId ? DB::selectOne('select status, year from training_programs where id = ?', [$programId]) : null;
+        $reschedule = $op === 'update' && $p && in_array($p->status, ['approved', 'in_execution'], true)
+            && array_diff(array_keys($values), ['planned_month', 'reschedule_reason']) === [] && array_key_exists('planned_month', $values);
+        if (! $reschedule) {
+            $this->structure('training_programs', $programId, 'temas');
+
+            return;
+        }
+        $now = now('America/Lima');
+        $closed = $current->planned_month && ($p->year < (int) $now->format('Y') || ($p->year == (int) $now->format('Y') && $current->planned_month < (int) $now->format('n')));
+        $held = $current->training_id && DB::selectOne("select 1 as ok from training_sessions where training_id = ? and status = 'held' and deleted_at is null", [$current->training_id]);
+        if (! $closed || $held || $current->status === 'done') {
+            $this->conflict('Solo se reprograma un tema de un mes ya cerrado que no se ejecutó; el programa aprobado no cambia de otra forma.');
+        }
+        if (! trim((string) ($values['reschedule_reason'] ?? ''))) {
+            $this->fail('reschedule_reason', 'Indica el motivo de la reprogramación.');
+        }
+        if ((int) $values['planned_month'] < (int) $now->format('n') && $p->year == (int) $now->format('Y')) {
+            $this->fail('planned_month', 'Reprograma el tema a este mes o a uno siguiente del mismo año.');
+        }
+        if ($current->original_month === null) {
+            $extra['original_month'] = ['?', [$current->planned_month]];
         }
     }
 

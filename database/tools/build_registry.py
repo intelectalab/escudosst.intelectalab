@@ -43,7 +43,7 @@ READONLY = {"psychosocial_surveys.is_anonymous", "psychosocial_surveys.min_respo
             "annual_programs.progress_pct", "annual_programs.approved_by", "annual_programs.approved_at", "annual_programs.closed_at",
             "program_activities.executed_quantity", "program_activities.progress_pct", "activity_executions.recorded_by",
             "activity_executions.verified_by", "activity_executions.verified_at", "training_programs.approved_at",
-            "training_certificates.certificate_code", "training_certificates.verification_code", "training_certificates.holder_name", "training_certificates.replaces_certificate_id", "absences.days", "sst_policies.document_version_id", "iperc_matrices.review_reason", "iperc_matrices.review_flagged_at", "risk_maps.review_reason", "procedure_versions.steps", "procedure_versions.required_training_ids", "procedure_versions.iperc_row_ids",
+            "training_certificates.certificate_code", "training_certificates.verification_code", "training_certificates.holder_name", "training_certificates.replaces_certificate_id", "absences.days", "sst_policies.document_version_id", "iperc_matrices.review_reason", "iperc_matrices.review_flagged_at", "risk_maps.review_reason", "procedure_versions.steps", "procedure_versions.required_training_ids", "procedure_versions.iperc_row_ids", "training_program_items.original_month",
             "training_certificates.holder_document_masked", "training_certificates.course_title", "training_certificates.issued_on",
             "training_certificates.expires_on", "training_certificates.hours", "training_certificates.score", "training_certificates.validated_by",
             "training_certificates.validated_at", "training_certificates.voided_by", "training_certificates.voided_at",
