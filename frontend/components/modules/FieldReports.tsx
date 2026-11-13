@@ -10,15 +10,15 @@ import { useEffect, useState } from "react";
 import { api, type ApiError } from "@/lib/api";
 
 type Sig = { signer_name: string; signed_at: string; method: string; image: string | null };
-type Company = { name: string; legal_name: string; ruc: string };
+export type Company = { name: string; legal_name: string; ruc: string };
 
-const cell = "border border-gray-300 px-2 py-1 align-top";
-const fmtD = (d?: string | null) => (d ? new Date(d.length === 10 ? `${d}T12:00:00` : d).toLocaleDateString("es-PE") : "—");
-const fmtDT = (d?: string | null) => (d ? new Date(d).toLocaleString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
+export const cell = "border border-gray-300 px-2 py-1 align-top";
+export const fmtD = (d?: string | null) => (d ? new Date(d.length === 10 ? `${d}T12:00:00` : d).toLocaleDateString("es-PE") : "—");
+export const fmtDT = (d?: string | null) => (d ? new Date(d).toLocaleString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 const METHOD: Record<string, string> = { pin: "PIN", drawn: "Trazo", password: "Contraseña", otp: "Código", app_signature: "App" };
 const ANSWER: Record<string, string> = { yes: "Sí", no: "No", na: "No aplica", compliant: "Cumple", non_compliant: "No cumple" };
 
-function useReport<T>(path: string) {
+export function useReport<T>(path: string) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -27,7 +27,7 @@ function useReport<T>(path: string) {
   return { data, error };
 }
 
-function Sheet({ company, title, sub, draft, children }: { company: Company; title: string; sub: string; draft?: string | null; children: React.ReactNode }) {
+export function Sheet({ company, title, sub, draft, children }: { company: Company; title: string; sub: string; draft?: string | null; children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-gray-100 p-4 text-gray-900 print:bg-white print:p-0">
       <style>{`@page { size: A4; margin: 14mm } @media print { .no-print { display: none } } img { break-inside: avoid }`}</style>
@@ -48,7 +48,7 @@ function Sheet({ company, title, sub, draft, children }: { company: Company; tit
   );
 }
 
-function Section({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+export function Section({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-2">
       <h2 className="border-b border-gray-400 pb-1 text-sm font-bold uppercase">{n}. {title}</h2>
@@ -57,7 +57,7 @@ function Section({ n, title, children }: { n: number; title: string; children: R
   );
 }
 
-function Facts({ rows }: { rows: [string, React.ReactNode][] }) {
+export function Facts({ rows }: { rows: [string, React.ReactNode][] }) {
   return (
     <table className="w-full border-collapse text-sm">
       <tbody>{rows.map(([k, v]) => <tr key={k}><td className={`${cell} w-1/3 bg-gray-50 font-semibold`}>{k}</td><td className={cell}>{v ?? "—"}</td></tr>)}</tbody>
@@ -80,7 +80,7 @@ function Signatures({ list, empty }: { list: Sig[]; empty: string }) {
   );
 }
 
-const Loading = ({ error }: { error: string | null }) => <p className="p-8">{error ?? "Preparando el informe…"}</p>;
+export const ReportLoading = ({ error }: { error: string | null }) => <p className="p-8">{error ?? "Preparando el informe…"}</p>;
 
 // ─────────────────────────────── Inspección
 
@@ -97,7 +97,7 @@ const INS_STATUS: Record<string, string> = { scheduled: "Programada", in_progres
 
 export function InspectionReport({ id }: { id: string }) {
   const { data, error } = useReport<Insp>(`/reports/inspections/${id}`);
-  if (!data) return <Loading error={error} />;
+  if (!data) return <ReportLoading error={error} />;
   const i = data.inspection;
   const people = Array.isArray(i.participants) ? (i.participants as unknown[]).map((p) => (typeof p === "string" ? p : (p as { name?: string })?.name ?? "")).filter(Boolean).join(", ") : "";
   return (
@@ -163,7 +163,7 @@ const DECISION: Record<string, string> = { approved: "Aprobó", rejected: "Recha
 
 export function PermitReport({ id }: { id: string }) {
   const { data, error } = useReport<Permit>(`/reports/work_permits/${id}`);
-  if (!data) return <Loading error={error} />;
+  if (!data) return <ReportLoading error={error} />;
   const p = data.permit;
   const gasKeys = [...new Set(p.gas_measurements.flatMap((g) => Object.keys(g ?? {})))];
   return (
@@ -235,7 +235,7 @@ const list = (v: unknown) => (Array.isArray(v) ? v.map((x) => (typeof x === "str
 
 export function AtsReport({ id }: { id: string }) {
   const { data, error } = useReport<Ats>(`/reports/ats_forms/${id}`);
-  if (!data) return <Loading error={error} />;
+  if (!data) return <ReportLoading error={error} />;
   const a = data.ats;
   return (
     <Sheet company={data.company} title="Análisis de trabajo seguro (ATS)" sub={`${a.code ?? "ATS"} · Estado: ${ATS_STATUS[a.status] ?? a.status}`}

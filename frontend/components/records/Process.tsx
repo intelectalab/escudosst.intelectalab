@@ -130,8 +130,8 @@ export function TraceStrip({ module, table, id, version }: { module: string; tab
   );
 }
 
-/** Informes imprimibles de campo (§11 de las fichas): inspección, PETAR y ATS en PDF desde el navegador. */
-const FIELD_PDF: Record<string, string> = { inspections: "inspeccion", work_permits: "petar", ats_forms: "ats" };
+/** Informes imprimibles (§11 de las fichas): inspección, PETAR, ATS y legajo SST del trabajador en PDF desde el navegador. */
+const FIELD_PDF: Record<string, string> = { inspections: "inspeccion", work_permits: "petar", ats_forms: "ats", workers: "legajo" };
 
 export function RecordActions(props: { code: string; res: RecordResource; row: RecordRow; readOnly: boolean; onChanged: () => void }) {
   const page = FIELD_PDF[props.res.table];

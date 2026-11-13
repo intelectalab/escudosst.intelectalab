@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Route;
 // Trabajadores (M-TRB): semáforo de requisitos y carga desde Excel. La ficha y el legajo: /records/TRB/...
 Route::middleware(['auth:sanctum', 'company', 'module:TRB'])->prefix('trb')->group(function () {
     Route::get('workers/requirements', WorkerRequirements::class)->middleware('permission:trb.workers.read');
+    Route::get('workers/{id}/legajo', [\App\Modules\TRB\WorkerFileController::class, 'legajo'])->whereUuid('id');
     Route::middleware('permission:trb.workers.create')->group(function () {
         Route::get('imports/template', [WorkerImport::class, 'template']);
         Route::post('imports/preview', [WorkerImport::class, 'preview'])->middleware('throttle:30,1');

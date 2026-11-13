@@ -49,3 +49,13 @@ it('arma el informe de la inspección y el del PETAR', function () {
         ->assertJsonPath('data.permit.type.name', 'Trabajo en altura');
     $this->getJson('/api/v1/reports/work_permits/00000000-0000-7000-8000-000000000999', $this->h)->assertNotFound();
 });
+
+it('arma el legajo SST del trabajador sin datos clínicos', function () {
+    $w = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => (string) random_int(66000000, 66999999), 'first_name' => 'Rosa', 'paternal_last_name' => 'Legajo'], $this->h)
+        ->assertCreated()->json('data.id');
+    frAs(fn () => DB::insert("insert into fitness_status (company_id, worker_id, status, valid_from, valid_until, work_restrictions, is_current) values (?, ?, 'fit_with_restrictions', current_date, current_date + 365, 'No levantar más de 15 kg', true)",
+        [HUAYLAS_ID, $w]));
+    $r = $this->getJson("/api/v1/trb/workers/{$w}/legajo", $this->h)->assertOk();
+    expect($r->json('data.worker.full_name'))->toContain('Rosa')->and($r->json('data.worker.document'))->toContain('****')
+        ->and($r->json('data.fitness'))->toHaveKeys(['status', 'valid_until', 'work_restrictions'])->and(array_keys($r->json('data.fitness')))->toHaveCount(4);
+});
