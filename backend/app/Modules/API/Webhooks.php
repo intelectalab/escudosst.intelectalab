@@ -100,12 +100,29 @@ final class Webhooks
             // La prueba no se reintenta ni cuenta para pausar el webhook.
             $db->update("update webhook_deliveries set status = 'failed', response_status = ?, response_ms = ?, error = ?, next_retry_at = null where id = ?", [$status, $ms, $err, $d->id]);
         } else {
+            // RN-API-04: reintentos con espera creciente hasta webhook_max_retries; luego la entrega queda abandonada.
+            $max = (int) self::param($db, 'webhook_max_retries', 6);
             $next = (int) $d->attempt + 1;
+            $abandoned = $next > $max;
             $db->update("update webhook_deliveries set attempt = ?, response_status = ?, response_ms = ?, error = ?,
-                           status = case when ? > 6 then 'abandoned' else 'pending' end, next_retry_at = now() + make_interval(mins => ?::int) where id = ?",
-                [$next, $status, $ms, $err, $next, 2 ** min($next, 8), $d->id]);
-            $db->update('update webhooks set failure_count = failure_count + 1, is_active = case when failure_count + 1 >= 20 then false else is_active end,
-                           disabled_at = case when failure_count + 1 >= 20 then now() else disabled_at end where id = ?', [$d->webhook_id]);
+                           status = ?, next_retry_at = case when ? then null else now() + make_interval(mins => ?::int) end where id = ?",
+                [$next, $status, $ms, $err, $abandoned ? 'abandoned' : 'pending', $abandoned ? 'true' : 'false', 2 ** min($next, 8), $d->id]);
+            $w = $db->selectOne('update webhooks set failure_count = failure_count + 1, is_active = case when failure_count + 1 >= 20 then false else is_active end,
+                           disabled_at = case when failure_count + 1 >= 20 then now() else disabled_at end where id = ? returning name, is_active, failure_count', [$d->webhook_id]);
+            // §10: se avisa al administrador de la cuenta cuando una entrega se abandona o el webhook se pausa.
+            if ($abandoned || ($w && ! $w->is_active && (int) $w->failure_count === 20)) {
+                $title = $abandoned ? 'Webhook: entrega abandonada' : 'Webhook pausado por fallas';
+                $body = $abandoned
+                    ? "El webhook «{$w?->name}» no pudo entregar el evento {$d->event_code} tras {$max} reintentos ({$err})."
+                    : "El webhook «{$w?->name}» se pausó tras 20 fallas seguidas: revisa la dirección de destino y vuelve a activarlo.";
+                foreach ($db->select("select distinct m.user_id from memberships m join roles r on r.id = m.role_id
+                                       where m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = 'account_admin'") as $u) {
+                    $db->insert("insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, dedupe_key)
+                                 values (?, ?, 'API', ?, ?, ?, ?, ?, 'high', ?) on conflict do nothing",
+                        [$d->company_id, $abandoned ? 'api.delivery_abandoned' : 'api.webhook_paused', $d->webhook_id, $u->user_id, $title, mb_substr($body, 0, 500),
+                            '/m/api?t=webhooks&open='.$d->webhook_id, ($abandoned ? 'api.abandoned:'.$d->id : 'api.paused:'.$d->webhook_id.':'.date('Y-m-d')).':'.$u->user_id]);
+                }
+            }
         }
 
         return $ok;
@@ -138,5 +155,13 @@ final class Webhooks
         } catch (\Throwable) {
             return $stored;
         }
+    }
+
+    private static function param(ConnectionInterface $db, string $key, int $default): int
+    {
+        $v = $db->selectOne('select value from legal_parameters where key = ? and deleted_at is null and valid_from <= current_date and (valid_to is null or valid_to >= current_date)
+                               order by company_id nulls last, valid_from desc limit 1', [$key]);
+
+        return is_numeric($v->value ?? null) ? (int) $v->value : $default;
     }
 }

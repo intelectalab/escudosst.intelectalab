@@ -61,10 +61,11 @@ class ExternalApiController extends Controller
         if (! Str::isUuid($company) || $key === '' || $secret === '') {
             throw new ApiProblem(401, 'unauthenticated', 'Faltan credenciales', 'Envía X-Company-Id, X-Api-Key y X-Api-Secret.');
         }
-        if (RateLimiter::tooManyAttempts('ext-api:'.$key, 120)) {
+        // Tope general por clave antes de tocar la base (protege contra claves inventadas).
+        if (RateLimiter::tooManyAttempts('ext-api-any:'.$key, 600)) {
             throw new ApiProblem(429, 'too_many_requests', 'Demasiadas consultas', 'Espera un minuto antes de seguir consultando.');
         }
-        RateLimiter::hit('ext-api:'.$key, 60);
+        RateLimiter::hit('ext-api-any:'.$key, 60);
 
         return DB::transaction(function () use ($company, $key, $secret, $request, $fn) {
             DbContext::setCompany($company);
@@ -83,6 +84,13 @@ class ExternalApiController extends Controller
             if ($ips && ! in_array($request->ip(), $ips, true)) {
                 throw new ApiProblem(403, 'forbidden', 'IP no permitida', 'Esta IP no está en la lista de IPs permitidas del cliente.');
             }
+            // RN-API-05: límite de consultas por minuto de cada cliente (rate_limit_per_minute; 120 si no se indica).
+            $limit = max(1, (int) ($c->rate_limit_per_minute ?: 120));
+            if (RateLimiter::tooManyAttempts('ext-api:'.$c->id, $limit)) {
+                throw new ApiProblem(429, 'too_many_requests', 'Demasiadas consultas', "Este cliente admite {$limit} consultas por minuto: espera un momento.",
+                    ['retry_after' => RateLimiter::availableIn('ext-api:'.$c->id)]);
+            }
+            RateLimiter::hit('ext-api:'.$c->id, 60);
             DB::update('update api_clients set last_used_at = now() where id = ?', [$c->id]);
             $module = DB::selectOne("select mode from feature_flags where module_code = 'API' and deleted_at is null")?->mode;
             if ($module !== 'enabled') {

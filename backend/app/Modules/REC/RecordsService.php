@@ -198,6 +198,10 @@ final class RecordsService
         $values = $this->validate($res, $input, creating: false);
         $extra = [];
         $rules?->prepare('update', $res, $values, $current, $extra);
+        // M-FIR RN-FIR-03: con todas sus firmas completas el registro queda bloqueado (solo puede seguir su flujo de estados).
+        if (array_diff(array_keys($values), ['status']) !== [] || $extra !== []) {
+            $this->assertNotFullySigned($res['table'], $id);
+        }
         $this->checkUniques($res, $values, $current);
 
         $sets = [];
@@ -223,6 +227,19 @@ final class RecordsService
         return $this->find($res, $id, decrypt: true);
     }
 
+    /** RN-FIR-03: un registro con firmas pedidas y todas firmadas no se edita; se corrige con una versión o anexo. */
+    private function assertNotFullySigned(string $table, string $id): void
+    {
+        if ($table === 'signature_requests') {
+            return;
+        }
+        $s = DB::selectOne("select count(*) as n, count(*) filter (where status = 'signed') as signed from signature_requests
+                             where subject_type = ? and subject_id = ? and deleted_at is null and status <> 'cancelled'", [$table, $id]);
+        if ($s && (int) $s->n > 0 && (int) $s->n === (int) $s->signed) {
+            throw new ApiProblem(409, 'conflict', 'Registro firmado', 'El registro ya tiene todas sus firmas: no se edita. Para corregirlo crea una nueva versión o un anexo.');
+        }
+    }
+
     public function delete(array $res, string $id): void
     {
         $current = $this->row($res, $id);
@@ -230,6 +247,7 @@ final class RecordsService
             throw ApiProblem::forbidden('Este registro es del catálogo general de EscudoSST: no se puede archivar.');
         }
         RecordRules::for($res['table'])?->prepareDelete($res, $current);
+        $this->assertNotFullySigned($res['table'], $id);
 
         $this->guard(fn () => $res['soft_delete']
             ? DB::update('update "'.$res['table'].'" set deleted_at = now()'.(($res['updated_by'] ?? $res['stamps']) ? ', updated_by = ?' : '').' where id = ?',

@@ -118,6 +118,27 @@ final class WorkerAppAccess
         }
     }
 
+    /** M-FIR §10: al bloquearse el PIN de un trabajador se avisa a los supervisores y al Jefe SST de su empresa. */
+    private static function notifyLocked(string $workerId, int $minutes): void
+    {
+        try {
+            $w = \Illuminate\Support\Facades\DB::selectOne('select company_id, full_name from workers where id = ?', [$workerId]);
+            if (! $w) {
+                return;
+            }
+            foreach (\Illuminate\Support\Facades\DB::select("select distinct m.user_id from memberships m join roles r on r.id = m.role_id
+                                          where m.company_id = ? and m.status = 'active' and m.deleted_at is null
+                                            and coalesce(r.base_role_code, r.code) in ('sst_supervisor', 'sst_manager')", [$w->company_id]) as $u) {
+                \Illuminate\Support\Facades\DB::insert("insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, dedupe_key)
+                     values (?, 'fir.pin_locked', 'TRB', ?, ?, 'PIN de trabajador bloqueado', ?, ?, 'normal', ?) on conflict do nothing",
+                    [$w->company_id, $workerId, $u->user_id, "{$w->full_name} escribió mal su PIN varias veces: quedó bloqueado {$minutes} minuto(s). Si no fue él, revisa su acceso.",
+                        '/m/trb?t=workers&open='.$workerId, 'fir.pin_locked:'.$workerId.':'.$u->user_id.':'.date('Y-m-d H')]);
+            }
+        } catch (\Throwable) {
+            // El aviso nunca impide responder al trabajador.
+        }
+    }
+
     /** Comprueba el PIN del trabajador y cuenta los errores (bloqueo temporal). */
     public static function checkPin(string $workerId, ?string $pinHash, string $pin): bool
     {
@@ -132,6 +153,7 @@ final class WorkerAppAccess
         if ($fails >= max(1, (int) config('escudo.worker_app.pin_max_attempts', 5))) {
             Cache::forget(self::failKey($workerId));
             Cache::put(self::lockKey($workerId), time() + $minutes * 60, now()->addMinutes($minutes));
+            self::notifyLocked($workerId, $minutes);
         } else {
             Cache::put(self::failKey($workerId), $fails, now()->addMinutes($minutes));
         }

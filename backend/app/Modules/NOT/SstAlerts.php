@@ -55,6 +55,11 @@ final class SstAlerts
         $db->update("update first_aid_kits k set status = 'expired_items' where k.status in ('complete', 'incomplete') and k.deleted_at is null
                       and exists (select 1 from first_aid_kit_items i where i.kit_id = k.id and i.deleted_at is null and i.expires_on < current_date)");
         $db->update("update training_certificates set status = 'expired' where deleted_at is null and status = 'validated' and expires_on < current_date");
+        // M-ING RN-ING-05: los eventos de garita se conservan access_retention_days (0 = sin purga hasta que la empresa lo defina).
+        $retention = (int) \App\Core\Support\LegalParams::number('access_retention_days', 0);
+        if ($retention > 0) {
+            $db->delete('delete from access_events where occurred_at < now() - make_interval(days => ?::int)', [$retention]);
+        }
         // M-HOM RN-HOM-05: la homologación aprobada que pasó su vigencia queda «vencida».
         $db->update("update vendor_evaluations set status = 'expired', updated_at = now() where deleted_at is null and status = 'approved' and valid_until < current_date");
         // EMO periódico (R.M. 312-2011-MINSA): a quien su aptitud vence en 30 días (o no tiene) y su puesto exige EMO,
