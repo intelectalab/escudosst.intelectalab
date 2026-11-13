@@ -88,6 +88,12 @@ final class SstAlerts
         }
     }
 
+    /** Días (u horas) de aviso desde los parámetros legales, siempre como número entero para el SQL. */
+    private static function days(string $key, int $default): int
+    {
+        return max(0, (int) \App\Core\Support\LegalParams::number($key, $default));
+    }
+
     public function forCompany(ConnectionInterface $db, string $company): int
     {
         $enabled = array_column($db->select("select module_code from feature_flags where mode = 'enabled' and deleted_at is null"), 'module_code');
@@ -117,6 +123,73 @@ final class SstAlerts
             ['EPP', "select d.id, w.full_name as ref, i.name as name, null as owner, d.expires_on as due, 'ppe' as kind from ppe_deliveries d join workers w on w.id = d.worker_id join ppe_items i on i.id = d.ppe_item_id
                       where d.deleted_at is null and d.status = 'delivered' and d.expires_on between current_date and current_date + 15",
                 'epp.expiring', 'low', 'EPP por reponer', fn ($r) => "{$r->name} de {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/epp?t=ppe_deliveries&open=', self::SST_ROLES, false],
+            // ── Avisos §10 de las fichas (revisión diaria). Los plazos salen de los parámetros legales (a confirmar por la empresa). ──
+            // M-PTR: permiso en ejecución que pasó su horario sin cerrarse.
+            ['PTR', "select id, code as ref, work_description as name, requested_by as owner, valid_until as due, 'ptr' as kind from work_permits
+                      where deleted_at is null and status in ('active', 'suspended') and valid_until < now()",
+                'ptr.not_closed', 'high', 'Permiso de trabajo sin cerrar', fn ($r) => "El permiso {$r->ref} terminó su horario el ".date('d/m/Y H:i', strtotime($r->due)).' y sigue abierto: ciérralo o amplíalo.', '/m/ptr?t=work_permits&open=', self::SST_ROLES, false],
+            // M-INV RN-INV-04: investigación por vencer o vencida.
+            ['INV', "select i.id, i.code as ref, '' as name, null as owner, i.due_on as due, 'inv' as kind from investigations i
+                      where i.deleted_at is null and i.status in ('open', 'analysis', 'committee_review') and i.due_on <= current_date + ".self::days('investigation_notice_days', 3),
+                'inv.due', 'high', 'Investigación por vencer', fn ($r) => "La investigación {$r->ref} ".(strtotime($r->due) < strtotime('today') ? 'venció el ' : 'vence el ').date('d/m/Y', strtotime($r->due)).'.', '/m/inv?t=investigations&open=', self::SST_ROLES, true],
+            // M-ACC: evento reportado que sigue sin clasificar (event_triage_hours).
+            ['ACC', "select id, code as ref, '' as name, reporter_user_id as owner, reported_at as due, 'triage' as kind from sst_events
+                      where deleted_at is null and status = 'reported' and reported_at < now() - make_interval(hours => ".self::days('event_triage_hours', 24).')',
+                'acc.untriaged', 'high', 'Evento sin clasificar', fn ($r) => "El evento {$r->ref} se reportó el ".date('d/m/Y H:i', strtotime($r->due)).' y sigue sin clasificar.', '/m/acc?t=sst_events&open=', self::SST_ROLES, false],
+            // M-COM RN-COM-07: mandato del comité por vencer; acuerdos vencidos.
+            ['COM', "select id, name as ref, '' as name, null as owner, period_end_on as due, 'com' as kind from committees
+                      where deleted_at is null and status = 'active' and period_end_on <= current_date + ".self::days('committee_term_notice_days', 60),
+                'com.term_ending', 'normal', 'Mandato del comité por vencer', fn ($r) => "El mandato de «{$r->ref}» vence el ".date('d/m/Y', strtotime($r->due)).': prepara la elección.', '/m/com?t=committees&open=', self::SST_ROLES, true],
+            ['COM', "select a.id, concat('Acuerdo ', a.number) as ref, a.description as name, a.responsible_user_id as owner, a.due_on as due, 'agr' as kind from meeting_agreements a
+                      where a.deleted_at is null and a.status in ('agreed', 'in_progress', 'overdue') and a.due_on < current_date",
+                'com.agreement_overdue', 'normal', 'Acuerdo del comité vencido', fn ($r) => "{$r->ref}: «".mb_substr((string) $r->name, 0, 80).'» venció el '.date('d/m/Y', strtotime($r->due)).'.', '/m/com?t=meeting_agreements&open=', self::SST_ROLES, true],
+            // M-AUI: auditoría próxima (audit_notice_days).
+            ['AUI', "select id, code as ref, scope as name, null as owner, starts_on as due, 'aui' as kind from audits
+                      where deleted_at is null and status = 'planned' and starts_on between current_date and current_date + ".self::days('audit_notice_days', 15),
+                'aui.upcoming', 'normal', 'Auditoría próxima', fn ($r) => "La auditoría {$r->ref} empieza el ".date('d/m/Y', strtotime($r->due)).'.', '/m/aui?t=audits&open=', self::SST_ROLES, false],
+            // M-RVD RN-RVD-04: revisión por la dirección planificada que llega o pasó su fecha.
+            ['RVD', "select id, title as ref, '' as name, null as owner, review_on as due, 'rvd' as kind from management_reviews
+                      where deleted_at is null and status = 'planned' and review_on <= current_date + ".self::days('management_review_notice_days', 15),
+                'rvd.due', 'normal', 'Revisión por la dirección próxima', fn ($r) => "«{$r->ref}» está programada para el ".date('d/m/Y', strtotime($r->due)).'.', '/m/rvd?t=management_reviews&open=', [...self::SST_ROLES, 'management'], true],
+            // M-SIM: simulacro próximo (drill_notice_days).
+            ['SIM', "select id, code as ref, title as name, null as owner, scheduled_at as due, 'sim' as kind from drills
+                      where deleted_at is null and status = 'planned' and scheduled_at between now() and now() + make_interval(days => ".self::days('drill_notice_days', 7).')',
+                'sim.upcoming', 'normal', 'Simulacro próximo', fn ($r) => "El simulacro «{$r->name}» está programado para el ".date('d/m/Y H:i', strtotime($r->due)).'.', '/m/sim?t=drills&open=', self::SST_ROLES, false],
+            // M-EPP RN-EPP-08: stock por debajo del mínimo.
+            ['EPP', "select i.id, i.name as ref, '' as name, null as owner, current_date as due, 'stock' as kind from ppe_items i
+                      where i.deleted_at is null and i.is_active and i.min_stock is not null
+                        and (select coalesce(sum(case when m.movement_type in ('in','return','adjustment') then m.quantity else -m.quantity end), 0)
+                               from ppe_stock_movements m where m.ppe_item_id = i.id and m.deleted_at is null) < i.min_stock",
+                'epp.low_stock', 'normal', 'Stock de EPP bajo', fn ($r) => "El stock de {$r->ref} está por debajo del mínimo: repón.", '/m/epp?t=ppe_items&open=', self::SST_ROLES, true],
+            // M-EQE RN-EQE-02: mantenimiento o vencimiento de equipos de emergencia.
+            ['EQE', "select id, code as ref, equipment_type as name, null as owner, least(next_maintenance_on, expires_on) as due, 'eqe' as kind from emergency_equipment
+                      where deleted_at is null and status <> 'retired' and least(next_maintenance_on, expires_on) <= current_date + ".self::days('equipment_notice_days', 15),
+                'eqe.due', 'normal', 'Equipo de emergencia por revisar', fn ($r) => "El equipo {$r->ref} necesita mantenimiento o vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/eqe?t=emergency_equipment&open=', self::SST_ROLES, true],
+            // M-MOC RN-MOC-04: cambio temporal que llega a su fecha de fin.
+            ['MOC', "select id, code as ref, title as name, requested_by as owner, temporary_until as due, 'moc' as kind from change_requests
+                      where deleted_at is null and is_temporary and status in ('approved', 'implemented') and temporary_until <= current_date + 7",
+                'moc.temporary_ending', 'normal', 'Cambio temporal por terminar', fn ($r) => "El cambio temporal {$r->ref} termina el ".date('d/m/Y', strtotime($r->due)).': revierte o hazlo permanente.', '/m/moc?t=change_requests&open=', self::SST_ROLES, false],
+            // M-POL RN-POL-08: política vigente con revisión próxima o vencida.
+            ['POL', "select id, title as ref, '' as name, null as owner, review_due_on as due, 'pol' as kind from sst_policies
+                      where deleted_at is null and status = 'current' and review_due_on <= current_date + 30",
+                'pol.review_due', 'normal', 'Revisión de la política SST', fn ($r) => "La política «{$r->ref}» debe revisarse antes del ".date('d/m/Y', strtotime($r->due)).'.', '/m/pol?t=sst_policies&open=', [...self::SST_ROLES, 'management'], true],
+            // M-DOC RN-DOC-04: documento vigente con la revisión vencida (sigue vigente).
+            ['DOC', "select id, code as ref, title as name, owner_user_id as owner, next_review_on as due, 'doc' as kind from documents
+                      where deleted_at is null and status = 'active' and next_review_on < current_date",
+                'doc.review_overdue', 'normal', 'Documento con revisión vencida', fn ($r) => "{$r->ref} · {$r->name} debía revisarse el ".date('d/m/Y', strtotime($r->due)).'.', '/m/doc?t=documents&open=', [], true],
+            // M-SCT: póliza propia por vencer.
+            ['SCT', "select id, policy_number as ref, coverage_kind as name, null as owner, ends_on as due, 'sct' as kind from sctr_policies
+                      where deleted_at is null and contractor_id is null and status in ('active', 'expiring') and ends_on <= current_date + ".self::days('sctr_policy_notice_days', 15),
+                'sct.policy_expiring', 'high', 'Póliza SCTR por vencer', fn ($r) => "La póliza SCTR N.° {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/sct?t=sctr_policies&open=', self::SST_ROLES, false],
+            // M-CTR: acreditación de contratista por vencer.
+            ['CTR', "select a.id, c.legal_name as ref, '' as name, null as owner, coalesce(a.expires_on, a.ends_on) as due, 'ctr' as kind from contractor_accreditations a
+                      join contractors c on c.id = a.contractor_id
+                      where a.deleted_at is null and a.status in ('accredited', 'expiring') and coalesce(a.expires_on, a.ends_on) <= current_date + ".self::days('contractor_doc_notice_days', 15),
+                'ctr.accreditation_expiring', 'normal', 'Acreditación de contratista por vencer', fn ($r) => "La acreditación de {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/ctr?t=contractor_accreditations&open=', self::SST_ROLES, false],
+            // M-MAG: campaña de monitoreo próxima.
+            ['MAG', "select id, title as ref, '' as name, responsible_user_id as owner, starts_on as due, 'mag' as kind from monitoring_campaigns
+                      where deleted_at is null and status = 'planned' and starts_on between current_date and current_date + 15",
+                'mag.upcoming', 'low', 'Monitoreo próximo', fn ($r) => "La campaña «{$r->ref}» empieza el ".date('d/m/Y', strtotime($r->due)).'.', '/m/mag?t=monitoring_campaigns&open=', self::SST_ROLES, false],
             // M-HOM RN-HOM-05: la calificación del proveedor por vencer se alerta (vendor_notice_days).
             ['HOM', "select e.id, coalesce(e.vendor_name, e.vendor_ruc) as ref, '' as name, e.evaluator_user_id as owner, e.valid_until as due, 'hom' as kind from vendor_evaluations e
                       where e.deleted_at is null and e.status = 'approved' and e.valid_until between current_date and current_date + ".(int) \App\Core\Support\LegalParams::number('vendor_notice_days', 30),

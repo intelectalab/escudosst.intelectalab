@@ -126,6 +126,10 @@ final class IpercWorkflow
         }
         DB::update("update iperc_versions set status = 'in_review', prepared_by = ?, prepared_at = now(), updated_by = ? where id = ?",
             [(string) auth()->id(), (string) auth()->id(), $versionId]);
+        // M-IPC §10: aviso «enviado a aprobación» a quienes aprueban la matriz.
+        $m = DB::selectOne('select m.id, m.code, m.title from iperc_matrices m join iperc_versions v on v.iperc_matrix_id = m.id where v.id = ?', [$versionId]);
+        \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['sst_manager', 'sst_supervisor']), 'ipc.submitted', 'IPC', $m->id, 'IPERC enviado a aprobación',
+            "La matriz {$m->code} · {$m->title} espera revisión y aprobación.", '/m/ipc?t=iperc_matrices&open='.$m->id, 'normal', 'ipc.submitted:'.$versionId);
         $this->audit('submit', $versionId, ['participants' => count($participants)]);
     }
 
@@ -272,6 +276,7 @@ final class IpercWorkflow
                     $m->site_id, $m->area_id, $c->responsible_user_id, $c->due_on, $c->is_significant ? 'high' : 'medium', $user, $user]
             )->id;
             DB::update("update iperc_controls set corrective_action_id = ?, status = 'proposed' where id = ?", [$id, $c->id]);
+            \App\Modules\REC\Rules\AcrRules::notifyAssigned($id);
         }
 
         return count($controls);

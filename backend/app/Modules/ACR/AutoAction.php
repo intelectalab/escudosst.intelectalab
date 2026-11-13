@@ -20,11 +20,14 @@ final class AutoAction
         } while (DB::selectOne('select 1 as ok from corrective_actions where code = ? and deleted_at is null', [$code]));
         $due ??= date('Y-m-d', strtotime('+'.(int) LegalParams::number('legal_gap_action_days', 30).' days'));
 
-        return DB::selectOne(
+        $id = DB::selectOne(
             "insert into corrective_actions (company_id, code, source_type, source_id, action_type, title, description, site_id, area_id, responsible_user_id, due_on, priority, status, created_by, updated_by)
              values (?, ?, ?, ?, 'corrective', ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?) returning id",
             [$company, $code, $sourceType, $sourceId, mb_substr($title, 0, 500), $description, $site, $area, $responsible ?? (string) auth()->id(), $due, $priority,
                 (string) auth()->id(), (string) auth()->id()]
         )->id;
+        \App\Modules\REC\Rules\AcrRules::notifyAssigned($id);
+
+        return $id;
     }
 }

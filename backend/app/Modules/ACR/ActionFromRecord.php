@@ -94,6 +94,7 @@ class ActionFromRecord extends Controller
             [$row->company_id, $code, $type, $row->{$sourceCol}, mb_substr($title, 0, 500), $row->description ?? null, $row->site_id ?? null, $row->area_id ?? null,
                 $user, $due, in_array($severity, ['high', 'critical'], true) ? 'high' : 'medium', (string) auth()->id(), (string) auth()->id()]
         )->id;
+        \App\Modules\REC\Rules\AcrRules::notifyAssigned($actionId);
         if ($linkable) {
             DB::update("update \"{$table}\" set corrective_action_id = ?".($newStatus ? ', status = ?' : '').' where id = ?',
                 $newStatus ? [$actionId, $newStatus, $id] : [$actionId, $id]);

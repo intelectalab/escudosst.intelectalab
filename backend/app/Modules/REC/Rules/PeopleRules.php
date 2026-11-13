@@ -103,6 +103,34 @@ class PeopleRules extends RecordRules
                 DB::update("update medical_exam_orders set status = 'fitness_issued' where id = ? and status <> 'cancelled'", [$f->medical_exam_order_id]);
             }
         }
+        // M-PTR §10: aprobación pendiente (a quien tiene el rol del primer paso) y permiso suspendido (al solicitante y SST).
+        if ($res['table'] === 'work_permits' && ($values['status'] ?? null) && $values['status'] !== $current?->status) {
+            $p = DB::selectOne('select id, code, work_description, requested_by, suspended_reason from work_permits where id = ?', [$id]);
+            $link = '/m/ptr?t=work_permits&open='.$id;
+            if ($values['status'] === 'pending_approval') {
+                $role = DB::selectOne("select approver_role from permit_approvals where work_permit_id = ? and decision = 'pending' and deleted_at is null order by step_order limit 1", [$id])?->approver_role;
+                if ($role) {
+                    \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles([$role]), 'ptr.approval_pending', 'PTR', $id, 'Permiso de trabajo por aprobar',
+                        "El permiso {$p->code} · ".mb_substr((string) $p->work_description, 0, 120).' espera tu aprobación.', $link, 'high', 'ptr.approval_pending:'.$id);
+                }
+            }
+            if ($values['status'] === 'suspended') {
+                \App\Modules\NOT\Notify::users([$p->requested_by, ...\App\Modules\NOT\Notify::roles(['sst_manager', 'sst_supervisor'])], 'ptr.suspended', 'PTR', $id, 'Permiso de trabajo suspendido',
+                    "Se suspendió el permiso {$p->code}: ".mb_substr((string) $p->suspended_reason, 0, 200), $link, 'high');
+            }
+        }
+        // M-CTR §10: acreditación aprobada o suspendida → aviso al administrador del contratista y al equipo SST.
+        if ($res['table'] === 'contractor_accreditations' && in_array($values['status'] ?? null, ['accredited', 'suspended', 'observed', 'rejected'], true) && $values['status'] !== $current?->status) {
+            $a = DB::selectOne('select a.id, a.contractor_id, a.service_description, a.suspended_reason, a.observations, a.rejection_reason, c.legal_name from contractor_accreditations a
+                                  join contractors c on c.id = a.contractor_id where a.id = ?', [$id]);
+            $portal = array_column(DB::select("select m.user_id from membership_scopes s join memberships m on m.id = s.membership_id and m.status = 'active' and m.deleted_at is null
+                                                where s.scope_type = 'contractor' and s.contractor_id = ? and s.deleted_at is null", [$a->contractor_id]), 'user_id');
+            $what = ['accredited' => 'quedó acreditada', 'suspended' => 'quedó suspendida', 'observed' => 'tiene observaciones', 'rejected' => 'fue rechazada'][$values['status']];
+            $why = $a->suspended_reason ?? $a->observations ?? $a->rejection_reason;
+            \App\Modules\NOT\Notify::users([...$portal, ...\App\Modules\NOT\Notify::roles(['sst_supervisor'])], 'ctr.accreditation_'.$values['status'], 'CTR', $id,
+                'Acreditación de contratista: '.$what, "La acreditación de {$a->legal_name} para «".mb_substr((string) $a->service_description, 0, 80)."» {$what}".($why && $values['status'] !== 'accredited' ? ": {$why}" : '').'.',
+                '/m/ctr?t=contractor_accreditations&open='.$id, $values['status'] === 'accredited' ? 'normal' : 'high', 'ctr.accreditation:'.$id.':'.$values['status']);
+        }
         if ($res['table'] === 'absences') {
             self::syncLeave(DB::connection(), DB::selectOne('select worker_id from absences where id = ?', [$id])->worker_id);
         }

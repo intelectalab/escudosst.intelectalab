@@ -40,8 +40,30 @@ class AcrRules extends RecordRules
         $res['table'] === 'action_evidences' ? $this->evidence($op, $values, $current, $extra) : $this->action($op, $values, $current, $extra);
     }
 
+    /** M-ACR §10: aviso «acción asignada» a su responsable (al crearla o cuando cambia de responsable). */
+    public static function notifyAssigned(string $id): void
+    {
+        $a = DB::selectOne('select code, title, due_on, priority, responsible_user_id from corrective_actions where id = ?', [$id]);
+        if ($a?->responsible_user_id) {
+            \App\Modules\NOT\Notify::users([$a->responsible_user_id], 'acr.assigned', 'ACR', $id, 'Acción correctiva asignada',
+                "{$a->code} · {$a->title}".($a->due_on ? ' — vence el '.date('d/m/Y', strtotime($a->due_on)) : '').'.', '/m/acr?t=corrective_actions&open='.$id,
+                in_array($a->priority, ['high', 'critical'], true) ? 'high' : 'normal', 'acr.assigned:'.$id.':'.$a->responsible_user_id);
+        }
+    }
+
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
     {
+        if ($res['table'] === 'corrective_actions' && ($op === 'create' || (($values['responsible_user_id'] ?? null) && $values['responsible_user_id'] !== $current?->responsible_user_id))) {
+            self::notifyAssigned($id);
+        }
+        // §10: evidencia subida → aviso a quien creó la acción y al equipo SST para verificarla.
+        if ($res['table'] === 'action_evidences' && $op === 'create') {
+            $a = DB::selectOne('select c.id, c.code, c.title, c.created_by from corrective_actions c join action_evidences e on e.corrective_action_id = c.id where e.id = ?', [$id]);
+            if ($a) {
+                \App\Modules\NOT\Notify::users([$a->created_by, ...\App\Modules\NOT\Notify::roles(['sst_manager'])], 'acr.evidence', 'ACR', $a->id, 'Evidencia de acción para verificar',
+                    "Se subió evidencia de {$a->code} · {$a->title}: revísala para verificar la acción.", '/m/acr?t=corrective_actions&open='.$a->id, 'normal', 'acr.evidence:'.$id);
+            }
+        }
         if ($res['table'] === 'corrective_actions' && ($values['status'] ?? null) === 'cancelled') {
             // Acción anulada: el origen queda libre para asignarle otra acción.
             foreach (self::ORIGINS as $t) {
@@ -249,6 +271,7 @@ class AcrRules extends RecordRules
                 $a->responsible_user_id, $a->responsible_worker_id, $a->contractor_id, $today, $a->priority, (int) $a->reopened_count + 1,
                 (string) auth()->id(), (string) auth()->id()]
         );
+        self::notifyAssigned($new->id);
         // El origen (hallazgo, causa, no conformidad…) queda esperando la nueva acción: así se cierra cuando esta sea eficaz.
         foreach (self::ORIGINS as $t) {
             DB::update("update \"{$t}\" set corrective_action_id = ? where corrective_action_id = ?", [$new->id, $a->id]);

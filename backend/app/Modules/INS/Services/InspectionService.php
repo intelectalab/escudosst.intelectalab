@@ -190,6 +190,7 @@ final class InspectionService
                 in_array($f->severity, ['high', 'critical'], true) ? 'high' : 'medium', (string) auth()->id(), (string) auth()->id()]
         )->id;
         DB::update("update findings set corrective_action_id = ?, status = 'action_assigned' where id = ?", [$id, $findingId]);
+        \App\Modules\REC\Rules\AcrRules::notifyAssigned($id);
 
         return ['id' => $id, 'code' => $code];
     }
