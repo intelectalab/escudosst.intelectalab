@@ -34,6 +34,26 @@ final class Notify
         return $n;
     }
 
+    /** Avisos a trabajadores (con o sin cuenta: los ven en su app y les llegan por WhatsApp si lo aceptaron). @param list<string> $workers */
+    public static function workers(array $workers, string $event, string $module, string $subjectId, string $title, string $body, string $link, string $priority = 'normal', ?string $dedupe = null): int
+    {
+        $company = app()->bound(CompanyContext::class) ? app(CompanyContext::class)->companyId : null;
+        $workers = array_values(array_unique(array_filter($workers)));
+        if (! $company || $workers === []) {
+            return 0;
+        }
+        $n = 0;
+        foreach (DB::select('select id, user_id from workers where id = any(?::uuid[])', ['{'.implode(',', $workers).'}']) as $w) {
+            $n += DB::affectingStatement(
+                'insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, recipient_worker_id, title, body, link, priority, dedupe_key)
+                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict do nothing',
+                [$company, $event, $module, $subjectId, $w->user_id, $w->id, $title, mb_substr($body, 0, 500), $link, $priority, ($dedupe ?? $event.':'.$subjectId).':'.$w->id]
+            );
+        }
+
+        return $n;
+    }
+
     /** Usuarios activos de la empresa con alguno de esos roles (por su rol base). @return list<string> */
     public static function roles(array $roles): array
     {

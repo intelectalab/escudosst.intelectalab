@@ -89,6 +89,41 @@ final class SstAlerts
     }
 
     /** Días (u horas) de aviso desde los parámetros legales, siempre como número entero para el SQL. */
+    /**
+     * M-PSI §10: recordatorio survey_reminder_days antes del cierre a cada trabajador del alcance que aún no respondió
+     * (por la app o por WhatsApp; la respuesta sigue siendo anónima: solo se compara la huella del respondiente).
+     */
+    private static function surveyReminders(ConnectionInterface $db, string $company): int
+    {
+        $n = 0;
+        $surveys = $db->select("select id, title, ends_on from psychosocial_surveys
+                                 where deleted_at is null and status = 'open' and ends_on between current_date and current_date + ".self::days('survey_reminder_days', 2));
+        foreach ($surveys as $s) {
+            $workers = $db->select(
+                "select w.id, w.user_id from workers w, psychosocial_surveys s
+                  where s.id = ? and w.status = 'active' and w.deleted_at is null
+                    and (jsonb_typeof(s.target_scope -> 'site_ids') is distinct from 'array' or w.current_site_id::text in (select jsonb_array_elements_text(s.target_scope -> 'site_ids')))
+                    and (jsonb_typeof(s.target_scope -> 'area_ids') is distinct from 'array' or w.current_area_id::text in (select jsonb_array_elements_text(s.target_scope -> 'area_ids')))",
+                [$s->id]
+            );
+            $answered = array_flip(array_map(fn ($r) => bin2hex(is_resource($r->h) ? stream_get_contents($r->h) : $r->h),
+                $db->select('select respondent_token_hash as h from psychosocial_responses where survey_id = ? and deleted_at is null and respondent_token_hash is not null', [$s->id])));
+            foreach ($workers as $w) {
+                if (isset($answered[\App\Modules\PSI\PsychosocialSurvey::respondentHash($s->id, $w->id)])) {
+                    continue;
+                }
+                $n += $db->affectingStatement(
+                    "insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, recipient_worker_id, title, body, link, priority, due_at, dedupe_key)
+                     values (?, 'psi.closing_soon', 'PSI', ?, ?, ?, 'Encuesta por cerrar', ?, '/mi/pendientes', 'low', ?, ?) on conflict do nothing",
+                    [$company, $s->id, $w->user_id, $w->id, "La encuesta «{$s->title}» cierra el ".date('d/m/Y', strtotime($s->ends_on)).': si aún no respondes, hazlo. Es anónima.',
+                        $s->ends_on, 'psi.closing_soon:'.$s->id.':'.$w->id]
+                );
+            }
+        }
+
+        return $n;
+    }
+
     private static function days(string $key, int $default): int
     {
         return max(0, (int) \App\Core\Support\LegalParams::number($key, $default));
@@ -190,6 +225,73 @@ final class SstAlerts
             ['MAG', "select id, title as ref, '' as name, responsible_user_id as owner, starts_on as due, 'mag' as kind from monitoring_campaigns
                       where deleted_at is null and status = 'planned' and starts_on between current_date and current_date + 15",
                 'mag.upcoming', 'low', 'Monitoreo próximo', fn ($r) => "La campaña «{$r->ref}» empieza el ".date('d/m/Y', strtotime($r->due)).'.', '/m/mag?t=monitoring_campaigns&open=', self::SST_ROLES, false],
+            // M-CH5 §10: desde la hora talk_missing_check_hour, área con personal y sin charla del día → a su jefe de área.
+            ['CH5', "select a.id, a.name as ref, '' as name, mw.user_id as owner, (now() at time zone 'America/Lima')::date as due, 'ch5' as kind from areas a
+                      join workers mw on mw.id = a.manager_worker_id and mw.user_id is not null
+                      where a.deleted_at is null and a.status = 'active'
+                        and extract(hour from now() at time zone 'America/Lima') >= ".self::days('talk_missing_check_hour', 10)."
+                        and exists (select 1 from workers w where w.current_area_id = a.id and w.status = 'active' and w.deleted_at is null)
+                        and not exists (select 1 from safety_talks t where t.area_id = a.id and t.deleted_at is null and t.status <> 'cancelled'
+                                          and t.talk_on = (now() at time zone 'America/Lima')::date)",
+                'ch5.area_missing', 'normal', 'Área sin charla hoy', fn ($r) => "El área {$r->ref} aún no registra su charla de 5 minutos de hoy.", '/m/ch5?t=safety_talks&area=', [], false],
+            // M-OBS RN-OBS-03: en los primeros días del mes, categoría del mes anterior con % seguro bajo bbs_alert_pct → al Jefe SST.
+            ['OBS', "select (array_agg(i.id order by i.id))[1] as id, case i.category when 'ppe' then 'EPP' when 'body_position' then 'Posición del cuerpo' when 'tools' then 'Herramientas' when 'procedures' then 'Procedimientos' when 'housekeeping' then 'Orden y limpieza' when 'communication' then 'Comunicación' else 'Otros' end as ref, round(100.0 * count(*) filter (where i.result = 'safe') / count(*)) as name,
+                            null as owner, current_date as due, 'obs' as kind
+                       from behavior_observation_items i join behavior_observations o on o.id = i.observation_id and o.deleted_at is null
+                      where i.deleted_at is null and i.result in ('safe', 'at_risk') and extract(day from current_date) <= 5
+                        and o.observed_on >= date_trunc('month', current_date - interval '1 month') and o.observed_on < date_trunc('month', current_date)
+                      group by i.category
+                     having 100.0 * count(*) filter (where i.result = 'safe') / count(*) < ".self::days('bbs_alert_pct', 80),
+                'obs.category_low', 'normal', 'Categoría de conducta bajo el umbral', fn ($r) => "En el mes pasado la categoría «{$r->ref}» tuvo solo {$r->name} % de conductas seguras: plantea una acción.", '/m/obs?t=behavior_observation_items&ref=', ['sst_manager'], false],
+            // M-REG §10: pasados register_due_notice_days del cierre del mes, ningún registro generado que cubra ese mes.
+            ['REG', "select c.id, to_char(current_date - interval '1 month', 'MM/YYYY') as ref, '' as name, null as owner, current_date as due, 'reg' as kind from companies c
+                      where c.id = nullif(current_setting('app.company_id', true), '')::uuid
+                        and extract(day from current_date) >= ".self::days('register_due_notice_days', 10)."
+                        and not exists (select 1 from register_exports e where e.deleted_at is null and e.status = 'ready'
+                                          and e.period_to >= (date_trunc('month', current_date) - interval '1 day')::date)",
+                'reg.period_missing', 'normal', 'Registro del periodo sin generar', fn ($r) => "Aún no se genera ningún registro obligatorio que cubra {$r->ref}.", '/m/reg?t=register_exports&ref=', ['sst_manager'], false],
+            // M-MRL §10: evaluación de un requisito legal por vencer (legal_eval_notice_days antes) → al responsable.
+            ['MRL', "select id, coalesce(article, 'requisito') as ref, requirement as name, responsible_user_id as owner, next_evaluation_on as due, 'mrl' as kind from legal_requirements
+                      where deleted_at is null and status = 'active' and coalesce(applies, true)
+                        and next_evaluation_on between current_date and current_date + ".self::days('legal_eval_notice_days', 15),
+                'mrl.eval_due', 'normal', 'Requisito legal por evaluar', fn ($r) => "Toca evaluar «".mb_substr((string) $r->name, 0, 120)."» antes del ".date('d/m/Y', strtotime($r->due)).'.', '/m/mrl?t=legal_requirements&open=', [], false],
+            // M-LBA §10: brecha con fecha meta próxima (gap_due_notice_days) → al responsable.
+            ['LBA', "select id, priority as ref, description as name, responsible_user_id as owner, due_on as due, 'gap' as kind from baseline_gaps
+                      where deleted_at is null and status in ('open', 'in_progress') and due_on between current_date and current_date + ".self::days('gap_due_notice_days', 7),
+                'lba.gap_due', 'normal', 'Brecha por cerrar', fn ($r) => "La brecha «".mb_substr((string) $r->name, 0, 120)."» tiene fecha meta el ".date('d/m/Y', strtotime($r->due)).'.', '/m/lba?t=baseline_gaps&open=', [], false],
+            // M-LBA §10: se acerca la reevaluación de la línea base (baseline_reassessment_months desde la última aprobada).
+            ['LBA', "select b.id, b.title as ref, '' as name, null as owner, (b.assessment_on + make_interval(months => ".self::days('baseline_reassessment_months', 12)."))::date as due, 'lba' as kind
+                       from (select distinct on (company_id) * from baseline_assessments where deleted_at is null and status = 'approved' order by company_id, assessment_on desc) b
+                      where (b.assessment_on + make_interval(months => ".self::days('baseline_reassessment_months', 12)."))::date <= current_date + ".self::days('baseline_reassessment_notice_days', 30),
+                'lba.reassessment_due', 'normal', 'Reevaluación de la línea base', fn ($r) => "La línea base «{$r->ref}» debe reevaluarse antes del ".date('d/m/Y', strtotime($r->due)).'.', '/m/lba?t=baseline_assessments&open=', ['sst_manager'], true],
+            // M-PLA §10: plan_missing_notice_days antes del nuevo año (o ya en el año) sin Plan Anual aprobado para ese año.
+            ['PLA', "select c.id, y.yr::text as ref, '' as name, null as owner, make_date(y.yr, 1, 1) as due, 'pla' as kind
+                       from companies c, (select case when current_date >= make_date(extract(year from current_date)::int + 1, 1, 1) - ".self::days('plan_missing_notice_days', 30)."
+                                                 then extract(year from current_date)::int + 1 else extract(year from current_date)::int end as yr) y
+                      where c.id = nullif(current_setting('app.company_id', true), '')::uuid
+                        and not exists (select 1 from annual_plans p where p.deleted_at is null and p.year = y.yr and p.status in ('approved', 'current', 'closed'))",
+                'pla.plan_missing', 'high', 'Año sin Plan Anual aprobado', fn ($r) => "Aún no hay Plan Anual de SST aprobado para {$r->ref}.", '/m/pla?t=annual_plans&ref=', [...self::SST_ROLES, 'management'], true],
+            // M-PCA §10: tema del programa aprobado para el mes que viene (training_plan_notice_days antes) sin capacitación creada.
+            ['PCA', "select i.id, i.topic as ref, to_char(make_date(p.year, i.planned_month, 1), 'MM/YYYY') as name, i.responsible_user_id as owner, make_date(p.year, i.planned_month, 1) as due, 'pca' as kind
+                       from training_program_items i join training_programs p on p.id = i.training_program_id and p.deleted_at is null and p.status in ('approved', 'in_execution')
+                      where i.deleted_at is null and i.training_id is null and i.planned_month between 1 and 12
+                        and make_date(p.year, i.planned_month, 1) between current_date - 31 and current_date + ".self::days('training_plan_notice_days', 15),
+                'pca.topic_without_training', 'normal', 'Tema del programa sin capacitación', fn ($r) => "El tema «{$r->ref}» está programado para {$r->name} y aún no tiene capacitación creada.", '/m/pca?t=training_program_items&open=', ['sst_manager'], true],
+            // M-SCT §10: desde el día sctr_period_due_day, mes sin ninguna constancia propia de SCTR cargada → a RR.HH.
+            ['SCT', "select c.id, to_char(current_date, 'MM/YYYY') as ref, '' as name, null as owner, current_date as due, 'sct' as kind from companies c
+                      where c.id = nullif(current_setting('app.company_id', true), '')::uuid
+                        and extract(day from current_date) >= ".self::days('sctr_period_due_day', 5)."
+                        and exists (select 1 from sctr_policies p where p.deleted_at is null and p.contractor_id is null and p.status = 'active')
+                        and not exists (select 1 from sctr_coverages v join sctr_policies p on p.id = v.sctr_policy_id and p.contractor_id is null
+                                         where v.deleted_at is null and v.worker_id is not null and v.covered_until >= date_trunc('month', current_date)
+                                           and v.covered_from < date_trunc('month', current_date) + interval '1 month')",
+                'sct.period_missing', 'normal', 'Periodo sin constancia de SCTR', fn ($r) => "Aún no se carga la constancia de SCTR del periodo {$r->ref}.", '/m/sct?t=sctr_coverages&ref=', ['hr'], false],
+            // M-PET §10: puesto crítico sin PETS vigente → al Jefe SST (una vez por semana).
+            ['PET', "select p.id, p.name as ref, '' as name, null as owner, current_date as due, 'pet' as kind from positions p
+                      where p.deleted_at is null and p.status = 'active' and p.is_critical
+                        and not exists (select 1 from procedures r join procedure_versions v on v.id = r.current_version_id and v.status in ('approved', 'current')
+                                         where r.position_id = p.id and r.deleted_at is null and r.status = 'active')",
+                'pet.critical_without_pets', 'normal', 'Tarea crítica sin PETS', fn ($r) => "El puesto crítico «{$r->ref}» no tiene un PETS vigente.", '/m/pet?t=procedures&position=', ['sst_manager'], true],
             // M-ATS RN-ATS-05: ATS de un día anterior que quedó sin cerrar → al supervisor.
             ['ATS', "select id, code as ref, task as name, supervisor_user_id as owner, performed_on as due, 'ats' as kind from ats_forms
                       where deleted_at is null and status in ('signed', 'in_execution') and performed_on < (now() at time zone 'America/Lima')::date",
@@ -287,6 +389,10 @@ final class SstAlerts
                     $created++;
                 }
             }
+        }
+
+        if (in_array('PSI', $enabled, true)) {
+            $created += self::surveyReminders($db, $company);
         }
 
         $this->email($db, $company, $byUser);

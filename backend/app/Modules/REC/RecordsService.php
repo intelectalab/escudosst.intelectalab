@@ -182,6 +182,7 @@ final class RecordsService
         )->id);
 
         $rules?->after('create', $res, $id, $values, null);
+        \App\Modules\NOT\FichaEvents::after('create', $res['table'], $id, $values, null);
         $this->audit($res, 'create', $id, $this->auditable($res, $values));
         \App\Modules\API\Webhooks::queue($res['table'], 'create', $id, $values);
 
@@ -221,6 +222,7 @@ final class RecordsService
         $this->guard(fn () => DB::update('update "'.$res['table'].'" set '.implode(', ', $sets).' where id = ?', $bind));
 
         $rules?->after('update', $res, $id, $values, $current);
+        \App\Modules\NOT\FichaEvents::after('update', $res['table'], $id, $values, $current);
         $this->audit($res, 'update', $id, $this->diff($res, $values, $current));
         \App\Modules\API\Webhooks::queue($res['table'], 'update', $id, $values);
 

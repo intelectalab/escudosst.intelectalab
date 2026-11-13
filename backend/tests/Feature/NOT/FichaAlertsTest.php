@@ -59,3 +59,49 @@ it('avisa al supervisor de la sede cuando llega un reporte nuevo', function () {
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
     expect((int) DB::selectOne("select count(*) as n from notifications where event_code = 'act.new_report' and subject_id = ? and recipient_user_id = ?", [$id, $sup])->n)->toBe(1);
 });
+
+function supervisorInHuaylas(): string
+{
+    $sup = DB::selectOne('select id from app_auth_lookup_user(?)', [PROFESIONAL_EMAIL])->id;
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    if (! DB::selectOne('select 1 as ok from memberships where company_id = ? and user_id = ? and deleted_at is null', [HUAYLAS_ID, $sup])) {
+        DB::insert("insert into memberships (company_id, user_id, role_id, status, accepted_at) values (?, ?, (select id from roles where account_id is null and code = 'sst_supervisor'), 'active', now())",
+            [HUAYLAS_ID, $sup]);
+    }
+
+    return $sup;
+}
+
+it('la revisión diaria avisa un puesto crítico sin PETS', function () {
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $pos = DB::selectOne("insert into positions (company_id, code, name, is_critical, status) values (?, ?, 'Soldador en altura', true, 'active') returning id",
+        [HUAYLAS_ID, 'PCR-'.random_int(1000, 9999)])->id;
+
+    app(\App\Modules\NOT\SstAlerts::class)->forCompany(DB::connection(), HUAYLAS_ID);
+
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    expect((int) DB::selectOne("select count(*) as n from notifications where event_code = 'pet.critical_without_pets' and subject_id = ? and recipient_user_id = ?", [$pos, $this->me])->n)->toBe(1);
+});
+
+it('avisa al revisor cuando le asignan la revisión de un cambio', function () {
+    $sup = supervisorInHuaylas();
+    $c = $this->postJson('/api/v1/records/MOC/change_requests', ['title' => 'Cambio de compresor', 'change_type' => 'equipment', 'description' => 'Compresor nuevo'], $this->h)
+        ->assertCreated()->json('data.id');
+    $this->postJson('/api/v1/records/MOC/change_reviews', ['change_request_id' => $c, 'reviewer_user_id' => $sup, 'review_area' => 'SST', 'decision' => 'request_info'], $this->h)
+        ->assertCreated();
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    expect((int) DB::selectOne("select count(*) as n from notifications where event_code = 'moc.review_assigned' and subject_id = ? and recipient_user_id = ?", [$c, $sup])->n)->toBe(1);
+});
+
+it('avisa al supervisor cuando entra un trabajador cuyo puesto tiene EPP obligatorio sin entregar', function () {
+    $sup = supervisorInHuaylas();
+    $pos = DB::selectOne("insert into positions (company_id, code, name, status) values (?, ?, 'Operario de prensa', 'active') returning id", [HUAYLAS_ID, 'PEP-'.random_int(1000, 9999)])->id;
+    $item = DB::selectOne("insert into ppe_items (company_id, code, name, category) values (?, ?, 'Protector auditivo', 'hearing') returning id", [HUAYLAS_ID, 'EPP-'.random_int(1000, 9999)])->id;
+    DB::insert('insert into ppe_position_requirements (company_id, position_id, ppe_item_id, is_mandatory) values (?, ?, ?, true)', [HUAYLAS_ID, $pos, $item]);
+
+    $w = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => (string) random_int(40000000, 49999999), 'first_name' => 'Nuevo', 'paternal_last_name' => 'Ingreso',
+        'current_position_id' => $pos], $this->h)->assertCreated()->json('data.id');
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $n = DB::selectOne("select count(*) as n, max(body) as body from notifications where event_code = 'epp.new_worker_pending' and subject_id = ? and recipient_user_id = ?", [$w, $sup]);
+    expect((int) $n->n)->toBe(1)->and($n->body)->toContain('Protector auditivo');
+});
