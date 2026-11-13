@@ -96,6 +96,7 @@ class ReportPointController extends Controller
                     $anonymous ? 'true' : 'false', $contact, hash_hmac('sha256', (string) $request->ip(), (string) config('app.key'))]
             );
             DB::update('update report_points set report_count = report_count + 1, last_used_at = now() where id = ?', [$p->id]);
+            \App\Modules\NOT\Notify::newReport($p->company_id, $code);
 
             return response()->json(['data' => ['code' => $code]], 201);
         });

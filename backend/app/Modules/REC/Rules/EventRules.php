@@ -117,6 +117,12 @@ class EventRules extends RecordRules
 
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
     {
+        // M-INV §10: informe aprobado → aviso al comité y a gerencia.
+        if ($res['table'] === 'investigations' && ($values['status'] ?? null) === 'approved' && $current?->status !== 'approved') {
+            $i = DB::selectOne('select i.id, i.code, e.code as event_code from investigations i join sst_events e on e.id = i.event_id where i.id = ?', [$id]);
+            \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['committee_member', 'management', 'sst_manager']), 'inv.approved', 'INV', $id, 'Informe de investigación aprobado',
+                "Se aprobó la investigación {$i->code} del evento {$i->event_code}: revisa sus causas y acciones.", '/m/inv?t=investigations&open='.$id, 'normal', 'inv.approved:'.$id);
+        }
         if ($res['table'] === 'sst_events' && ($op === 'create' || array_key_exists('event_type', $values) || array_key_exists('occurred_at', $values))) {
             $this->obligations($id);
         }

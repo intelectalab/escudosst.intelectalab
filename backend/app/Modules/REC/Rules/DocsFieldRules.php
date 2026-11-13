@@ -84,6 +84,18 @@ class DocsFieldRules extends RecordRules
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
     {
         $t = $res['table'];
+        if ($t === 'substandard_reports' && $op === 'create') {
+            $code = DB::selectOne('select code from substandard_reports where id = ?', [$id])->code;
+            \App\Modules\NOT\Notify::newReport(app(\App\Core\Tenancy\CompanyContext::class)->companyId, $code);
+        }
+        // M-DOC §10: versión enviada a revisión → aviso a quienes la aprueban según la categoría.
+        if ($t === 'document_versions' && ($values['status'] ?? null) === 'in_review' && $current?->status !== 'in_review') {
+            $d = DB::selectOne("select d.id, d.code, d.title, coalesce(c.requires_approval_by, 'sst') as req_by from document_versions v join documents d on d.id = v.document_id
+                                  left join document_categories c on c.id = d.category_id where v.id = ?", [$id]);
+            [$roles] = \App\Modules\DOC\ApprovalController::APPROVERS[$d->req_by] ?? \App\Modules\DOC\ApprovalController::APPROVERS['sst'];
+            \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles($roles), 'doc.review_pending', 'DOC', $d->id, 'Documento por aprobar',
+                "{$d->code} · {$d->title} se envió a revisión.", '/m/doc?t=documents&open='.$d->id, 'normal', 'doc.review_pending:'.$id);
+        }
         if ($t === 'report_points' && $op === 'create') {
             $token = \App\Modules\ACT\ReportPointController::token(app(\App\Core\Tenancy\CompanyContext::class)->companyId, $id);
             DB::update("update report_points set token_hash = decode(?, 'hex'), token_last4 = ? where id = ?", [hash('sha256', $token), substr($token, -4), $id]);

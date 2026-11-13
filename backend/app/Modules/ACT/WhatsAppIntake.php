@@ -177,6 +177,7 @@ final class WhatsAppIntake
                     $s['anonymous'] ? 'true' : 'false', $s['anonymous'] ? null : $s['name'].' · +'.preg_replace('/\D/', '', $from), self::phoneHash($from)]
             );
             DB::update('update report_points set report_count = report_count + 1, last_used_at = now() where id = ?', [$p->id]);
+            \App\Modules\NOT\Notify::newReport($s['company'], $code);
 
             return $code;
         });

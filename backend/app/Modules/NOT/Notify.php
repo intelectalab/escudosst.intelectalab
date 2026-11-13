@@ -12,9 +12,9 @@ use Illuminate\Support\Facades\DB;
 final class Notify
 {
     /** @param list<?string> $users */
-    public static function users(array $users, string $event, string $module, string $subjectId, string $title, string $body, string $link, string $priority = 'normal', ?string $dedupe = null): int
+    public static function users(array $users, string $event, string $module, string $subjectId, string $title, string $body, string $link, string $priority = 'normal', ?string $dedupe = null, ?string $company = null): int
     {
-        $company = app()->bound(CompanyContext::class) ? app(CompanyContext::class)->companyId : null;
+        $company ??= app()->bound(CompanyContext::class) ? app(CompanyContext::class)->companyId : null;
         if (! $company) {
             return 0;
         }
@@ -42,5 +42,34 @@ final class Notify
               where m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = any(?::text[])",
             ['{'.implode(',', $roles).'}']
         ), 'user_id');
+    }
+
+    /**
+     * Usuarios con esos roles que ven la sede: sin alcance de sede (ven todo) o con la sede entre sus alcances.
+     * @return list<string>
+     */
+    public static function siteTeam(array $roles, ?string $siteId): array
+    {
+        return array_column(DB::select(
+            "select distinct m.user_id from memberships m join roles r on r.id = m.role_id
+              where m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = any(?::text[])
+                and (not exists (select 1 from membership_scopes s where s.membership_id = m.id and s.scope_type = 'site' and s.deleted_at is null)
+                     or exists (select 1 from membership_scopes s where s.membership_id = m.id and s.scope_type = 'site' and s.site_id = ? and s.deleted_at is null))",
+            ['{'.implode(',', $roles).'}', $siteId]
+        ), 'user_id');
+    }
+
+    /** M-ACT §10: «nuevo reporte en mi sede» al supervisor y al Jefe SST que ven esa sede (desde la app, el QR o WhatsApp). */
+    public static function newReport(string $companyId, string $code): void
+    {
+        try {
+            $r = DB::selectOne('select id, site_id, description from substandard_reports where code = ? and deleted_at is null', [$code]);
+            if ($r) {
+                self::users(self::siteTeam(['sst_supervisor', 'sst_manager'], $r->site_id), 'act.new_report', 'ACT', $r->id, 'Nuevo reporte en tu sede',
+                    "{$code}: ".mb_substr((string) $r->description, 0, 160), '/m/act?t=substandard_reports&open='.$r->id, 'normal', 'act.new_report:'.$r->id, $companyId);
+            }
+        } catch (\Throwable) {
+            // El aviso nunca impide registrar el reporte.
+        }
     }
 }

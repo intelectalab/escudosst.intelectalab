@@ -46,3 +46,16 @@ it('avisa al responsable de una acción asignada y al equipo cuando sube la evid
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
     expect((int) DB::selectOne("select count(*) as n from notifications where event_code = 'acr.assigned' and subject_id = ? and recipient_user_id = ?", [$id, $other])->n)->toBe(1);
 });
+
+it('avisa al supervisor de la sede cuando llega un reporte nuevo', function () {
+    $sup = DB::selectOne('select id from app_auth_lookup_user(?)', [PROFESIONAL_EMAIL])->id;
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    if (! DB::selectOne('select 1 as ok from memberships where company_id = ? and user_id = ? and deleted_at is null', [HUAYLAS_ID, $sup])) {
+        DB::insert("insert into memberships (company_id, user_id, role_id, status, accepted_at) values (?, ?, (select id from roles where account_id is null and code = 'sst_supervisor'), 'active', now())",
+            [HUAYLAS_ID, $sup]);
+    }
+    $id = $this->postJson('/api/v1/records/ACT/substandard_reports', ['report_type' => 'unsafe_condition', 'description' => 'Cable pelado junto al tablero'], $this->h)
+        ->assertCreated()->json('data.id');
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    expect((int) DB::selectOne("select count(*) as n from notifications where event_code = 'act.new_report' and subject_id = ? and recipient_user_id = ?", [$id, $sup])->n)->toBe(1);
+});
