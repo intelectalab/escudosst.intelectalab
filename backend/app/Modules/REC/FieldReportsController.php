@@ -127,31 +127,31 @@ class FieldReportsController extends Controller
         ]]);
     }
 
-    private function can(string $perm): void
+    protected function can(string $perm): void
     {
         if (! in_array($perm, Permissions::effective(), true)) {
             throw ApiProblem::forbidden('Tu rol no ve este registro.');
         }
     }
 
-    private function row(string $table, string $id, string $msg): object
+    protected function row(string $table, string $id, string $msg): object
     {
         $r = Str::isUuid($id) ? DB::selectOne("select * from {$table} where id = ? and deleted_at is null", [$id]) : null;
 
         return $r ?? throw ApiProblem::notFound($msg);
     }
 
-    private function name(string $table, ?string $id, string $col = 'name'): ?string
+    protected function name(string $table, ?string $id, string $col = 'name'): ?string
     {
         return $id ? DB::selectOne("select {$col} as n from {$table} where id = ?", [$id])?->n : null;
     }
 
-    private function person(?string $user, ?string $worker): ?string
+    protected function person(?string $user, ?string $worker): ?string
     {
         return $user ? $this->name('users', $user, 'full_name') : $this->name('workers', $worker, 'full_name');
     }
 
-    private function company(): array
+    protected function company(): array
     {
         $c = DB::selectOne('select legal_name, trade_name, ruc from companies where id = ?', [app(CompanyContext::class)->companyId]);
 
@@ -159,7 +159,7 @@ class FieldReportsController extends Controller
     }
 
     /** Firmas con evidencia (M-FIR) del registro, con la imagen del trazo si la hay. */
-    private function signatures(string $table, string $id): array
+    protected function signatures(string $table, string $id): array
     {
         $rows = DB::select(
             "select s.signer_name, s.signed_at, s.method, k.mime_type, encode(k.image, 'base64') as image
@@ -173,7 +173,7 @@ class FieldReportsController extends Controller
         return $rows;
     }
 
-    private function stroke(?string $signatureId): ?string
+    protected function stroke(?string $signatureId): ?string
     {
         $k = $signatureId ? DB::selectOne("select mime_type, encode(image, 'base64') as image from signature_strokes where signature_id = ?", [$signatureId]) : null;
 
@@ -181,7 +181,7 @@ class FieldReportsController extends Controller
     }
 
     /** Foto incrustada (máx. 2 MB, solo imágenes no médicas de la empresa). */
-    private function image(?string $fileId): ?string
+    protected function image(?string $fileId): ?string
     {
         if (! $fileId) {
             return null;

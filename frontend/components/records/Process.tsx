@@ -131,7 +131,8 @@ export function TraceStrip({ module, table, id, version }: { module: string; tab
 }
 
 /** Informes imprimibles (§11 de las fichas): inspección, PETAR, ATS y legajo SST del trabajador en PDF desde el navegador. */
-const FIELD_PDF: Record<string, string> = { inspections: "inspeccion", work_permits: "petar", ats_forms: "ats", workers: "legajo" };
+const FIELD_PDF: Record<string, string> = { inspections: "inspeccion", work_permits: "petar", ats_forms: "ats", workers: "legajo",
+  sst_policies: "politica", annual_plans: "plan-anual", annual_programs: "passt", baseline_assessments: "linea-base", legal_requirements: "matriz-legal" };
 
 export function RecordActions(props: { code: string; res: RecordResource; row: RecordRow; readOnly: boolean; onChanged: () => void }) {
   const page = FIELD_PDF[props.res.table];
@@ -139,9 +140,9 @@ export function RecordActions(props: { code: string; res: RecordResource; row: R
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
-        <a href={`/imprimir/${page}/${props.row.id}`} target="_blank" rel="noreferrer"
+        <a href={page === "matriz-legal" ? "/imprimir/matriz-legal" : `/imprimir/${page}/${props.row.id}`} target="_blank" rel="noreferrer"
           className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-semibold hover:border-brand hover:text-brand-strong">
-          Descargar PDF
+          {page === "matriz-legal" ? "Matriz legal en PDF" : "Descargar PDF"}
         </a>
       </div>
       <RecordActionsInner {...props} />

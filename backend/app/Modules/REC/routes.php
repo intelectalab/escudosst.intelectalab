@@ -24,3 +24,12 @@ Route::middleware(['auth:sanctum', 'company'])->prefix('reports')->group(functio
     Route::get('work_permits/{id}', [\App\Modules\REC\FieldReportsController::class, 'permit'])->whereUuid('id')->middleware('module:PTR');
     Route::get('ats_forms/{id}', [\App\Modules\REC\FieldReportsController::class, 'ats'])->whereUuid('id')->middleware('module:ATS');
 });
+
+// Informes imprimibles de planificación (§11 de las fichas): política, Plan Anual, PASST, línea base y matriz legal.
+Route::middleware(['auth:sanctum', 'company'])->prefix('reports')->controller(\App\Modules\REC\PlanningReportsController::class)->group(function () {
+    Route::get('sst_policies/{id}', 'policy')->whereUuid('id')->middleware('module:POL');
+    Route::get('annual_plans/{id}', 'plan')->whereUuid('id')->middleware('module:PLA');
+    Route::get('annual_programs/{id}', 'program')->whereUuid('id')->middleware('module:PAS');
+    Route::get('baseline_assessments/{id}', 'baseline')->whereUuid('id')->middleware('module:LBA');
+    Route::get('legal_matrix', 'legalMatrix')->middleware('module:MRL');
+});

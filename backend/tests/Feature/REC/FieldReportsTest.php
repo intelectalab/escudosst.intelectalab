@@ -59,3 +59,24 @@ it('arma el legajo SST del trabajador sin datos clínicos', function () {
     expect($r->json('data.worker.full_name'))->toContain('Rosa')->and($r->json('data.worker.document'))->toContain('****')
         ->and($r->json('data.fitness'))->toHaveKeys(['status', 'valid_until', 'work_restrictions'])->and(array_keys($r->json('data.fitness')))->toHaveCount(4);
 });
+
+it('arma los informes de política, Plan Anual, PASST con cronograma, línea base y matriz legal', function () {
+    frAs(fn () => DB::update("update feature_flags set mode = 'enabled' where company_id = ? and module_code in ('POL', 'PLA', 'PAS', 'LBA', 'MRL') and deleted_at is null", [HUAYLAS_ID]));
+    Permissions::flush();
+    $pol = frAs(fn () => DB::selectOne("insert into sst_policies (company_id, title, version_number, content_html, status) values (?, 'Política SST FR', 99, '<p>Cuidamos la vida.</p><script>x</script>', 'draft') returning id", [HUAYLAS_ID])->id);
+    $r = $this->getJson("/api/v1/reports/sst_policies/{$pol}", $this->h)->assertOk();
+    expect($r->json('data.policy.title'))->toBe('Política SST FR');
+
+    $plan = frAs(fn () => DB::selectOne("insert into annual_plans (company_id, title, year) values (?, 'Plan FR', 2031) returning id", [HUAYLAS_ID])->id);
+    $this->getJson("/api/v1/reports/annual_plans/{$plan}", $this->h)->assertOk()->assertJsonPath('data.plan.year', 2031);
+
+    $prog = frAs(fn () => DB::selectOne("insert into annual_programs (company_id, title, year) values (?, 'PASST FR', 2031) returning id", [HUAYLAS_ID])->id);
+    frAs(fn () => DB::insert("insert into program_activities (company_id, program_id, title, planned_months) values (?, ?, 'Inspección mensual', '{1,2,3}')", [HUAYLAS_ID, $prog]));
+    $p = $this->getJson("/api/v1/reports/annual_programs/{$prog}", $this->h)->assertOk();
+    expect($p->json('data.activities.0.planned_months'))->toBe([1, 2, 3])->and($p->json('data.totals.planned'))->toBe(3);
+
+    $base = frAs(fn () => DB::selectOne("insert into baseline_assessments (company_id, title, assessment_on) values (?, 'Línea base FR', current_date) returning id", [HUAYLAS_ID])->id);
+    $this->getJson("/api/v1/reports/baseline_assessments/{$base}", $this->h)->assertOk()->assertJsonPath('data.assessment.title', 'Línea base FR');
+
+    $this->getJson('/api/v1/reports/legal_matrix', $this->h)->assertOk()->assertJsonStructure(['data' => ['rows', 'counts', 'company']]);
+});
