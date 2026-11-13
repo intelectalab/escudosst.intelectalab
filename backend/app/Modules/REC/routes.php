@@ -17,3 +17,10 @@ Route::middleware(['auth:sanctum', 'company'])->prefix('records')->group(functio
     Route::patch('{module}/{table}/{id}', [RecordsController::class, 'update'])->where(['module' => $m, 'table' => $t])->whereUuid('id');
     Route::delete('{module}/{table}/{id}', [RecordsController::class, 'destroy'])->where(['module' => $m, 'table' => $t])->whereUuid('id');
 });
+
+// Informes imprimibles de campo (§11 de las fichas): inspección, PETAR y ATS.
+Route::middleware(['auth:sanctum', 'company'])->prefix('reports')->group(function () {
+    Route::get('inspections/{id}', [\App\Modules\REC\FieldReportsController::class, 'inspection'])->whereUuid('id')->middleware('module:INS');
+    Route::get('work_permits/{id}', [\App\Modules\REC\FieldReportsController::class, 'permit'])->whereUuid('id')->middleware('module:PTR');
+    Route::get('ats_forms/{id}', [\App\Modules\REC\FieldReportsController::class, 'ats'])->whereUuid('id')->middleware('module:ATS');
+});

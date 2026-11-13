@@ -130,7 +130,26 @@ export function TraceStrip({ module, table, id, version }: { module: string; tab
   );
 }
 
-export function RecordActions({
+/** Informes imprimibles de campo (§11 de las fichas): inspección, PETAR y ATS en PDF desde el navegador. */
+const FIELD_PDF: Record<string, string> = { inspections: "inspeccion", work_permits: "petar", ats_forms: "ats" };
+
+export function RecordActions(props: { code: string; res: RecordResource; row: RecordRow; readOnly: boolean; onChanged: () => void }) {
+  const page = FIELD_PDF[props.res.table];
+  if (!page) return <RecordActionsInner {...props} />;
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <a href={`/imprimir/${page}/${props.row.id}`} target="_blank" rel="noreferrer"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-semibold hover:border-brand hover:text-brand-strong">
+          Descargar PDF
+        </a>
+      </div>
+      <RecordActionsInner {...props} />
+    </div>
+  );
+}
+
+function RecordActionsInner({
   code,
   res,
   row,
