@@ -46,8 +46,9 @@ const base = (code: string, table?: string) => `/records/${code.toUpperCase()}${
 
 export const records = {
   schema: (code: string) => api<ModuleSchema>(base(code), { withCompany: true }),
-  list: (code: string, table: string, params: { q?: string; page?: number; filters?: Record<string, string> }) => {
+  list: (code: string, table: string, params: { q?: string; page?: number; filters?: Record<string, string>; exporting?: boolean }) => {
     const qs = new URLSearchParams();
+    if (params.exporting) qs.set("export", "1");
     if (params.q) qs.set("q", params.q);
     if (params.page) qs.set("page", String(params.page));
     Object.entries(params.filters ?? {}).forEach(([k, v]) => v && qs.set(`f[${k}]`, v));

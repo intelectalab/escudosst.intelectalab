@@ -99,7 +99,8 @@ it('sin WhatsApp en vivo solo hay correo y la campana; el resumen diario va en u
     deliveryWorker($this->uid, true);
     Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.DIG1']]], 200)]);
     DB::connection('platform')->update("update platform_providers set mode = 'test' where code = 'whatsapp'");
-    $a = deliveryNotify($this->uid, 'acr.overdue', 'high', 'Acción correctiva vencida');
+    // EPP y capacitación por vencer: la ficha pide app y WhatsApp (no correo inmediato).
+    $a = deliveryNotify($this->uid, 'epp.expiring', 'normal', 'EPP por reponer');
     $b = deliveryNotify($this->uid, 'cap.expiring', 'normal', 'Capacitación por vencer');
     expect(deliveryRun()['whatsapp'])->toBe(0);
     Http::assertNothingSent();

@@ -58,6 +58,7 @@ export type WorkerHome = {
   summary: {
     credential: { status: string; expires_on: string | null } | null;
     pending: number;
+    notices?: number;
     ppe: { total: number; unsigned: number; expiring: number } | null;
     fitness: { status: string; valid_until: string | null } | null;
     certificates: number;

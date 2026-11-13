@@ -124,6 +124,87 @@ final class SstAlerts
         return $n;
     }
 
+    /** Avisos §10 que no salen de una consulta simple: indicadores, consultores, invitaciones, ISO y paquetes sectoriales. */
+    private function extras(ConnectionInterface $db, string $company, array $enabled): int
+    {
+        $n = 0;
+        $lima = now('America/Lima');
+        $sst = array_column($db->select("select distinct m.user_id from memberships m join roles r on r.id = m.role_id where m.status = 'active' and m.deleted_at is null
+                                          and coalesce(r.base_role_code, r.code) = 'sst_manager'"), 'user_id');
+        $ins = function (array $users, string $event, string $module, string $subject, string $title, string $body, string $link, string $dedupe, string $priority = 'normal') use ($db, $company, &$n) {
+            foreach (array_unique(array_filter($users)) as $u) {
+                $n += $db->affectingStatement(
+                    'insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, dedupe_key) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict do nothing',
+                    [$company, $event, $module, $subject, $u, $title, mb_substr($body, 0, 500), $link, $priority, $dedupe.':'.$u]);
+            }
+        };
+        // M-DSH §10: KPI en rojo al recalcular (cada revisión) → Jefe SST, una vez por indicador y mes; resumen mensual a gerencia el día dsh_report_day.
+        if (in_array('DSH', $enabled, true)) {
+            try {
+                $kpis = app(\App\Modules\DSH\Services\KpiService::class)->overview((int) $lima->format('Y'), null);
+                foreach ($kpis as $k) {
+                    if (($k['color'] ?? null) === 'red') {
+                        $ins($sst, 'dsh.kpi_red', 'DSH', $company, 'Indicador en rojo', "El indicador «{$k['name']}» está en rojo: ".($k['label'] ?? '').'.', '/inicio', 'dsh.kpi_red:'.$k['code'].':'.$lima->format('Y-m'));
+                    }
+                }
+                if ((int) $lima->format('j') >= self::days('dsh_report_day', 5)) {
+                    $c = array_count_values(array_filter(array_map(fn ($k) => $k['color'] ?? null, $kpis)));
+                    $mgmt = array_column($db->select("select distinct m.user_id from memberships m join roles r on r.id = m.role_id where m.status = 'active' and m.deleted_at is null
+                                                       and coalesce(r.base_role_code, r.code) = 'management'"), 'user_id');
+                    $ins($mgmt, 'dsh.monthly_summary', 'DSH', $company, 'Resumen mensual de indicadores SST',
+                        'Indicadores del año: '.($c['green'] ?? 0).' en verde, '.($c['amber'] ?? 0).' en ámbar y '.($c['red'] ?? 0).' en rojo. El detalle está en el inicio de EscudoSST.',
+                        '/inicio', 'dsh.monthly_summary:'.$lima->format('Y-m'), 'low');
+                }
+            } catch (Throwable) {
+            }
+        }
+        // M-CON §10: vencimientos de la semana de la empresa cliente → sus consultores asignados, el día con_digest_weekday.
+        if ((int) $lima->format('N') === self::days('con_digest_weekday', 1)) {
+            $consultants = array_column($db->select("select consultant_user_id from consultant_assignments where status = 'active' and deleted_at is null"), 'consultant_user_id');
+            if ($consultants) {
+                $due = (int) $db->selectOne("select count(*) as n from notifications where deleted_at is null and dismissed_at is null and due_at between now() and now() + interval '7 days'")->n;
+                $name = $db->selectOne('select coalesce(trade_name, legal_name) as n from companies where id = ?', [$company])?->n ?? 'tu cliente';
+                if ($due > 0) {
+                    $ins($consultants, 'con.weekly_due', 'CON', $company, 'Vencimientos de la semana de tu cliente', "{$name} tiene {$due} vencimiento(s) SST en los próximos 7 días.", '/inicio',
+                        'con.weekly_due:'.$lima->format('o-W'));
+                }
+            }
+        }
+        // M-USR §10: invitación sin aceptar → recordatorio invite_reminder_days después (una vez).
+        foreach ($db->select("select m.id, m.user_id, u.email, u.full_name, r.name as role_name, c.legal_name, coalesce(c.trade_name, c.legal_name) as company_name
+                                from memberships m join users u on u.id = m.user_id join roles r on r.id = m.role_id join companies c on c.id = m.company_id
+                               where m.status = 'invited' and m.deleted_at is null and not m.is_support_session
+                                 and m.invited_at < now() - make_interval(days => ?::int)
+                                 and not exists (select 1 from notifications x where x.dedupe_key = 'usr.invite_reminder:'||m.id and x.deleted_at is null)", [self::days('invite_reminder_days', 3)]) as $m) {
+            try {
+                app(\App\Modules\USR\Services\InvitationService::class)->send($m->user_id, $m->email, $m->full_name, $company, $m->company_name, $m->id, true, $m->role_name);
+                $db->insert("insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, dedupe_key, read_at)
+                             values (?, 'usr.invite_reminder', 'USR', ?, ?, 'Recordatorio de invitación', 'Te recordamos tu invitación a EscudoSST.', '/inicio', 'low', ?, now()) on conflict do nothing",
+                    [$company, $m->id, $m->user_id, 'usr.invite_reminder:'.$m->id]);
+                $n++;
+            } catch (Throwable) {
+            }
+        }
+        // M-ISO §10: evidencia ligada a un documento obsoleto, archivado o borrado → Jefe SST (una vez por semana mientras siga así).
+        if (in_array('ISO', $enabled, true)) {
+            foreach ($db->select("select e.id, e.description from iso_evidences e join documents d on d.id = e.document_id
+                                   where e.deleted_at is null and (d.deleted_at is not null or d.status in ('obsolete', 'archived'))") as $e) {
+                $ins($sst, 'iso.evidence_obsolete', 'ISO', $e->id, 'Evidencia ISO obsoleta', 'La evidencia «'.mb_substr((string) $e->description, 0, 120).'» apunta a un documento que ya no está vigente.',
+                    '/m/iso?t=iso_evidences&open='.$e->id, 'iso.evidence_obsolete:'.$e->id.':'.date('o-W'));
+            }
+        }
+        // M-PSE §10: nueva versión publicada de un paquete sectorial instalado → Jefe SST (una vez por versión).
+        if (in_array('PSE', $enabled, true)) {
+            foreach ($db->select("select c.id, p.name, p.version_number from company_sector_packs c join sector_packs p on p.id = c.sector_pack_id
+                                   where c.deleted_at is null and c.uninstalled_at is null and p.status = 'published' and p.version_number > coalesce(c.installed_version, c.pack_version, 0)") as $k) {
+                $ins($sst, 'pse.new_version', 'PSE', $k->id, 'Nueva versión del paquete sectorial', "El paquete «{$k->name}» tiene la versión {$k->version_number}: revisa qué cambia antes de actualizar.",
+                    '/m/pse', 'pse.new_version:'.$k->id.':'.$k->version_number);
+            }
+        }
+
+        return $n;
+    }
+
     private static function days(string $key, int $default): int
     {
         return max(0, (int) \App\Core\Support\LegalParams::number($key, $default));
@@ -276,6 +357,136 @@ final class SstAlerts
             ['MAG', "select id, title as ref, '' as name, null as owner, starts_on as due, 'mag' as kind from monitoring_campaigns
                       where deleted_at is null and status = 'planned' and starts_on between current_date and current_date + ".self::days('monitoring_notice_days', 15),
                 'mag.upcoming', 'low', 'Monitoreo próximo', fn ($r) => "La campaña «{$r->ref}» empieza el ".date('d/m/Y', strtotime($r->due)).'.', '/m/mag?t=monitoring_campaigns&open=', ['sst_manager'], false],
+            // M-CAP §10: convocatoria a sesión (session_notice_days antes) → convocados, sus jefes de área y el capacitador.
+            ['CAP', "select s.id, t.title as ref, '' as name, s.instructor_user_id as owner, (select mw.user_id from areas ar join workers mw on mw.id = ar.manager_worker_id where ar.id = w.current_area_id) as owner2, a.worker_id as worker, s.starts_at as due, 'session' as kind
+                       from training_sessions s join trainings t on t.id = s.training_id
+                       join training_attendances a on a.session_id = s.id and a.deleted_at is null and a.worker_id is not null
+                       join workers w on w.id = a.worker_id
+                      where s.deleted_at is null and s.status = 'scheduled' and s.starts_at between now() and now() + make_interval(days => ".self::days('session_notice_days', 2).')',
+                'cap.session_call', 'normal', 'Convocatoria a capacitación', fn ($r) => "Sesión de «{$r->ref}» el ".date('d/m/Y H:i', strtotime($r->due)).'.', '/m/cap?t=training_sessions&open=', [], false,
+                fn ($r) => "Estás convocado a la capacitación «{$r->ref}» el ".date('d/m/Y H:i', strtotime($r->due)).'.'],
+            // M-CAP §10: trabajador nuevo sin inducción al cumplirse induction_grace_days desde su ingreso → Jefe SST y RR.HH.
+            ['CAP', "select w.id, w.full_name as ref, '' as name, null as owner, w.hire_on as due, 'induction' as kind from workers w
+                      where w.deleted_at is null and w.status = 'active' and w.hire_on is not null
+                        and w.hire_on + ".self::days('induction_grace_days', 7)." between current_date - 7 and current_date
+                        and not exists (select 1 from training_certificates c join trainings t on t.id = c.training_id and t.training_type = 'induction'
+                                         where c.worker_id = w.id and c.status in ('validated', 'pending_validation') and c.deleted_at is null)",
+                'cap.no_induction', 'normal', 'Trabajador nuevo sin inducción', fn ($r) => "{$r->ref} ingresó el ".date('d/m/Y', strtotime($r->due)).' y aún no tiene su inducción.', '/m/trb?t=workers&open=', ['sst_manager', 'hr'], false],
+            // M-CAP §10: certificados por validar (resumen diario) → Jefe SST.
+            ['CAP', "select c.id, count(*)::text as ref, '' as name, current_date::text as dk, null as owner, current_date as due, 'to_validate' as kind
+                       from companies c join training_certificates t on t.status = 'pending_validation' and t.deleted_at is null
+                      where c.id = nullif(current_setting('app.company_id', true), '')::uuid group by c.id",
+                'cap.pending_validation', 'low', 'Certificados por validar', fn ($r) => "Hay {$r->ref} certificado(s) por validar.", '/m/cap?t=training_certificates&ref=', ['sst_manager'], false],
+            // M-EMO §10: recordatorio de la cita (emo_appointment_reminder_days antes) → trabajador, sin datos clínicos.
+            ['EMO', "select o.id, '' as ref, '' as name, null as owner, o.worker_id as worker, o.scheduled_at as due, to_char(o.scheduled_at, 'YYYYMMDD') as dk, 'appt' as kind from medical_exam_orders o
+                      where o.deleted_at is null and o.status = 'scheduled' and o.scheduled_at is not null
+                        and (o.scheduled_at at time zone 'America/Lima')::date = current_date + ".self::days('emo_appointment_reminder_days', 1),
+                'emo.appointment_reminder', 'normal', 'Recordatorio de examen médico', fn ($r) => 'Examen médico ocupacional el '.date('d/m/Y H:i', strtotime($r->due)).'.', '/m/emo?t=medical_exam_orders&open=', [], false,
+                fn ($r) => 'Recuerda tu examen médico ocupacional el '.date('d/m/Y H:i', strtotime($r->due)).'.'],
+            // M-EQE §10: equipo sin inspección mensual en el último mes → responsable del área.
+            ['EQE', "select e.id, e.code as ref, e.equipment_type as name, (select mw.user_id from areas ar join workers mw on mw.id = ar.manager_worker_id where ar.id = e.area_id) as owner, current_date as due, to_char(current_date, 'YYYY-MM') as dk, 'monthly' as kind
+                       from emergency_equipment e
+                      where e.deleted_at is null and e.status <> 'retired' and coalesce(e.installed_on, e.created_at::date) < current_date - interval '1 month'
+                        and not exists (select 1 from equipment_checks c where c.equipment_id = e.id and c.check_type = 'monthly_inspection' and c.deleted_at is null
+                                          and c.checked_at > now() - interval '1 month')",
+                'eqe.monthly_overdue', 'normal', 'Inspección mensual vencida', fn ($r) => "El equipo {$r->ref} no tiene su inspección mensual.", '/m/eqe?t=emergency_equipment&open=', [], false],
+            // M-EQE §10: botiquín con ítems vencidos o faltantes → su responsable (una vez por semana mientras siga así).
+            ['EQE', "select k.id, k.code as ref, '' as name, (select w.user_id from workers w where w.id = k.responsible_worker_id) as owner, k.responsible_worker_id as worker, current_date as due, 'kit' as kind
+                       from first_aid_kits k
+                      where k.deleted_at is null and k.status <> 'retired'
+                        and exists (select 1 from first_aid_kit_items i where i.kit_id = k.id and i.deleted_at is null
+                                      and (i.expires_on < current_date or coalesce(i.current_quantity, 0) < coalesce(i.required_quantity, 0)))",
+                'eqe.kit_items', 'normal', 'Botiquín con ítems vencidos o faltantes', fn ($r) => "El botiquín {$r->ref} tiene ítems vencidos o faltantes: repónlos.", '/m/eqe?t=first_aid_kits&open=', [], true],
+            // M-IPC §10: control propuesto vencido → responsable del control.
+            ['IPC', "select c.id, c.description as ref, '' as name, c.responsible_user_id as owner, c.due_on as due, 'control' as kind from iperc_controls c
+                      where c.deleted_at is null and c.status = 'proposed' and c.due_on < current_date",
+                'ipc.control_overdue', 'normal', 'Control del IPERC vencido', fn ($r) => "El control «".mb_substr((string) $r->ref, 0, 100)."» debía implementarse el ".date('d/m/Y', strtotime($r->due)).'.', '/m/ipc?t=iperc_controls&open=', [], false],
+            // M-MAG RN-MAG-07: punto sin medición en monitoring_frequency_months → Jefe SST (semanal mientras siga así).
+            ['MAG', "select p.id, p.name as ref, '' as name, null as owner, current_date as due, 'point' as kind from monitoring_points p
+                      where p.deleted_at is null and p.status = 'active'
+                        and not exists (select 1 from measurements m where m.monitoring_point_id = p.id and m.deleted_at is null
+                                          and m.measured_at > now() - make_interval(months => ".self::days('monitoring_frequency_months', 12).'))
+                        and p.created_at < now() - make_interval(months => '.self::days('monitoring_frequency_months', 12).')',
+                'mag.point_unmonitored', 'normal', 'Punto sin monitoreo', fn ($r) => "El punto «{$r->ref}» no tiene medición en el periodo que corresponde.", '/m/mag?t=monitoring_points&open=', ['sst_manager'], true],
+            // M-PAS §10: actividad del mes por iniciar (activity_notice_days antes del inicio del mes) → responsable.
+            ['PAS', "select a.id, a.title as ref, to_char(date_trunc('month', current_date + ".self::days('activity_notice_days', 5).'), \'MM/YYYY\') as name,
+                            a.responsible_user_id as owner, date_trunc(\'month\', current_date + '.self::days('activity_notice_days', 5).")::date as due,
+                            to_char(date_trunc('month', current_date + ".self::days('activity_notice_days', 5)."), 'YYYY-MM') as dk, 'pas' as kind
+                       from program_activities a join annual_programs p on p.id = a.program_id and p.deleted_at is null and p.status in ('approved', 'in_execution')
+                      where a.deleted_at is null and a.status in ('planned', 'in_progress')
+                        and p.year = extract(year from date_trunc('month', current_date + ".self::days('activity_notice_days', 5)."))
+                        and extract(month from date_trunc('month', current_date + ".self::days('activity_notice_days', 5)."))::int2 = any(a.planned_months)",
+                'pas.activity_upcoming', 'normal', 'Actividad del programa este mes', fn ($r) => "La actividad «{$r->ref}» está programada para {$r->name}.", '/m/pas?t=program_activities&open=', [], false],
+            // M-PAS §10: actividad del mes que cerró sin ejecutarse → responsable y Jefe SST.
+            ['PAS', "select a.id, a.title as ref, to_char(current_date - interval '1 month', 'MM/YYYY') as name, a.responsible_user_id as owner, current_date as due,
+                            to_char(current_date - interval '1 month', 'YYYY-MM') as dk, 'pas_late' as kind
+                       from program_activities a join annual_programs p on p.id = a.program_id and p.deleted_at is null and p.status in ('approved', 'in_execution')
+                      where a.deleted_at is null and a.status in ('planned', 'in_progress', 'overdue')
+                        and p.year = extract(year from current_date - interval '1 month')
+                        and extract(month from current_date - interval '1 month')::int2 = any(a.planned_months)
+                        and not exists (select 1 from activity_executions x where x.activity_id = a.id and x.deleted_at is null
+                                          and date_trunc('month', x.executed_on) = date_trunc('month', current_date - interval '1 month'))",
+                'pas.activity_overdue', 'normal', 'Actividad del programa vencida', fn ($r) => "La actividad «{$r->ref}» de {$r->name} no se ejecutó.", '/m/pas?t=program_activities&open=', ['sst_manager'], false],
+            // M-PAS §10: avance mensual del programa (día program_report_day del mes siguiente) → comité y gerencia, por correo.
+            ['PAS', "select p.id, p.title as ref, round(coalesce(p.progress_pct, 0))::text as name, to_char(current_date - interval '1 month', 'YYYY-MM') as dk, null as owner, current_date as due, 'pas_month' as kind
+                       from annual_programs p where p.deleted_at is null and p.status in ('approved', 'in_execution')
+                        and extract(day from current_date) >= ".self::days('program_report_day', 5),
+                'pas.monthly_progress', 'low', 'Avance mensual del programa SST', fn ($r) => "El programa «{$r->ref}» va en {$r->name} % de avance.", '/m/pas?t=annual_programs&open=', ['committee_member', 'management'], false],
+            // M-SIM RN-SIM-04: brigada activa sin líder o con menos de min_brigade_members → Jefe SST (al quedar bajo el mínimo).
+            ['SIM', "select b.id, b.name as ref, '' as name, null as owner, current_date as due,
+                            (select count(*) from brigade_members m where m.brigade_id = b.id and m.status = 'active' and m.deleted_at is null)::text || coalesce(b.leader_worker_id::text, 'sin') as dk, 'brigade' as kind
+                       from brigades b where b.deleted_at is null and b.status = 'active'
+                        and (b.leader_worker_id is null or (select count(*) from brigade_members m where m.brigade_id = b.id and m.status = 'active' and m.deleted_at is null) < ".max(1, self::days('min_brigade_members', 2)).')',
+                'sim.brigade_incomplete', 'normal', 'Brigada incompleta', fn ($r) => "La brigada «{$r->ref}» está sin líder o bajo el mínimo de miembros.", '/m/sim?t=brigades&open=', ['sst_manager'], false],
+            // M-TEN §10: trabajadores activos alcanzan el umbral del Comité (committee_threshold_workers) sin modelo de comité.
+            ['TEN', "select c.id, (select count(*) from workers w where w.status = 'active' and w.deleted_at is null)::text as ref, '' as name, null as owner, current_date as due, 'ten' as kind
+                       from companies c where c.id = nullif(current_setting('app.company_id', true), '')::uuid and coalesce(c.sst_model, '') <> 'committee'
+                        and (select count(*) from workers w where w.status = 'active' and w.deleted_at is null) >= ".self::days('committee_threshold_workers', 20),
+                'ten.committee_threshold', 'high', 'La empresa necesita Comité SST', fn ($r) => "Ya tienen {$r->ref} trabajadores activos: la ley pide Comité de SST en lugar de supervisor.", '/m/ten', ['sst_manager', 'account_admin'], false],
+            // M-TEN §10: sede temporal próxima a cerrar (site_close_notice_days) → Jefe SST.
+            ['TEN', "select id, name as ref, '' as name, null as owner, ends_on as due, 'site' as kind from sites
+                      where deleted_at is null and is_temporary and status <> 'closed' and ends_on between current_date and current_date + ".self::days('site_close_notice_days', 15),
+                'ten.site_closing', 'normal', 'Sede temporal por cerrar', fn ($r) => "La sede «{$r->ref}» cierra el ".date('d/m/Y', strtotime($r->due)).'.', '/m/ten?t=sites&open=', ['sst_manager'], false],
+            // M-TRB §10: documento del legajo por vencer (worker_doc_notice_days) → Jefe SST y RR.HH.
+            ['TRB', "select d.id, w.full_name as ref, d.title as name, null as owner, d.expires_on as due, 'doc' as kind from worker_documents d join workers w on w.id = d.worker_id and w.status = 'active'
+                      where d.deleted_at is null and d.status in ('valid', 'expiring') and d.expires_on between current_date and current_date + ".self::days('worker_doc_notice_days', 30),
+                'trb.doc_expiring', 'normal', 'Documento del legajo por vencer', fn ($r) => "«{$r->name}» de {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/trb?t=worker_documents&open=', ['sst_manager', 'hr'], false],
+            // M-AUI §10: auditoría externa legal pendiente (external_audit_notice_days antes de cumplirse external_audit_years) → Jefe SST y gerencia.
+            ['AUI', "select a.id, a.code as ref, '' as name, null as owner, (coalesce(a.ends_on, a.starts_on) + make_interval(years => ".self::days('external_audit_years', 2)."))::date as due, 'external' as kind
+                       from (select distinct on (company_id) * from audits where deleted_at is null and audit_type = 'legal_mandatory' and status in ('completed', 'closed')
+                              order by company_id, coalesce(ends_on, starts_on) desc) a
+                      where (coalesce(a.ends_on, a.starts_on) + make_interval(years => ".self::days('external_audit_years', 2)."))::date <= current_date + ".self::days('external_audit_notice_days', 60)."
+                        and not exists (select 1 from audits x where x.deleted_at is null and x.audit_type = 'legal_mandatory' and x.status in ('planned', 'in_progress', 'report_draft'))",
+                'aui.external_due', 'normal', 'Auditoría externa legal pendiente', fn ($r) => 'Toca la auditoría externa legal del SG-SST antes del '.date('d/m/Y', strtotime($r->due)).': prográmala.', '/m/aui?t=audits&open=', ['sst_manager', 'management'], true],
+            // M-SUN §10: autodiagnóstico periódico cada self_diagnostic_days → Jefe SST.
+            ['SUN', "select c.id, coalesce(to_char(max(d.diagnostic_on), 'DD/MM/YYYY'), 'nunca') as ref, '' as name, coalesce(max(d.diagnostic_on)::text, 'none') as dk, null as owner, current_date as due, 'self' as kind
+                       from companies c left join self_diagnostics d on d.status = 'completed' and d.deleted_at is null
+                      where c.id = nullif(current_setting('app.company_id', true), '')::uuid
+                      group by c.id having coalesce(max(d.diagnostic_on), '1900-01-01') <= current_date - ".self::days('self_diagnostic_days', 90),
+                'sun.self_diagnostic_due', 'low', 'Toca el autodiagnóstico SUNAFIL', fn ($r) => "El último autodiagnóstico es del {$r->ref}: haz uno nuevo.", '/m/sun', ['sst_manager'], false],
+            // M-SCT RN-SCT-01/04 (conciliación): trabajador activo que requiere SCTR (puesto o sede de riesgo) sin cobertura vigente → jefe de área y Jefe SST.
+            ['SCT', "select w.id, w.full_name as ref, '' as name, (select mw.user_id from areas ar join workers mw on mw.id = ar.manager_worker_id where ar.id = w.current_area_id) as owner, current_date as due, 'uncovered' as kind from workers w
+                       left join positions p on p.id = w.current_position_id left join sites s on s.id = w.current_site_id
+                      where w.deleted_at is null and w.status = 'active' and (coalesce(p.requires_sctr, false) or coalesce(s.requires_sctr, false))
+                        and not exists (select 1 from sctr_coverages v where v.worker_id = w.id and v.deleted_at is null and v.status <> 'cancelled'
+                                          and v.covered_from <= current_date and v.covered_until >= current_date)",
+                'sct.worker_uncovered', 'high', 'Trabajador sin SCTR', fn ($r) => "{$r->ref} requiere SCTR y no tiene cobertura vigente.", '/m/sct?t=sctr_coverages&worker=', ['sst_manager'], true],
+            // M-USR §10: acceso de auditor externo por vencer (auditor_expiry_notice_days) → Jefe SST.
+            ['USR', "select m.id, u.full_name as ref, '' as name, null as owner, m.expires_at as due, 'auditor' as kind from memberships m
+                       join roles r on r.id = m.role_id and coalesce(r.base_role_code, r.code) = 'external_auditor' join users u on u.id = m.user_id
+                      where m.deleted_at is null and m.status = 'active' and m.expires_at between now() and now() + make_interval(days => ".self::days('auditor_expiry_notice_days', 7).')',
+                'usr.auditor_expiring', 'normal', 'Acceso de auditor por vencer', fn ($r) => "El acceso del auditor externo {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/configuracion/usuarios', ['sst_manager'], false],
+            // M-FIR §10: solicitud de firma por vencer (signature_expiry_notice_days) → solicitante.
+            ['FIR', "select id, coalesce(role_in_document, 'firma') as ref, '' as name, requested_by as owner, expires_at as due, 'fir' as kind from signature_requests
+                      where deleted_at is null and status = 'pending' and expires_at between now() and now() + make_interval(days => ".self::days('signature_expiry_notice_days', 2).')',
+                'fir.request_expiring', 'normal', 'Solicitud de firma por vencer', fn ($r) => 'Una firma que pediste vence el '.date('d/m/Y H:i', strtotime($r->due)).' sin firmarse.', '/m/fir', [], false],
+            // M-FIR §10: recordatorio cada signature_reminder_days → firmante (usuario o trabajador).
+            ['FIR', "select id, coalesce(role_in_document, 'firma') as ref, '' as name, signer_user_id as owner, signer_worker_id as worker, created_at as due,
+                            ((now()::date - created_at::date) / ".max(1, self::days('signature_reminder_days', 2)).")::text as dk, 'fir_rem' as kind from signature_requests
+                      where deleted_at is null and status = 'pending' and created_at < now() - make_interval(days => ".max(1, self::days('signature_reminder_days', 2)).')
+                        and (expires_at is null or expires_at > now())',
+                'fir.signature_reminder', 'normal', 'Recordatorio: firma pendiente', fn ($r) => 'Tienes una firma pendiente en EscudoSST.', '/inicio', [], false,
+                fn ($r) => 'Tienes una firma pendiente: entra a tu app, en «Mis pendientes».'],
             // M-CH5 §10: desde la hora talk_missing_check_hour, área con personal y sin charla del día → a su jefe de área.
             ['CH5', "select a.id, a.name as ref, '' as name, (now() at time zone 'America/Lima')::date::text as dk, mw.user_id as owner, (now() at time zone 'America/Lima')::date as due, 'ch5' as kind from areas a
                       join workers mw on mw.id = a.manager_worker_id and mw.user_id is not null
@@ -490,6 +701,7 @@ final class SstAlerts
             $created += self::surveyReminders($db, $company);
         }
         $created += AckCampaigns::daily($db, $company, $enabled);
+        $created += $this->extras($db, $company, $enabled);
 
         if ($digest ?? ((int) now('America/Lima')->format('G') === self::days('digest_hour', 7))) {
             $this->email($db, $company);

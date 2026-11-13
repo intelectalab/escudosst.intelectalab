@@ -251,6 +251,15 @@ class ShareLinkController extends Controller
     {
         DB::insert('insert into dossier_share_accesses (company_id, share_link_id, action, detail, ip_prefix, user_agent, user_id) values (?, ?, ?, ?, ?, ?, ?)',
             [$company ?? app(CompanyContext::class)->companyId, $linkId, $action, $detail, $ip, $ua, $user]);
+        if (in_array($action, ['view', 'download'], true) && $user === null) {
+            try {
+                $l = DB::selectOne("select coalesce(recipient_name, 'el inspector') as who from dossier_share_links where id = ?", [$linkId]);
+                $to = array_column(DB::select("select distinct m.user_id from memberships m join roles r on r.id = m.role_id where m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = 'sst_manager'"), 'user_id');
+                \App\Modules\NOT\Notify::users($to, 'sun.inspector_access', 'SUN', $linkId, 'El inspector abrió el expediente', "{$l->who} entró hoy al expediente compartido.",
+                    '/m/sun?t=dossier_share_links&open='.$linkId, 'normal', 'sun.inspector_access:'.$linkId.':'.now('America/Lima')->format('Ymd'), $company ?? app(CompanyContext::class)->companyId);
+            } catch (\Throwable) {
+            }
+        }
     }
 
     /** IP abreviada (RN-SUN-09): los dos primeros octetos en IPv4, los tres primeros grupos en IPv6. */

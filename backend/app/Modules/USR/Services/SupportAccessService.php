@@ -111,6 +111,7 @@ class SupportAccessService
             throw $this->conflict('Este acceso no está activo.');
         }
         $this->endGrant($g, 'revoked', $actor);
+        $this->notifyEnd($g, 'Terminó el acceso de soporte', "Terminó el acceso del equipo de soporte de EscudoSST a {$g->company_name}.", 'support.ended:'.$g->id);
         $this->accounts->audit($actor, 'support_access_revoked', 'support_access_grants', $g->id, ['account_id' => $g->account_id, 'company' => $g->company_name, 'by' => 'platform']);
     }
 
@@ -123,6 +124,10 @@ class SupportAccessService
         );
         foreach ($rows as $g) {
             $this->db()->update("update support_access_grants set status = 'expired' where id = ?", [$g->id]);
+            $full = $this->db()->selectOne($this->grantSelect().' and g.id = ?', [$g->id]);
+            if ($full) {
+                $this->notifyEnd($full, 'Terminó el acceso de soporte', "Venció el acceso del equipo de soporte de EscudoSST a {$full->company_name}.", 'support.ended:'.$g->id);
+            }
             if ($g->membership_id) {
                 $this->accounts->withCompany($g->company_id, fn (ConnectionInterface $db) => $db->update(
                     "update memberships set status = 'expired' where id = ? and status = 'active'", [$g->membership_id]
@@ -182,6 +187,8 @@ class SupportAccessService
             [$adminId, $times->starts, $times->ends, $membershipId, $adminId, $g->id]
         );
         $this->companyAudit($companyId, $adminId, 'support_access_authorized', $g, ['until' => $times->ends]);
+        $this->notifyEnd($g, 'Acceso de soporte autorizado', "Se autorizó el acceso del equipo de soporte de EscudoSST a {$g->company_name} hasta el "
+            .date('d/m/Y H:i', strtotime($times->ends)).'.', 'support.authorized:'.$g->id);
         $this->accounts->audit($adminId, 'support_access_authorized', 'support_access_grants', $g->id, ['company' => $g->company_name, 'until' => $times->ends]);
     }
 
@@ -207,10 +214,21 @@ class SupportAccessService
             DB::update("update memberships set status = 'revoked' where id = ?", [$g->membership_id]);
         }
         $this->companyAudit($companyId, $adminId, 'support_access_revoked', $g);
+        $this->notifyEnd($g, 'Terminó el acceso de soporte', "Terminó el acceso del equipo de soporte de EscudoSST a {$g->company_name}.", 'support.ended:'.$g->id);
         $this->accounts->audit($adminId, 'support_access_revoked', 'support_access_grants', $g->id, ['company' => $g->company_name, 'by' => 'company']);
     }
 
     // ---------------------------------------------------------------- Ayudantes
+
+    /** M-USR §10 «Acceso de soporte autorizado/terminado» → administradores de cuenta, por correo y en la app. */
+    private function notifyEnd(object $g, string $title, string $body, string $dedupe): void
+    {
+        try {
+            $this->notifyAdmins($g->company_id, (string) $g->company_name, $this->admins($g->company_id), $g->id, $title, $body, $dedupe, 'usr.support_access');
+        } catch (Throwable) {
+            // El aviso nunca impide cambiar el acceso.
+        }
+    }
 
     private function endGrant(object $g, string $status, string $actor): void
     {
@@ -290,14 +308,14 @@ class SupportAccessService
         ));
     }
 
-    private function notifyAdmins(string $companyId, string $companyName, array $admins, string $grantId, string $title, string $body, string $dedupe): void
+    private function notifyAdmins(string $companyId, string $companyName, array $admins, string $grantId, string $title, string $body, string $dedupe, string $event = 'support.requested'): void
     {
-        $this->accounts->withCompany($companyId, function (ConnectionInterface $db) use ($companyId, $admins, $grantId, $title, $body, $dedupe) {
+        $this->accounts->withCompany($companyId, function (ConnectionInterface $db) use ($companyId, $admins, $grantId, $title, $body, $dedupe, $event) {
             foreach ($admins as $a) {
                 $db->insert(
                     "insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, dedupe_key)
-                     values (?, 'support.requested', 'support_access_grants', ?, ?, ?, ?, '/soporte', 'high', ?)",
-                    [$companyId, $grantId, $a->id, $title, $body, $dedupe]
+                     values (?, ?, 'support_access_grants', ?, ?, ?, ?, '/soporte', 'high', ?) on conflict do nothing",
+                    [$companyId, $event, $grantId, $a->id, $title, $body, $dedupe.':'.$a->id]
                 );
             }
         });

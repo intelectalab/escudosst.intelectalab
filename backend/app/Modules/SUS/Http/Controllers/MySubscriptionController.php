@@ -54,8 +54,8 @@ class MySubscriptionController extends Controller
         $rows = DB::select(
             'select id, event_code, title, body, link, priority, read_at, created_at
                from notifications
-              where company_id = ? and recipient_user_id = ? and deleted_at is null and dismissed_at is null
-              order by created_at desc limit 30',
+              where company_id = ? and recipient_user_id = ? and deleted_at is null and dismissed_at is null and coalesce(scheduled_for, created_at) <= now()
+              order by coalesce(scheduled_for, created_at) desc limit 30',
             [$context->companyId, $request->user()->id]
         );
 

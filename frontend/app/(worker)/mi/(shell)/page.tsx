@@ -30,6 +30,8 @@ export default function WorkerHomePage() {
         )}
         <BigCard href="/mi/pendientes" icon="checklist" title="Mis pendientes" tone={s.pending ? "amber" : "ok"}
           line={s.pending ? `Tienes ${s.pending} por hacer` : "Todo al día. ¡Gracias por cuidarte!"} badge={s.pending || null} />
+        <BigCard href="/mi/avisos" icon="bell" title="Mis avisos" tone={s.notices ? "brand" : "ok"}
+          line={s.notices ? `Tienes ${s.notices} aviso(s) sin leer` : "No tienes avisos nuevos"} badge={s.notices || null} />
         {m.ACT && <BigCard href="/mi/reportar" icon="megaphone" title="Reportar" tone="amber" line="Acto o condición insegura, con foto" />}
         {(m.CAP || m.AUL) && (
           <BigCard href="/mi/capacitaciones" icon="graduation" title={m.AUL ? "Mis capacitaciones y cursos" : "Mis capacitaciones"}

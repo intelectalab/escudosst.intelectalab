@@ -970,7 +970,7 @@ async function exportCsv(code: string, res: RecordResource, q: string, filters: 
   const cols = res.fields.filter((f) => f.list || f.required);
   const rows: RecordRow[] = only ? [...only] : [];
   for (let page = 1; !only && page <= 40; page++) {
-    const r = await records.list(code, res.table, { q, page, filters });
+    const r = await records.list(code, res.table, { q, page, filters, exporting: page === 1 });
     rows.push(...r.data);
     if (page >= r.meta.pages) break;
   }

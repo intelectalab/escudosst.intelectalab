@@ -346,6 +346,12 @@ class SyncService
                 $serverVersion, json_encode(['payload' => $op['payload'] ?? null, 'base_version' => $op['base_version'] ?? null], JSON_UNESCAPED_UNICODE),
                 $snapshot === null ? null : json_encode($snapshot, JSON_UNESCAPED_UNICODE), $type, (string) auth()->id(), (string) auth()->id()]
         );
+        // M-OFF §10: conflicto de sincronización → usuario del dispositivo y Jefe SST.
+        try {
+            \App\Modules\NOT\Notify::users([$batch->user_id ?? null, ...\App\Modules\NOT\Notify::roles(['sst_manager'])], 'off.sync_conflict', 'OFF', $batch->id, 'Conflicto de sincronización',
+                'Un registro hecho sin conexión chocó con un cambio en el servidor: revísalo en la cola de sincronización.', '/inicio', 'normal', 'off.sync_conflict:'.$batch->id, null, true);
+        } catch (\Throwable) {
+        }
         $reason = match ($type) {
             'duplicate' => 'Esta persona ya estaba registrada: queda para revisión.',
             'deleted_on_server' => 'El registro fue archivado en el servidor: queda para revisión.',

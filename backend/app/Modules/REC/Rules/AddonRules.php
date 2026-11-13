@@ -186,6 +186,11 @@ class AddonRules extends RecordRules
         if ($res['table'] !== 'access_events' || $op !== 'create' || ($values['result'] ?? null) !== 'denied' || empty($values['worker_id'])) {
             return;
         }
+        if (! empty($values['credential_id'])) {
+            $c = DB::selectOne('select c.credential_number, w.full_name from credentials c left join workers w on w.id = c.worker_id where c.id = ?', [$values['credential_id']]);
+            \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['sst_manager']), 'fot.gate_not_enabled', 'FOT', $id, 'Fotocheck no habilitado en portería',
+                "Se verificó en portería el fotocheck {$c?->credential_number} de {$c?->full_name}, que no está habilitado.", '/m/fot?t=credentials&open='.$values['credential_id'], 'high', 'fot.gate:'.$id);
+        }
         $w = DB::selectOne('select w.full_name, w.current_area_id, a.name as area, a.site_id, a.manager_worker_id
                               from workers w left join areas a on a.id = w.current_area_id where w.id = ?', [$values['worker_id']]);
         if (! $w || ! $w->current_area_id) {

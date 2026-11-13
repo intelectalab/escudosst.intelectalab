@@ -39,6 +39,8 @@ Route::middleware(['auth:sanctum', 'company'])->prefix('me/worker')->group(funct
     Route::patch('profile', [\App\Modules\TRB\WorkerSelfController::class, 'profile']);
     Route::get('credential', [\App\Modules\TRB\WorkerSelfController::class, 'credential']);
     Route::get('pending', [\App\Modules\TRB\WorkerSelfController::class, 'pending']);
+    Route::get('notifications', [\App\Modules\TRB\WorkerSelfController::class, 'notifications']);
+    Route::post('notifications/read-all', [\App\Modules\TRB\WorkerSelfController::class, 'readNotifications']);
     Route::get('items/{kind}/{id}', [\App\Modules\TRB\WorkerSelfController::class, 'item'])->where('kind', '[a-z]{3,12}');
     Route::post('sign', [\App\Modules\TRB\WorkerSelfController::class, 'sign'])->middleware('throttle:20,1');
     Route::get('trainings', [\App\Modules\TRB\WorkerSelfController::class, 'trainings']);

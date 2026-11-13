@@ -357,7 +357,13 @@ async function doSync() {
       }
     }
     retryDelay = 5000;
-    emit({ lastSync: new Date().toISOString() });
+    const now = new Date().toISOString();
+    try {
+      localStorage.setItem("escudo.last_sync", now);
+    } catch {
+      /* sin almacenamiento local: solo se pierde el aviso */
+    }
+    emit({ lastSync: now });
     await loadConflicts();
   } catch (e) {
     if (e instanceof ApiError && e.type === "device_revoked") {
@@ -419,7 +425,12 @@ export async function discardOp(k: string) {
 export async function registerDevice(): Promise<void> {
   if (!ctx?.enabled || !navigator.onLine) return;
   try {
-    await api("/sync/devices", { method: "POST", withCompany: true, body: { device_uid: deviceUid(), platform: "web_pwa", model: navigator.userAgent.slice(0, 120) } });
+    const r = await api<{ data: { offline_warning_days?: number } }>("/sync/devices", { method: "POST", withCompany: true, body: { device_uid: deviceUid(), platform: "web_pwa", model: navigator.userAgent.slice(0, 120) } });
+    try {
+      if (r.data?.offline_warning_days) localStorage.setItem("escudo.offline_warning_days", String(r.data.offline_warning_days));
+    } catch {
+      /* sin almacenamiento local */
+    }
   } catch (e) {
     if (e instanceof ApiError && e.type === "device_revoked") await wipeLocal();
   }
@@ -428,4 +439,21 @@ export async function registerDevice(): Promise<void> {
 /** Pendientes del dispositivo (para advertir antes de cerrar sesión). */
 export async function pendingCount(): Promise<number> {
   return (await listOutbox().catch(() => [])).length;
+}
+
+/**
+ * M-OFF §10 «Dispositivo sin sincronizar» (aviso local): días desde la última sincronización si hay registros pendientes
+ * y ya pasaron offline_warning_days (el valor llega del servidor al registrar el dispositivo). null = sin aviso.
+ */
+export function unsyncedDays(pending: number): number | null {
+  if (pending <= 0) return null;
+  try {
+    const last = localStorage.getItem("escudo.last_sync");
+    const limit = Number(localStorage.getItem("escudo.offline_warning_days") ?? "3") || 3;
+    if (!last) return null;
+    const days = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
+    return days >= limit ? days : null;
+  } catch {
+    return null;
+  }
 }

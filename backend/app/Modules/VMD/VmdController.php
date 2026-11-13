@@ -35,6 +35,7 @@ class VmdController extends Controller
         $data = $request->validate(['password' => ['required', 'string']], [], ['password' => 'contraseña']);
         $user = $request->user();
         if (! Hash::check($data['password'], (string) $user->getAuthPassword())) {
+            \App\Modules\VUL\MedicalAccess::denied('Contraseña incorrecta');
             throw new ApiProblem(422, 'validation_failed', 'Contraseña incorrecta', 'La contraseña no es correcta.', ['errors' => ['password' => ['La contraseña no es correcta.']]]);
         }
         $id = (string) Str::uuid();
@@ -158,6 +159,7 @@ class VmdController extends Controller
 
             return $id;
         });
+        $this->scheduleFollowup($id, $d['worker_id'], $this->uid(), $d['next_control_on'] ?? null);
 
         return response()->json(['data' => ['id' => $id]], 201);
     }
@@ -170,7 +172,7 @@ class VmdController extends Controller
             'status' => ['nullable', 'in:open,in_follow_up,closed'], 'next_control_on' => ['nullable', 'date'], 'risk_classification' => ['nullable', 'in:low,medium,high'],
             'closure_reason' => ['nullable', 'string', 'max:2000'],
         ], [], ['closure_reason' => 'motivo de cierre', 'next_control_on' => 'próximo control']);
-        $this->med($reauth, function ($db) use ($id, $d) {
+        $after = $this->med($reauth, function ($db) use ($id, $d) {
             $c = $this->find($db, 'surveillance_cases', $id, 'El caso no existe.');
             if ($c->status === 'closed') {
                 throw new ApiProblem(409, 'conflict', 'Caso cerrado', 'El caso está cerrado; abre uno nuevo si hace falta.');
@@ -188,7 +190,10 @@ class VmdController extends Controller
                             closed_on = case when ? = 'closed' then current_date else closed_on end, updated_by = ? where id = ?",
                 [$d['status'] ?? null, $d['next_control_on'] ?? null, $d['risk_classification'] ?? null, $d['closure_reason'] ?? null, $d['status'] ?? null, $this->uid(), $id]);
             $this->log($db, 'surveillance_case', $id, $c->worker_id, 'update', null);
+
+            return $db->selectOne('select worker_id, assigned_doctor_user_id, next_control_on, status from surveillance_cases where id = ?', [$id]);
         });
+        $this->scheduleFollowup($id, $after->worker_id, $after->assigned_doctor_user_id, $after->status === 'closed' ? null : $after->next_control_on);
 
         return response()->json(['data' => ['id' => $id]]);
     }
@@ -259,6 +264,42 @@ class VmdController extends Controller
     // ── apoyo ──
 
     /** Ejecuta en la base médica dentro de una transacción con el contexto RLS de la empresa y el usuario. */
+    /**
+     * M-VMD §10: con cada fecha de control se programan en la campana (scheduled_for) dos avisos sin datos clínicos
+     * (RN-NOT-01): «Cita de control» al trabajador followup_notice_days antes y «Control de caso vencido» al médico al
+     * día siguiente de la fecha. Si la fecha cambia o el caso se cierra, los avisos que aún no salieron se retiran.
+     */
+    private function scheduleFollowup(string $caseId, string $workerId, ?string $doctor, ?string $next): void
+    {
+        try {
+            DB::update("update notifications set deleted_at = now() where subject_id = ? and event_code in ('vmd.followup_reminder', 'vmd.control_overdue')
+                         and scheduled_for > now() and deleted_at is null", [$caseId]);
+            if (! $next) {
+                return;
+            }
+            $days = (int) \App\Core\Support\LegalParams::number('followup_notice_days', 2);
+            $w = DB::selectOne('select user_id from workers where id = ?', [$workerId]);
+            $company = $this->company();
+            $key = date('Ymd', strtotime($next));
+            DB::insert(
+                "insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, recipient_worker_id, title, body, link, priority, scheduled_for, due_at, dedupe_key)
+                 values (?, 'vmd.followup_reminder', 'VMD', ?, ?, ?, 'Cita de control', ?, '/mi/salud', 'normal',
+                         greatest(now(), (?::date - make_interval(days => ?::int))::timestamp at time zone 'America/Lima' + interval '8 hours'), ?::date, ?) on conflict do nothing",
+                [$company, $caseId, $w?->user_id, $workerId, 'Tienes una cita de control médico ocupacional el '.date('d/m/Y', strtotime($next)).'.', $next, $days, $next, "vmd.followup_reminder:{$caseId}:{$key}"]
+            );
+            if ($doctor) {
+                DB::insert(
+                    "insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, scheduled_for, due_at, dedupe_key)
+                     values (?, 'vmd.control_overdue', 'VMD', ?, ?, 'Control de caso vencido', 'Un caso de vigilancia médica pasó su fecha de control sin actualizarse.', '/m/vmd', 'normal',
+                             ((?::date + 1)::timestamp at time zone 'America/Lima' + interval '8 hours'), ?::date, ?) on conflict do nothing",
+                    [$company, $caseId, $doctor, $next, $next, "vmd.control_overdue:{$caseId}:{$key}"]
+                );
+            }
+        } catch (\Throwable) {
+            // El aviso nunca impide registrar el caso.
+        }
+    }
+
     private function med(string $reauth, callable $fn): mixed
     {
         $db = DB::connection('medical');

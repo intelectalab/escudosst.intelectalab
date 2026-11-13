@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useApp } from "@/components/AppContext";
 import {
   discardOp, listOutbox, loadConflicts, OFFLINE_ENTITIES, registerDevice, resolveConflict, retryOp, setOfflineContext,
-  setOnline, subscribeOffline, syncNow, type OfflineState, type OutboxOp, type SyncConflict,
+  setOnline, subscribeOffline, syncNow, unsyncedDays, type OfflineState, type OutboxOp, type SyncConflict,
 } from "@/lib/offline";
 
 const CONFLICT_TEXT: Record<string, string> = {
@@ -100,7 +100,10 @@ export function OfflineIndicator() {
     if (s.conflicts) parts.push(`${s.conflicts} ${s.conflicts === 1 ? "conflicto" : "conflictos"} por revisar`);
     text = parts.join(" · ");
   }
-  const warn = !s.online || s.rejected > 0 || s.conflicts > 0;
+  // M-OFF §10: aviso local si el dispositivo lleva offline_warning_days sin sincronizar y tiene pendientes.
+  const stale = enabled ? unsyncedDays(s.pending) : null;
+  if (stale !== null) text = `${text} · llevas ${stale} días sin sincronizar: conéctate para no perder lo registrado`;
+  const warn = !s.online || s.rejected > 0 || s.conflicts > 0 || stale !== null;
 
   async function act(id: string, fn: () => Promise<void>) {
     setBusy(id);

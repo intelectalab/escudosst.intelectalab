@@ -28,10 +28,12 @@ final class MedicalAccess
     public static function reauth(Request $request, array $anyOf): array
     {
         if (! array_intersect($anyOf, Permissions::effective())) {
+            self::denied('Sin permiso para datos médicos');
             throw ApiProblem::forbidden('Solo el personal de salud autorizado ve datos médicos.');
         }
         $data = $request->validate(['password' => ['required', 'string']], [], ['password' => 'contraseña']);
         if (! Hash::check($data['password'], (string) $request->user()->getAuthPassword())) {
+            self::denied('Contraseña incorrecta');
             throw new ApiProblem(422, 'validation_failed', 'Contraseña incorrecta', 'La contraseña no es correcta.', ['errors' => ['password' => ['La contraseña no es correcta.']]]);
         }
         $id = (string) Str::uuid();
@@ -86,6 +88,29 @@ final class MedicalAccess
     {
         $db->select('select med_log_access(?, ?::uuid, ?, ?::uuid, ?, ?, ?::inet)',
             [$resource, $resourceId, $action, $workerId, app(CompanyContext::class)->roleCode, $purpose ? mb_substr($purpose, 0, 300) : null, request()->ip()]);
+    }
+
+    /**
+     * M-AUD §10: intento de acceso médico denegado (sin permiso o contraseña incorrecta). Se registra en sensitive_access_logs
+     * y, al llegar a denied_access_threshold intentos de la misma persona en el día, se avisa al médico ocupacional y al
+     * administrador de la cuenta.
+     */
+    public static function denied(string $why): void
+    {
+        try {
+            DB::insert("insert into sensitive_access_logs (company_id, user_id, role_code, resource, action, purpose, result, ip, user_agent, created_by)
+                        values (?, ?, ?, 'worker_sensitive_data', 'read', ?, 'denied', ?::inet, ?, ?)",
+                [self::company(), self::uid(), app(CompanyContext::class)->roleCode, mb_substr($why, 0, 300), request()->ip(), mb_substr((string) request()->userAgent(), 0, 300), self::uid()]);
+            $n = (int) DB::selectOne("select count(*) as n from sensitive_access_logs where user_id = ? and result = 'denied' and created_at > (now() at time zone 'America/Lima')::date at time zone 'America/Lima'", [self::uid()])->n;
+            $max = max(1, (int) \App\Core\Support\LegalParams::number('denied_access_threshold', 3));
+            if ($n === $max) {
+                $who = DB::selectOne('select full_name from users where id = ?', [self::uid()])?->full_name ?? 'Un usuario';
+                \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['occupational_doctor', 'account_admin']), 'aud.medical_denied', 'AUD', self::uid(), 'Accesos médicos denegados',
+                    "{$who} intentó {$n} veces hoy entrar a datos médicos sin permiso o con contraseña incorrecta.", '/configuracion/auditoria', 'high',
+                    'aud.medical_denied:'.self::uid().':'.now('America/Lima')->format('Ymd'));
+            }
+        } catch (\Throwable) {
+        }
     }
 
     /** Registro en sensitive_access_logs de la base principal (previo a la lectura). */

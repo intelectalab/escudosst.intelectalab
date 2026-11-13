@@ -425,6 +425,10 @@ class DocsFieldRules extends RecordRules
         if (DB::selectOne('select status from risst_versions where id = ?', [$version])?->status !== 'current') {
             $this->fail('risst_version_id', 'Solo se entrega la versión vigente del RISST.');
         }
+        // RN-RIS-04: al publicar el RISST cada trabajador queda con una entrega pendiente; registrar la entrega la reemplaza.
+        if (! $current && ($worker = $this->value($values, $current, 'worker_id'))) {
+            DB::update("update risst_deliveries set deleted_at = now() where risst_version_id = ? and worker_id = ? and status = 'pending' and deleted_at is null", [$version, $worker]);
+        }
         // RN-RIS-07: una entrega firmada no cambia; un error se anula con motivo y se hace una nueva entrega.
         if ($current && in_array($current->status, ['signed', 'voided'], true)) {
             if ($current->status === 'voided' || array_diff(array_keys($values), ['status', 'void_reason']) !== [] || ($values['status'] ?? null) !== 'voided') {

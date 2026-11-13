@@ -59,8 +59,39 @@ class RecordsController extends Controller
     public function index(Request $request, string $module, string $table): JsonResponse
     {
         $res = $this->resource($request, $module, $table, 'read');
+        if ($request->query('export') === '1' && (int) $request->query('page', 1) <= 1) {
+            $this->exportNotice($res);
+        }
 
         return response()->json($this->records->list($res, $request->query()));
+    }
+
+    /**
+     * M-AUD §10 «Exportación masiva de datos personales»: al exportar la lista completa de una tabla con datos personales
+     * (trabajadores, contratistas, participantes externos o con campos cifrados) queda en la bitácora y se avisa por correo
+     * a los administradores de la cuenta.
+     */
+    private function exportNotice(array $res): void
+    {
+        $personal = in_array($res['table'], ['workers', 'contractor_workers', 'external_learners'], true)
+            || collect($res['fields'] ?? [])->contains(fn ($f) => ! empty($f['encrypted']));
+        if (! $personal) {
+            return;
+        }
+        try {
+            $ctx = app(\App\Core\Tenancy\CompanyContext::class);
+            $who = \Illuminate\Support\Facades\DB::selectOne('select full_name from users where id = ?', [(string) auth()->id()])?->full_name ?? 'Un usuario';
+            \Illuminate\Support\Facades\DB::insert(
+                "insert into audit_logs (company_id, actor_user_id, actor_role, actor_type, action, module_code, entity_type, changes, ip, user_agent)
+                 values (?, ?, ?, 'user', 'export', ?, ?, ?::jsonb, ?::inet, ?)",
+                [$ctx->companyId, (string) auth()->id(), $ctx->roleCode, $res['module'], $res['table'], json_encode(['personal_data' => true]), request()->ip(), mb_substr((string) request()->userAgent(), 0, 300)]
+            );
+            $label = $res['title'] ?? $res['table'];
+            \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['account_admin']), 'aud.mass_export', 'AUD', $ctx->companyId, 'Exportación de datos personales',
+                "{$who} exportó la lista completa de «{$label}», que tiene datos personales.", '/configuracion/auditoria', 'high',
+                'aud.mass_export:'.auth()->id().':'.$res['table'].':'.now()->format('YmdHi'), null, true);
+        } catch (\Throwable) {
+        }
     }
 
     public function show(Request $request, string $module, string $table, string $id): JsonResponse

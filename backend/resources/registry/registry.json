@@ -465,6 +465,11 @@
      ],
      "default": "active",
      "list": true
+    },
+    {
+     "name": "requires_sctr",
+     "label": "Requiere SCTR (actividad de riesgo)",
+     "type": "bool"
     }
    ]
   },
@@ -654,6 +659,11 @@
      ],
      "default": "active",
      "list": true
+    },
+    {
+     "name": "requires_sctr",
+     "label": "Requiere SCTR (actividad de riesgo)",
+     "type": "bool"
     }
    ]
   },

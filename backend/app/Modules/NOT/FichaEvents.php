@@ -43,6 +43,7 @@ final class FichaEvents
                 'training_evaluations' => $op === 'create' && self::evaluationFailed($id),
                 'sst_events' => $op === 'create' && self::iperReview('sst_events', $id),
                 'change_requests' => self::entered($values, $current, 'approved') && self::iperReview('change_requests', $id),
+                'objective_targets' => self::targetRed($id, $current),
                 default => null,
             };
         } catch (\Throwable) {
@@ -61,6 +62,51 @@ final class FichaEvents
         Notify::users(Notify::roles($roles), $event, $module, $id, $title, "«{$r->name}» se envió a aprobación.", $link.$id, 'normal', $event.':'.$id);
 
         return true;
+    }
+
+    /** M-POL §10: meta en rojo (no lograda) al medir → responsable del objetivo y Jefe SST. */
+    private static function targetRed(string $id, ?object $current): bool
+    {
+        $t = DB::selectOne('select t.id, t.status, t.period_label, o.id as objective, o.title, o.responsible_user_id from objective_targets t join sst_objectives o on o.id = t.objective_id where t.id = ?', [$id]);
+        if (! $t || $t->status !== 'missed' || $current?->status === 'missed') {
+            return false;
+        }
+        Notify::users([$t->responsible_user_id, ...Notify::roles(['sst_manager'])], 'pol.target_red', 'POL', $id, 'Meta en rojo',
+            "La meta del objetivo «{$t->title}»".($t->period_label ? " ({$t->period_label})" : '').' no se logró.', '/m/pol?t=objective_targets&open='.$id, 'normal', 'pol.target_red:'.$id);
+
+        return true;
+    }
+
+    /** M-FIR §10: firma solicitada → firmante (usuario o trabajador). */
+    public static function signatureRequested(string $requestId): void
+    {
+        try {
+            $r = DB::selectOne('select id, subject_type, signer_user_id, signer_worker_id, role_in_document, expires_at from signature_requests where id = ?', [$requestId]);
+            $what = \App\Modules\REC\Registry::data()['resources'][$r->subject_type]['title'] ?? 'un registro';
+            $body = "Te pidieron firmar {$what}".($r->expires_at ? ' antes del '.date('d/m/Y', strtotime($r->expires_at)) : '').'.';
+            if ($r->signer_user_id) {
+                Notify::users([$r->signer_user_id], 'fir.signature_requested', 'FIR', $r->id, 'Firma solicitada', $body, '/inicio', 'normal', 'fir.signature_requested:'.$r->id);
+            } elseif ($r->signer_worker_id) {
+                Notify::workers([$r->signer_worker_id], 'fir.signature_requested', 'FIR', $r->id, 'Firma solicitada', $body.' Entra a tu app, en «Mis pendientes».', '/mi/pendientes', 'normal', 'fir.signature_requested:'.$r->id);
+            }
+        } catch (\Throwable) {
+        }
+    }
+
+    /** M-FIR §10: registro completamente firmado → quienes pidieron las firmas. */
+    public static function signed(string $requestId): void
+    {
+        try {
+            $r = DB::selectOne('select subject_type, subject_id from signature_requests where id = ?', [$requestId]);
+            if (DB::selectOne("select 1 as ok from signature_requests where subject_type = ? and subject_id = ? and deleted_at is null and status = 'pending' limit 1", [$r->subject_type, $r->subject_id])) {
+                return;
+            }
+            $who = array_column(DB::select("select distinct requested_by from signature_requests where subject_type = ? and subject_id = ? and deleted_at is null and status = 'signed' and requested_by is not null",
+                [$r->subject_type, $r->subject_id]), 'requested_by');
+            $what = \App\Modules\REC\Registry::data()['resources'][$r->subject_type]['title'] ?? 'El registro';
+            Notify::users($who, 'fir.completed', 'FIR', $r->subject_id, 'Registro firmado', "{$what} ya tiene todas sus firmas.", '/inicio', 'normal', 'fir.completed:'.$r->subject_id);
+        } catch (\Throwable) {
+        }
     }
 
     /** Jefe del área (usuario del trabajador que dirige el área). */

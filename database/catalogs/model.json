@@ -889,6 +889,17 @@
     "comment": null
    },
    {
+    "name": "requires_sctr",
+    "type": "boolean",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -1279,6 +1290,17 @@
      "active",
      "inactive"
     ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "requires_sctr",
+    "type": "boolean",
+    "not_null": false,
+    "default": null,
+    "values": null,
     "ref": null,
     "encrypted": false,
     "generated": null,

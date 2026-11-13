@@ -65,6 +65,18 @@ class SubscriptionService
                 'modules' => $modules,
             ], $reason);
 
+            try {
+                $this->accounts->withCompany($sub->company_id, function ($db) use ($sub, $plan) {
+                    foreach ($db->select("select m.user_id from memberships m join roles r on r.id = m.role_id where m.company_id = ? and coalesce(r.base_role_code, r.code) = 'account_admin'
+                                            and m.status = 'active' and m.deleted_at is null", [$sub->company_id]) as $a) {
+                        $db->insert("insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, dedupe_key)
+                                     values (?, 'sus.plan_changed', 'subscriptions', ?, ?, 'Cambio de plan aplicado', ?, '/cuenta', 'normal', ?) on conflict do nothing",
+                            [$sub->company_id, $sub->id, $a->user_id, "Tu empresa {$sub->company_name} pasó al plan {$plan->name}.", 'sus.plan_changed:'.$sub->id.':'.$plan->code.':'.date('YmdHi').':'.$a->user_id]);
+                    }
+                });
+            } catch (\Throwable) {
+            }
+
             return ['direction' => $direction, 'modules' => $modules];
         });
     }

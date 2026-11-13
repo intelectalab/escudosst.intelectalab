@@ -28,19 +28,64 @@ use Throwable;
 final class AlertDelivery
 {
     /** Ventana de avisos que se miran (los más viejos ya no se entregan por estos canales). */
-    private const WINDOW = '6 hours';
+    private const WINDOW = '16 hours';
 
     /** Avisos que siempre van por correo en el momento (además de los críticos). */
-    private const EMAIL_EVENTS = ['com.election_called', 'aul.lms_sync_failed', 'aul.enrolled', 'aul.course_due', 'aul.course_completed', 'vta.paid_without_enrollment'];
+    private const EMAIL_EVENTS = ['com.election_called', 'aul.lms_sync_failed', 'aul.enrolled', 'aul.course_due', 'aul.course_completed', 'vta.paid_without_enrollment',
+        // Canal «correo» de la tabla §10 de cada ficha (además de la campana).
+        'acc.notification_overdue', 'acr.overdue', 'aui.upcoming', 'aui.external_due', 'cap.certificate_valid', 'cap.certificate_voided', 'cap.session_call', 'cap.expired_required',
+        'cap.pending_validation', 'com.term_ending', 'com.meeting_upcoming', 'doc.review_pending', 'doc.review_due', 'dsh.kpi_red', 'emo.appointment', 'est.month_missing',
+        'inv.team_assigned', 'ipc.submitted', 'ipc.review_required', 'ipc.review', 'mag.exceeds_limit', 'mag.upcoming', 'pas.activity_overdue', 'pla.submitted', 'pla.plan_missing',
+        'pol.in_review', 'pol.review_due', 'pre.submitted', 'ris.grace_exceeded', 'sct.policy_expiring', 'sim.upcoming', 'sun.share_link_pending', 'sun.critical_gap',
+        'trb.import_finished', 'trb.doc_expiring', 'ten.committee_threshold', 'ten.site_closing', 'lba.submitted', 'lba.reassessment_due', 'eqe.due', 'fir.signature_requested',
+        'sus.plan_changed', 'aud.mass_export', 'aud.medical_denied', 'dsh.monthly_summary', 'con.weekly_due', 'pas.monthly_progress'];
 
     /** Avisos que van por WhatsApp uno a uno (además de los críticos). */
-    private const WHATSAPP_EVENTS = ['com.election_called', 'com.election_voting_open', 'com.vote_link', 'act.report_closed', 'aul.enrolled'];
+    private const WHATSAPP_EVENTS = ['com.election_called', 'com.election_voting_open', 'com.vote_link', 'act.report_closed', 'aul.enrolled',
+        // Canal «WhatsApp» de la tabla §10 de cada ficha (solo a quien lo aceptó, RN-NOT-04).
+        'acr.assigned', 'acr.due_soon', 'ptr.approval_pending', 'ptr.suspended', 'emo.appointment', 'cap.session_call', 'com.agreement_due', 'com.agreement_overdue',
+        'com.vote_reminder', 'doc.ack_requested', 'doc.ack_reminder', 'ris.pending', 'ris.reminder', 'psi.survey_open', 'lba.gap_due', 'ins.upcoming', 'ins.critical',
+        'ipc.control_overdue', 'pas.activity_upcoming', 'vmd.followup_reminder', 'fir.signature_requested', 'fir.signature_reminder'];
 
     /** Avisos del resumen diario (SstAlerts): por WhatsApp en un solo mensaje por persona y día. */
     public const DIGEST_EVENTS = ['acr.overdue', 'acr.due_soon', 'acc.notification', 'ipc.review', 'ins.late', 'emo.expiring', 'epp.expiring', 'fot.expiring',
         'cap.expiring', 'fot.blocked', 'act.untriaged', 'vul.adjustment_expiring', 'vul.adjustment_expired', 'des.return_to_work'];
 
     private ?WhatsAppCloud $wa = null;
+
+    /** @var array<string, ?object> reglas por evento (de la empresa o globales) */
+    private array $rules = [];
+
+    /**
+     * ¿Se entrega ahora por ese canal? false = suprimido por la regla de la empresa; null = esperar (horas de silencio).
+     * Sin regla configurada, vale el canal por defecto de la ficha.
+     */
+    private function allowed(ConnectionInterface $db, string $event, string $channel, string $priority): ?bool
+    {
+        if (! array_key_exists($event, $this->rules)) {
+            $this->rules[$event] = $db->selectOne(
+                "select is_active, channels, quiet_hours_start, quiet_hours_end from notification_rules
+                  where event_code = ? and deleted_at is null order by company_id nulls last limit 1", [$event]);
+        }
+        $r = $this->rules[$event];
+        if (! $r) {
+            return true;
+        }
+        if (! $r->is_active || ($r->channels && ! in_array($channel, str_getcsv(trim((string) $r->channels, '{}')), true))) {
+            return false;
+        }
+        if ($priority !== 'critical' && $r->quiet_hours_start && $r->quiet_hours_end) {
+            $now = now('America/Lima')->format('H:i:s');
+            $in = $r->quiet_hours_start <= $r->quiet_hours_end
+                ? ($now >= $r->quiet_hours_start && $now < $r->quiet_hours_end)
+                : ($now >= $r->quiet_hours_start || $now < $r->quiet_hours_end);
+            if ($in) {
+                return null;
+            }
+        }
+
+        return true;
+    }
 
     public function __construct(private AccountsService $accounts) {}
 
@@ -83,7 +128,8 @@ final class AlertDelivery
         $rows = $db->select(
             "select n.id, n.event_code, n.recipient_user_id, n.title, n.body, n.link, n.priority, u.full_name, u.email
                from notifications n join users u on u.id = n.recipient_user_id and u.deleted_at is null
-              where n.company_id = ? and n.deleted_at is null and n.created_at > now() - interval '".self::WINDOW."'
+              where n.company_id = ? and n.deleted_at is null and coalesce(n.scheduled_for, n.created_at) > now() - interval '".self::WINDOW."'
+                and coalesce(n.scheduled_for, n.created_at) <= now()
                 and (n.priority = 'critical' or n.event_code = any(?::text[]) or (n.event_code = 'acc.event_registered' and n.priority = 'high'))
                 and not exists (select 1 from notification_deliveries d where d.notification_id = n.id and d.channel = 'email')
               order by n.created_at limit 200",
@@ -91,6 +137,20 @@ final class AlertDelivery
         );
         $sent = 0;
         foreach ($rows as $n) {
+            $ok = $this->allowed($db, $n->event_code, 'email', $n->priority);
+            if ($ok === null) {
+                continue;
+            }
+            if ($ok === false) {
+                $this->record($db, $company, $n->id, 'email', 'suppressed', null, 'rule_off', 'La empresa desactivó este canal para este aviso.');
+
+                continue;
+            }
+            // Modo «resumen diario» (SCR-NOT-03): lo no crítico espera al resumen de la hora digest_hour.
+            if ($n->priority !== 'critical' && $db->selectOne("select 1 as ok from user_notification_prefs where company_id = ? and user_id = ? and channel = 'email'
+                                                                 and event_category = '*' and digest_mode = 'daily' and deleted_at is null", [$company, $n->recipient_user_id])) {
+                continue;
+            }
             if ($this->optedOut($db, $company, $n->recipient_user_id, 'email', $n->event_code)) {
                 $this->record($db, $company, $n->id, 'email', 'suppressed', null, 'preference_off', 'La persona desactivó estos avisos por correo.');
 
@@ -117,13 +177,23 @@ final class AlertDelivery
         $rows = $db->select(
             "select n.id, n.event_code, n.recipient_user_id, n.recipient_worker_id, n.subject_type, n.subject_id, n.title, n.body, n.link, n.priority
                from notifications n
-              where n.company_id = ? and n.deleted_at is null and n.created_at > now() - interval '".self::WINDOW."'
+              where n.company_id = ? and n.deleted_at is null and coalesce(n.scheduled_for, n.created_at) > now() - interval '".self::WINDOW."'
+                and coalesce(n.scheduled_for, n.created_at) <= now()
                 and (n.priority = 'critical' or n.event_code = any(?::text[]))
                 and not exists (select 1 from notification_deliveries d where d.notification_id = n.id and d.channel = 'whatsapp')
               order by n.created_at limit 200",
             [$company, '{'.implode(',', self::WHATSAPP_EVENTS).'}']
         );
         foreach ($rows as $n) {
+            $ok = $this->allowed($db, $n->event_code, 'whatsapp', $n->priority);
+            if ($ok === null) {
+                continue;
+            }
+            if ($ok === false) {
+                $this->record($db, $company, $n->id, 'whatsapp', 'suppressed', null, 'rule_off', 'La empresa desactivó este canal para este aviso.');
+
+                continue;
+            }
             $phone = $this->phoneFor($db, $company, $n->recipient_user_id, $n->recipient_worker_id, $n->event_code);
             if (! $phone) {
                 $this->record($db, $company, $n->id, 'whatsapp', 'suppressed', null, 'no_opt_in', 'Sin aceptación de WhatsApp o sin celular.');
@@ -144,7 +214,7 @@ final class AlertDelivery
             "select n.recipient_user_id as user_id, array_agg(n.id::text) as ids, count(*) as total
                from notifications n
               where n.company_id = ? and n.deleted_at is null and n.recipient_user_id is not null and n.priority <> 'critical'
-                and n.created_at > now() - interval '".self::WINDOW."' and n.event_code = any(?::text[])
+                and coalesce(n.scheduled_for, n.created_at) > now() - interval '".self::WINDOW."' and coalesce(n.scheduled_for, n.created_at) <= now() and n.event_code = any(?::text[])
                 and not exists (select 1 from notification_deliveries d where d.notification_id = n.id and d.channel = 'whatsapp')
               group by n.recipient_user_id",
             [$company, '{'.implode(',', self::DIGEST_EVENTS).'}']
@@ -281,6 +351,28 @@ final class AlertDelivery
              values (?, ?, ?, ?, ?, ?, 1, ?, ?, now())',
             [$company, $notification, $channel, $provider, $messageId, $status, $errorCode, $error !== null ? mb_substr($error, 0, 300) : null]
         );
+        if ($status === 'failed') {
+            $this->providerFailure($db, $channel, $provider, (string) $error);
+        }
+    }
+
+    /** M-NOT §10: si los últimos provider_failure_threshold envíos de un proveedor fallaron, un correo al dueño de la plataforma (uno por día). */
+    private function providerFailure(ConnectionInterface $db, string $channel, string $provider, string $error): void
+    {
+        try {
+            $n = max(1, (int) \App\Core\Support\LegalParams::number('provider_failure_threshold', 5));
+            $last = array_column($db->select('select status from notification_deliveries where channel = ? and provider = ? and status in (\'sent\', \'failed\') order by attempted_at desc limit ?',
+                [$channel, $provider, $n]), 'status');
+            $key = "provider-failure:{$channel}:{$provider}:".date('Ymd');
+            if (count($last) < $n || in_array('sent', $last, true) || ! \Illuminate\Support\Facades\Cache::add($key, 1, now()->addDay())) {
+                return;
+            }
+            foreach (DB::connection('platform')->select("select email, full_name from users where is_platform_staff and platform_role = 'owner' and deleted_at is null and status = 'active'") as $o) {
+                Mail::to($o->email)->send(new \App\Modules\USR\AccountNoticeMail(explode(' ', (string) $o->full_name)[0], 'Falla persistente de un proveedor de avisos',
+                    "Los últimos {$n} envíos por ".($channel === 'email' ? 'correo' : 'WhatsApp')." ({$provider}) fallaron. Último error: ".mb_substr($error, 0, 200)));
+            }
+        } catch (Throwable) {
+        }
     }
 
     /** Para quien emite credenciales de voto: deja el aviso que lleva el enlace personal por WhatsApp (si está en vivo). */

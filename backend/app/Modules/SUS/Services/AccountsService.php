@@ -260,6 +260,18 @@ class AccountsService
             if ($active >= (int) $limit->m) {
                 throw $this->validation('plan', "El plan de la cuenta permite hasta {$limit->m} empresa(s) activa(s): mejora el plan para agregar otra.");
             }
+            $pct = (int) \App\Core\Support\LegalParams::number('companies_limit_alert_pct', 90);
+            if (($active + 1) * 100 >= $pct * (int) $limit->m) {
+                try {
+                    $admins = $this->db()->select("select distinct u.email, u.full_name from memberships m join roles r on r.id = m.role_id join users u on u.id = m.user_id
+                                                     join companies c on c.id = m.company_id where c.account_id = ? and coalesce(r.base_role_code, r.code) = 'account_admin' and m.status = 'active' and m.deleted_at is null", [$accountId]);
+                    foreach ($admins as $a) {
+                        \Illuminate\Support\Facades\Mail::to($a->email)->send(new \App\Modules\SUS\Mail\SubscriptionNoticeMail($a->full_name, 'Llegas al límite de empresas de tu plan',
+                            'Con esta empresa tu cuenta usa '.($active + 1)." de {$limit->m} empresas que permite el plan.", 'info', rtrim((string) config('escudo.frontend_url'), '/').'/cuenta'));
+                    }
+                } catch (\Throwable) {
+                }
+            }
         }
 
         $ids = $this->db()->transaction(function () use ($accountId, $account, $data, $ruc, $plan, $actorUserId) {

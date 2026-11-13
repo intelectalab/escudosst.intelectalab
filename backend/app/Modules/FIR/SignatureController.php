@@ -73,6 +73,7 @@ class SignatureController extends Controller
                 $d['role_in_document'], $order, $d['expires_days'] ?? null, $d['expires_days'] ?? null, (string) auth()->id(), (string) auth()->id(), (string) auth()->id()]
         )->id;
         $accounts->audit((string) auth()->id(), 'signature_requested', $d['subject_table'], $d['subject_id'], ['request' => $id]);
+        \App\Modules\NOT\FichaEvents::signatureRequested($id);
 
         return response()->json(['data' => ['id' => $id]], 201);
     }
@@ -120,6 +121,7 @@ class SignatureController extends Controller
         // Imagen de la firma en el documento: la guardada del usuario, o la que el trabajador dibujó en la pantalla.
         SignatureImages::stamp($sigId, $r->company_id, $r->signer_user_id ? $uid : null, $request->input('image') ?: null);
         DB::update("update signature_requests set status = 'signed', signed_at = now(), updated_by = ? where id = ?", [$uid, $r->id]);
+        \App\Modules\NOT\FichaEvents::signed($r->id);
         $accounts->audit($uid, 'signature_signed', $r->subject_type, $r->subject_id, ['request' => $r->id, 'method' => $method]);
 
         return response()->json(['data' => ['status' => 'signed', 'method' => $method]]);

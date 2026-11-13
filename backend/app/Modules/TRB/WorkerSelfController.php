@@ -65,6 +65,8 @@ class WorkerSelfController extends Controller
             'summary' => [
                 'credential' => $cred ? ['status' => $cred->status, 'expires_on' => $cred->expires_on] : null,
                 'pending' => count($this->pendingItems($w)),
+                'notices' => (int) DB::selectOne("select count(*) as n from notifications where (recipient_worker_id = ? or recipient_user_id = ?) and read_at is null
+                                                    and dismissed_at is null and deleted_at is null and coalesce(scheduled_for, created_at) <= now()", [$w->id, (string) auth()->id()])->n,
                 'ppe' => $ppe ? ['total' => (int) $ppe->n, 'unsigned' => (int) $ppe->unsigned, 'expiring' => (int) $ppe->expiring] : null,
                 'fitness' => $fit ? ['status' => $fit->status, 'valid_until' => $fit->valid_until] : null,
                 'certificates' => $certs, 'courses' => $courses, 'reports' => $reports,
@@ -140,6 +142,30 @@ class WorkerSelfController extends Controller
         ]]);
     }
 
+    /** GET /worker/notifications — mis avisos (canal «App» de las fichas): los 30 más recientes, sin datos clínicos. */
+    public function notifications(): JsonResponse
+    {
+        $w = WorkerSelf::row();
+        $rows = DB::select(
+            "select id, event_code, title, body, priority, read_at, coalesce(scheduled_for, created_at) as at from notifications
+              where (recipient_worker_id = ? or recipient_user_id = ?) and deleted_at is null and dismissed_at is null and coalesce(scheduled_for, created_at) <= now()
+              order by coalesce(scheduled_for, created_at) desc limit 30",
+            [$w->id, (string) auth()->id()]
+        );
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /** POST /worker/notifications/read-all — marca como leídos mis avisos. */
+    public function readNotifications(): JsonResponse
+    {
+        $w = WorkerSelf::row();
+        DB::update('update notifications set read_at = now() where (recipient_worker_id = ? or recipient_user_id = ?) and read_at is null and deleted_at is null and coalesce(scheduled_for, created_at) <= now()',
+            [$w->id, (string) auth()->id()]);
+
+        return response()->json(['data' => ['ok' => true]]);
+    }
+
     public function pending(): JsonResponse
     {
         return response()->json(['data' => $this->pendingItems(WorkerSelf::row())]);
@@ -181,6 +207,7 @@ class WorkerSelfController extends Controller
             }
             $sig = $this->signature($ctx->companyId, $meta['request']->id, $table, $row->id, $w, $uid, $hash, $image);
             DB::update("update signature_requests set status = 'signed', signed_at = now(), updated_by = ? where id = ?", [$uid, $meta['request']->id]);
+            \App\Modules\NOT\FichaEvents::signed($meta['request']->id);
         } else {
             $hash = SignatureService::hash($table, $row);
             $order = (int) DB::selectOne('select coalesce(max(sequence_order), 0) + 1 as n from signature_requests where subject_type = ? and subject_id = ? and deleted_at is null', [$table, $row->id])->n;

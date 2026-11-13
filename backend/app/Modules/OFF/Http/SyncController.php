@@ -28,7 +28,7 @@ class SyncController extends Controller
     {
         $device = $this->sync->device($request->all(), in_array('off.devices.create', Permissions::effective(), true));
 
-        return response()->json(['data' => $this->sync->status($device)]);
+        return response()->json(['data' => $this->sync->status($device) + ['offline_warning_days' => max(1, (int) \App\Core\Support\LegalParams::number('offline_warning_days', 3))]]);
     }
 
     public function batch(Request $request): JsonResponse

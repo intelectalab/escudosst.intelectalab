@@ -41,6 +41,7 @@ class EmoClinicalController extends Controller
         $this->canAny(['emo.medical_exams.read_sensitive', 'emo.medical_exams.create']);
         $data = $request->validate(['password' => ['required', 'string']], [], ['password' => 'contraseña']);
         if (! Hash::check($data['password'], (string) $request->user()->getAuthPassword())) {
+            \App\Modules\VUL\MedicalAccess::denied('Contraseña incorrecta');
             throw new ApiProblem(422, 'validation_failed', 'Contraseña incorrecta', 'La contraseña no es correcta.', ['errors' => ['password' => ['La contraseña no es correcta.']]]);
         }
         $id = (string) Str::uuid();
