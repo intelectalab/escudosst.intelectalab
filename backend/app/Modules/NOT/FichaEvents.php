@@ -322,6 +322,7 @@ final class FichaEvents
         if (! in_array($values['status'] ?? null, $live, true) || in_array($current?->status, $live, true)) {
             return false;
         }
+        \App\Modules\PET\PetStepsController::requireTrainings($id);
         $p = DB::selectOne('select p.id, p.code, p.title, p.position_id, v.version_number from procedure_versions v join procedures p on p.id = v.procedure_id where v.id = ?', [$id]);
         if (! $p->position_id) {
             return false;

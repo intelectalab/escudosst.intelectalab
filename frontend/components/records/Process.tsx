@@ -23,6 +23,7 @@ import { InvTreeWithGuide } from "@/components/addons/IaaGuided";
 import { EmoClinical } from "@/components/modules/EmoClinical";
 import { DocFicha } from "@/components/modules/DocModule";
 import { InvScatPanel } from "@/components/modules/InvScat";
+import { PetSteps } from "@/components/modules/PetSteps";
 import { InvTeamSignatures } from "@/components/modules/InvSignatures";
 import { DossierSharePanel, ShareLinkDetail } from "@/components/modules/SunShare";
 import { useApp } from "@/components/AppContext";
@@ -180,6 +181,13 @@ function RecordActionsInner({
       </div>
     );
   if (res.table === "documents") return <DocFicha documentId={row.id} readOnly={readOnly} />;
+  if (res.table === "procedure_versions")
+    return (
+      <div className="space-y-3">
+        <PetSteps versionId={row.id} readOnly={readOnly} />
+        {!readOnly && <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />}
+      </div>
+    );
   if (readOnly) return null;
   if (res.table === "corrective_actions") return <CorrectiveFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "inspections") return <InspectionRun row={row} onChanged={onChanged} />;

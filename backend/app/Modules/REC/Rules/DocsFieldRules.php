@@ -183,9 +183,14 @@ class DocsFieldRules extends RecordRules
         if (! in_array($to, self::VFLOW[$current->status] ?? [], true)) {
             $this->fail('status', 'Ese cambio de estado no está permitido.');
         }
-        if (in_array($to, ['in_review', 'approved', 'current'], true) && $t !== 'risk_maps'
+        $hasSteps = $t === 'procedure_versions' && (json_decode((string) ($current->steps ?? '[]'), true) ?: []) !== [];
+        if (in_array($to, ['in_review', 'approved', 'current'], true) && $t !== 'risk_maps' && ! $hasSteps
             && trim(strip_tags((string) $this->value($values, $current, 'content_html'))) === '' && ! $this->value($values, $current, 'file_id')) {
             $this->fail('status', 'La versión está vacía: escribe su contenido o adjunta el documento antes de enviarla o aprobarla.');
+        }
+        // M-PET RN-PET-04: un paso con riesgo significativo debe tener su control antes de revisarse o aprobarse.
+        if ($t === 'procedure_versions' && in_array($to, ['in_review', 'approved'], true) && ($msg = \App\Modules\PET\PetStepsController::missingControl($current->id))) {
+            $this->fail('status', $msg);
         }
         if ($to === 'approved') {
             $author = $current->prepared_by ?? $current->submitted_by ?? null;

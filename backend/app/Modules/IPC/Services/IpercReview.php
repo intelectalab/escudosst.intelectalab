@@ -21,11 +21,31 @@ final class IpercReview
             return;
         }
         DB::update("update iperc_matrices set status = 'review_required', review_reason = ?, review_flagged_at = now() where id = ?", [mb_substr($reason, 0, 300), $m->id]);
+        self::flagProcedures($m->id, $m->code, $sourceId);
         try {
             $lead = $m->area_id ? DB::selectOne('select w.user_id from areas a join workers w on w.id = a.manager_worker_id where a.id = ?', [$m->area_id])?->user_id : null;
             Notify::users([...Notify::roles(['sst_manager']), $lead], 'ipc.review_required', 'IPC', $m->id, 'IPERC por revisar',
                 "La matriz {$m->code} · {$m->title} requiere revisión: {$reason}.", '/m/ipc?t=matrices&matriz='.$m->id, 'high', 'ipc.review_required:'.$m->id.':'.$sourceId);
         } catch (\Throwable) {
+        }
+    }
+
+    /** M-PET RN-PET-05: PETS vigentes ligados a filas de esa matriz → revisión exigida hoy y aviso al Jefe SST. */
+    private static function flagProcedures(string $matrixId, string $code, string $sourceId): void
+    {
+        $procs = DB::select(
+            "select distinct p.id, p.code, p.title from procedures p join procedure_versions v on v.id = p.current_version_id
+              where p.deleted_at is null and p.status = 'active' and v.iperc_row_ids is not null
+                and exists (select 1 from iperc_rows r join iperc_versions iv on iv.id = r.iperc_version_id
+                             where iv.iperc_matrix_id = ? and r.id = any(v.iperc_row_ids))", [$matrixId]);
+        foreach ($procs as $p) {
+            DB::update("update procedures set next_review_on = least(coalesce(next_review_on, current_date), current_date) where id = ?", [$p->id]);
+            try {
+                Notify::users(Notify::roles(['sst_manager']), 'pet.review_required', 'PET', $p->id, 'PETS por revisar',
+                    "El PETS {$p->code} · {$p->title} debe revisarse: cambió la matriz IPERC {$code} con la que está ligado.", '/m/pet?t=procedures&open='.$p->id, 'normal',
+                    'pet.review_required:'.$p->id.':'.$sourceId);
+            } catch (\Throwable) {
+            }
         }
     }
 

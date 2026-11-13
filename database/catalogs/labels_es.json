@@ -1223,7 +1223,10 @@
   "requires_sctr": "Requiere SCTR (actividad de riesgo)",
   "review_reason": "Motivo de la revisión",
   "review_flagged_at": "Marcada para revisión el",
-  "requires_validation": "Requiere validación del Jefe SST"
+  "requires_validation": "Requiere validación del Jefe SST",
+  "steps": "Pasos, riesgos y controles",
+  "required_training_ids": "Capacitaciones requeridas",
+  "iperc_row_ids": "Filas del IPERC vinculadas"
  },
  "values": {
   "A": "Tipo A",
