@@ -19,6 +19,8 @@ return new class extends Migration
         ['plan_missing_notice_days', '30', 'días', 'Días antes del inicio del año en que se avisa si no hay Plan Anual aprobado', 'M-PLA §10', 'M-PLA'],
         ['training_plan_notice_days', '15', 'días', 'Días antes del mes en que se avisa si un tema del programa de capacitación no tiene capacitación creada', 'M-PCA §10', 'M-PCA'],
         ['sctr_period_due_day', '5', 'día', 'Día del mes desde el que se avisa si el periodo no tiene constancia de SCTR cargada', 'M-SCT §10', 'M-SCT'],
+        ['ats_close_check_hour', '18', 'hora', 'Hora del día desde la que se avisa al supervisor un ATS sin cerrar', 'M-ATS §10', 'M-ATS'],
+        ['share_link_notice_hours', '24', 'horas', 'Horas antes del vencimiento de un enlace del expediente en que se avisa al Jefe SST', 'M-SUN §10', 'M-SUN'],
         ['survey_reminder_days', '2', 'días', 'Días antes del cierre de una encuesta psicosocial en que se recuerda responderla', 'M-PSI §10', 'M-PSI'],
     ];
 

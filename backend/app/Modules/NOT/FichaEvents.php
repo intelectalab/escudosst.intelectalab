@@ -94,7 +94,7 @@ final class FichaEvents
         }
         $workers = array_column(DB::select("select id from workers where current_position_id = ? and status = 'active' and deleted_at is null", [$p->position_id]), 'id');
         Notify::workers($workers, 'pet.approved', 'PET', $p->id, 'Nuevo procedimiento de tu puesto',
-            "Se aprobó {$p->code} · {$p->title} (versión {$p->version_number}): tu supervisor te lo explicará antes de la próxima tarea.", '/mi', 'normal', 'pet.approved:'.$id);
+            "Se aprobó {$p->code} · {$p->title} (versión {$p->version_number}) para tu puesto.", '/mi', 'normal', 'pet.approved:'.$id);
 
         return true;
     }
@@ -113,7 +113,7 @@ final class FichaEvents
         return true;
     }
 
-    /** M-EPP §10: trabajador nuevo o con nuevo puesto que tiene EPP obligatorio sin entregar → jefe del área y supervisores de la sede. */
+    /** M-EPP §10: trabajador nuevo o con nuevo puesto que tiene EPP obligatorio sin entregar → supervisores que ven la sede del trabajador. */
     private static function ppePending(string $table, string $id, array $values, ?object $current): bool
     {
         if ($table === 'workers') {
@@ -129,8 +129,7 @@ final class FichaEvents
             $worker = $values['worker_id'];
             $position = $values['position_id'];
         }
-        $w = DB::selectOne("select w.id, w.full_name, w.current_site_id, mw.user_id as lead from workers w left join areas a on a.id = w.current_area_id
-                             left join workers mw on mw.id = a.manager_worker_id where w.id = ? and w.status <> 'terminated'", [$worker]);
+        $w = DB::selectOne("select id, full_name, current_site_id from workers where id = ? and status <> 'terminated'", [$worker]);
         if (! $w) {
             return false;
         }
@@ -145,7 +144,7 @@ final class FichaEvents
             return false;
         }
         $names = implode(', ', array_slice(array_column($missing, 'name'), 0, 6)).(count($missing) > 6 ? '…' : '');
-        Notify::users([$w->lead, ...Notify::siteTeam(['sst_supervisor'], $w->current_site_id)], 'epp.new_worker_pending', 'EPP', $worker, 'Trabajador con EPP pendiente',
+        Notify::users(Notify::siteTeam(['sst_supervisor'], $w->current_site_id), 'epp.new_worker_pending', 'EPP', $worker, 'Trabajador con EPP pendiente',
             "{$w->full_name} necesita su EPP obligatorio: {$names}.", '/m/epp?t=ppe_deliveries&worker='.$worker, 'normal', 'epp.new_worker_pending:'.$worker.':'.$position);
 
         return true;
