@@ -109,17 +109,20 @@ class WebinarsController extends Controller
         return response()->json(['data' => ['id' => $id]], 201);
     }
 
-    public function update(Request $request, string $id, AccountsService $accounts): Response
+    public function update(Request $request, string $id, AccountsService $accounts, WebinarsService $webinars): Response
     {
         $current = $this->row('webinars', $id, 'El webinar no existe.');
         $row = $this->validated($request, $current);
         $this->db()->table('webinars')->where('id', $id)->update($row + ['updated_by' => $request->user()->id, 'updated_at' => now()]);
         $accounts->audit($request->user()->id, 'webinar_updated', 'webinars', $id, ['title' => $row['title']]);
+        if ($row['recording_public'] && ! $current->recording_public) {
+            $webinars->notifyAll($id, 'recording');   // grabación publicada: aviso a los inscritos (M-WEB §10)
+        }
 
         return response()->noContent();
     }
 
-    public function act(Request $request, string $id, string $action, AccountsService $accounts): Response
+    public function act(Request $request, string $id, string $action, AccountsService $accounts, WebinarsService $webinars): Response
     {
         $w = $this->row('webinars', $id, 'El webinar no existe.');
         $status = ['publish' => 'published', 'live' => 'live', 'finish' => 'finished', 'cancel' => 'cancelled'][$action];
@@ -134,6 +137,9 @@ class WebinarsController extends Controller
         }
         $this->db()->update('update webinars set status = ?, updated_by = ?, updated_at = now() where id = ?', [$status, $request->user()->id, $id]);
         $accounts->audit($request->user()->id, "webinar_{$action}", 'webinars', $id, ['title' => $w->title]);
+        if ($action === 'cancel' && $w->status !== 'cancelled') {
+            $webinars->notifyAll($id, 'cancelled');   // webinar cancelado: aviso a los inscritos (M-WEB §10)
+        }
 
         return response()->noContent();
     }

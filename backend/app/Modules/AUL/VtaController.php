@@ -134,6 +134,13 @@ class VtaController extends Controller
 
             return $out;
         });
+        // M-AUL §10 «Matrícula en un curso» y M-VTA §10 «Pedido pagado» / «Cupos comprados disponibles» (nunca interrumpen el pago).
+        try {
+            AulAlerts::enrolled(array_column(DB::select('select e.id from course_enrollments e join order_items i on i.id = e.order_item_id where i.order_id = ? and e.deleted_at is null', [$order->id]), 'id'));
+        } catch (\Throwable $e) {
+            report($e);
+        }
+        AulAlerts::orderPaid($order->id);
 
         return response()->json(['data' => ['status' => 'paid', 'manual' => true, 'delivered' => $result]]);
     }

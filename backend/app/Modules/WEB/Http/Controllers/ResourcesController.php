@@ -5,11 +5,14 @@ namespace App\Modules\WEB\Http\Controllers;
 use App\Core\Http\ApiProblem;
 use App\Http\Controllers\Controller;
 use App\Modules\SUS\Services\AccountsService;
+use App\Modules\WEB\Mail\SiteRequestMail;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
@@ -93,11 +96,31 @@ class ResourcesController extends Controller
             throw ApiProblem::notFound('El recurso no existe o ya no está disponible.');
         }
 
+        $url = URL::temporarySignedRoute('public.resources.file', now()->addMinutes(self::LINK_MINUTES), ['slug' => $slug]);
+        if ($item->is_gated) {
+            $this->mailLink($data, $r['title'], $url, $slug);   // recurso con registro: el enlace firmado también va por correo (M-WEB §10)
+        }
+
         return response()->json(['data' => [
             'title' => $r['title'],
-            'url' => URL::temporarySignedRoute('public.resources.file', now()->addMinutes(self::LINK_MINUTES), ['slug' => $slug]),
+            'url' => $url,
             'expires_minutes' => self::LINK_MINUTES,
         ]]);
+    }
+
+    private function mailLink(array $d, string $title, string $url, string $slug): void
+    {
+        try {
+            Mail::to($d['email'])->send(new SiteRequestMail(
+                explode(' ', trim((string) $d['full_name']))[0] ?: 'Hola', "Tu recurso: {$title}",
+                'Gracias por registrarte. Aquí tienes el enlace para descargar el recurso que pediste.',
+                [['Recurso', $title]],
+                'El enlace vence en '.self::LINK_MINUTES.' minutos. Si ya venció, vuelve a pedirlo en la página de recursos.',
+                'Descargar el recurso', $url
+            ));
+        } catch (\Throwable $e) {
+            Log::warning('No se pudo enviar el enlace del recurso', ['error' => $e->getMessage(), 'slug' => $slug]);
+        }
     }
 
     /** Entrega el archivo solo con un enlace firmado vigente (middleware «signed» en la ruta). */

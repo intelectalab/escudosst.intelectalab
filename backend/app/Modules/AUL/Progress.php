@@ -49,6 +49,9 @@ final class Progress
             [json_encode($progress), $pct, $status, $complete ? 'true' : 'false', $final, $label, $complete ? 'true' : 'false', $e->id]);
 
         $certificate = $complete ? self::certificate($e, $final) : null;
+        if ($complete && $e->status !== 'completed') {
+            AulAlerts::completed($e->id);   // M-AUL §10 «Curso completado» (nunca interrumpe el avance)
+        }
 
         return ['progress_pct' => $pct, 'status' => $status, 'final_score' => $final, 'final_score_label' => $label, 'certificate' => $certificate,
             'missing_active_seconds' => max(0, $needSeconds - (int) $e->active_seconds_total), 'score_below_passing' => ! $scoreOk && $final !== null];

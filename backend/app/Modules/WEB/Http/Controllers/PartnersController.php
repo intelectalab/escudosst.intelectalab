@@ -131,7 +131,9 @@ class PartnersController extends Controller
             }
             $lead = $email ? $db->selectOne('select id from marketing_leads where email = lower(trim(?)) and deleted_at is null', [$email]) : null;
             $db->selectOne('select web_register_referral(?, ?, ?) as r', [$code, $lead?->id, $accountId]);
-            $db->update("update referrals set status = 'trial', updated_at = now() where account_id = ? and status = 'registered'", [$accountId]);
+            foreach ($db->select("update referrals set status = 'trial', updated_at = now() where account_id = ? and status = 'registered' returning id", [$accountId]) as $ref) {
+                self::notifyReferral($ref->id);
+            }
         } catch (\Throwable $e) {
             Log::warning('No se pudo registrar el referido', ['error' => $e->getMessage()]);
         }
@@ -255,11 +257,48 @@ class PartnersController extends Controller
             [$d['status'], $d['status'] === 'customer', $d['status'] === 'cancelled' ? ($d['reason'] ?? null) : null, $request->user()->id, $id]
         );
         $accounts->audit($request->user()->id, 'referral_status', 'referrals', $id, ['from' => $ref->status, 'to' => $d['status']]);
+        if ($ref->status !== $d['status']) {
+            self::notifyReferral($id);
+        }
 
         return response()->noContent();
     }
 
     // ---------------------------------------------------------------- Apoyo
+
+    /** Aviso al partner cuando su referido pasa a prueba gratis, a cliente o se da de baja (M-WEB §10). Nunca rompe la acción. */
+    public static function notifyReferral(string $referralId): void
+    {
+        try {
+            $r = DB::connection('platform')->selectOne(
+                "select r.status, r.cancelled_reason, c.code, l.email, l.full_name, coalesce(acc.legal_name, rl.company_name, rl.full_name) as name
+                   from referrals r
+                   join referral_codes c on c.id = r.referral_code_id
+                   join partner_applications a on a.id = c.partner_application_id
+                   join marketing_leads l on l.id = a.lead_id
+                   left join accounts acc on acc.id = r.account_id
+                   left join marketing_leads rl on rl.id = r.lead_id
+                  where r.id = ? and r.deleted_at is null", [$referralId]
+            );
+            $texts = [
+                'trial' => ['Tu referido empezó su prueba gratis', 'Una empresa que llegó con tu código empezó su prueba gratis de EscudoSST.'],
+                'customer' => ['Tu referido ya es cliente', 'Una empresa que llegó con tu código ya es cliente de EscudoSST. Te escribiremos sobre tu recompensa.'],
+                'cancelled' => ['Tu referido se dio de baja', 'Una empresa que llegó con tu código ya no sigue con EscudoSST.'],
+            ];
+            if (! $r || ! isset($texts[$r->status]) || ! $r->email) {
+                return;
+            }
+            $rows = [['Empresa', $r->name ?? 'Sin nombre'], ['Tu código', $r->code]];
+            if ($r->status === 'cancelled' && $r->cancelled_reason) {
+                $rows[] = ['Motivo', $r->cancelled_reason];
+            }
+            Mail::to($r->email)->send(new SiteRequestMail(
+                explode(' ', trim((string) $r->full_name))[0] ?: 'Hola', $texts[$r->status][0], $texts[$r->status][1], $rows
+            ));
+        } catch (\Throwable $e) {
+            Log::warning('No se pudo avisar al partner del cambio de su referido', ['error' => $e->getMessage()]);
+        }
+    }
 
     private function mail(string $to, SiteRequestMail $m): void
     {

@@ -79,6 +79,42 @@ class WebinarsService
         return $n;
     }
 
+    /**
+     * Aviso a los inscritos cuando el webinar se cancela (los que siguen inscritos) o se publica su grabación
+     * (todos los que no cancelaron). Un correo que falla no detiene a los demás ni a la acción del panel.
+     */
+    public function notifyAll(string $webinarId, string $kind): int
+    {
+        $n = 0;
+        try {
+            $statuses = $kind === 'cancelled' ? ['registered'] : ['registered', 'attended', 'no_show'];
+            $w = $this->db()->selectOne('select slug from webinars where id = ?', [$webinarId]);
+            $regs = $this->db()->select(
+                'select id from webinar_registrations where webinar_id = ? and deleted_at is null and status in ('.implode(', ', array_fill(0, count($statuses), '?')).')',
+                [$webinarId, ...$statuses]
+            );
+            foreach ($regs as $r) {
+                $x = $this->registration($r->id);
+                $first = explode(' ', trim((string) $x->full_name))[0] ?: 'hola';
+                $mail = $kind === 'cancelled'
+                    ? new SiteRequestMail($first, "Webinar cancelado: {$x->title}", 'Lamentamos avisarte que este webinar fue cancelado. Tu inscripción queda sin efecto.',
+                        [['Fecha que tenía', $this->when($x->starts_at)]], null, 'Ver otros webinars', "{$this->site()}/webinars")
+                    : new SiteRequestMail($first, "Ya está la grabación: {$x->title}", 'La grabación del webinar en el que te inscribiste ya está publicada. Puedes verla cuando quieras.',
+                        [['Ponente', $x->speaker_name]], null, 'Ver la grabación', "{$this->site()}/webinars/{$w->slug}");
+                try {
+                    Mail::to($x->email)->send($mail);
+                    $n++;
+                } catch (\Throwable $e) {
+                    Log::warning('No se pudo enviar el aviso del webinar', ['error' => $e->getMessage()]);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('No se pudo avisar a los inscritos del webinar', ['error' => $e->getMessage()]);
+        }
+
+        return $n;
+    }
+
     private function registration(string $id): object
     {
         return $this->db()->selectOne(

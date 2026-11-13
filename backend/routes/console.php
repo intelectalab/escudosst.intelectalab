@@ -218,6 +218,12 @@ Artisan::command('escudo:webinars:reminders', function (\App\Modules\WEB\Service
 
 Schedule::command('escudo:webinars:reminders')->everyFiveMinutes()->withoutOverlapping()->runInBackground()->name('escudo:webinars:reminders');
 
+Artisan::command('escudo:legal:reacceptance-notices', function (\App\Modules\WEB\Services\LegalDocumentsService $legal) {
+    $this->info('Avisos de re-aceptación enviados: '.$legal->sendReacceptanceNotices());
+})->purpose('Avisa por correo, web.legal_notice_days antes de su vigencia, la versión nueva de un documento que pide volver a aceptarlo');
+
+Schedule::command('escudo:legal:reacceptance-notices')->dailyAt('08:00')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:legal:reacceptance-notices');
+
 Artisan::command('escudo:reviews:refresh', function () {
     $this->info('Reseñas actualizadas: '.\App\Modules\WEB\Http\Controllers\ReviewsController::refreshDue());
 })->purpose('Renueva la copia de las reseñas de Google cuando vence');
@@ -239,7 +245,18 @@ Artisan::command('escudo:sst-alerts', function (\App\Modules\NOT\SstAlerts $aler
     $this->info('Avisos creados: '.$alerts->run());
 })->purpose('Genera las alertas SST del día en la campana de cada empresa');
 
-Schedule::command('escudo:sst-alerts')->dailyAt('07:00')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:sst-alerts');
+Schedule::command('escudo:sst-alerts')->hourlyAt(5)->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:sst-alerts');
+
+/*
+| Avisos del aula virtual y de la venta de cursos (M-AUL §10, M-VTA §10): curso por vencer sin completar, participante
+| rezagado, resumen diario de recomendaciones por aprobar, pedido por vencer sin pago y pago sin matrícula creada.
+| Uso: php artisan escudo:aul-alerts
+*/
+Artisan::command('escudo:aul-alerts', function (\App\Modules\AUL\AulAlerts $alerts) {
+    $this->info('Avisos creados: '.$alerts->run());
+})->purpose('Genera los avisos del aula virtual y de la venta de cursos');
+
+Schedule::command('escudo:aul-alerts')->hourlyAt(15)->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:aul-alerts');
 
 /*
 | Entrega por correo y WhatsApp de los avisos de la campana (M-NOT): críticos al momento, enlaces de votación,

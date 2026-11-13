@@ -316,7 +316,7 @@ it('resumen SST diario', function () {
         'responsible_user_id' => $me, 'due_on' => now('America/Lima')->toDateString()], $h)->json('data.id');
     DB::update('update corrective_actions set due_on = due_on - 5 where id = ?', [$id]);
 
-    app(AccountsService::class)->withCompany(ANDINAS_ID, fn ($db) => app(SstAlerts::class)->forCompany($db, ANDINAS_ID));
+    app(AccountsService::class)->withCompany(ANDINAS_ID, fn ($db) => app(SstAlerts::class)->forCompany($db, ANDINAS_ID, digest: true));
 
     $mail = qaMailSent(SstDigestMail::class, PROFESIONAL_EMAIL);
     $link = rtrim(config('escudo.frontend_url'), '/')."/m/acr?t=corrective_actions&open={$id}";

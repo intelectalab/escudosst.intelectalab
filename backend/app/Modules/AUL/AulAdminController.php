@@ -334,6 +334,15 @@ class AulAdminController extends Controller
                 $this->records->create($res, array_filter(['course_id' => $id, 'worker_id' => $w, 'source' => 'manual', 'enrolled_by' => $me, 'due_on' => $d['due_on'] ?? null, 'status' => 'enrolled'], fn ($v) => $v !== null));
             }
         });
+        // M-AUL §10 «Matrícula en un curso» → participante (nunca interrumpe la matrícula).
+        try {
+            if ($todo) {
+                AulAlerts::enrolled(array_column(DB::select('select id from course_enrollments where course_id = ? and deleted_at is null and worker_id = any(?::uuid[])',
+                    [$id, '{'.implode(',', $todo).'}']), 'id'));
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return response()->json(['data' => ['matched' => count($matched), 'already' => count($matched) - count($todo), 'enrolled' => count($todo)]], 201);
     }

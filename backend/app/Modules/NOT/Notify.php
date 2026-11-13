@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 final class Notify
 {
     /** @param list<?string> $users */
-    public static function users(array $users, string $event, string $module, string $subjectId, string $title, string $body, string $link, string $priority = 'normal', ?string $dedupe = null, ?string $company = null): int
+    public static function users(array $users, string $event, string $module, string $subjectId, string $title, string $body, string $link, string $priority = 'normal', ?string $dedupe = null, ?string $company = null, bool $includeActor = false): int
     {
         $company ??= app()->bound(CompanyContext::class) ? app(CompanyContext::class)->companyId : null;
         if (! $company) {
@@ -21,7 +21,7 @@ final class Notify
         $me = (string) auth()->id();
         $n = 0;
         foreach (array_unique(array_filter($users)) as $u) {
-            if ($u === $me) {
+            if ($u === $me && ! $includeActor) {
                 continue;   // quien hace la acción no necesita aviso de su propia acción
             }
             $n += DB::affectingStatement(

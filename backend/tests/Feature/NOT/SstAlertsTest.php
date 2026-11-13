@@ -21,13 +21,13 @@ it('avisa de una acción vencida en la campana y no repite el aviso', function (
     DB::update('update corrective_actions set due_on = due_on - 5 where id = ?', [$id]);
 
     $alerts = app(SstAlerts::class);
-    $n = app(AccountsService::class)->withCompany(ANDINAS_ID, fn ($db) => $alerts->forCompany($db, ANDINAS_ID));
+    $n = app(AccountsService::class)->withCompany(ANDINAS_ID, fn ($db) => $alerts->forCompany($db, ANDINAS_ID, digest: true));
     expect($n)->toBeGreaterThanOrEqual(1);
     // Un solo correo por persona con sus avisos del día.
     Mail::assertSent(SstDigestMail::class, fn ($m) => $m->hasTo(PROFESIONAL_EMAIL)
         && collect($m->items)->contains(fn ($i) => $i['title'] === 'Acción correctiva vencida'));
     expect(DB::table('notification_deliveries')->where('channel', 'email')->where('status', 'sent')->exists())->toBeTrue();
-    $again = app(AccountsService::class)->withCompany(ANDINAS_ID, fn ($db) => $alerts->forCompany($db, ANDINAS_ID));
+    $again = app(AccountsService::class)->withCompany(ANDINAS_ID, fn ($db) => $alerts->forCompany($db, ANDINAS_ID, digest: true));
     expect($again)->toBe(0);
 
     $bell = collect($this->getJson('/api/v1/me/notifications', authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID))->json('data'));

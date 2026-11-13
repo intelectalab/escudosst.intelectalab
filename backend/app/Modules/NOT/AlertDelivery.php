@@ -31,10 +31,10 @@ final class AlertDelivery
     private const WINDOW = '6 hours';
 
     /** Avisos que siempre van por correo en el momento (además de los críticos). */
-    private const EMAIL_EVENTS = ['com.election_called', 'aul.lms_sync_failed'];
+    private const EMAIL_EVENTS = ['com.election_called', 'aul.lms_sync_failed', 'aul.enrolled', 'aul.course_due', 'aul.course_completed', 'vta.paid_without_enrollment'];
 
     /** Avisos que van por WhatsApp uno a uno (además de los críticos). */
-    private const WHATSAPP_EVENTS = ['com.election_called', 'com.election_voting_open', 'com.vote_link', 'act.report_closed'];
+    private const WHATSAPP_EVENTS = ['com.election_called', 'com.election_voting_open', 'com.vote_link', 'act.report_closed', 'aul.enrolled'];
 
     /** Avisos del resumen diario (SstAlerts): por WhatsApp en un solo mensaje por persona y día. */
     public const DIGEST_EVENTS = ['acr.overdue', 'acr.due_soon', 'acc.notification', 'ipc.review', 'ins.late', 'emo.expiring', 'epp.expiring', 'fot.expiring',

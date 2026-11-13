@@ -159,6 +159,57 @@ class LegalDocumentsService
         ];
     }
 
+    /**
+     * Aviso por correo de una versión nueva que pide re-aceptación (M-WEB §10): `web.legal_notice_days` antes de que entre
+     * en vigencia, a quienes aceptaron una versión anterior y todavía no aceptan esta. Una sola vez por versión (queda en
+     * la bitácora). El modal al iniciar sesión sigue igual. Lo corre el programador una vez al día.
+     */
+    public function sendReacceptanceNotices(): int
+    {
+        $days = (int) ($this->db()->selectOne("select web_try_numeric(platform_legal_param('web.legal_notice_days')) as v")->v ?? 0);
+        if ($days <= 0) {
+            return 0;
+        }
+        $due = $this->db()->select(
+            "select v.id, v.version_label, v.effective_from, v.summary_of_changes, d.id as document_id, d.title, d.slug, d.applies_to
+               from legal_documents d join legal_document_versions v on v.id = d.current_version_id
+              where v.status = 'published' and v.requires_reacceptance and v.deleted_at is null
+                and d.requires_acceptance_on_signup and d.is_active and d.deleted_at is null and d.applies_to <> 'visitors'
+                and v.effective_from > now() and v.effective_from <= now() + make_interval(days => ?)
+                and not exists (select 1 from audit_logs a where a.action = 'legal_reacceptance_notice' and a.entity_id = v.id)",
+            [$days]
+        );
+        $site = rtrim((string) config('escudo.frontend_url'), '/');
+        $n = 0;
+        foreach ($due as $v) {
+            // Se marca antes de enviar: si un correo falla no se repite en bucle.
+            $this->accounts->audit(null, 'legal_reacceptance_notice', 'legal_document_versions', $v->id, ['document' => $v->title, 'version' => $v->version_label]);
+            $users = $this->db()->select(
+                "select u.email, u.full_name from users u
+                  where u.status = 'active' and u.deleted_at is null and (? = 'all' or not u.is_platform_staff)
+                    and exists (select 1 from legal_acceptances a where a.user_id = u.id and a.legal_document_id = ?)
+                    and not exists (select 1 from legal_acceptances a where a.user_id = u.id and a.legal_document_version_id = ?)",
+                [$v->applies_to, $v->document_id, $v->id]
+            );
+            $when = \Illuminate\Support\Carbon::parse($v->effective_from)->timezone('America/Lima')->locale('es')->isoFormat('D [de] MMMM [de] YYYY');
+            foreach ($users as $u) {
+                try {
+                    \Illuminate\Support\Facades\Mail::to($u->email)->send(new \App\Modules\WEB\Mail\SiteRequestMail(
+                        explode(' ', trim((string) $u->full_name))[0] ?: 'Hola', "Cambia el documento: {$v->title}",
+                        "Publicamos una versión nueva de «{$v->title}». Al entrar al sistema te pediremos que la leas y la aceptes para seguir.",
+                        array_values(array_filter([['Versión', $v->version_label], ['Vigente desde', $when], $v->summary_of_changes ? ['Qué cambia', $v->summary_of_changes] : null])),
+                        null, 'Leer el documento', $site.'/legal/'.$v->slug
+                    ));
+                    $n++;
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('No se pudo enviar el aviso de la nueva versión del documento', ['error' => $e->getMessage()]);
+                }
+            }
+        }
+
+        return $n;
+    }
+
     private function version(string $id): object
     {
         $v = Str::isUuid($id) ? $this->db()->selectOne(

@@ -5,6 +5,7 @@ namespace App\Modules\SUS\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\WEB\Services\ComplaintsService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -12,15 +13,19 @@ use Illuminate\Support\Facades\DB;
  *  GET /internal/notifications
  *
  * Se calculan al momento desde lo que ya está pendiente (no hay tabla propia): solicitudes e interesados nuevos,
- * reclamos por vencer o vencidos, testimonios y casos de éxito por aprobar, y pruebas gratis que terminan pronto.
+ * reclamos por vencer o vencidos, testimonios y casos de éxito por aprobar, pruebas gratis que terminan pronto y los avisos
+ * de M-WEB §10 (interesados por anonimizar, demos sin resultado, calendario desconectado, reseñas con error, campañas por terminar).
  * Cada aviso dice cuántos hay, desde cuándo (`at`, lo más reciente) y a dónde ir. «Leído» lo guarda el navegador.
  * Solo cuenta: no muestra datos de negocio de las empresas.
  */
 class PlatformNotificationsController extends Controller
 {
-    public function index(ComplaintsService $complaints): JsonResponse
+    public function index(Request $request, ComplaintsService $complaints): JsonResponse
     {
         $db = DB::connection('platform');
+        $isOwner = $request->user()?->platform_role === 'owner';
+        $me = (string) $request->user()?->id;
+        $param = fn (string $key) => (int) ($db->selectOne("select web_try_numeric(platform_legal_param(?)) as v", [$key])->v ?? 0);
         $items = [];
         $add = function (string $key, string $group, string $icon, string $tone, int $count, ?string $at, string $title, string $detail, string $href) use (&$items) {
             if ($count > 0) {
@@ -83,6 +88,54 @@ class PlatformNotificationsController extends Controller
         $r = $db->selectOne("select count(*) as n, max(updated_at) as at from success_stories where status = 'draft' and deleted_at is null and (consent_file_id is not null or is_example)");
         $add('stories_ready', 'Sitio web', 'star', 'amber', (int) $r->n, $r->at,
             $plural((int) $r->n, '1 caso de éxito listo para aprobar', "{$r->n} casos de éxito listos para aprobar"), 'Ya tienen la autorización del cliente.', '/plataforma/sitio/casos');
+
+        // Avisos de M-WEB §10 (sitio web, agenda y captación).
+        $days = $param('web.lead_retention_notice_days');
+        if ($days > 0) {
+            $r = $db->selectOne(
+                "select count(*) as n, max(last_activity_at) as at from marketing_leads
+                  where status <> 'converted' and deleted_at is null and retain_until is not null and retain_until <= current_date + ?::int",
+                [$days]
+            );
+            $add('leads_retention', 'Ventas', 'people', 'amber', (int) $r->n, $r->at,
+                $plural((int) $r->n, '1 interesado por anonimizar', "{$r->n} interesados por anonimizar"),
+                "Se cumple su plazo de conservación en {$days} días o menos. Si sigues en contacto, actualiza su ficha.", '/plataforma/sitio/interesados');
+        }
+
+        // Demos que ya terminaron sin resultado: el dueño ve todas; el anfitrión, las suyas.
+        $r = $db->selectOne(
+            "select count(*) as n, max(m.ends_at) as at from demo_meetings m left join demo_hosts h on h.id = m.host_id
+              where m.status in ('confirmed', 'rescheduled') and m.outcome is null and m.ends_at < now() and m.deleted_at is null
+                and (?::boolean or h.user_id = ?::uuid)",
+            [$isOwner ? 'true' : 'false', $me ?: null]
+        );
+        $add('demos_no_outcome', 'Ventas', 'clock', 'amber', (int) $r->n, $r->at,
+            $plural((int) $r->n, '1 demo sin resultado', "{$r->n} demos sin resultado"), 'La reunión ya terminó. Registra cómo te fue o marca que no asistió.', '/plataforma/sitio/agenda');
+
+        $r = $db->selectOne(
+            'select count(*) as n, max(t.updated_at) as at from demo_calendar_tokens t join demo_hosts h on h.id = t.host_id
+              where t.last_error = ? and h.deleted_at is null and (?::boolean or h.user_id = ?::uuid)',
+            [\App\Modules\WEB\Services\GoogleCalendarService::REFRESH_FAILED, $isOwner ? 'true' : 'false', $me ?: null]
+        );
+        $add('calendar_disconnected', 'Ventas', 'refresh', 'bad', (int) $r->n, $r->at,
+            $plural((int) $r->n, '1 calendario desconectado', "{$r->n} calendarios desconectados"), 'Google ya no acepta el permiso. Vuelve a conectar el calendario en la agenda.', '/plataforma/sitio/agenda');
+
+        if ($isOwner) {
+            $r = $db->selectOne("select count(*) as n, max(updated_at) as at from review_sources where status = 'error' and deleted_at is null");
+            $add('reviews_error', 'Sitio web', 'star', 'bad', (int) $r->n, $r->at,
+                'No se pudieron leer las reseñas de Google', 'Revisa el error en Reseñas. Mientras tanto se muestra la última copia.', '/plataforma/sitio/resenas');
+
+            $days = $param('web.campaign_end_notice_days');
+            if ($days > 0) {
+                $r = $db->selectOne(
+                    "select count(*) as n, max(updated_at) as at from campaigns
+                      where status = 'active' and deleted_at is null and ends_on between current_date and current_date + ?::int",
+                    [$days]
+                );
+                $add('campaigns_ending', 'Sitio web', 'clock', 'amber', (int) $r->n, $r->at,
+                    $plural((int) $r->n, '1 campaña por terminar', "{$r->n} campañas por terminar"), "Termina en {$days} días o menos. Decide si la extiendes o la cierras.", '/plataforma/sitio/campanas');
+            }
+        }
 
         $r = $db->selectOne(
             "select count(*) as n, max(created_at) as at from subscriptions

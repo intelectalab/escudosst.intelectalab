@@ -1703,7 +1703,7 @@
    "fields": [
     {
      "name": "document_version_id",
-     "label": "Document version id",
+     "label": "Versión publicada como documento",
      "type": "ref",
      "ref": "document_versions",
      "required": true,
@@ -3303,6 +3303,13 @@
      "label": "Obsoleto desde",
      "readonly": true,
      "type": "datetime"
+    },
+    {
+     "name": "document_version_id",
+     "label": "Versión publicada como documento",
+     "readonly": true,
+     "type": "ref",
+     "ref": "document_versions"
     }
    ]
   },

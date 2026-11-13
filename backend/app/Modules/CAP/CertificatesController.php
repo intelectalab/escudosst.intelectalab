@@ -93,14 +93,15 @@ class CertificatesController extends Controller
                 $code = sprintf('CERT-%s-%06d', $year, $n++);
             } while (DB::selectOne('select 1 as ok from training_certificates where certificate_code = ?', [$code]));
             $hours = (float) $p->hours > 0 ? (float) $p->hours : round(((int) $t->duration_minutes) / 60, 2);
-            DB::insert(
+            DB::selectOne(
                 "insert into training_certificates (company_id, training_id, worker_id, certificate_code, verification_code, holder_name, holder_document_masked,
                     course_title, issued_on, expires_on, hours, score, public_verification_enabled, status, validated_by, validated_at, created_by, updated_by)
-                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, case when ?::int is null then null else (?::date + make_interval(months => ?::int))::date end, ?, ?, false, 'validated', ?, now(), ?, ?)",
+                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, case when ?::int is null then null else (?::date + make_interval(months => ?::int))::date end, ?, ?, false, 'validated', ?, now(), ?, ?) returning id",
                 [$t->company_id, $training, $p->worker_id, $code, strtoupper(substr(hash('sha256', Str::random(40)), 0, 32)), $p->full_name, $p->document_last4 ? '****'.$p->document_last4 : null,
                     $t->title, $today, $t->certificate_validity_months, $today, $t->certificate_validity_months, $hours, $p->score,
                     (string) auth()->id(), (string) auth()->id(), (string) auth()->id()]
             );
+            \App\Modules\NOT\FichaEvents::certificate(DB::selectOne('select id from training_certificates where certificate_code = ?', [$code])->id, 'validated', null);
             $issued++;
         }
 
@@ -150,6 +151,8 @@ class CertificatesController extends Controller
         if ($old->course_enrollment_id) {
             DB::update('update course_enrollments set certificate_id = ? where id = ?', [$new, $old->course_enrollment_id]);
         }
+        \App\Modules\NOT\FichaEvents::certificate($old->id, 'voided', 'validated');
+        \App\Modules\NOT\FichaEvents::certificate($new, 'validated', null);
 
         return response()->json(['data' => ['id' => $new, 'certificate_code' => $code, 'replaces_certificate_id' => $old->id]], 201);
     }

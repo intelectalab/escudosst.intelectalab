@@ -24,6 +24,9 @@ class GoogleCalendarService
 
     private const API = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
 
+    /** Texto que queda en last_error cuando Google no renueva el permiso (la campana del panel lo cuenta). */
+    public const REFRESH_FAILED = 'Google rechazó el permiso del calendario (puede haber vencido). Vuelve a conectarlo.';
+
     private const SCOPES = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.freebusy openid email';
 
     public function db(): ConnectionInterface
@@ -112,7 +115,10 @@ class GoogleCalendarService
             'refresh_token' => Crypt::decryptString($t->refresh_token_encrypted), 'grant_type' => 'refresh_token',
         ]);
         if (! $r->successful()) {
-            $this->fail($hostId, 'Google rechazó el permiso del calendario (puede haber vencido). Vuelve a conectarlo.');
+            $this->fail($hostId, self::REFRESH_FAILED);
+            if ($t->last_error !== self::REFRESH_FAILED) {
+                $this->mailDisconnected($hostId);   // solo la primera vez: no se repite en cada intento
+            }
 
             return null;
         }
@@ -122,6 +128,28 @@ class GoogleCalendarService
         );
 
         return (string) $r->json('access_token');
+    }
+
+    /** Calendario del anfitrión desconectado (M-WEB §10): correo al anfitrión y al equipo de ventas. Nunca rompe la acción. */
+    private function mailDisconnected(string $hostId): void
+    {
+        try {
+            $h = $this->db()->selectOne('select display_name, email from demo_hosts where id = ?', [$hostId]);
+            $s = json_decode($this->db()->selectOne('select public_site_settings() as s')->s, true);
+            $to = array_filter(array_unique([$h?->email, ($s['sales_email'] ?? null) ?: ($s['contact_email'] ?? null)]));
+            $site = rtrim((string) config('escudo.frontend_url'), '/');
+            foreach ($to as $email) {
+                \Illuminate\Support\Facades\Mail::to($email)->send(new \App\Modules\WEB\Mail\SiteRequestMail(
+                    $email === $h?->email ? (explode(' ', trim((string) $h->display_name))[0] ?: 'Hola') : 'equipo',
+                    'Se desconectó el calendario de Google',
+                    'Google ya no acepta el permiso del calendario. Mientras no se vuelva a conectar, las demos no se guardan en el calendario ni se crea el enlace de Meet.',
+                    [['Anfitrión', $h?->display_name ?? 'Sin nombre']],
+                    'Entra a la agenda de demos y vuelve a conectar Google Calendar.', 'Ir a la agenda', $site.'/plataforma/sitio/agenda'
+                ));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('No se pudo avisar que el calendario se desconectó', ['error' => $e->getMessage()]);
+        }
     }
 
     private function fail(string $hostId, string $msg): void

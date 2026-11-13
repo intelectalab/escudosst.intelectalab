@@ -158,6 +158,12 @@ class EmoClinicalController extends Controller
                         values (?, ?, ?, ?, ?, ?, ?, ?, now(), true, ?, ?)',
                 [$this->company(), $o->worker_id, $o->id, $fitness, $d['exam_on'], $validUntil, $restrictions, $this->uid(), $this->uid(), $this->uid()]);
             DB::update("update medical_exam_orders set status = 'fitness_issued' where id = ?", [$o->id]);
+            if ($fid = DB::selectOne('select id from fitness_status where worker_id = ? and is_current and deleted_at is null order by created_at desc limit 1', [$o->worker_id])?->id) {
+                try {
+                    \App\Modules\NOT\FichaEvents::fitness($fid, [], null);
+                } catch (\Throwable) {
+                }
+            }
             $this->med($reauth, fn ($db) => $db->update('update medical_exams set fitness_status_synced_at = now() where id = ?', [$examId]));
         }
 

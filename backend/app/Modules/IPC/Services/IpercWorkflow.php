@@ -175,6 +175,7 @@ final class IpercWorkflow
         $next = DB::selectOne("select ((now() at time zone 'America/Lima')::date + make_interval(months => ?))::date as d", [$months])->d;
         DB::update('update iperc_matrices set current_version_id = ?, next_review_on = ?, updated_by = ? where id = ?', [$versionId, $next, $user, $v->iperc_matrix_id]);
 
+        \App\Modules\NOT\FichaEvents::ipercApproved($versionId);
         $actions = $this->openActions($v);
         $this->audit('approve', $versionId, ['next_review_on' => $next, 'corrective_actions' => $actions]);
 

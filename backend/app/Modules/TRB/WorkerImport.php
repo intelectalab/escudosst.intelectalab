@@ -218,6 +218,12 @@ class WorkerImport extends Controller
             [$created + $updated + $terminated === 0 && $failed > 0 ? 'failed' : 'completed', $created + $updated + $terminated, $failed,
                 json_encode(['created' => $created, 'updated' => $updated, 'terminated' => $terminated]), $uid, $id]
         );
+        try {
+            \App\Modules\NOT\Notify::users([$uid], 'trb.import_finished', 'TRB', $id, 'Importación terminada',
+                "Se procesó tu carga de trabajadores: {$created} nuevos, {$updated} actualizados, {$terminated} cesados y {$failed} con error.", '/m/trb?t=workers', 'normal',
+                'trb.import_finished:'.$id, null, true);
+        } catch (\Throwable) {
+        }
     }
 
     /**

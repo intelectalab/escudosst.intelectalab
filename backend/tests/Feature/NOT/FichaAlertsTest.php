@@ -23,6 +23,11 @@ it('la revisión diaria avisa vencimientos de varios módulos sin errores', func
                           values (?, 'health', 'essalud', 'EsSalud', 'AV-1', current_date - 300, current_date + 5, 'expiring') returning id", [HUAYLAS_ID])->id;
     $drill = DB::selectOne("insert into drills (company_id, code, title, drill_type, site_id, scheduled_at, status)
                             values (?, 'SIM-AV1', 'Simulacro de sismo', 'earthquake', ?, now() + interval '2 days', 'planned') returning id", [HUAYLAS_ID, $site])?->id;
+    // M-SIM §10: el aviso del simulacro va a los brigadistas de la sede.
+    $brig = DB::selectOne("insert into brigades (company_id, site_id, brigade_type, name, status) values (?, ?, 'evacuation', 'Brigada de evacuación AV', 'active') returning id", [HUAYLAS_ID, $site])->id;
+    $wk = DB::selectOne("insert into workers (company_id, document_number, document_number_hash, first_name, paternal_last_name, status) values (?, ?, decode(md5(random()::text), 'hex'), 'Brigadista', 'Prueba', 'active') returning id",
+        [HUAYLAS_ID, (string) random_int(50000000, 59999999)])->id;
+    DB::insert("insert into brigade_members (company_id, brigade_id, worker_id, role, status) values (?, ?, ?, 'member', 'active')", [HUAYLAS_ID, $brig, $wk]);
 
     app(\App\Modules\NOT\SstAlerts::class)->forCompany(DB::connection(), HUAYLAS_ID);
 
@@ -104,4 +109,53 @@ it('avisa al supervisor cuando entra un trabajador cuyo puesto tiene EPP obligat
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
     $n = DB::selectOne("select count(*) as n, max(body) as body from notifications where event_code = 'epp.new_worker_pending' and subject_id = ? and recipient_user_id = ?", [$w, $sup]);
     expect((int) $n->n)->toBe(1)->and($n->body)->toContain('Protector auditivo');
+});
+
+it('al publicar la política pide el cargo a todos los trabajadores activos (RN-POL-04)', function () {
+    $h = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
+    $pol = $this->postJson('/api/v1/records/POL/sst_policies', ['title' => 'Política SST con cargo', 'content_html' => '<p>Cuidamos la vida.</p>'], $h)->assertCreated()->json('data.id');
+    DB::select("select set_config('app.company_id', ?, false)", [ANDINAS_ID]);
+    DB::update('update sst_policies set prepared_by = ? where id = ?', ['01900000-0000-7000-8000-000000000301', $pol]);
+    $this->patchJson("/api/v1/records/POL/sst_policies/{$pol}", ['status' => 'approved'], $h)->assertOk();
+    $this->patchJson("/api/v1/records/POL/sst_policies/{$pol}", ['status' => 'current'], $h)->assertOk();
+
+    DB::select("select set_config('app.company_id', ?, false)", [ANDINAS_ID]);
+    $v = DB::selectOne('select document_version_id from sst_policies where id = ?', [$pol])->document_version_id;
+    expect($v)->not->toBeNull();
+    $active = (int) DB::selectOne("select count(*) as n from workers where deleted_at is null and status in ('active', 'on_leave')")->n;
+    $asked = (int) DB::selectOne("select count(distinct recipient_worker_id) as n from notifications where event_code = 'doc.ack_requested' and subject_id = ?", [$v])->n;
+    expect($asked)->toBe($active);
+});
+
+it('al publicar el RISST deja una entrega pendiente para cada trabajador activo (RN-RIS-04)', function () {
+    DB::select("select set_config('app.company_id', ?, false)", [ANDINAS_ID]);
+    $r = DB::selectOne("insert into risst_versions (company_id, version_number, title, content_html, status, approved_at) values (?, (select coalesce(max(version_number), 0) + 1 from risst_versions), 'RISST de prueba', '<p>Reglamento</p>', 'approved', now()) returning id", [ANDINAS_ID])->id;
+    $h = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
+    $res = $this->patchJson("/api/v1/records/RIS/risst_versions/{$r}", ['status' => 'current'], $h);
+    if ($res->status() === 403) {
+        $this->markTestSkipped('RIS no está en el plan de la empresa de prueba.');
+    }
+    expect($res->status())->toBe(200, json_encode($res->json()));
+    DB::select("select set_config('app.company_id', ?, false)", [ANDINAS_ID]);
+    $active = (int) DB::selectOne("select count(*) as n from workers where deleted_at is null and status in ('active', 'on_leave')")->n;
+    expect((int) DB::selectOne("select count(*) as n from risst_deliveries where risst_version_id = ? and status = 'pending'", [$r])->n)->toBe($active);
+});
+
+it('una medición sobre el límite avisa al Jefe SST y al médico ocupacional', function () {
+    $sup = supervisorInHuaylas();
+    DB::update("update memberships set role_id = (select id from roles where account_id is null and code = 'occupational_doctor') where company_id = ? and user_id = ?", [HUAYLAS_ID, $sup]);
+    Permissions::flush();
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $agent = DB::selectOne('select id from agent_types limit 1')->id;
+    $site = DB::selectOne('select id from sites where company_id = ? and deleted_at is null limit 1', [HUAYLAS_ID])->id;
+    $camp = DB::selectOne("insert into monitoring_campaigns (company_id, title, status) values (?, 'Ruido AV', 'planned') returning id", [HUAYLAS_ID])->id;
+    $point = DB::selectOne("insert into monitoring_points (company_id, site_id, agent_type_id, code, name, status) values (?, ?, ?, ?, 'Prensa AV', 'active') returning id",
+        [HUAYLAS_ID, $site, $agent, 'PAV-'.random_int(100, 999)])->id;
+    $m = DB::selectOne("insert into measurements (company_id, campaign_id, monitoring_point_id, agent_type_id, measured_at, value, unit, result) values (?, ?, ?, ?, now(), 95, 'dB(A)', 'exceeds_limit') returning id",
+        [HUAYLAS_ID, $camp, $point, $agent])->id;
+    app()->instance(\App\Core\Tenancy\CompanyContext::class, new \App\Core\Tenancy\CompanyContext(HUAYLAS_ID, '', 'sst_manager', 'Huaylas', '20000000000'));
+    \App\Modules\NOT\FichaEvents::after('create', 'measurements', $m, ['result' => 'exceeds_limit'], null);
+    DB::update("update memberships set role_id = (select id from roles where account_id is null and code = 'sst_supervisor') where company_id = ? and user_id = ?", [HUAYLAS_ID, $sup]);
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    expect((int) DB::selectOne("select count(*) as n from notifications where event_code = 'mag.exceeds_limit' and subject_id = ? and recipient_user_id = ?", [$m, $sup])->n)->toBe(1);
 });

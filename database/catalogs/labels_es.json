@@ -1218,7 +1218,8 @@
   "introduces_new_hazards": "Introduce peligros nuevos",
   "temporary_until": "Cambio temporal hasta",
   "previous_absence_id": "Prórroga de",
-  "replaces_certificate_id": "Reemplaza al certificado"
+  "replaces_certificate_id": "Reemplaza al certificado",
+  "document_version_id": "Versión publicada como documento"
  },
  "values": {
   "A": "Tipo A",
