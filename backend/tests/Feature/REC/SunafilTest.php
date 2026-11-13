@@ -36,6 +36,7 @@ it('arma el expediente de un trabajador y lo comparte con un enlace que vence y 
     expect($zip->headers->get('content-type'))->toContain('zip');
     $this->postJson("/api/v1/sun/dossiers/{$d}/share", ['days' => 999], $h)->assertStatus(422)->assertJsonValidationErrors('days');
     $share = $this->postJson("/api/v1/sun/dossiers/{$d}/share", ['days' => 5, 'max_views' => 2, 'recipient_name' => 'Inspector'], $h)->assertCreated()->json('data');
+    approveShareLink($share['id'], ANDINAS_ID);
     [$company, $token] = array_slice(explode('/', $share['url']), -2);
 
     $this->getJson("/api/v1/public/sun/{$company}/{$token}")->assertOk()->assertJsonPath('data.views_left', 1)->assertJsonPath('data.dossier.title', 'Inspección a un trabajador');
@@ -43,6 +44,7 @@ it('arma el expediente de un trabajador y lo comparte con un enlace que vence y 
     $this->getJson("/api/v1/public/sun/{$company}/{$token}")->assertStatus(410);
 
     $share2 = $this->postJson("/api/v1/sun/dossiers/{$d}/share", ['days' => 1], authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID))->json('data');
+    approveShareLink($share2['id'], ANDINAS_ID);
     $this->postJson("/api/v1/sun/share-links/{$share2['id']}/revoke", [], authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID))->assertOk();
     [, $token2] = array_slice(explode('/', $share2['url']), -2);
     $this->getJson("/api/v1/public/sun/{$company}/{$token2}")->assertStatus(410);

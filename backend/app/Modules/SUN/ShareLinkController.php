@@ -85,7 +85,8 @@ class ShareLinkController extends Controller
         ], ['days.max' => "El enlace puede durar como máximo {$max} días.", 'days.required' => 'Indica cuántos días estará disponible.',
             'max_views.max' => 'Hasta 200 visitas.', 'max_downloads.max' => 'Hasta 50 descargas.']);
         $download = (bool) ($v['allow_download'] ?? false);
-        $approval = (bool) ($v['requires_approval'] ?? false);
+        // RN-SUN-09: todo enlace para el inspector necesita la aprobación de gerencia (o del administrador de la cuenta).
+        $approval = true;
         $token = strtoupper(Str::random(40));
         $company = app(CompanyContext::class)->companyId;
         $me = (string) auth()->id();

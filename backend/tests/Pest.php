@@ -140,3 +140,11 @@ function evidenceFile(array $headers, string $module = 'PAS'): string
     return test()->post('/api/v1/files', ['file' => \Illuminate\Http\UploadedFile::fake()->create('evidencia.pdf', 20, 'application/pdf'), 'module' => $module],
         $headers + ['Accept' => 'application/json'])->assertCreated()->json('data.id');
 }
+
+/** RN-SUN-09: todo enlace del inspector queda por aprobar; en las pruebas lo aprueba «gerencia» directamente en la base. */
+function approveShareLink(string $linkId, string $companyId): void
+{
+    DB::select("select set_config('app.company_id', ?, false)", [$companyId]);
+    DB::update("update dossier_share_links set status = 'active', approved_at = now(), expires_at = now() + make_interval(days => greatest(coalesce(valid_days, 1), 1))
+                 where id = ? and status = 'pending_approval'", [$linkId]);
+}

@@ -49,7 +49,8 @@ it('limita vistas y descargas del enlace y guarda el historial de accesos', func
     $d = sunBuiltDossier();
     $this->postJson("/api/v1/sun/dossiers/{$d}/share", ['days' => 3, 'allow_download' => true, 'max_downloads' => 99], sunH())->assertStatus(422)->assertJsonValidationErrors('max_downloads');
     $s = $this->postJson("/api/v1/sun/dossiers/{$d}/share", ['days' => 3, 'max_views' => 3, 'allow_download' => true, 'max_downloads' => 1, 'recipient_name' => 'Inspectora'], sunH())
-        ->assertCreated()->assertJsonPath('data.status', 'active')->json('data');
+        ->assertCreated()->assertJsonPath('data.status', 'pending_approval')->json('data');
+    approveShareLink($s['id'], ANDINAS_ID);
     [$company, $token] = sunToken($s['url']);
 
     $this->getJson("/api/v1/public/sun/{$company}/{$token}")->assertOk()->assertJsonPath('data.allow_download', true)->assertJsonPath('data.downloads_left', 1);
@@ -60,6 +61,7 @@ it('limita vistas y descargas del enlace y guarda el historial de accesos', func
 
     // Un enlace sin descarga no entrega el ZIP.
     $s2 = $this->postJson("/api/v1/sun/dossiers/{$d}/share", ['days' => 1], sunH())->assertCreated()->json('data');
+    approveShareLink($s2['id'], ANDINAS_ID);
     [, $token2] = sunToken($s2['url']);
     $this->get("/api/v1/public/sun/{$company}/{$token2}/download", ['Accept' => 'application/json'])->assertStatus(403);
 
@@ -72,9 +74,9 @@ it('limita vistas y descargas del enlace y guarda el historial de accesos', func
     expect(collect($links->firstWhere('id', $s2['id'])['accesses'])->pluck('action')->all())->toContain('denied');
 });
 
-it('el enlace con aprobación no funciona hasta que gerencia lo aprueba', function () {
+it('todo enlace queda por aprobar y no funciona hasta que gerencia lo aprueba', function () {
     $d = sunBuiltDossier();
-    $s = $this->postJson("/api/v1/sun/dossiers/{$d}/share", ['days' => 2, 'requires_approval' => true], sunH())->assertCreated()->assertJsonPath('data.status', 'pending_approval')->json('data');
+    $s = $this->postJson("/api/v1/sun/dossiers/{$d}/share", ['days' => 2, 'requires_approval' => false], sunH())->assertCreated()->assertJsonPath('data.status', 'pending_approval')->json('data');
     [$company, $token] = sunToken($s['url']);
     $this->getJson("/api/v1/public/sun/{$company}/{$token}")->assertStatus(410);
     // El Jefe SST no aprueba.

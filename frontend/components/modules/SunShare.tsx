@@ -1,7 +1,7 @@
 "use client";
 
 // Compartir el expediente con el inspector (M-SUN SCR-SUN-06/08): enlace con vencimiento, máximo de visitas, descarga
-// sí/no con máximo de descargas y aprobación de gerencia opcional antes de activarse; copiar, aprobar, rechazar o anular,
+// sí/no con máximo de descargas y aprobación de gerencia obligatoria antes de activarse (RN-SUN-09); copiar, aprobar, rechazar o anular,
 // y el historial de accesos de cada enlace (Fecha, Desde, Acción). El enlace completo se muestra una sola vez.
 
 import { useCallback, useEffect, useState } from "react";
@@ -155,7 +155,7 @@ function LinkRow({ l, meta, onChanged }: { l: ShareLink; meta: Meta; onChanged: 
 /** Panel de compartir del expediente: crear el enlace y la lista de enlaces con su historial. */
 export function DossierSharePanel({ dossierId, onChanged }: { dossierId: string; onChanged?: () => void }) {
   const { links, meta, error, load } = useLinks(dossierId);
-  const [f, setF] = useState({ name: "", days: "7", views: "", download: false, downloads: "", approval: false });
+  const [f, setF] = useState({ name: "", days: "7", views: "", download: false, downloads: "" });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [created, setCreated] = useState<{ url: string; pending: boolean } | null>(null);
@@ -177,7 +177,6 @@ export function DossierSharePanel({ dossierId, onChanged }: { dossierId: string;
           max_views: f.views ? Number(f.views) : null,
           allow_download: f.download,
           max_downloads: f.download && f.downloads ? Number(f.downloads) : null,
-          requires_approval: f.approval,
         },
       });
       setCreated({ url: r.data.url, pending: r.data.status === "pending_approval" });
@@ -196,7 +195,7 @@ export function DossierSharePanel({ dossierId, onChanged }: { dossierId: string;
       {meta?.can_share !== false && (
         <>
           <p className="text-xs text-muted">
-            El inspector ve el índice sin iniciar sesión, con marca de agua y sin datos médicos. El enlace vence solo (máximo {meta?.max_days ?? 15} días) y puedes anularlo cuando quieras.
+            El inspector ve el índice sin iniciar sesión, con marca de agua y sin datos médicos. El enlace funciona cuando otra persona de gerencia lo aprueba, vence solo (máximo {meta?.max_days ?? 15} días) y puedes anularlo cuando quieras.
           </p>
           <div className="grid gap-2 sm:grid-cols-3">
             <label className="text-xs">Para<input className="input mt-1" placeholder="Nombre del inspector" maxLength={120} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
@@ -213,9 +212,6 @@ export function DossierSharePanel({ dossierId, onChanged }: { dossierId: string;
                 <input className="input !h-8 !w-24" inputMode="numeric" placeholder="Sin límite" value={f.downloads} onChange={(e) => setF({ ...f, downloads: num(e.target.value) })} />
               </label>
             )}
-            <span className="flex items-center gap-2">
-              <Switch checked={f.approval} onChange={(v) => setF({ ...f, approval: v })} label="Requiere aprobación de gerencia" /> Requiere aprobación de gerencia
-            </span>
           </div>
           <Button variant="secondary" icon="link" loading={busy} disabled={!f.days} onClick={create}>Crear enlace</Button>
           {msg && <p className="text-sm text-bad">{msg}</p>}

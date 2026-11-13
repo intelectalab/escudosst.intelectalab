@@ -436,8 +436,10 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
     $this->postJson("/api/v1/sun/dossiers/{$dossier}/share", ['days' => 3], $a)->assertStatus(409);   // primero se arma
     $built = $this->postJson("/api/v1/sun/dossiers/{$dossier}/build", [], $a)->qaStatus(200);
     expect($built->json('data.total'))->toBeGreaterThan(0);
-    $link = $this->postJson("/api/v1/sun/dossiers/{$dossier}/share", ['days' => 3, 'max_views' => 5, 'recipient_name' => 'Inspector SUNAFIL'], $a)->qaStatus(201)
-        ->assertJsonPath('data.status', 'active')->json('data.url');
+    $share = $this->postJson("/api/v1/sun/dossiers/{$dossier}/share", ['days' => 3, 'max_views' => 5, 'recipient_name' => 'Inspector SUNAFIL'], $a)->qaStatus(201)
+        ->assertJsonPath('data.status', 'pending_approval')->json('data');   // RN-SUN-09: lo aprueba gerencia
+    approveShareLink($share['id'], $cid);
+    $link = $share['url'];
     [$sc, $st] = array_slice(explode('/', (string) $link), -2);
     app('auth')->forgetGuards();
     $pub = $this->getJson("/api/v1/public/sun/{$sc}/{$st}")->qaStatus(200);
