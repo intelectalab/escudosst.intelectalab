@@ -173,7 +173,8 @@ final class IpercWorkflow
             [$user, json_encode($criteria, JSON_UNESCAPED_UNICODE), $user, $versionId]
         );
         $next = DB::selectOne("select ((now() at time zone 'America/Lima')::date + make_interval(months => ?))::date as d", [$months])->d;
-        DB::update('update iperc_matrices set current_version_id = ?, next_review_on = ?, updated_by = ? where id = ?', [$versionId, $next, $user, $v->iperc_matrix_id]);
+        DB::update("update iperc_matrices set current_version_id = ?, next_review_on = ?, status = case when status = 'archived' then status else 'active' end, review_reason = null, review_flagged_at = null, updated_by = ? where id = ?",
+            [$versionId, $next, $user, $v->iperc_matrix_id]);
 
         \App\Modules\NOT\FichaEvents::ipercApproved($versionId);
         $actions = $this->openActions($v);

@@ -107,7 +107,7 @@ function MatrixList({ schema, readOnly, onOpen }: { schema: ModuleSchema; readOn
   );
 
   useEffect(() => {
-    records.list("IPC", "iperc_matrices", { filters: { status: "active", ...linkFilters } }).then((r) => setRows(r.data));
+    records.list("IPC", "iperc_matrices", { filters: { status: "active,review_required,review_overdue", ...linkFilters } }).then((r) => setRows(r.data));
   }, [linkFilters]);
 
   if (!res) return <p className="text-muted">Tu rol no puede ver las matrices.</p>;
@@ -144,7 +144,9 @@ function MatrixList({ schema, readOnly, onOpen }: { schema: ModuleSchema; readOn
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {rows?.map((m) => {
           const next = m.next_review_on as string | null;
-          const tone = !m.current_version_id ? "na" : next && next < today ? "bad" : next && next <= soon ? "amber" : "ok";
+          // RN-IPC-08/09: «requiere revisión» (accidente o cambio ligado) y «revisión vencida» (pasó la fecha).
+          const flagged = m.status === "review_required";
+          const tone = !m.current_version_id ? "na" : flagged || m.status === "review_overdue" || (next && next < today) ? "bad" : next && next <= soon ? "amber" : "ok";
           return (
             <button
               key={m.id}
@@ -154,7 +156,7 @@ function MatrixList({ schema, readOnly, onOpen }: { schema: ModuleSchema; readOn
               <div className="flex items-start justify-between gap-2">
                 <span className="text-xs font-semibold text-muted">{String(m.code)}</span>
                 <Chip tone={tone} dot>
-                  {!m.current_version_id ? "Sin versión aprobada" : tone === "bad" ? "Revisión vencida" : tone === "amber" ? "Revisión próxima" : "Vigente"}
+                  {!m.current_version_id ? "Sin versión aprobada" : flagged ? "Requiere revisión" : tone === "bad" ? "Revisión vencida" : tone === "amber" ? "Revisión próxima" : "Vigente"}
                 </Chip>
               </div>
               <p className="text-base font-semibold">{String(m.title)}</p>
@@ -162,6 +164,7 @@ function MatrixList({ schema, readOnly, onOpen }: { schema: ModuleSchema; readOn
                 {[m.site_id__label, m.area_id__label, m.process].filter(Boolean).join(" · ") || "Toda la empresa"}
               </p>
               <p className="text-xs text-muted">Próxima revisión: {fmt(next)}</p>
+              {flagged && m.review_reason ? <p className="text-xs font-semibold text-bad">Motivo: {String(m.review_reason)}</p> : null}
             </button>
           );
         })}

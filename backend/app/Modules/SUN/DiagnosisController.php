@@ -79,7 +79,7 @@ class DiagnosisController extends Controller
         $r = DB::selectOne(
             "select count(*) as n, count(*) filter (where current_version_id is not null and (next_review_on is null or next_review_on >= ?)) as ok,
                     count(*) filter (where next_review_on < ?) as overdue, count(*) filter (where current_version_id is null) as draft
-               from iperc_matrices where status = 'active' and deleted_at is null", [$today, $today]);
+               from iperc_matrices where status in ('active', 'review_required', 'review_overdue') and deleted_at is null", [$today, $today]);
         if ((int) $r->n === 0) {
             return $this->area('IPERC', 'IPC', 'iperc_matrices', 0, 'No hay matrices IPERC activas.');
         }

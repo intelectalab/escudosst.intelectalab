@@ -33,6 +33,8 @@ type Data = {
   description: string;
   activity_at_time: string;
   immediate_actions: string;
+  iperc_row_id: string;
+  iperc_row_label: string;
   person: "worker" | "external" | "none";
   worker_id: string;
   worker_label: string;
@@ -111,7 +113,7 @@ function WorkerCard({ id }: { id: string }) {
 export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const initial: Data = {
     event_type: "minor_accident", occurred_at: toLocalInput(new Date().toISOString()), site_id: "", site_label: "", exact_location: "", description: "",
-    activity_at_time: "", immediate_actions: "", person: "worker", worker_id: "", worker_label: "", external_name: "", injury_type: "", body_part: "", injury_agent: "",
+    activity_at_time: "", immediate_actions: "", iperc_row_id: "", iperc_row_label: "", person: "worker", worker_id: "", worker_label: "", external_name: "", injury_type: "", body_part: "", injury_agent: "",
     lost_days: "", medical_place: "", witnesses: [], notified: false, notification_number: "", notified_at: "",
   };
   const needsPerson = (d: Data) => TYPES.find((t) => t.value === d.event_type)?.person ?? false;
@@ -148,6 +150,11 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
           <FormField label="Acciones inmediatas">
             <input className="input" value={d.immediate_actions} maxLength={500} placeholder="Ej.: se detuvo la máquina y se aisló la zona" onChange={(e) => set({ immediate_actions: e.target.value })} />
           </FormField>
+          <div className="sm:col-span-2">
+            <FormField label="Fila del IPERC relacionada (opcional)" hint="Si el peligro estaba en la matriz IPERC, elígelo: un accidente o incidente peligroso la marca «requiere revisión».">
+              <RefSelect module="ACC" table="sst_events" field="iperc_row_id" label="Fila del IPERC" value={d.iperc_row_id} onChange={(id, label) => set({ iperc_row_id: id, iperc_row_label: label })} />
+            </FormField>
+          </div>
         </div>
       ),
     },
@@ -301,6 +308,7 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
           description: d.description.trim(),
           activity_at_time: d.activity_at_time.trim() || null,
           immediate_actions: d.immediate_actions.trim() || null,
+          iperc_row_id: d.iperc_row_id || null,
           origin: "web",
           witnesses: d.witnesses.length ? d.witnesses.map((w) => w.label) : null,
         });

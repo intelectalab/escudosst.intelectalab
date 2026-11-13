@@ -327,7 +327,7 @@ class VulController extends Controller
         $rows = DB::select(
             "select r.id, m.code as matrix, r.activity, r.task, r.hazard, r.risk, r.risk_level, h.hazard_family
                from iperc_rows r join iperc_versions v on v.id = r.iperc_version_id and v.deleted_at is null
-               join iperc_matrices m on m.id = v.iperc_matrix_id and m.deleted_at is null and m.status = 'active'
+               join iperc_matrices m on m.id = v.iperc_matrix_id and m.deleted_at is null and m.status in ('active', 'review_required', 'review_overdue')
                left join hazard_catalog h on h.id = r.hazard_catalog_id
               where r.deleted_at is null and (m.current_version_id = v.id or v.status = 'current')
                 and (r.position_id = ? or (r.position_id is null and m.position_id = ?))

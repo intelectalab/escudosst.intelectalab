@@ -18422,8 +18422,32 @@
     "default": "'active'",
     "values": [
      "active",
+     "review_required",
+     "review_overdue",
      "archived"
     ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "review_reason",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "review_flagged_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
     "ref": null,
     "encrypted": false,
     "generated": null,
@@ -19548,6 +19572,7 @@
      "in_review",
      "approved",
      "current",
+     "review_required",
      "obsolete"
     ],
     "ref": null,
@@ -19580,6 +19605,17 @@
    {
     "name": "effective_on",
     "type": "date",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "review_reason",
+    "type": "text",
     "not_null": false,
     "default": null,
     "values": null,
@@ -42383,6 +42419,17 @@
     "default": null,
     "values": null,
     "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "iperc_row_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "iperc_rows",
     "encrypted": false,
     "generated": null,
     "comment": null

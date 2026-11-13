@@ -41,7 +41,7 @@ final class FichaEvents
                 'measurements' => self::measurement($id, $values, $current),
                 'training_certificates' => self::certificate($id, $values['status'] ?? null, $current?->status),
                 'training_evaluations' => $op === 'create' && self::evaluationFailed($id),
-                'sst_events' => $op === 'create' && self::iperReview('sst_events', $id),
+                'sst_events' => ($op === 'create' || (array_key_exists('iperc_row_id', $values) && $values['iperc_row_id'] !== $current?->iperc_row_id)) && self::iperReview('sst_events', $id),
                 'change_requests' => self::entered($values, $current, 'approved') && self::iperReview('change_requests', $id),
                 'objective_targets' => self::targetRed($id, $current),
                 default => null,
@@ -227,21 +227,10 @@ final class FichaEvents
         return true;
     }
 
-    /** M-IPC §10: matriz que requiere revisión por un accidente o un cambio aprobado en su área → Jefe SST y jefe del área. */
+    /** M-IPC RN-IPC-09 / M-ACC RN-ACC-08: evento ligado a una fila, o cambio aprobado ligado a una versión, marca la matriz. */
     private static function iperReview(string $table, string $id): bool
     {
-        $src = $table === 'sst_events'
-            ? DB::selectOne("select id, code, area_id, site_id, event_type from sst_events where id = ?", [$id])
-            : DB::selectOne('select id, code, area_id, site_id from change_requests where id = ?', [$id]);
-        if (! $src || (! $src->area_id && ! $src->site_id) || ($table === 'sst_events' && ! str_contains((string) $src->event_type, 'accident'))) {
-            return false;
-        }
-        $why = $table === 'sst_events' ? "el accidente {$src->code}" : "el cambio aprobado {$src->code}";
-        foreach (DB::select("select id, code, title, area_id from iperc_matrices where deleted_at is null and status = 'active'
-                              and ((?::uuid is not null and area_id = ?::uuid) or (area_id is null and site_id = ?::uuid))", [$src->area_id, $src->area_id, $src->site_id]) as $m) {
-            Notify::users([...Notify::roles(['sst_manager']), self::areaLead($m->area_id)], 'ipc.review_required', 'IPC', $m->id, 'IPERC por revisar',
-                "La matriz {$m->code} · {$m->title} debe revisarse por {$why}.", '/m/ipc?t=matrices&matriz='.$m->id, 'high', 'ipc.review_required:'.$m->id.':'.$id);
-        }
+        $table === 'sst_events' ? \App\Modules\IPC\Services\IpercReview::fromEvent($id) : \App\Modules\IPC\Services\IpercReview::fromChange($id);
 
         return true;
     }
@@ -258,6 +247,7 @@ final class FichaEvents
             }
             foreach (DB::select("select id, title from risk_maps where deleted_at is null and status = 'current'
                                   and ((?::uuid is not null and area_id = ?::uuid) or (?::uuid is not null and site_id = ?::uuid))", [$m->area_id, $m->area_id, $m->site_id, $m->site_id]) as $map) {
+                DB::update("update risk_maps set status = 'review_required', review_reason = ? where id = ? and status = 'current'", ["Se aprobó una nueva versión del IPERC {$m->code}", $map->id]);
                 Notify::users(Notify::roles(['sst_manager']), 'map.review_needed', 'MAP', $map->id, 'Mapa de riesgos por revisar',
                     "Cambió la matriz IPERC {$m->code}: revisa el mapa «{$map->title}».", '/m/map?t=risk_maps&open='.$map->id, 'normal', 'map.review_needed:'.$map->id.':'.$versionId);
             }

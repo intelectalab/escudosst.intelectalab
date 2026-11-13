@@ -25,7 +25,7 @@ class DocsFieldRules extends RecordRules
         'risk_maps' => ['site_id', null],
     ];
 
-    private const VFLOW = ['draft' => ['in_review', 'approved'], 'in_review' => ['approved', 'draft'], 'approved' => ['current', 'draft'], 'current' => ['obsolete'], 'obsolete' => []];
+    private const VFLOW = ['draft' => ['in_review', 'approved'], 'in_review' => ['approved', 'draft'], 'approved' => ['current', 'draft'], 'current' => ['obsolete', 'review_required'], 'review_required' => ['current', 'obsolete'], 'obsolete' => []];
 
     public function prepare(string $op, array $res, array &$values, ?object $current, array &$extra): void
     {
@@ -102,7 +102,7 @@ class DocsFieldRules extends RecordRules
 
             return;
         }
-        if (isset(self::VERSIONED[$t]) && ($values['status'] ?? null) === 'current') {
+        if (isset(self::VERSIONED[$t]) && ($values['status'] ?? null) === 'current' && $current?->status !== 'review_required') {
             [$col, $parent] = self::VERSIONED[$t];
             $row = DB::selectOne("select * from \"{$t}\" where id = ?", [$id]);
             if ($parent) {
@@ -173,7 +173,7 @@ class DocsFieldRules extends RecordRules
 
             return;
         }
-        if (in_array($current->status, ['current', 'obsolete'], true) && array_diff(array_keys($values), ['status']) !== []) {
+        if (in_array($current->status, ['current', 'review_required', 'obsolete'], true) && array_diff(array_keys($values), ['status']) !== []) {
             $this->conflict('La versión ya está vigente u obsoleta: su contenido no cambia. Crea una nueva versión.');
         }
         $to = $values['status'] ?? null;
@@ -211,9 +211,9 @@ class DocsFieldRules extends RecordRules
             $extra['approved_by'] = ['?', [(string) auth()->id()]];
             $extra['approved_at'] = ['now()', []];
         }
-        if ($to === 'current') {
+        if ($to === 'current' && $current->status !== 'review_required') {
             // Una sola vigente: la anterior pasa a obsoleta antes de publicar esta.
-            DB::update("update \"{$t}\" set status = 'obsolete'".($t === 'risk_maps' ? '' : ', obsoleted_at = now()')." where id <> ? and status = 'current'".($col ? " and {$col} = ?" : ''),
+            DB::update("update \"{$t}\" set status = 'obsolete'".($t === 'risk_maps' ? '' : ', obsoleted_at = now()')." where id <> ? and status in ('current', 'review_required')".($col ? " and {$col} = ?" : ''),
                 $col ? [$current->id, $current->{$col}] : [$current->id]);
             $values['effective_on'] = $this->value($values, $current, 'effective_on') ?? date('Y-m-d');
             if ($t === 'sst_policies') {

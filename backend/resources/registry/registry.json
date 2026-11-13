@@ -6447,12 +6447,32 @@
        "label": "Activo"
       },
       {
+       "value": "review_required",
+       "label": "Requiere revisión"
+      },
+      {
+       "value": "review_overdue",
+       "label": "Revisión vencida"
+      },
+      {
        "value": "archived",
        "label": "Archivado"
       }
      ],
      "default": "active",
      "list": true
+    },
+    {
+     "name": "review_reason",
+     "label": "Motivo de la revisión",
+     "readonly": true,
+     "type": "longtext"
+    },
+    {
+     "name": "review_flagged_at",
+     "label": "Marcada para revisión el",
+     "readonly": true,
+     "type": "datetime"
     }
    ]
   },
@@ -7023,6 +7043,10 @@
        "label": "Vigente"
       },
       {
+       "value": "review_required",
+       "label": "Requiere revisión"
+      },
+      {
        "value": "obsolete",
        "label": "Obsoleto"
       }
@@ -7047,6 +7071,12 @@
      "name": "effective_on",
      "label": "Vigente desde",
      "type": "date"
+    },
+    {
+     "name": "review_reason",
+     "label": "Motivo de la revisión",
+     "readonly": true,
+     "type": "longtext"
     }
    ]
   },
@@ -18699,6 +18729,12 @@
      "label": "Cerrado el",
      "readonly": true,
      "type": "datetime"
+    },
+    {
+     "name": "iperc_row_id",
+     "label": "Fila de IPERC",
+     "type": "ref",
+     "ref": "iperc_rows"
     }
    ]
   },

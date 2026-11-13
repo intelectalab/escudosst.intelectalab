@@ -1220,7 +1220,9 @@
   "previous_absence_id": "Prórroga de",
   "replaces_certificate_id": "Reemplaza al certificado",
   "document_version_id": "Versión publicada como documento",
-  "requires_sctr": "Requiere SCTR (actividad de riesgo)"
+  "requires_sctr": "Requiere SCTR (actividad de riesgo)",
+  "review_reason": "Motivo de la revisión",
+  "review_flagged_at": "Marcada para revisión el"
  },
  "values": {
   "A": "Tipo A",
@@ -1915,7 +1917,9 @@
   "update_available": "Actualización disponible",
   "updated": "Actualizado",
   "uninstalled": "Desinstalado",
-  "equipment_check": "Revisión de equipo de emergencia"
+  "equipment_check": "Revisión de equipo de emergencia",
+  "review_required": "Requiere revisión",
+  "review_overdue": "Revisión vencida"
  },
  "tables": {
   "absences": "Ausencias",

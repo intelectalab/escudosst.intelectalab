@@ -91,7 +91,7 @@ class DossierBuilder extends Controller
         $add('05', 'Diagnóstico de línea base aprobado', 'LBA', 'baseline_assessments', $l?->id, $l ? 'included' : 'missing', $l ? null : 'No hay línea base aprobada.');
 
         $iperc = $one("select count(*) filter (where current_version_id is not null) as ok, count(*) filter (where next_review_on < current_date) as overdue, count(*) as n
-                         from iperc_matrices where status = 'active' and deleted_at is null");
+                         from iperc_matrices where status in ('active', 'review_required', 'review_overdue') and deleted_at is null");
         $add('06', "Matrices IPERC aprobadas ({$iperc->ok} de {$iperc->n})", 'IPC', 'iperc_matrices', null,
             $iperc->n > 0 && $iperc->ok === $iperc->n && (int) $iperc->overdue === 0 ? 'included' : ($iperc->overdue > 0 ? 'expired' : 'missing'),
             $iperc->n === 0 ? 'No hay matrices IPERC.' : ($iperc->ok < $iperc->n ? 'Hay matrices sin versión aprobada.' : ($iperc->overdue > 0 ? 'Hay matrices con revisión vencida.' : null)));
@@ -156,7 +156,7 @@ class DossierBuilder extends Controller
             $ris = $one("select id from risst_deliveries where worker_id = ? and deleted_at is null limit 1", [$w]);
             $add('W5', "{$n}: entrega del RISST", 'RIS', 'risst_deliveries', $ris?->id, $ris ? 'included' : ($workers >= $risstMin ? 'missing' : 'not_applicable'),
                 $ris || $workers < $risstMin ? null : 'No consta la entrega del RISST.', $w);
-            $ip = $one("select id from iperc_matrices where status = 'active' and current_version_id is not null and deleted_at is null and (position_id = ? or (position_id is null and area_id = ?)) limit 1",
+            $ip = $one("select id from iperc_matrices where status in ('active', 'review_required', 'review_overdue') and current_version_id is not null and deleted_at is null and (position_id = ? or (position_id is null and area_id = ?)) limit 1",
                 [$worker->current_position_id, $worker->current_area_id]);
             $add('W6', "{$n}: IPERC de su puesto o área", 'IPC', 'iperc_matrices', $ip?->id, $ip ? 'included' : 'missing', $ip ? null : 'Su puesto o área no tiene una matriz IPERC aprobada.', $w);
             $cr = $one("select id, status from credentials where worker_id = ? and deleted_at is null and status <> 'revoked' order by issued_at desc nulls last limit 1", [$w]);

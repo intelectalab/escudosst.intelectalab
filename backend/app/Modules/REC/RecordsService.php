@@ -40,6 +40,7 @@ final class RecordsService
         'sctr_policies' => "concat_ws(' · ', case {a}.coverage_kind when 'health' then 'Salud' when 'pension' then 'Pensión' end, {a}.insurer_name, {a}.policy_number)",
         'committee_meetings' => "concat('Sesión N.° ', {a}.number, ' · ', case {a}.meeting_type when 'ordinary' then 'Ordinaria' when 'extraordinary' then 'Extraordinaria' else {a}.meeting_type end)",
         'iperc_versions' => "concat('Versión ', {a}.version_number, case {a}.status when 'current' then ' (vigente)' when 'draft' then ' (borrador)' when 'obsolete' then ' (obsoleta)' else '' end)",
+        'iperc_rows' => "concat('Fila ', {a}.row_number, ' · ', coalesce({a}.task, {a}.activity, ''), ' · ', coalesce({a}.hazard, ''))",
         'access_events' => "concat(to_char({a}.occurred_at at time zone 'America/Lima', 'DD/MM/YYYY HH24:MI'), ' · ', case {a}.direction when 'in' then 'Ingreso' when 'out' then 'Salida' else {a}.direction end)",
     ];
 
@@ -300,6 +301,9 @@ final class RecordsService
             // su historial sigue mostrando la etiqueta (búsqueda por id).
             if ($id === null && $target === 'workers') {
                 $sql .= " and r.status <> 'terminated'";
+            }
+            if ($id === null && $target === 'iperc_rows') {
+                $sql .= " and exists (select 1 from iperc_versions v where v.id = r.iperc_version_id and v.status = 'current' and v.deleted_at is null)";
             }
             if ($id === null && $target === 'sites') {
                 $sql .= " and not (coalesce(r.is_temporary, false) and r.ends_on < (now() at time zone 'America/Lima')::date)";

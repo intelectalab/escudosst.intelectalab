@@ -45,6 +45,9 @@ final class SstAlerts
         // M-ACC §9: una notificación obligatoria pendiente pasa a «vencida» al pasar su plazo (queda marcada fuera de plazo).
         $db->update("update event_notifications set status = 'overdue', notification_overdue = true, updated_at = now()
                       where status = 'pending' and deadline_at < now() and deleted_at is null");
+        // M-IPC RN-IPC-08: matriz vigente que pasó su fecha de revisión → «revisión vencida».
+        $db->update("update iperc_matrices set status = 'review_overdue', review_reason = 'Pasó la fecha de revisión', review_flagged_at = now()
+                      where status = 'active' and next_review_on < (now() at time zone 'America/Lima')::date and deleted_at is null");
         // M-ACR RN-ACR-07: una acción abierta o en curso pasa a «vencida» al pasar su fecha meta.
         $db->update("update corrective_actions set status = 'overdue', updated_at = now()
                       where status in ('open', 'in_progress') and due_on < (now() at time zone 'America/Lima')::date and deleted_at is null");
@@ -235,7 +238,7 @@ final class SstAlerts
                       where n.deleted_at is null and n.status = 'overdue' and n.notified_at is null",
                 'acc.notification_overdue', 'critical', 'Notificación obligatoria vencida', fn ($r) => "Venció el plazo para notificar el evento {$r->ref} (".date('d/m/Y H:i', strtotime($r->due)).'): notifícalo cuanto antes.', '/m/acc?t=event_notifications&open=', ['sst_manager', 'management'], false],
             ['IPC', "select id, code as ref, title as name, null as owner, next_review_on as due, 'review' as kind from iperc_matrices
-                      where deleted_at is null and status = 'active' and next_review_on <= current_date + ".self::days('iperc_review_notice_days', 30),
+                      where deleted_at is null and status in ('active', 'review_overdue') and next_review_on <= current_date + ".self::days('iperc_review_notice_days', 30),
                 'ipc.review', 'normal', 'IPERC por revisar', fn ($r) => "La matriz {$r->ref} · {$r->name} debe revisarse antes del ".date('d/m/Y', strtotime($r->due)).'.', '/m/ipc?t=matrices&matriz=', ['sst_manager'], true],
             ['INS', "select id, code as ref, title as name, inspector_user_id as owner, scheduled_on as due, 'late' as kind from inspections
                       where deleted_at is null and status = 'scheduled' and scheduled_on < current_date",
