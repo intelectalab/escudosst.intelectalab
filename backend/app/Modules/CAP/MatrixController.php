@@ -68,4 +68,94 @@ class MatrixController extends Controller
             ],
         ]]);
     }
+
+    /**
+     * GET /cap/compliance?site_id=&area_id=&position_id= — SCR-CAP-08: trabajadores × temas que exige su cargo con el semáforo
+     * de RN-CAP-05: vigente, por vencer (training_expiry_notice_days), vencido, faltante, o en plazo si aún corre su plazo de ingreso.
+     */
+    public function compliance(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $f = $request->validate(['site_id' => ['nullable', 'uuid'], 'area_id' => ['nullable', 'uuid'], 'position_id' => ['nullable', 'uuid']]);
+        $today = DB::selectOne("select (now() at time zone 'America/Lima')::date as d")->d;
+        $soon = (int) \App\Core\Support\LegalParams::number('training_expiry_notice_days', 30);
+        $where = ["w.deleted_at is null", "w.status = 'active'"];
+        $bind = [$today, $soon, $today, $today];
+        foreach (['site_id' => 'current_site_id', 'area_id' => 'current_area_id', 'position_id' => 'current_position_id'] as $k => $col) {
+            if (! empty($f[$k])) {
+                $where[] = "w.{$col} = ?";
+                $bind[] = $f[$k];
+            }
+        }
+        $rows = DB::select(
+            "select w.id as worker_id, w.full_name, p.name as position, a.name as area, s.name as site, t.id as training_id, t.title, t.course_id,
+                    c.expires_on, c.status as cert_status,
+                    case when c.id is not null and (c.expires_on is null or c.expires_on > ?::date + ?::int) then 'valid'
+                         when c.id is not null and c.expires_on >= ?::date then 'expiring'
+                         when x.id is not null then 'expired'
+                         when q.due_within_days is not null and w.hire_on is not null and w.hire_on + q.due_within_days >= ?::date then 'in_window'
+                         else 'missing' end as state
+               from workers w
+               join position_training_requirements q on q.position_id = w.current_position_id and q.deleted_at is null and coalesce(q.is_active, true)
+                and q.training_id is not null and q.requirement_level <> 'suggested'
+               join trainings t on t.id = q.training_id and t.deleted_at is null
+               left join positions p on p.id = w.current_position_id
+               left join areas a on a.id = w.current_area_id
+               left join sites s on s.id = w.current_site_id
+               left join lateral (select id, expires_on, status from training_certificates where worker_id = w.id and training_id = t.id and deleted_at is null
+                                    and status = 'validated' order by expires_on desc nulls first limit 1) c on true
+               left join lateral (select id from training_certificates where worker_id = w.id and training_id = t.id and deleted_at is null and status in ('validated', 'expired')
+                                    limit 1) x on true
+              where ".implode(' and ', $where).'
+              order by w.full_name, t.title limit 3000',
+            $bind
+        );
+        $workers = [];
+        foreach ($rows as $r) {
+            $workers[$r->worker_id] ??= ['id' => $r->worker_id, 'name' => $r->full_name, 'position' => $r->position, 'area' => $r->area, 'site' => $r->site, 'items' => []];
+            $workers[$r->worker_id]['items'][] = ['training_id' => $r->training_id, 'title' => $r->title, 'course_id' => $r->course_id, 'state' => $r->state, 'expires_on' => $r->expires_on];
+        }
+        $count = array_count_values(array_column($rows, 'state'));
+        $sessions = DB::select("select s.id, s.training_id, s.starts_at, s.capacity, (select count(*) from training_attendances x where x.session_id = s.id and x.deleted_at is null) as invited
+                                  from training_sessions s where s.deleted_at is null and s.status = 'scheduled' and s.starts_at > now() order by s.starts_at limit 300");
+
+        return response()->json(['data' => ['workers' => array_values($workers), 'counts' => $count, 'sessions' => $sessions]]);
+    }
+
+    /** POST /cap/sessions/{id}/invite {worker_ids[]} — «Convocar» desde el cumplimiento: los agrega a la sesión programada (con sus reglas). */
+    public function invite(\Illuminate\Http\Request $request, string $id, \App\Modules\REC\RecordsService $records): JsonResponse
+    {
+        if (! in_array('cap.training_attendances.create', \App\Core\Auth\Permissions::effective(), true)) {
+            throw \App\Core\Http\ApiProblem::forbidden('Tu rol no convoca a capacitaciones.');
+        }
+        $d = $request->validate(['worker_ids' => ['required', 'array', 'min:1', 'max:300'], 'worker_ids.*' => ['uuid']], [], ['worker_ids' => 'trabajadores']);
+        $s = DB::selectOne("select id, capacity, status from training_sessions where id = ? and deleted_at is null", [$id]);
+        if (! $s || $s->status !== 'scheduled') {
+            throw new \App\Core\Http\ApiProblem(409, 'conflict', 'Sesión no disponible', 'Solo se convoca a una sesión programada.');
+        }
+        $res = \App\Modules\REC\Registry::resource('CAP', 'training_attendances');
+        $added = 0;
+        $errors = [];
+        foreach ($d['worker_ids'] as $w) {
+            if (DB::selectOne('select 1 as ok from training_attendances where session_id = ? and worker_id = ? and deleted_at is null', [$id, $w])) {
+                continue;
+            }
+            if ($s->capacity && (int) DB::selectOne('select count(*) as n from training_attendances where session_id = ? and deleted_at is null', [$id])->n >= (int) $s->capacity) {
+                $errors[] = 'La sesión llegó a su aforo.';
+                break;
+            }
+            try {
+                $records->create($res, ['session_id' => $id, 'worker_id' => $w, 'attended' => false]);
+                $added++;
+            } catch (\Throwable $e) {
+                $name = DB::selectOne('select full_name from workers where id = ?', [$w])?->full_name ?? 'Trabajador';
+                $errors[] = $name.': '.match (true) {
+                    $e instanceof \App\Core\Http\ApiProblem => collect($e->extra['errors'] ?? [])->flatten()->first() ?? ($e->detail ?? $e->title),
+                    $e instanceof \Illuminate\Validation\ValidationException => collect($e->errors())->flatten()->first(),
+                    default => 'no se pudo convocar ('.class_basename($e).': '.mb_substr($e->getMessage(), 0, 120).')',
+                };
+            }
+        }
+
+        return response()->json(['data' => ['invited' => $added, 'errors' => $errors]]);
+    }
 }

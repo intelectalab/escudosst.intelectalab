@@ -1222,7 +1222,8 @@
   "document_version_id": "Versión publicada como documento",
   "requires_sctr": "Requiere SCTR (actividad de riesgo)",
   "review_reason": "Motivo de la revisión",
-  "review_flagged_at": "Marcada para revisión el"
+  "review_flagged_at": "Marcada para revisión el",
+  "requires_validation": "Requiere validación del Jefe SST"
  },
  "values": {
   "A": "Tipo A",

@@ -30,6 +30,10 @@ class PrintController extends Controller
             throw ApiProblem::notFound('El certificado no existe o es de otra empresa.');
         }
         $this->ownOnly($c->worker_id, 'El certificado no existe o es de otra empresa.');
+        // RN-CAP-08: un certificado por validar no se descarga hasta que el Jefe SST lo valide.
+        if ($c->status === 'pending_validation') {
+            throw new ApiProblem(409, 'conflict', 'Certificado por validar', 'El certificado aún no está validado por el Jefe SST: se podrá descargar cuando lo valide.');
+        }
         $t = $c->training_id ? DB::selectOne('select title, instructor_name, provider_name from trainings where id = ?', [$c->training_id]) : null;
 
         return response()->json(['data' => [

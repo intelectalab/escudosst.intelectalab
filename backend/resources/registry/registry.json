@@ -12656,6 +12656,12 @@
      ],
      "default": "draft",
      "list": true
+    },
+    {
+     "name": "certificate_template_id",
+     "label": "Plantilla de certificado",
+     "type": "ref",
+     "ref": "certificate_templates"
     }
    ]
   },
@@ -13368,6 +13374,11 @@
      ],
      "default": "active",
      "list": true
+    },
+    {
+     "name": "requires_validation",
+     "label": "Requiere validación del Jefe SST",
+     "type": "bool"
     }
    ]
   },

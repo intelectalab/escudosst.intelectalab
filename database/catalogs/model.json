@@ -30883,6 +30883,17 @@
     "comment": null
    },
    {
+    "name": "certificate_template_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "certificate_templates",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -32417,6 +32428,17 @@
      "active",
      "archived"
     ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "requires_validation",
+    "type": "boolean",
+    "not_null": false,
+    "default": null,
+    "values": null,
     "ref": null,
     "encrypted": false,
     "generated": null,

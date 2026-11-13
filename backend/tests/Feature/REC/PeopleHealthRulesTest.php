@@ -125,3 +125,45 @@ it('el certificado exige asistencia firmada con horas mínimas, sin cruces de ho
     expect(DB::selectOne('select status from training_certificates where id = ?', [$cert])->status)->toBe('voided')
         ->and(DB::selectOne('select holder_name from training_certificates where id = ?', [$new])->holder_name)->toBe('Ana Prueba Corregida');
 });
+
+it('la plantilla con validación deja el certificado por validar, se valida en lote y el cumplimiento muestra el semáforo con convocatoria (SCR-CAP-08/10)', function () {
+    $h = $this->sst;
+    $site = DB::selectOne('select id from sites where company_id = ? and deleted_at is null limit 1', [HUAYLAS_ID])?->id
+        ?? $this->postJson('/api/v1/records/TEN/sites', ['code' => 'PV-S', 'name' => 'Sede PV'], $h)->json('data.id');
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $tpl = DB::selectOne("insert into certificate_templates (company_id, code, name, body_template, code_prefix, requires_validation) values (?, ?, 'Con validación', '<p>{nombre}</p>', 'ALT', true) returning id",
+        [HUAYLAS_ID, 'TPL-'.random_int(1000, 9999)])->id;
+    $pos = DB::selectOne("insert into positions (company_id, code, name, status) values (?, ?, 'Rigger', 'active') returning id", [HUAYLAS_ID, 'RIG-'.random_int(1000, 9999)])->id;
+    DB::select("select set_config('app.company_id', '', false)");
+    $mk = fn ($doc, $name) => $this->postJson('/api/v1/records/TRB/workers', ['document_number' => $doc, 'first_name' => $name, 'paternal_last_name' => 'Altura',
+        'current_position_id' => $pos], $h)->assertCreated()->json('data.id');
+    [$a, $b] = [$mk((string) random_int(64000000, 64999999), 'Ana'), $mk((string) random_int(65000000, 65999999), 'Beto')];
+    $t = $this->postJson('/api/v1/records/CAP/trainings', ['title' => 'Trabajo en altura PV', 'training_type' => 'specific', 'modality' => 'in_person', 'duration_minutes' => 120,
+        'certificate_validity_months' => 12, 'certificate_template_id' => $tpl], $h)->assertCreated()->json('data.id');
+    $this->postJson('/api/v1/records/CAP/position_training_requirements', ['position_id' => $pos, 'training_id' => $t, 'requirement_level' => 'mandatory'], $h)->assertCreated();
+    $s = $this->postJson('/api/v1/records/CAP/training_sessions', ['training_id' => $t, 'session_number' => 1, 'starts_at' => now()->subHours(3)->toIso8601String(),
+        'ends_at' => now()->subHour()->toIso8601String(), 'site_id' => $site], $h)->assertCreated()->json('data.id');
+    $this->postJson('/api/v1/records/CAP/training_attendances', ['session_id' => $s, 'worker_id' => $a, 'hours' => 2, 'check_in_method' => 'list'], $h)->assertCreated();
+    $this->patchJson("/api/v1/records/CAP/training_sessions/{$s}", ['status' => 'held'], $h)->assertOk();
+    $this->postJson("/api/v1/cap/trainings/{$t}/certificates", [], $h)->assertOk()->assertJsonPath('data.issued', 1)->assertJsonPath('data.pending_validation', true);
+
+    $cert = $this->getJson("/api/v1/records/CAP/training_certificates?f[training_id]={$t}", $h)->json('data.0');
+    expect($cert['status'])->toBe('pending_validation')->and($cert['certificate_code'])->toStartWith('ALT-');
+    $this->getJson("/api/v1/cap/certificates/{$cert['id']}/print", $h)->assertStatus(409);   // RN-CAP-08: no se descarga aún
+
+    // Cumplimiento: Ana tiene el tema por validar (aún faltante), Beto faltante; se convoca a Beto a una sesión programada.
+    $comp = collect($this->getJson("/api/v1/cap/compliance?position_id={$pos}", $h)->assertOk()->json('data.workers'));
+    expect($comp->firstWhere('id', $b)['items'][0]['state'])->toBe('missing');
+    $next = $this->postJson('/api/v1/records/CAP/training_sessions', ['training_id' => $t, 'session_number' => 2, 'starts_at' => now()->addDays(3)->toIso8601String(),
+        'ends_at' => now()->addDays(3)->addHours(2)->toIso8601String(), 'site_id' => $site], $h)->assertCreated()->json('data.id');
+    $inv = $this->postJson("/api/v1/cap/sessions/{$next}/invite", ['worker_ids' => [$b]], $h)->assertOk();
+    expect($inv->json('data.invited'))->toBe(1, json_encode($inv->json('data.errors')));
+
+    // Validación en lote: queda válido, con quién lo validó, y Ana pasa a vigente.
+    $this->postJson('/api/v1/cap/certificates/validate', ['ids' => [$cert['id']]], $h)->assertOk()->assertJsonPath('data.validated', 1);
+    $after = $this->getJson("/api/v1/records/CAP/training_certificates/{$cert['id']}", $h)->json('data');
+    expect($after['status'])->toBe('validated')->and($after['validated_by'])->not->toBeNull();
+    $this->getJson("/api/v1/cap/certificates/{$cert['id']}/print", $h)->assertOk();
+    $comp = collect($this->getJson("/api/v1/cap/compliance?position_id={$pos}", $h)->json('data.workers'));
+    expect($comp->firstWhere('id', $a)['items'][0]['state'])->toBe('valid');
+});

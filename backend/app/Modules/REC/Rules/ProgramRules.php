@@ -261,6 +261,13 @@ class ProgramRules extends RecordRules
         if ($op === 'create') {
             $this->conflict('Los certificados se emiten desde la capacitación con «Emitir certificados».');
         }
+        if (($values['status'] ?? null) === 'validated' && $current?->status === 'pending_validation') {
+            if (! in_array('cap.training_certificates.approve', \App\Core\Auth\Permissions::effective(), true)) {
+                $this->fail('status', 'Solo el Jefe SST valida certificados.');
+            }
+            $extra['validated_by'] = ['?', [(string) auth()->id()]];
+            $extra['validated_at'] = ['now()', []];
+        }
         if (($values['status'] ?? null) === 'voided') {
             if (! $this->value($values, $current, 'void_reason')) {
                 $this->fail('void_reason', 'Para anular el certificado indica el motivo.');

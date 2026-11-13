@@ -9,6 +9,7 @@ import { api, type ApiError } from "@/lib/api";
 import { recordsHref } from "@/lib/records";
 import { Icon } from "@/components/ui/Icon";
 import { Card, Dot, Kpi, fmtNum, toneOf, TONE_CHIP } from "./Summary";
+import { CapCompliance, CapToValidate } from "./CapCompliance";
 
 type Matrix = {
   positions: { id: string; name: string; workers: number }[];
@@ -113,6 +114,8 @@ export function CapMatrix() {
             </>
           ))}
       </Card>
+      <CapToValidate />
+      <CapCompliance />
     </div>
   );
 }

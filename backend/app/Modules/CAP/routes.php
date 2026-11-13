@@ -6,6 +6,9 @@ use Illuminate\Support\Facades\Route;
 // Emisión de certificados de una capacitación (M-CAP RN-CAP-03, 07). El resto: /records/CAP/...
 Route::middleware(['auth:sanctum', 'company', 'module:CAP', 'permission:cap.trainings.read'])->prefix('cap')->group(function () {
     Route::get('matrix', \App\Modules\CAP\MatrixController::class);
+    Route::get('compliance', [\App\Modules\CAP\MatrixController::class, 'compliance']);
+    Route::post('sessions/{id}/invite', [\App\Modules\CAP\MatrixController::class, 'invite'])->whereUuid('id');
+    Route::post('certificates/validate', [CertificatesController::class, 'validateBatch']);
     Route::post('trainings/{training}/certificates', [CertificatesController::class, 'issue'])->whereUuid('training');
     Route::post('certificates/{id}/reissue', [CertificatesController::class, 'reissue'])->whereUuid('id');
 });

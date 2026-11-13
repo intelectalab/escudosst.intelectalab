@@ -73,6 +73,9 @@ class CertificatesController extends Controller
         $today = DB::selectOne("select (now() at time zone 'America/Lima')::date as d")->d;
         $year = substr($today, 0, 4);
         $issued = 0;
+        $tpl = $t->certificate_template_id ? DB::selectOne('select id, code_prefix, requires_validation from certificate_templates where id = ?', [$t->certificate_template_id]) : null;
+        $prefix = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string) ($tpl?->code_prefix ?: 'CERT'))) ?: 'CERT';
+        $status = $tpl?->requires_validation ? 'pending_validation' : 'validated';
         foreach ($people as $p) {
             // Aprobado: si hay nota, se compara con la nota mínima de la capacitación (misma escala); si no, vale «aprobó» de la evaluación.
             $passed = $p->score !== null && $t->passing_score !== null ? (float) $p->score >= (float) $t->passing_score : (bool) $p->passed;
@@ -88,24 +91,53 @@ class CertificatesController extends Controller
 
                 continue;
             }
-            $n = (int) DB::selectOne("select count(*) + 1 as n from training_certificates where certificate_code like ?", ["CERT-{$year}-%"])->n;
+            $n = (int) DB::selectOne("select count(*) + 1 as n from training_certificates where certificate_code like ?", ["{$prefix}-{$year}-%"])->n;
             do {
-                $code = sprintf('CERT-%s-%06d', $year, $n++);
+                $code = sprintf('%s-%s-%06d', $prefix, $year, $n++);
             } while (DB::selectOne('select 1 as ok from training_certificates where certificate_code = ?', [$code]));
             $hours = (float) $p->hours > 0 ? (float) $p->hours : round(((int) $t->duration_minutes) / 60, 2);
             DB::selectOne(
                 "insert into training_certificates (company_id, training_id, worker_id, certificate_code, verification_code, holder_name, holder_document_masked,
-                    course_title, issued_on, expires_on, hours, score, public_verification_enabled, status, validated_by, validated_at, created_by, updated_by)
-                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, case when ?::int is null then null else (?::date + make_interval(months => ?::int))::date end, ?, ?, false, 'validated', ?, now(), ?, ?) returning id",
+                    course_title, issued_on, expires_on, hours, score, public_verification_enabled, status, certificate_template_id, validated_by, validated_at, created_by, updated_by)
+                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, case when ?::int is null then null else (?::date + make_interval(months => ?::int))::date end, ?, ?, false, ?, ?,
+                         case when ? = 'validated' then ?::uuid end, case when ? = 'validated' then now() end, ?, ?) returning id",
                 [$t->company_id, $training, $p->worker_id, $code, strtoupper(substr(hash('sha256', Str::random(40)), 0, 32)), $p->full_name, $p->document_last4 ? '****'.$p->document_last4 : null,
-                    $t->title, $today, $t->certificate_validity_months, $today, $t->certificate_validity_months, $hours, $p->score,
-                    (string) auth()->id(), (string) auth()->id(), (string) auth()->id()]
+                    $t->title, $today, $t->certificate_validity_months, $today, $t->certificate_validity_months, $hours, $p->score, $status, $tpl?->id,
+                    $status, (string) auth()->id(), $status, (string) auth()->id(), (string) auth()->id()]
             );
-            \App\Modules\NOT\FichaEvents::certificate(DB::selectOne('select id from training_certificates where certificate_code = ?', [$code])->id, 'validated', null);
+            if ($status === 'validated') {
+                \App\Modules\NOT\FichaEvents::certificate(DB::selectOne('select id from training_certificates where certificate_code = ?', [$code])->id, 'validated', null);
+            }
             $issued++;
         }
 
-        return response()->json(['data' => ['issued' => $issued, 'skipped' => $skipped]]);
+        return response()->json(['data' => ['issued' => $issued, 'skipped' => $skipped, 'pending_validation' => $status === 'pending_validation']]);
+    }
+
+    /**
+     * POST /cap/certificates/validate {ids[]} — SCR-CAP-10 bandeja «Por validar»: valida en lote los certificados elegidos
+     * (RN-CAP-08). Cada uno pasa por las reglas del certificado y queda en la bitácora con quién y cuándo.
+     */
+    public function validateBatch(Request $request, \App\Modules\REC\RecordsService $records): JsonResponse
+    {
+        if (! in_array('cap.training_certificates.approve', Permissions::effective(), true)) {
+            throw ApiProblem::forbidden('Tu rol no valida certificados.');
+        }
+        $d = $request->validate(['ids' => ['required', 'array', 'min:1', 'max:200'], 'ids.*' => ['uuid']], [], ['ids' => 'certificados']);
+        $res = \App\Modules\REC\Registry::resource('CAP', 'training_certificates');
+        $done = 0;
+        $errors = [];
+        foreach (DB::select("select id, certificate_code from training_certificates where id = any(?::uuid[]) and status = 'pending_validation' and deleted_at is null",
+            ['{'.implode(',', $d['ids']).'}']) as $c) {
+            try {
+                $records->update($res, $c->id, ['status' => 'validated']);
+                $done++;
+            } catch (\Throwable $e) {
+                $errors[] = "{$c->certificate_code}: ".($e instanceof ApiProblem ? ($e->detail ?? $e->title) : 'no se pudo validar');
+            }
+        }
+
+        return response()->json(['data' => ['validated' => $done, 'errors' => $errors]]);
     }
 
     /**
