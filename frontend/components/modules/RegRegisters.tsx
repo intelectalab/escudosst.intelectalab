@@ -1,13 +1,13 @@
 "use client";
 
-// Registros obligatorios (M-REG, SCR-REG-01/02/04; prototipo m-personas.js R.REG): «1. Elige el registro», «2. Elige
-// el periodo», descarga en PDF (impresión) o Excel, y la vista previa con la cabecera de la empresa y las primeras filas
-// del mismo armado que el Excel. Debajo, el historial de descargas (register_exports).
+// Registros obligatorios (M-REG, SCR-REG-01/02/03/04; prototipo m-personas.js R.REG): «1. Elige el registro», «2. Elige
+// el periodo» y la sede, la validación previa de datos faltantes (RN-REG-02) y la vista previa. «Generar y pedir firma»
+// crea una versión con sus datos congelados y huella (RN-REG-03) y pide la firma del responsable y, si corresponde, del
+// empleador (RN-REG-05). Debajo, el historial de versiones con su estado de firma, PDF y Excel.
 
 import { useEffect, useMemo, useState } from "react";
 import { api, type ApiError } from "@/lib/api";
 import { downloadFile } from "@/lib/records";
-import { ModuleRecords } from "@/components/records/ModuleRecords";
 import { Button } from "@/components/ui/Button";
 import { Card } from "./Summary";
 
@@ -34,6 +34,17 @@ const REGISTERS: [string, string][] = [
   ["audits", "Auditorías"],
 ];
 
+type Missing = { id: string; code: string | null; missing: string[]; link: string };
+type VersionRow = { id: string; register_type: string; period_from: string; period_to: string; status: string; data_hash: string; rows_count: number;
+  generated_at: string; site: string | null; generated_by: string | null; signed: number; signers: number };
+type Panel = { sites: { id: string; name: string }[]; signers: { id: string; full_name: string }[]; members: { id: string; full_name: string }[]; versions: VersionRow[] };
+const VSTATUS: Record<string, [string, string]> = {
+  generated: ["Generado", "bg-bg text-muted"],
+  pending_signature: ["Pendiente de firma", "bg-amber-soft text-amber-ink"],
+  signed: ["Firmado", "bg-ok-soft text-ok"],
+  superseded: ["Reemplazado", "bg-bg text-muted line-through"],
+};
+
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const iso = (y: number, m: number, d: number) => `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 const lastDay = (y: number, m: number) => new Date(y, m, 0).getDate();
@@ -59,7 +70,6 @@ function periods(): { key: string; label: string; from: string; to: string }[] {
 }
 
 const cell = (v: unknown) => (v === null || v === undefined || v === "" ? "—" : typeof v === "number" ? v.toLocaleString("es-PE", { maximumFractionDigits: 2 }) : String(v));
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 export function RegRegisters({ readOnly }: { readOnly: boolean }) {
   const opts = useMemo(periods, []);
@@ -70,63 +80,71 @@ export function RegRegisters({ readOnly }: { readOnly: boolean }) {
   const [busy, setBusy] = useState<"" | "pdf" | "xlsx">("");
   const [msg, setMsg] = useState<string | null>(null);
   const [history, setHistory] = useState(0);
+  const [panel, setPanel] = useState<Panel | null>(null);
+  const [site, setSite] = useState("");
+  const [signer, setSigner] = useState("");
+  const [employer, setEmployer] = useState("");
+  const [missing, setMissing] = useState<Missing[]>([]);
+  const [done, setDone] = useState<string | null>(null);
   const period = opts.find((o) => o.key === per) ?? opts[3];
+  const q = `from=${period.from}&to=${period.to}${site ? `&site_id=${site}` : ""}`;
+
+  useEffect(() => {
+    api<{ data: Panel }>("/reg/panel", { withCompany: true })
+      .then((r) => {
+        setPanel(r.data);
+        setSigner((s) => s || (r.data.signers.length === 1 ? r.data.signers[0].id : ""));
+      })
+      .catch(() => setPanel(null));
+  }, [history]);
 
   useEffect(() => {
     setLoading(true);
     setMsg(null);
-    api<{ data: Preview }>(`/reg/${type}/preview?from=${period.from}&to=${period.to}&limit=10`, { withCompany: true })
+    setDone(null);
+    api<{ data: Preview }>(`/reg/${type}/preview?${q}&limit=10`, { withCompany: true })
       .then((r) => setPrev(r.data))
       .catch((e: ApiError) => {
         setPrev(null);
         setMsg(e.detail ?? e.title);
       })
       .finally(() => setLoading(false));
-  }, [type, period.from, period.to]);
+    api<{ data: { missing: Missing[] } }>(`/reg/${type}/check?${q}`, { withCompany: true })
+      .then((r) => setMissing(r.data.missing))
+      .catch(() => setMissing([]));
+  }, [type, q]);
 
-  const excel = async () => {
-    setBusy("xlsx");
+  // Genera la versión para firma; si faltan datos, el servidor la bloquea y devuelve los registros por completar.
+  const generate = async () => {
+    setBusy("pdf");
     setMsg(null);
+    setDone(null);
     try {
-      await downloadFile(`/reg/${type}.xlsx?from=${period.from}&to=${period.to}`, `registro-${type}-${period.from}-${period.to}.xlsx`);
+      const r = await api<{ data: { id: string } }>(`/reg/${type}/generate`, {
+        method: "POST",
+        withCompany: true,
+        body: { from: period.from, to: period.to, site_id: site || null, signer_user_id: signer || null, employer_user_id: employer || null },
+      });
+      setDone(r.data.id);
       setHistory((h) => h + 1);
     } catch (e) {
-      setMsg((e as ApiError).detail ?? (e as ApiError).title);
+      const err = e as ApiError;
+      const miss = err.extra?.missing as Missing[] | undefined;
+      if (miss) setMissing(miss);
+      setMsg(err.errors ? Object.values(err.errors).flat()[0] : (err.detail ?? err.title));
     } finally {
       setBusy("");
     }
   };
 
-  // PDF: hoja completa en el formato referencial, lista para «Guardar como PDF» desde el diálogo de impresión.
-  const pdf = async () => {
-    setBusy("pdf");
+  const excel = async () => {
+    setBusy("xlsx");
     setMsg(null);
-    const w = window.open("", "_blank");
     try {
-      const r = (await api<{ data: Preview }>(`/reg/${type}/preview?from=${period.from}&to=${period.to}&limit=500`, { withCompany: true })).data;
-      if (!w) throw new Error("Permite las ventanas emergentes para imprimir el registro.");
-      const head = `<tr>${r.header.map((h) => `<th>${esc(h)}</th>`).join("")}</tr>`;
-      const body = r.rows.length
-        ? r.rows.map((row) => `<tr>${row.map((c) => `<td>${esc(cell(c))}</td>`).join("")}</tr>`).join("")
-        : `<tr><td colspan="${r.header.length}">Sin registros en el periodo.</td></tr>`;
-      w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(r.title)}</title><style>
-        body{font-family:Arial,sans-serif;font-size:10px;margin:16px;color:#111}h1{font-size:13px;text-align:center;margin:0 0 8px}
-        table{border-collapse:collapse;width:100%;margin-top:8px}th,td{border:1px solid #555;padding:3px 4px;text-align:left;vertical-align:top}th{background:#eee}
-        @page{size:A4 landscape;margin:10mm}</style></head><body>
-        <h1>${esc(r.title.toUpperCase())}</h1>
-        <table><tr><th>Razón social</th><td>${esc(r.company.legal_name)}</td><th>RUC</th><td>${esc(r.company.ruc)}</td></tr>
-        <tr><th>Domicilio</th><td>${esc(r.company.address ?? "—")}</td><th>N.° trabajadores</th><td>${r.company.workers}</td></tr>
-        <tr><th>Periodo</th><td colspan="3">${dmy(r.period.from)} al ${dmy(r.period.to)}</td></tr></table>
-        <table>${head}${body}</table>
-        <table><tr><th>Responsable del registro</th><td style="height:28px"></td><th>Firma</th><td></td></tr></table>
-        <p>Formato referencial R.M. 050-2013-TR. ${r.total > r.rows.length ? `Se muestran ${r.rows.length} de ${r.total} filas; descarga el Excel para el registro completo.` : ""}</p>
-        </body></html>`);
-      w.document.close();
-      w.focus();
-      w.print();
+      await downloadFile(`/reg/${type}.xlsx?${q}`, `registro-${type}-${period.from}-${period.to}.xlsx`);
+      setHistory((h) => h + 1);
     } catch (e) {
-      w?.close();
-      setMsg((e as ApiError).detail ?? (e as Error).message ?? (e as ApiError).title);
+      setMsg((e as ApiError).detail ?? (e as ApiError).title);
     } finally {
       setBusy("");
     }
@@ -147,7 +165,11 @@ export function RegRegisters({ readOnly }: { readOnly: boolean }) {
                   className={`flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left text-sm ${v === type ? "bg-brand-soft font-semibold text-brand-strong" : "hover:bg-bg"}`}
                 >
                   <span className="mt-0.5 inline-grid h-5 min-w-5 place-items-center rounded border border-line bg-surface px-1 text-[11px] font-semibold text-muted">{i + 1}</span>
-                  <span>{l}</span>
+                  <span className="flex-1">{l}</span>
+                  {(() => {
+                    const last = panel?.versions.find((x) => x.register_type === v && x.status !== "superseded");
+                    return last ? <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${VSTATUS[last.status]?.[1] ?? ""}`}>{VSTATUS[last.status]?.[0]}</span> : null;
+                  })()}
                 </button>
               </li>
             ))}
@@ -159,11 +181,45 @@ export function RegRegisters({ readOnly }: { readOnly: boolean }) {
             ))}
           </select>
           <p className="mt-1 text-xs text-muted">Del {dmy(period.from)} al {dmy(period.to)}</p>
-          {!readOnly && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button variant="primary" icon="download" loading={busy === "pdf"} disabled={!!busy} onClick={pdf}>PDF</Button>
-              <Button icon="download" loading={busy === "xlsx"} disabled={!!busy} onClick={excel}>Excel</Button>
+          {panel && panel.sites.length > 1 && (
+            <select className="input mt-2" aria-label="Sede" value={site} onChange={(e) => setSite(e.target.value)}>
+              <option value="">Toda la empresa (consolidado)</option>
+              {panel.sites.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
+          )}
+          {missing.length > 0 && (
+            <div role="alert" className="mt-3 rounded-lg border border-line bg-bad-soft p-3 text-sm">
+              <p className="font-semibold text-bad">Faltan datos obligatorios: completa estos registros antes de generar.</p>
+              <ul className="mt-1 space-y-1">
+                {missing.map((m) => (
+                  <li key={m.id}><a href={m.link} className="font-semibold text-brand-strong underline">{m.code ?? "Registro"}</a> · {m.missing.join(", ")}</li>
+                ))}
+              </ul>
             </div>
+          )}
+          {!readOnly && (
+            <>
+              <h3 className="mb-2 mt-4 font-display text-base font-semibold">3. Firmas</h3>
+              <label className="block text-xs font-semibold text-muted" htmlFor="reg-signer">Responsable del registro</label>
+              <select id="reg-signer" className="input" value={signer} onChange={(e) => setSigner(e.target.value)}>
+                <option value="">Elige al responsable…</option>
+                {panel?.signers.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+              </select>
+              <label className="mt-2 block text-xs font-semibold text-muted" htmlFor="reg-employer">Empleador (si el formato lo pide)</label>
+              <select id="reg-employer" className="input" value={employer} onChange={(e) => setEmployer(e.target.value)}>
+                <option value="">Sin firma del empleador</option>
+                {panel?.members.filter((u) => u.id !== signer).map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+              </select>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button variant="primary" icon="check" loading={busy === "pdf"} disabled={!!busy || missing.length > 0 || !signer} onClick={generate}>Generar y pedir firma</Button>
+                <Button icon="download" loading={busy === "xlsx"} disabled={!!busy} onClick={excel}>Excel sin firma</Button>
+              </div>
+            </>
+          )}
+          {done && (
+            <p role="status" className="mt-2 text-sm text-ok">
+              Versión generada; se pidió la firma. <a href={`/imprimir/registro/${done}`} target="_blank" rel="noreferrer" className="font-semibold underline">Ver o imprimir</a>
+            </p>
           )}
           {msg && <p role="alert" className="mt-2 text-sm text-bad">{msg}</p>}
         </Card>
@@ -223,8 +279,43 @@ export function RegRegisters({ readOnly }: { readOnly: boolean }) {
       </div>
 
       <div className="space-y-2">
-        <h3 className="font-display text-base font-semibold">Historial</h3>
-        <ModuleRecords key={history} code="REG" readOnly={readOnly} />
+        <h3 className="font-display text-base font-semibold">Historial de versiones</h3>
+        <div className="overflow-x-auto rounded-xl border border-line bg-surface" tabIndex={0} role="region" aria-label="Historial de versiones">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-line text-xs font-semibold text-muted">
+              <tr><th className="px-3 py-2">Registro</th><th className="px-3 py-2">Periodo</th><th className="px-3 py-2">Sede</th><th className="px-3 py-2">Filas</th>
+                <th className="px-3 py-2">Estado</th><th className="px-3 py-2">Generado</th><th className="px-3 py-2">Huella</th><th className="px-3 py-2"><span className="sr-only">Descargas</span></th></tr>
+            </thead>
+            <tbody>
+              {!panel ? (
+                <tr><td colSpan={8} className="px-3 py-4 text-muted">Cargando…</td></tr>
+              ) : panel.versions.length === 0 ? (
+                <tr><td colSpan={8} className="px-3 py-4 text-muted">Aún no se generan versiones para firma.</td></tr>
+              ) : (
+                panel.versions.map((v) => {
+                  const [label, cls] = VSTATUS[v.status] ?? [v.status, "bg-bg text-muted"];
+                  return (
+                    <tr key={v.id} className="border-b border-line last:border-0">
+                      <td className="px-3 py-2">{REGISTERS.find(([k]) => k === v.register_type)?.[1] ?? v.register_type}</td>
+                      <td className="whitespace-nowrap px-3 py-2">{dmy(v.period_from)} al {dmy(v.period_to)}</td>
+                      <td className="px-3 py-2">{v.site ?? "Toda la empresa"}</td>
+                      <td className="px-3 py-2">{v.rows_count}</td>
+                      <td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}>{label}</span>
+                        {v.signers > 0 && <span className="block text-xs text-muted">{v.signed} de {v.signers} firma(s)</span>}</td>
+                      <td className="px-3 py-2 text-xs">{new Date(v.generated_at).toLocaleString("es-PE")}{v.generated_by ? <span className="block text-muted">{v.generated_by}</span> : null}</td>
+                      <td className="px-3 py-2 font-mono text-xs" title={v.data_hash}>{v.data_hash.slice(0, 12)}…</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-xs">
+                        <a href={`/imprimir/registro/${v.id}`} target="_blank" rel="noreferrer" className="font-semibold text-brand-strong underline">PDF</a>{" · "}
+                        <button type="button" className="font-semibold text-brand-strong underline" onClick={() => downloadFile(`/reg/exports/${v.id}.xlsx`, `registro-${v.register_type}-${v.period_from}-${v.period_to}.xlsx`)}>Excel</button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-xs text-muted">Cada firmante firma desde sus firmas pendientes del inicio.</p>
       </div>
     </div>
   );

@@ -101,6 +101,10 @@ final class FichaEvents
             if (DB::selectOne("select 1 as ok from signature_requests where subject_type = ? and subject_id = ? and deleted_at is null and status = 'pending' limit 1", [$r->subject_type, $r->subject_id])) {
                 return;
             }
+            // M-REG §9: la versión del registro obligatorio con todas sus firmas queda «firmada».
+            if ($r->subject_type === 'register_exports') {
+                DB::update("update register_exports set status = 'signed', updated_at = now() where id = ? and status = 'pending_signature'", [$r->subject_id]);
+            }
             $who = array_column(DB::select("select distinct requested_by from signature_requests where subject_type = ? and subject_id = ? and deleted_at is null and status = 'signed' and requested_by is not null",
                 [$r->subject_type, $r->subject_id]), 'requested_by');
             $what = \App\Modules\REC\Registry::data()['resources'][$r->subject_type]['title'] ?? 'El registro';

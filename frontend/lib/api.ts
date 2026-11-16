@@ -14,6 +14,8 @@ export class ApiError extends Error {
     public title: string,
     public detail?: string,
     public errors?: Record<string, string[]>,
+    /** Campos adicionales del problema (p. ej. «missing» de los registros obligatorios). */
+    public extra?: Record<string, unknown>,
   ) {
     super(detail ?? title);
   }
@@ -65,7 +67,7 @@ export async function api<T>(path: string, { method = "GET", body, withCompany =
         return new Promise<T>(() => undefined);
       }
     }
-    throw new ApiError(res.status, data.type ?? "error", data.title ?? "Error", data.detail, data.errors);
+    throw new ApiError(res.status, data.type ?? "error", data.title ?? "Error", data.detail, data.errors, data);
   }
 
   return data as T;

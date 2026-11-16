@@ -20948,6 +20948,7 @@
     {
      "name": "status",
      "label": "Estado",
+     "readonly": true,
      "type": "enum",
      "options": [
       {
@@ -20969,6 +20970,22 @@
       {
        "value": "expired",
        "label": "Vencido"
+      },
+      {
+       "value": "generated",
+       "label": "Generado"
+      },
+      {
+       "value": "pending_signature",
+       "label": "Pendiente de firma"
+      },
+      {
+       "value": "signed",
+       "label": "Firmado"
+      },
+      {
+       "value": "superseded",
+       "label": "Reemplazado"
       }
      ],
      "default": "queued",
@@ -20982,6 +20999,7 @@
     {
      "name": "rows_count",
      "label": "Cantidad de filas",
+     "readonly": true,
      "type": "int"
     },
     {
@@ -21004,6 +21022,25 @@
      "name": "error_message",
      "label": "Mensaje de error",
      "type": "text"
+    },
+    {
+     "name": "snapshot",
+     "label": "Datos congelados",
+     "readonly": true,
+     "type": "json"
+    },
+    {
+     "name": "format_version",
+     "label": "Versión del formato",
+     "readonly": true,
+     "type": "text"
+    },
+    {
+     "name": "superseded_by",
+     "label": "Reemplazado por",
+     "readonly": true,
+     "type": "ref",
+     "ref": "register_exports"
     }
    ]
   },

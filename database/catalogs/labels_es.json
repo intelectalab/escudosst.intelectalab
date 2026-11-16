@@ -1228,7 +1228,11 @@
   "required_training_ids": "Capacitaciones requeridas",
   "iperc_row_ids": "Filas del IPERC vinculadas",
   "reschedule_reason": "Motivo de la reprogramación",
-  "original_month": "Mes programado originalmente"
+  "original_month": "Mes programado originalmente",
+  "snapshot": "Datos congelados",
+  "data_hash": "Huella de los datos (SHA-256)",
+  "format_version": "Versión del formato",
+  "superseded_by": "Reemplazado por"
  },
  "values": {
   "A": "Tipo A",
@@ -1925,7 +1929,9 @@
   "uninstalled": "Desinstalado",
   "equipment_check": "Revisión de equipo de emergencia",
   "review_required": "Requiere revisión",
-  "review_overdue": "Revisión vencida"
+  "review_overdue": "Revisión vencida",
+  "generated": "Generado",
+  "pending_signature": "Pendiente de firma"
  },
  "tables": {
   "absences": "Ausencias",

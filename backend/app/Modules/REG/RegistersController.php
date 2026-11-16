@@ -7,10 +7,14 @@ use App\Core\Http\ApiProblem;
 use App\Core\Support\Xlsx;
 use App\Core\Tenancy\CompanyContext;
 use App\Http\Controllers\Controller;
+use App\Modules\FIR\SignatureService;
 use App\Modules\REC\Registry;
+use App\Modules\SUS\Services\AccountsService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * GET /reg/{type}.xlsx?from=AAAA-MM-DD&to=AAAA-MM-DD — registros obligatorios del SGSST (R.M. 050-2013-TR) armados con
@@ -55,7 +59,8 @@ class RegistersController extends Controller
             throw ApiProblem::badRequest('Elige un periodo válido.');
         }
         $limit = max(1, min(500, (int) $request->query('limit', 10)));
-        [$header, $rows] = $this->data($type, $from, $to);
+        $site = $this->period($request, $type)[2];
+        [$header, $rows] = $this->data($type, $from, $to, $site);
         $company = DB::selectOne('select legal_name, ruc, fiscal_address, economic_sector from companies where id = ?', [app(CompanyContext::class)->companyId]);
         $workers = (int) DB::selectOne("select count(*) as n from workers where deleted_at is null and status in ('active','on_leave')")->n;
 
@@ -82,7 +87,7 @@ class RegistersController extends Controller
         if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $to) || $to < $from) {
             throw ApiProblem::badRequest('Elige un periodo válido.');
         }
-        [$header, $rows] = $this->data($type, $from, $to);
+        [$header, $rows] = $this->data($type, $from, $to, $this->period($request, $type)[2]);
         $company = DB::selectOne('select legal_name, ruc from companies where id = ?', [app(CompanyContext::class)->companyId]);
         $sheet = [
             [mb_strtoupper(self::TYPES[$type])],
@@ -106,9 +111,259 @@ class RegistersController extends Controller
         ]);
     }
 
-    /** @return array{0: list<string>, 1: list<list<mixed>>} */
-    private function data(string $type, string $from, string $to): array
+    /** Versión del formato referencial (RN-REG-06): un cambio de formato crea una versión nueva sin tocar las exportaciones previas. */
+    public const FORMAT_VERSION = 'rm050-v1';
+
+    /** Estados de una versión generada (§9). */
+    private const VERSION_STATES = ['generated', 'pending_signature', 'signed', 'superseded'];
+
+    /**
+     * GET /reg/panel — SCR-REG-01/04: sedes para el filtro, responsables que firman (con «reg.register_exports.approve»),
+     * usuarios de la empresa (firma del empleador, cuando el formato la pide) y las versiones generadas con su estado de firma.
+     */
+    public function panel(): JsonResponse
     {
+        $this->can('reg.register_exports.read');
+        $company = app(CompanyContext::class)->companyId;
+
+        return response()->json(['data' => [
+            'sites' => DB::select('select id, name from sites where deleted_at is null order by name'),
+            'signers' => DB::select(
+                "select distinct u.id, u.full_name from memberships ms join users u on u.id = ms.user_id join role_permissions rp on rp.role_id = ms.role_id
+                   join permissions p on p.id = rp.permission_id and p.code = 'reg.register_exports.approve'
+                  where ms.company_id = ? and ms.status = 'active' and ms.deleted_at is null order by u.full_name", [$company]),
+            'members' => DB::select(
+                "select distinct u.id, u.full_name from memberships ms join users u on u.id = ms.user_id
+                  where ms.company_id = ? and ms.status = 'active' and ms.deleted_at is null and not ms.is_support_session order by u.full_name", [$company]),
+            'versions' => DB::select(
+                "select x.id, x.register_type, x.period_from, x.period_to, x.status, x.data_hash, x.rows_count, x.generated_at, s.name as site, u.full_name as generated_by,
+                        (select count(*) from signature_requests r where r.subject_type = 'register_exports' and r.subject_id = x.id and r.deleted_at is null and r.status = 'signed') as signed,
+                        (select count(*) from signature_requests r where r.subject_type = 'register_exports' and r.subject_id = x.id and r.deleted_at is null and r.status <> 'cancelled') as signers
+                   from register_exports x left join sites s on s.id = x.site_id left join users u on u.id = x.requested_by
+                  where x.deleted_at is null and x.status = any(?::text[]) order by x.generated_at desc limit 200", ['{'.implode(',', self::VERSION_STATES).'}']),
+        ]]);
+    }
+
+    /**
+     * GET /reg/{type}/check?from=&to=&site_id= — validación previa (SCR-REG-03, RN-REG-02): registros de origen con campos
+     * obligatorios faltantes y el enlace para completarlos.
+     */
+    public function check(Request $request, string $type): JsonResponse
+    {
+        $this->can('reg.register_exports.read');
+        [$from, $to, $site] = $this->period($request, $type);
+
+        return response()->json(['data' => ['missing' => $this->missing($type, $from, $to, $site)]]);
+    }
+
+    /**
+     * POST /reg/{type}/generate {from, to, site_id?, signer_user_id, employer_user_id?} — SCR-REG-02: genera una versión del
+     * registro. Se bloquea si faltan campos obligatorios (RN-REG-02); congela el encabezado del empleador al corte (RN-REG-08),
+     * las columnas y las filas; guarda format_version, data_hash y conteo; marca «reemplazada» la versión anterior del mismo
+     * periodo y sede (RN-REG-03) y pide la firma del responsable y, si se indica, del empleador por FIR (RN-REG-05).
+     */
+    public function generate(Request $request, string $type, AccountsService $accounts): JsonResponse
+    {
+        $this->can('reg.register_exports.generate');
+        [$from, $to, $site] = $this->period($request, $type);
+        $d = $request->validate([
+            'signer_user_id' => ['required', 'uuid'],
+            'employer_user_id' => ['nullable', 'uuid', 'different:signer_user_id'],
+        ], ['signer_user_id.required' => 'Elige al responsable que firma el registro.', 'employer_user_id.different' => 'El empleador debe ser otra persona.']);
+        $company = app(CompanyContext::class)->companyId;
+        if (! DB::selectOne(
+            "select 1 as ok from memberships ms join role_permissions rp on rp.role_id = ms.role_id join permissions p on p.id = rp.permission_id
+              where ms.user_id = ? and ms.company_id = ? and ms.status = 'active' and ms.deleted_at is null and p.code = 'reg.register_exports.approve'",
+            [$d['signer_user_id'], $company])) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'El responsable elegido no firma registros obligatorios.',
+                ['errors' => ['signer_user_id' => ['El responsable elegido no firma registros obligatorios.']]]);
+        }
+        if (! empty($d['employer_user_id']) && ! DB::selectOne("select 1 as ok from memberships where user_id = ? and company_id = ? and status = 'active' and deleted_at is null",
+            [$d['employer_user_id'], $company])) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Esa persona no es usuaria de la empresa.', ['errors' => ['employer_user_id' => ['Esa persona no es usuaria de la empresa.']]]);
+        }
+        $missing = $this->missing($type, $from, $to, $site);
+        if ($missing) {
+            throw new ApiProblem(422, 'register_incomplete', 'Faltan datos', 'Completa los registros de origen antes de generar.', ['missing' => $missing]);
+        }
+        [$header, $rows] = $this->data($type, $from, $to, $site);
+        $snapshot = ['title' => self::TYPES[$type], 'employer' => $this->employer($to), 'site' => $site ? DB::selectOne('select name from sites where id = ?', [$site])->name : null,
+            'header' => $header, 'rows' => $rows];
+        $json = json_encode($snapshot, JSON_UNESCAPED_UNICODE);
+        $hash = hash('sha256', $json);
+        $uid = (string) auth()->id();
+
+        $id = DB::transaction(function () use ($company, $type, $from, $to, $site, $json, $hash, $rows, $uid, $d, $accounts) {
+            $id = DB::selectOne(
+                "insert into register_exports (company_id, register_type, period_from, period_to, site_id, format, template_version, format_version, status, snapshot,
+                    data_hash, rows_count, requested_by, requested_at, generated_at, created_by, updated_by)
+                 values (?, ?, ?, ?, ?, 'pdf', ?, ?, 'generated', ?::jsonb, ?, ?, ?, now(), now(), ?, ?) returning id",
+                [$company, $type, $from, $to, $site, self::FORMAT_VERSION, self::FORMAT_VERSION, $json, $hash, count($rows), $uid, $uid, $uid]
+            )->id;
+            // RN-REG-03: la versión anterior del mismo registro, periodo y sede queda «reemplazada»; sus firmas pendientes se anulan.
+            $old = array_column(DB::select(
+                "select id from register_exports where register_type = ? and period_from = ? and period_to = ? and site_id is not distinct from ?::uuid
+                    and status = any(?::text[]) and id <> ? and deleted_at is null",
+                [$type, $from, $to, $site, '{generated,pending_signature,signed}', $id]), 'id');
+            foreach ($old as $o) {
+                DB::update("update register_exports set status = 'superseded', superseded_by = ?, updated_by = ?, updated_at = now() where id = ?", [$id, $uid, $o]);
+                DB::update("update signature_requests set status = 'cancelled', updated_by = ? where subject_type = 'register_exports' and subject_id = ? and status = 'pending'", [$uid, $o]);
+            }
+            $docHash = SignatureService::hash('register_exports', DB::selectOne('select * from register_exports where id = ?', [$id]));
+            $order = 0;
+            foreach (array_filter(['responsible' => $d['signer_user_id'], 'approver' => $d['employer_user_id'] ?? null]) as $role => $signer) {
+                $req = DB::selectOne(
+                    "insert into signature_requests (company_id, subject_type, subject_id, subject_module, document_hash, signer_user_id, role_in_document, sequence_order,
+                        status, requested_by, created_by, updated_by)
+                     values (?, 'register_exports', ?, 'REG', decode(?, 'hex'), ?, ?, ?, 'pending', ?, ?, ?) returning id",
+                    [$company, $id, $docHash, $signer, $role, ++$order, $uid, $uid, $uid]
+                )->id;
+                \App\Modules\NOT\FichaEvents::signatureRequested($req);
+            }
+            DB::update("update register_exports set status = 'pending_signature' where id = ?", [$id]);
+            $accounts->audit($uid, 'register_generated', 'register_exports', $id, ['type' => $type, 'from' => $from, 'to' => $to, 'site_id' => $site, 'data_hash' => $hash, 'superseded' => $old]);
+
+            return $id;
+        });
+
+        return response()->json(['data' => $this->version($id)], 201);
+    }
+
+    /** GET /reg/exports/{id} — versión generada con sus datos congelados y sus firmas (SCR-REG-04, impresión en PDF). */
+    public function show(string $id): JsonResponse
+    {
+        $this->can('reg.register_exports.read');
+
+        return response()->json(['data' => $this->version($id)]);
+    }
+
+    /** GET /reg/exports/{id}.xlsx — Excel de una versión generada, desde sus datos congelados (no se vuelve a consultar el origen). */
+    public function versionXlsx(string $id): Response
+    {
+        $this->can('reg.register_exports.export');
+        $v = $this->version($id);
+        $e = $v['snapshot']['employer'];
+        $sheet = [
+            [mb_strtoupper($v['snapshot']['title'])],
+            ["{$e['legal_name']} · RUC {$e['ruc']}".($e['address'] ? " · {$e['address']}" : '').($e['activity'] ? " · {$e['activity']}" : '')." · N.° de trabajadores: {$e['workers']}"],
+            ['Periodo: '.date('d/m/Y', strtotime($v['period_from'])).' al '.date('d/m/Y', strtotime($v['period_to'])).($v['snapshot']['site'] ? ' · Sede: '.$v['snapshot']['site'] : '')
+                .' · Generado: '.(new \DateTimeImmutable($v['generated_at']))->setTimezone(new \DateTimeZone('America/Lima'))->format('d/m/Y H:i').' · Huella: '.$v['data_hash']],
+            [],
+            $v['snapshot']['header'],
+            ...$v['snapshot']['rows'],
+        ];
+
+        return response(Xlsx::build('Registro', $sheet, 5), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"registro-{$v['register_type']}-{$v['period_from']}-{$v['period_to']}.xlsx\"",
+        ]);
+    }
+
+    /** @return array<string, mixed> */
+    private function version(string $id): array
+    {
+        if (! Str::isUuid($id)) {
+            throw ApiProblem::notFound('Esa versión del registro no existe.');
+        }
+        $v = DB::selectOne(
+            "select x.id, x.register_type, x.period_from, x.period_to, x.site_id, x.status, x.format_version, x.data_hash, x.rows_count, x.generated_at, x.snapshot,
+                    x.superseded_by, u.full_name as generated_by
+               from register_exports x left join users u on u.id = x.requested_by
+              where x.id = ? and x.deleted_at is null and x.status = any(?::text[])", [$id, '{'.implode(',', self::VERSION_STATES).'}']);
+        if (! $v) {
+            throw ApiProblem::notFound('Esa versión del registro no existe.');
+        }
+        $v = (array) $v;
+        $v['snapshot'] = json_decode($v['snapshot'], true);
+        $v['signatures'] = array_map(function ($s) {
+            $s->image = $s->image ? 'data:'.$s->mime_type.';base64,'.str_replace(["\n", "\r"], '', $s->image) : null;
+            unset($s->mime_type);
+
+            return $s;
+        }, DB::select(
+            "select r.role_in_document as role, r.status, coalesce(sg.signer_name, u.full_name) as signer_name, sg.signed_at, sg.method, k.mime_type, encode(k.image, 'base64') as image
+               from signature_requests r left join users u on u.id = r.signer_user_id left join signatures sg on sg.signature_request_id = r.id
+               left join signature_strokes k on k.signature_id = sg.id
+              where r.subject_type = 'register_exports' and r.subject_id = ? and r.deleted_at is null and r.status <> 'cancelled' order by r.sequence_order", [$id]));
+
+        return $v;
+    }
+
+    /**
+     * RN-REG-08: datos del empleador desde TEN; el número de trabajadores es el de la fecha de corte (ingresados hasta esa
+     * fecha y sin cese anterior). Quedan congelados en la versión generada.
+     *
+     * @return array<string, mixed>
+     */
+    private function employer(string $to): array
+    {
+        $c = DB::selectOne('select legal_name, ruc, fiscal_address, economic_sector, ciiu_code from companies where id = ?', [app(CompanyContext::class)->companyId]);
+        $workers = (int) DB::selectOne(
+            "select count(*) as n from workers where deleted_at is null and (hire_on is null or hire_on <= ?) and (termination_on is null or termination_on > ?)",
+            [$to, $to])->n;
+
+        return ['legal_name' => $c->legal_name, 'ruc' => trim((string) $c->ruc), 'address' => $c->fiscal_address,
+            'activity' => trim(($c->economic_sector ?? '').($c->ciiu_code ? " (CIIU {$c->ciiu_code})" : '')) ?: null, 'workers' => $workers, 'as_of' => $to];
+    }
+
+    /**
+     * RN-REG-02: campos obligatorios del formato que faltan en los registros de origen. Los nombrados en las fichas: datos de
+     * la lesión de cada lesionado en un accidente (M-ACC RN-ACC-06: tipo de lesión, parte del cuerpo y agente; M-REG
+     * criterio 1). Lo que ya se valida al registrar puede faltar en datos importados o anteriores a esa regla. Los demás
+     * campos obligatorios de cada formato están por confirmar por el especialista SST.
+     *
+     * @return list<array{id: string, code: string|null, missing: list<string>, link: string}>
+     */
+    private function missing(string $type, string $from, string $to, ?string $site): array
+    {
+        if ($type !== 'accidents') {
+            return [];
+        }
+        $fields = ['injury_type' => 'Tipo de lesión', 'body_part' => 'Parte del cuerpo afectada', 'injury_agent' => 'Agente de la lesión'];
+        $rows = DB::select(
+            "select e.id, e.code, coalesce(w.full_name, p.external_person_name, 'persona sin nombre') as person, p.injury_type, p.body_part, p.injury_agent
+               from sst_events e join event_people p on p.event_id = e.id and p.deleted_at is null and p.person_role = 'injured'
+               left join workers w on w.id = p.worker_id
+              where e.deleted_at is null and e.status <> 'discarded' and e.event_type = any(?::text[])
+                and (e.occurred_at at time zone 'America/Lima')::date between ? and ?"
+                .($site ? ' and e.site_id = ?' : '').' order by e.occurred_at, e.code',
+            array_values(array_filter(['{fatal_accident,disabling_accident,minor_accident}', $from, $to, $site])));
+        $out = [];
+        foreach ($rows as $r) {
+            $lack = array_values(array_filter(array_map(fn ($f, $l) => trim((string) $r->{$f}) === '' ? "{$l} ({$r->person})" : null, array_keys($fields), $fields)));
+            if ($lack) {
+                $out[$r->id] ??= ['id' => $r->id, 'code' => $r->code, 'missing' => [], 'link' => '/m/acc?t=sst_events&open='.$r->id];
+                array_push($out[$r->id]['missing'], ...$lack);
+            }
+        }
+
+        return array_values($out);
+    }
+
+    /** @return array{0: string, 1: string, 2: string|null} */
+    private function period(Request $request, string $type): array
+    {
+        if (! isset(self::TYPES[$type])) {
+            throw ApiProblem::notFound('Ese registro no existe.');
+        }
+        $from = (string) $request->input('from', date('Y').'-01-01');
+        $to = (string) $request->input('to', date('Y-m-d'));
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $to) || $to < $from) {
+            throw ApiProblem::badRequest('Elige un periodo válido.');
+        }
+        $site = $request->input('site_id') ?: null;
+        if ($site !== null && (! Str::isUuid((string) $site) || ! DB::selectOne('select 1 as ok from sites where id = ? and deleted_at is null', [$site]))) {
+            throw ApiProblem::badRequest('Esa sede no existe.');
+        }
+
+        return [$from, $to, $site];
+    }
+
+    /** @return array{0: list<string>, 1: list<list<mixed>>} */
+    private function data(string $type, string $from, string $to, ?string $site = null): array
+    {
+        // Filtro por sede (M-REG §11: por sede o consolidado); sin sede, toda la empresa.
+        $sf = fn (string $col) => $site ? " and {$col} = '".$site."'" : '';
         $d = fn ($v) => $v ? date('d/m/Y', strtotime((string) $v)) : '';
         $dt = fn ($v) => $v ? (new \DateTimeImmutable((string) $v))->setTimezone(new \DateTimeZone('America/Lima'))->format('d/m/Y H:i') : '';
         $range = [$from, $to];
@@ -137,7 +392,7 @@ class RegistersController extends Controller
                               where ca.deleted_at is null and ca.status <> 'cancelled' and (ca.source_id = e.id or ca.source_id in (select i.id from investigations i where i.event_id = e.id))) as actions
                        from sst_events e left join sites s on s.id = e.site_id left join areas a on a.id = e.area_id
                       where e.deleted_at is null and e.status <> 'discarded' and e.event_type = any(?::text[])
-                        and (e.occurred_at at time zone 'America/Lima')::date between ? and ? order by e.occurred_at",
+                        and (e.occurred_at at time zone 'America/Lima')::date between ? and ?".$sf('e.site_id').' order by e.occurred_at',
                     ['{'.implode(',', $types).'}', ...$range]
                 );
 
@@ -156,7 +411,7 @@ class RegistersController extends Controller
                 $rows = DB::select(
                     "select w.full_name, w.document_last4, p.name as position, f.status, f.valid_from, f.valid_until, f.issued_at
                        from fitness_status f join workers w on w.id = f.worker_id left join positions p on p.id = w.current_position_id
-                      where f.deleted_at is null and coalesce(f.valid_from, f.issued_at::date) between ? and ? order by w.full_name", $range);
+                      where f.deleted_at is null and coalesce(f.valid_from, f.issued_at::date) between ? and ?".$sf('w.current_site_id').' order by w.full_name', $range);
 
                 return [['Trabajador', 'Documento (últimos 4)', 'Puesto', 'Aptitud', 'Vigente desde', 'Vigente hasta', 'Emitido'],
                     array_map(fn ($r) => [$r->full_name, $r->document_last4, $r->position, $this->label('fitness_status', 'status', $r->status), $d($r->valid_from), $d($r->valid_until), $dt($r->issued_at)], $rows)];
@@ -165,7 +420,7 @@ class RegistersController extends Controller
                     "select m.measured_at, t.name as agent, pt.name as point, m.value, m.unit, l.limit_value, l.unit as limit_unit, m.result, m.equipment, m.equipment_calibration_on
                        from measurements m left join agent_types t on t.id = m.agent_type_id left join monitoring_points pt on pt.id = m.monitoring_point_id
                        left join exposure_limits l on l.id = m.exposure_limit_id
-                      where m.deleted_at is null and (m.measured_at at time zone 'America/Lima')::date between ? and ? order by m.measured_at", $range);
+                      where m.deleted_at is null and (m.measured_at at time zone 'America/Lima')::date between ? and ?".$sf('pt.site_id').' order by m.measured_at', $range);
 
                 return [['Fecha', 'Agente', 'Punto', 'Valor', 'Unidad', 'Límite', 'Unidad del límite', 'Resultado', 'Equipo', 'Calibración'],
                     array_map(fn ($r) => [$dt($r->measured_at), $r->agent, $r->point, $r->value === null ? null : (float) $r->value, $r->unit,
@@ -175,7 +430,7 @@ class RegistersController extends Controller
                     "select i.code, i.title, i.inspection_type, s.name as site, i.scheduled_on, i.completed_at, i.score_pct, i.status,
                             (select count(*) from findings f where f.inspection_id = i.id and f.deleted_at is null) as findings, i.summary
                        from inspections i left join sites s on s.id = i.site_id
-                      where i.deleted_at is null and i.scheduled_on between ? and ? order by i.scheduled_on", $range);
+                      where i.deleted_at is null and i.scheduled_on between ? and ?".$sf('i.site_id').' order by i.scheduled_on', $range);
 
                 return [['Código', 'Título', 'Tipo', 'Sede', 'Programada', 'Realizada', 'Puntaje (%)', 'Hallazgos', 'Estado', 'Resumen'],
                     array_map(fn ($r) => [$r->code, $r->title, $this->label('inspections', 'inspection_type', $r->inspection_type), $r->site, $d($r->scheduled_on), $dt($r->completed_at),
@@ -185,7 +440,7 @@ class RegistersController extends Controller
                     "select m.period_year, m.period_month, coalesce(s.name, 'Toda la empresa') as site, m.worker_count, m.hours_worked, m.accidents_fatal, m.accidents_disabling,
                             m.accidents_minor, m.dangerous_incidents, m.incidents, m.occupational_diseases, m.lost_days, m.frequency_index, m.severity_index, m.accident_rate_index, m.is_closed
                        from monthly_statistics m left join sites s on s.id = m.site_id
-                      where m.deleted_at is null and make_date(m.period_year, m.period_month, 1) between date_trunc('month', ?::date) and ?::date
+                      where m.deleted_at is null and make_date(m.period_year, m.period_month, 1) between date_trunc('month', ?::date) and ?::date".$sf('m.site_id')."
                       order by m.period_year, m.period_month, s.name nulls last", $range);
 
                 return [['Año', 'Mes', 'Sede', 'Trabajadores', 'Horas-hombre', 'Mortales', 'Incapacitantes', 'Leves', 'Incidentes peligrosos', 'Incidentes', 'Enf. ocupacionales',
@@ -198,7 +453,7 @@ class RegistersController extends Controller
                 $rows = DB::select(
                     "select e.code, e.equipment_type, s.name as site, e.location_text, c.checked_at, c.check_type, c.result, c.next_due_on, c.provider_name, c.comments
                        from equipment_checks c join emergency_equipment e on e.id = c.equipment_id left join sites s on s.id = e.site_id
-                      where c.deleted_at is null and (c.checked_at at time zone 'America/Lima')::date between ? and ? order by c.checked_at", $range);
+                      where c.deleted_at is null and (c.checked_at at time zone 'America/Lima')::date between ? and ?".$sf('e.site_id').' order by c.checked_at', $range);
 
                 return [['Equipo', 'Tipo', 'Sede', 'Ubicación', 'Fecha de revisión', 'Revisión', 'Resultado', 'Próxima', 'Proveedor', 'Comentarios'],
                     array_map(fn ($r) => [$r->code, $this->label('emergency_equipment', 'equipment_type', $r->equipment_type), $r->site, $r->location_text, $dt($r->checked_at),
@@ -208,10 +463,10 @@ class RegistersController extends Controller
                 $rows = DB::select(
                     "select t.code, t.title, t.training_type, s.starts_at, coalesce(t.instructor_name, s.instructor_name) as instructor, w.full_name, w.document_last4, a.hours, a.attended
                        from training_attendances a join training_sessions s on s.id = a.session_id join trainings t on t.id = s.training_id left join workers w on w.id = a.worker_id
-                      where a.deleted_at is null and (s.starts_at at time zone 'America/Lima')::date between ? and ?
+                      where a.deleted_at is null and (s.starts_at at time zone 'America/Lima')::date between ? and ?".$sf('s.site_id')."
                      union all
                      select d.code, d.title, 'drill', d.executed_at, d.external_entity, null, null, null, true from drills d
-                      where d.deleted_at is null and d.status in ('executed','evaluated') and (d.executed_at at time zone 'America/Lima')::date between ? and ?
+                      where d.deleted_at is null and d.status in ('executed','evaluated') and (d.executed_at at time zone 'America/Lima')::date between ? and ?".$sf('d.site_id')."
                      order by 4", [...$range, ...$range]);
 
                 return [['Código', 'Tema', 'Tipo', 'Fecha', 'Capacitador / entidad', 'Participante', 'Documento (últimos 4)', 'Horas', 'Asistió'],
@@ -226,7 +481,7 @@ class RegistersController extends Controller
                               || coalesce(' → ' || (select ca.code || ' ' || ca.title || ' (' || to_char(ca.due_on, 'DD/MM/YYYY') || ')' from corrective_actions ca where ca.id = f.corrective_action_id), '')
                             end, '; ') as nc_detail
                        from audits a left join audit_findings f on f.audit_id = a.id and f.deleted_at is null
-                      where a.deleted_at is null and a.starts_on between ? and ? group by a.id order by a.starts_on", $range);
+                      where a.deleted_at is null and a.starts_on between ? and ?".$sf('a.site_id').' group by a.id order by a.starts_on', $range);
 
                 return [['Código', 'Tipo', 'Norma', 'Inicio', 'Fin', 'Auditor líder', 'Registro del auditor', 'Estado', 'No conformidades', 'Hallazgos',
                     'No conformidades y medidas correctivas', 'Conclusiones'],

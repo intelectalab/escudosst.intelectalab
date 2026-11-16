@@ -46333,7 +46333,11 @@
      "generating",
      "ready",
      "failed",
-     "expired"
+     "expired",
+     "generated",
+     "pending_signature",
+     "signed",
+     "superseded"
     ],
     "ref": null,
     "encrypted": false,
@@ -46413,6 +46417,50 @@
     "default": null,
     "values": null,
     "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "snapshot",
+    "type": "jsonb",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "data_hash",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "format_version",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "superseded_by",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "register_exports",
     "encrypted": false,
     "generated": null,
     "comment": null
