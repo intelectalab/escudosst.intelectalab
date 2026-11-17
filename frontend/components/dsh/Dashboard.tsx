@@ -3,6 +3,7 @@
 // Tablero principal (M-DSH, SCR-DSH-01): indicadores con semáforo, alertas para actuar hoy y accesos.
 // Cada tarjeta explica de dónde sale su valor (numerador / denominador) y lleva al módulo de sus registros.
 
+import { BoardEditor, useBoards } from "./Boards";
 import { KpiHistory } from "./KpiHistory";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -67,6 +68,8 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<Kpi | null>(null);
   const [colorFilter, setColorFilter] = useState<"red" | "amber" | "green" | "none" | null>(null);
+  const { data: boards, reload: reloadBoards } = useBoards();
+  const [board, setBoard] = useState("");
   const [home, setHome] = useState<Home | null>(null);
   const isManagement = company.role.code === "management";
 
@@ -91,7 +94,9 @@ export function Dashboard() {
   const first = user.full_name.split(" ")[0];
   const active = data?.kpis.filter((k) => !k.locked) ?? [];
 
-  const filtered = colorFilter ? active.filter((k) => (colorFilter === "none" ? !k.color : k.color === colorFilter)) : active;
+  const chosen = boards?.boards.find((b) => b.id === board);
+  const inBoard = chosen ? chosen.kpis.map((c) => active.find((k) => k.code === c)).filter((k): k is (typeof active)[number] => !!k) : active;
+  const filtered = colorFilter ? inBoard.filter((k) => (colorFilter === "none" ? !k.color : k.color === colorFilter)) : inBoard;
   const groupOf = (code: string) => modules.find((m) => m.code === code)?.group_number ?? 9;
   const groups = [...new Set(filtered.map((k) => groupOf(k.module)))].sort((a, b) => a - b);
   const count = (c: "green" | "amber" | "red") => active.filter((k) => k.color === c).length;
@@ -153,6 +158,12 @@ export function Dashboard() {
                 Indicadores {data.year}
                 <span className="hidden text-xs font-normal text-muted lg:inline">· toca uno para ver sus registros; «?» explica el cálculo</span>
               </h2>
+              {boards && boards.boards.some((b) => b.mine) && (
+                <select className="filter-control h-8 !w-auto text-xs" aria-label="Tablero" value={board} onChange={(e) => setBoard(e.target.value)}>
+                  <option value="">Todos los indicadores</option>
+                  {boards.boards.filter((b) => b.mine).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              )}
               <div className="flex flex-wrap gap-1.5 text-xs" role="group" aria-label="Filtrar indicadores">
                 {([[null, `Todos (${active.length})`, "border-line", ""], ["red", `Crítico (${count("red")})`, "border-bad/40 text-bad", "bg-bad"], ["amber", `Atención (${count("amber")})`, "border-amber-ink/40 text-amber-ink", "bg-amber-ink"], ["green", `En meta (${count("green")})`, "border-ok/40 text-ok", "bg-ok"]] as const).map(([v, label, cls, dot]) => (
                   <button key={String(v)} type="button" onClick={() => setColorFilter(v)} aria-pressed={colorFilter === v}
@@ -200,6 +211,7 @@ export function Dashboard() {
             {filtered.length === 0 && <p className="rounded-xl bg-bg px-4 py-3 text-sm text-muted">No hay indicadores con ese estado.</p>}
           </section>
           <KpiHistory year={data.year} site={site} />
+          {boards?.can_edit && <BoardEditor data={boards} onSaved={() => void reloadBoards()} />}
           {!isManagement && home?.monthly && <MonthlyCard data={home.monthly} />}
           {home?.actions && <ActionsCard data={home.actions} />}
 

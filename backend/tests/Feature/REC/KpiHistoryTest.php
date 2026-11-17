@@ -32,3 +32,19 @@ it('guarda los indicadores del año por mes y los devuelve como series y en Exce
     $x = $this->get('/api/v1/dsh/history.xlsx?year='.date('Y'), $this->h);
     expect($x->status())->toBe(200)->and(substr($x->getContent(), 0, 2))->toBe('PK');
 });
+
+it('arma tableros propios con indicadores en orden y no quita los de fábrica', function () {
+    $b = $this->getJson('/api/v1/dsh/boards', $this->h)->assertOk()->json('data');
+    $codes = collect($b['kpis'])->pluck('code')->take(3)->all();
+    $id = $this->postJson('/api/v1/dsh/boards', ['name' => 'Tablero RR', 'audience_role' => 'sst_manager', 'kpi_codes' => array_reverse($codes)], $this->h)->assertCreated()->json('data.id');
+    $mine = collect($this->getJson('/api/v1/dsh/boards', $this->h)->json('data.boards'))->firstWhere('id', $id);
+    expect($mine['kpis'])->toBe(array_reverse($codes));
+    $this->postJson('/api/v1/dsh/boards', ['id' => $id, 'name' => 'Tablero RR', 'kpi_codes' => [$codes[0]]], $this->h)->assertOk();
+    expect(collect($this->getJson('/api/v1/dsh/boards', $this->h)->json('data.boards'))->firstWhere('id', $id)['kpis'])->toBe([$codes[0]]);
+    $this->postJson('/api/v1/dsh/boards', ['name' => 'Vacío', 'kpi_codes' => []], $this->h)->assertStatus(422);
+    $default = collect($b['boards'])->firstWhere('is_default', true);
+    if ($default) {
+        $this->deleteJson("/api/v1/dsh/boards/{$default['id']}", [], $this->h)->assertNotFound();
+    }
+    $this->deleteJson("/api/v1/dsh/boards/{$id}", [], $this->h)->assertOk();
+});

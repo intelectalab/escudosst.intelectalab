@@ -158,4 +158,75 @@ class DashboardController extends Controller
 
         return response()->json(['data' => ['year' => $year, 'site_id' => $site, 'series' => array_values($series)]]);
     }
+
+    /**
+     * GET /dsh/boards — tableros de la empresa visibles para el rol (los de su rol y los generales), con sus indicadores en orden.
+     * Los arma cada empresa con el editor (POST /dsh/boards); los de fábrica se crean al dar de alta la empresa.
+     */
+    public function boards(): JsonResponse
+    {
+        $role = app(\App\Core\Tenancy\CompanyContext::class)->roleCode;
+        $edit = in_array('dsh.dashboards.update', \App\Core\Auth\Permissions::effective(), true);
+        $boards = DB::select(
+            'select id, name, audience_role, is_default, owner_user_id from dashboards where deleted_at is null'.($edit ? '' : ' and (audience_role is null or audience_role = ?)')
+            .' order by is_default desc, name', $edit ? [] : [$role]);
+        foreach ($boards as $b) {
+            $b->kpis = array_column(DB::select(
+                'select k.code from dashboard_widgets w join kpi_definitions k on k.id = w.kpi_definition_id where w.dashboard_id = ? and w.deleted_at is null order by w.position, w.created_at', [$b->id]), 'code');
+            $b->mine = $b->audience_role === null || $b->audience_role === $role;
+        }
+
+        return response()->json(['data' => ['boards' => $boards, 'can_edit' => $edit, 'role' => $role,
+            'kpis' => DB::select('select distinct on (code) code, name from kpi_definitions where deleted_at is null and is_active order by code, company_id nulls last')]]);
+    }
+
+    /** POST /dsh/boards {id?, name, audience_role?, kpi_codes[]} — editor de tableros: nombre, para qué rol y qué indicadores en qué orden. */
+    public function saveBoard(Request $request): JsonResponse
+    {
+        if (! in_array('dsh.dashboards.update', \App\Core\Auth\Permissions::effective(), true)) {
+            throw ApiProblem::forbidden('Tu rol no arma tableros.');
+        }
+        $d = $request->validate([
+            'id' => ['nullable', 'uuid'], 'name' => ['required', 'string', 'max:120'], 'audience_role' => ['nullable', 'string', 'max:60'],
+            'kpi_codes' => ['required', 'array', 'min:1', 'max:40'], 'kpi_codes.*' => ['string', 'max:80'],
+        ], ['name.required' => 'Escribe el nombre del tablero.', 'kpi_codes.required' => 'Elige al menos un indicador.', 'kpi_codes.min' => 'Elige al menos un indicador.']);
+        $company = app(\App\Core\Tenancy\CompanyContext::class)->companyId;
+        $uid = (string) auth()->id();
+        $id = DB::transaction(function () use ($d, $company, $uid) {
+            if (! empty($d['id'])) {
+                if (! DB::update('update dashboards set name = ?, audience_role = ?, updated_by = ?, updated_at = now() where id = ? and deleted_at is null', [$d['name'], $d['audience_role'] ?? null, $uid, $d['id']])) {
+                    throw ApiProblem::notFound('El tablero no existe.');
+                }
+                DB::update('update dashboard_widgets set deleted_at = now() where dashboard_id = ? and deleted_at is null', [$d['id']]);
+                $id = $d['id'];
+            } else {
+                $id = DB::selectOne('insert into dashboards (company_id, name, audience_role, owner_user_id, is_default, created_by, updated_by) values (?, ?, ?, ?, false, ?, ?) returning id',
+                    [$company, $d['name'], $d['audience_role'] ?? null, $uid, $uid, $uid])->id;
+            }
+            foreach (array_values(array_unique($d['kpi_codes'])) as $pos => $code) {
+                $k = DB::selectOne('select id, name from kpi_definitions where code = ? and deleted_at is null and is_active order by company_id nulls last limit 1', [$code]);
+                if ($k) {
+                    DB::insert("insert into dashboard_widgets (company_id, dashboard_id, kpi_definition_id, widget_type, title, position, created_by, updated_by) values (?, ?, ?, 'card', ?, ?, ?, ?)",
+                        [$company, $id, $k->id, $k->name, $pos, $uid, $uid]);
+                }
+            }
+
+            return $id;
+        });
+
+        return response()->json(['data' => ['id' => $id]], empty($d['id']) ? 201 : 200);
+    }
+
+    /** DELETE /dsh/boards/{id} — quita un tablero propio (los de fábrica no se borran). */
+    public function deleteBoard(string $id): JsonResponse
+    {
+        if (! in_array('dsh.dashboards.delete', \App\Core\Auth\Permissions::effective(), true)) {
+            throw ApiProblem::forbidden('Tu rol no quita tableros.');
+        }
+        if (! Str::isUuid($id) || ! DB::update('update dashboards set deleted_at = now() where id = ? and not is_default and deleted_at is null', [$id])) {
+            throw ApiProblem::notFound('El tablero no existe o es de fábrica.');
+        }
+
+        return response()->json(['data' => ['id' => $id]]);
+    }
 }
