@@ -124,6 +124,40 @@ class CompanyAuditController extends Controller
      * GET /company/audit/sensitive/export  «Exportar» (CSV) de los accesos a datos sensibles con los mismos filtros
      * (máximo 5000 filas). Nunca incluye contenido médico; la exportación misma queda en la bitácora.
      */
+    /**
+     * GET /company/audit/export?from=&to= — bitácora completa del periodo en CSV con la huella de cada fila (row_hash, cadena)
+     * y la huella SHA-256 del archivo al final, para comprobar que no se alteró. La exportación queda en la bitácora.
+     */
+    public function export(Request $request): StreamedResponse
+    {
+        $this->can('aud.audit_logs.read', 'Tu rol no ve la bitácora.');
+        $where = ['a.company_id = (select nullif(current_setting(\'app.company_id\', true), \'\')::uuid)'];
+        $bind = [];
+        $this->dates($request, 'a.occurred_at', $where, $bind);
+        $rows = DB::select("select a.chain_seq, a.occurred_at, a.action, a.module_code, a.entity_type, a.entity_id, a.actor_role, u.full_name as actor_name, host(a.ip) as ip,
+                                   encode(a.prev_hash, 'hex') as prev_hash, encode(a.row_hash, 'hex') as row_hash
+                              from audit_logs a left join users u on u.id = a.actor_user_id where ".implode(' and ', $where).' order by a.chain_seq limit 100000', $bind);
+        $ctx = app(CompanyContext::class);
+        DB::insert("insert into audit_logs (company_id, actor_user_id, actor_role, actor_type, action, module_code, entity_type, changes, ip, user_agent)
+                    values (?, ?, ?, 'user', 'export', 'AUD', 'audit_logs', ?::jsonb, ?::inet, ?)",
+            [$ctx->companyId, (string) auth()->id(), $ctx->roleCode, json_encode(['rows' => count($rows), 'filters' => array_filter($request->only(['from', 'to']))]), $request->ip(), mb_substr((string) $request->userAgent(), 0, 300)]);
+
+        return response()->streamDownload(function () use ($rows) {
+            $h = hash_init('sha256');
+            $line = function (array $cells) use ($h) {
+                $s = implode(';', array_map(fn ($c) => '"'.str_replace('"', '""', (string) $c).'"', $cells))."\n";
+                hash_update($h, $s);
+                echo $s;
+            };
+            echo "\xEF\xBB\xBF";
+            $line(['N.°', 'Fecha y hora (UTC)', 'Acción', 'Módulo', 'Registro', 'Id', 'Rol', 'Usuario', 'IP', 'Huella anterior', 'Huella de la fila']);
+            foreach ($rows as $r) {
+                $line([$r->chain_seq, $r->occurred_at, $r->action, $r->module_code, $r->entity_type, $r->entity_id, $r->actor_role, $r->actor_name, $r->ip, $r->prev_hash, $r->row_hash]);
+            }
+            echo '"Huella SHA-256 del contenido anterior";"'.hash_final($h).'"'."\n";
+        }, 'bitacora-'.now('America/Lima')->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
     public function sensitiveExport(Request $request): StreamedResponse
     {
         $this->can('aud.sensitive_access_logs.read', 'Tu rol no ve los accesos a datos sensibles.');

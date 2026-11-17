@@ -17,6 +17,7 @@ import { IaaModule } from "@/components/addons/IaaModule";
 import { MyCourses } from "@/components/addons/AulLearner";
 import { VtaCampaign, VtaDashboard, VtaPortal } from "@/components/addons/VtaPanels";
 import { BaselineCompare } from "@/components/modules/LbaExtras";
+import { AmbPanel } from "@/components/modules/AmbExtras";
 import { AulLanding } from "@/components/modules/AulAdmin";
 import { LbaSummary } from "@/components/modules/LbaSummary";
 import { SunSummary } from "@/components/modules/SunSummary";
@@ -249,6 +250,11 @@ export default function ModulePage() {
         </div>
       ) : hasModuleWizard(m.code) ? (
         <ModuleWizards code={m.code} readOnly={m.mode === "read_only"} />
+      ) : m.code === "AMB" ? (
+        <div className="space-y-5">
+          <AmbPanel readOnly={m.mode === "read_only"} />
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
       ) : m.code === "VTA" && company.role.code === "external_learner" ? (
         <VtaPortal />
       ) : m.code === "VTA" ? (

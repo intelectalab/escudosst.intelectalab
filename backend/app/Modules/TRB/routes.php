@@ -52,6 +52,7 @@ Route::middleware(['auth:sanctum', 'company'])->prefix('me/worker')->group(funct
     Route::post('ppe/{id}/replacement', [\App\Modules\TRB\WorkerSelfController::class, 'ppeReplacement'])->whereUuid('id')->middleware('throttle:20,1');
     Route::get('reports', [\App\Modules\TRB\WorkerSelfController::class, 'reports']);
     Route::get('actions', [\App\Modules\TRB\WorkerSelfController::class, 'actions']);
+    Route::get('accesses', [\App\Modules\TRB\WorkerSelfController::class, 'accesses']);
     Route::post('actions/{id}/evidence', [\App\Modules\TRB\WorkerSelfController::class, 'actionEvidence'])->whereUuid('id')->middleware('throttle:30,1');
     Route::get('health', [\App\Modules\TRB\WorkerHealthController::class, 'summary']);
     Route::post('health/reauth', [\App\Modules\TRB\WorkerHealthController::class, 'reauth'])->middleware('throttle:10,1');

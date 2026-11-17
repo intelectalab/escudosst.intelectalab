@@ -16,4 +16,5 @@ Route::middleware(['auth:sanctum', 'company', 'module:AUD'])->group(function () 
     Route::get('company/audit/filters', [CompanyAuditController::class, 'filters']);
     Route::get('company/audit/sensitive', [CompanyAuditController::class, 'sensitive']);
     Route::get('company/audit/sensitive/export', [CompanyAuditController::class, 'sensitiveExport'])->middleware('throttle:10,1');
+    Route::get('company/audit/export', [CompanyAuditController::class, 'export'])->middleware('throttle:10,1');
 });

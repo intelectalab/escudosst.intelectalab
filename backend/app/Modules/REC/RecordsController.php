@@ -75,17 +75,20 @@ class RecordsController extends Controller
     {
         $personal = in_array($res['table'], ['workers', 'contractor_workers', 'external_learners'], true)
             || collect($res['fields'] ?? [])->contains(fn ($f) => ! empty($f['encrypted']));
-        if (! $personal) {
-            return;
-        }
         try {
             $ctx = app(\App\Core\Tenancy\CompanyContext::class);
-            $who = \Illuminate\Support\Facades\DB::selectOne('select full_name from users where id = ?', [(string) auth()->id()])?->full_name ?? 'Un usuario';
+            // M-AUD: toda exportación de una lista queda en la bitácora (con sus filtros); la de datos personales además avisa.
             \Illuminate\Support\Facades\DB::insert(
                 "insert into audit_logs (company_id, actor_user_id, actor_role, actor_type, action, module_code, entity_type, changes, ip, user_agent)
                  values (?, ?, ?, 'user', 'export', ?, ?, ?::jsonb, ?::inet, ?)",
-                [$ctx->companyId, (string) auth()->id(), $ctx->roleCode, $res['module'], $res['table'], json_encode(['personal_data' => true]), request()->ip(), mb_substr((string) request()->userAgent(), 0, 300)]
+                [$ctx->companyId, (string) auth()->id(), $ctx->roleCode, $res['module'], $res['table'],
+                    json_encode(['personal_data' => $personal, 'filters' => array_diff_key(request()->query(), array_flip(['export', 'page', 'per_page']))], JSON_UNESCAPED_UNICODE),
+                    request()->ip(), mb_substr((string) request()->userAgent(), 0, 300)]
             );
+            if (! $personal) {
+                return;
+            }
+            $who = \Illuminate\Support\Facades\DB::selectOne('select full_name from users where id = ?', [(string) auth()->id()])?->full_name ?? 'Un usuario';
             $label = $res['title'] ?? $res['table'];
             \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['account_admin']), 'aud.mass_export', 'AUD', $ctx->companyId, 'Exportación de datos personales',
                 "{$who} exportó la lista completa de «{$label}», que tiene datos personales.", '/configuracion/auditoria', 'high',

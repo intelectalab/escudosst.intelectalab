@@ -307,3 +307,13 @@ it('«Mis acciones»: el trabajador ve las suyas, sube evidencia con foto y la e
                                                     join files f on f.id = e.file_id where a.id = ?", [$mine]));
     expect($r->status)->toBe('pending_verification')->and($r->evidence_type)->toBe('photo')->and($r->exif_stripped)->toBeTrue();
 });
+
+it('«Mis accesos»: el trabajador ve quién consultó sus datos sensibles, sin contenido', function () {
+    $w = wappWorker('76767620', 'Ada');
+    $s = wappActivate('76767620', wappIssue($w)['code'], '375196');
+    wappAs(HUAYLAS_ID, fn () => DB::insert("insert into sensitive_access_logs (company_id, user_id, role_code, worker_id, resource, action, purpose, result)
+        values (?, (select id from app_auth_lookup_user(?)), 'occupational_doctor', ?, 'medical_exam', 'read', 'Control periódico', 'granted')", [HUAYLAS_ID, CORPORATIVO_EMAIL, $w]));
+    app('auth')->forgetGuards();
+    $rows = $this->getJson('/api/v1/me/worker/accesses', authHeaders($s['token'], HUAYLAS_ID))->assertOk()->json('data');
+    expect($rows)->toHaveCount(1)->and($rows[0]['what'])->toBe('Examen médico')->and($rows[0]['purpose'])->toBe('Control periódico');
+});

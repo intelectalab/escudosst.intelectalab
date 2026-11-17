@@ -332,7 +332,15 @@ class AddonRules extends RecordRules
         unset($values['significance_score'], $values['is_significant']);   // los calcula el sistema
         $sev = (int) ($this->value($values, $current, 'severity_value') ?? 0);
         $prob = (int) ($this->value($values, $current, 'probability_value') ?? 0);
-        $significant = $sev > 0 && $prob > 0 && $sev * $prob >= LegalParams::number('amb_significance_threshold', 9);
+        // RN-AMB-01: escalas y umbral son criterios de la empresa (Medio ambiente › Criterios de significancia).
+        $c = \App\Modules\AMB\AmbToolsController::criteria();
+        if ($sev > $c['severity_max'] || $sev < 0) {
+            $this->fail('severity_value', "La severidad va de 1 a {$c['severity_max']}.");
+        }
+        if ($prob > $c['probability_max'] || $prob < 0) {
+            $this->fail('probability_value', "La probabilidad va de 1 a {$c['probability_max']}.");
+        }
+        $significant = $sev > 0 && $prob > 0 && $sev * $prob >= $c['threshold'];
         $extra['is_significant'] = ['?', [$significant ? 'true' : 'false']];
         if ($significant && trim((string) ($this->value($values, $current, 'controls') ?? '')) === '') {
             $this->fail('controls', 'Este aspecto es significativo: describe los controles que se aplican.');

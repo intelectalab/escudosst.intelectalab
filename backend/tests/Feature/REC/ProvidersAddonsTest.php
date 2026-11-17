@@ -87,6 +87,10 @@ it('ISO evalúa las cláusulas con los datos de los módulos y PSE aplica el paq
     $r = $this->postJson('/api/v1/iso/assess', ['standard' => 'ISO45001'], $h)->assertOk();
     expect($r->json('data.total'))->toBeGreaterThan(0)->and($r->json('data.clauses.0'))->toHaveKeys(['clause', 'status', 'evidence']);
     expect($this->getJson('/api/v1/records/ISO/iso_evidences', $h)->json('meta.total'))->toBe($r->json('data.total'));
+    // Matriz guardada (sin recalcular) y su exportación (SCR-ISO-01).
+    $m = $this->getJson('/api/v1/iso/matrix?standard=ISO45001', $h)->assertOk()->json('data');
+    expect($m['total'])->toBe($r->json('data.total'))->and($m['clauses'][0])->toHaveKeys(['clause', 'coverage', 'shared', 'evidence']);
+    $this->get('/api/v1/iso/matrix.xlsx?standard=ISO45001', $h)->assertOk();
 
     $pack = collect($this->getJson('/api/v1/pse/packs', $h)->assertOk()->json('data'))->firstWhere('code', 'PSE-CONST');
     $a = $this->postJson("/api/v1/pse/packs/{$pack['id']}/apply", [], $h)->assertCreated()->json('data');

@@ -47,6 +47,62 @@ class IsoPseController extends Controller
         'ACC' => ["select count(*) as n from sst_events where deleted_at is null and status <> 'discarded'", 'eventos registrados'],
     ];
 
+    /**
+     * GET /iso/matrix?standard= — SCR-ISO-01: matriz de cláusulas guardada (sin recalcular) con su semáforo. Las cláusulas
+     * comunes del Anexo SL (mismo número en varias normas) comparten las evidencias vinculadas (RN-ISO-02).
+     * GET /iso/matrix.xlsx?standard= — la misma matriz de cumplimiento en Excel.
+     */
+    public function matrix(Request $request): JsonResponse
+    {
+        $this->can('iso.iso_evidences.read');
+
+        return response()->json(['data' => $this->matrixData((string) $request->query('standard', ''))]);
+    }
+
+    public function matrixXlsx(Request $request): \Symfony\Component\HttpFoundation\Response
+    {
+        $this->can('iso.iso_evidences.read');
+        $d = $this->matrixData((string) $request->query('standard', ''));
+        $cov = ['covered' => 'Cubierta', 'review' => 'Por revisar', 'none' => 'Sin evidencia', 'not_applicable' => 'No aplica'];
+        $out = [["Matriz de cumplimiento · {$d['standard']}"], ["{$d['covered']} de {$d['total']} cláusulas cubiertas al ".date('d/m/Y').'.'], [],
+            ['Cláusula', 'Título', 'Estado', 'Común con otras normas', 'Evidencia', 'Última revisión']];
+        foreach ($d['clauses'] as $c) {
+            $out[] = [$c['clause'], $c['title'], $cov[$c['coverage']] ?? $c['coverage'], $c['shared'] ? 'Sí' : 'No', $c['evidence'], (string) $c['reviewed_on']];
+        }
+
+        return response(\App\Core\Support\Xlsx::build('Matriz ISO', $out, 4), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="matriz-'.strtolower(preg_replace('/\W+/', '-', $d['code'])).'.xlsx"',
+        ]);
+    }
+
+    private function matrixData(string $code): array
+    {
+        $std = ($code !== '' ? DB::selectOne('select id, code, name from iso_standards where code = ? and deleted_at is null', [$code]) : null)
+            ?? DB::selectOne('select id, code, name from iso_standards where deleted_at is null order by code limit 1');
+        if (! $std) {
+            throw ApiProblem::notFound('No hay normas ISO cargadas en el catálogo.');
+        }
+        $out = [];
+        foreach (DB::select('select id, clause_code, title from iso_clauses where iso_standard_id = ? and deleted_at is null order by sort_order', [$std->id]) as $c) {
+            $ev = DB::select("select e.status, e.description, e.last_reviewed_on, e.iso_clause_id = ? as own, e.document_id, e.source_type, d.status as doc_status, d.deleted_at as doc_deleted
+                                from iso_evidences e left join documents d on d.id = e.document_id
+                               where e.deleted_at is null and (e.iso_clause_id = ? or (e.iso_clause_id in (select x.id from iso_clauses x where x.clause_code = ? and x.deleted_at is null)
+                                     and (e.source_type is not null or e.document_id is not null)))", [$c->id, $c->id, $c->clause_code]);
+            $auto = collect($ev)->first(fn ($e) => $e->own && $e->source_type === null && $e->document_id === null);
+            $obsolete = fn ($e) => $e->document_id && ($e->doc_deleted || in_array($e->doc_status, ['obsolete', 'archived'], true));
+            $valid = array_filter($ev, fn ($e) => in_array($e->status, ['implemented', 'verified', 'in_progress'], true) && ! $obsolete($e));
+            $coverage = $auto?->status === 'not_applicable' ? 'not_applicable' : ($valid ? 'covered' : (array_filter($ev, $obsolete) ? 'review' : 'none'));
+            $shared = (int) DB::selectOne('select count(distinct iso_standard_id) as n from iso_clauses where clause_code = ? and deleted_at is null', [$c->clause_code])->n > 1;
+            $out[] = ['clause' => $c->clause_code, 'title' => $c->title, 'coverage' => $coverage, 'shared' => $shared,
+                'evidence' => implode(' · ', array_filter(array_map(fn ($e) => $e->description, $ev))) ?: 'Sin evidencia registrada.',
+                'reviewed_on' => collect($ev)->max('last_reviewed_on')];
+        }
+
+        return ['code' => $std->code, 'standard' => $std->name, 'clauses' => $out, 'total' => count($out),
+            'covered' => count(array_filter($out, fn ($o) => $o['coverage'] === 'covered')), 'review' => count(array_filter($out, fn ($o) => $o['coverage'] === 'review'))];
+    }
+
     public function assess(Request $request): JsonResponse
     {
         $this->can('iso.iso_evidences.create');
@@ -86,7 +142,8 @@ class IsoPseController extends Controller
             // obsoleto o eliminado); si no, sin evidencia. Cuentan la evidencia automática y las que la persona vinculó.
             $manual = DB::select("select e.status, e.document_id, d.status as doc_status, d.deleted_at as doc_deleted from iso_evidences e
                                     left join documents d on d.id = e.document_id
-                                   where e.iso_clause_id = ? and e.deleted_at is null and (e.source_type is not null or e.document_id is not null)", [$c->id]);
+                                   where e.iso_clause_id in (select x.id from iso_clauses x where x.clause_code = ? and x.deleted_at is null) and e.deleted_at is null
+                                     and (e.source_type is not null or e.document_id is not null)", [$c->clause_code]);
             $obsolete = fn ($m) => $m->document_id && ($m->doc_deleted || in_array($m->doc_status, ['obsolete', 'archived'], true));
             $current = in_array($final, ['implemented', 'verified'], true) || ($found && $final !== 'not_applicable')
                 || array_filter($manual, fn ($m) => in_array($m->status, ['implemented', 'verified'], true) && ! $obsolete($m));

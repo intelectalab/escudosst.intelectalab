@@ -1,5 +1,7 @@
 "use client";
 
+import { downloadFile } from "@/lib/records";
+
 // USR · Usuarios de la empresa (invitar con rol, cambiar rol, suspender) y AUD · Bitácora de la empresa.
 // En la bitácora cada fila abre el registro que cambió (trazabilidad).
 
@@ -402,6 +404,10 @@ function GeneralAudit({ filters }: { filters: AuditFilters }) {
         <DateFilter label="Desde" value={f.from} onChange={set("from")} />
         <DateFilter label="Hasta" value={f.to} onChange={set("to")} />
       </FilterBar>
+      <button type="button" className="rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-semibold hover:border-brand"
+        onClick={() => { const q = new URLSearchParams(); if (f.from) q.set("from", f.from); if (f.to) q.set("to", f.to); void downloadFile(`/company/audit/export?${q}`, `bitacora.csv`); }}>
+        Exportar la bitácora completa con su huella
+      </button>
       {rows && rows.length === 0 && <EmptyState icon="search" text="Sin movimientos con esos filtros." />}
       {rows && rows.length > 0 && (
         <div className="overflow-x-auto rounded-2xl border border-line bg-surface">

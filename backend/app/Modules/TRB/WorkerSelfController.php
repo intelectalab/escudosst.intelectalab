@@ -371,6 +371,25 @@ class WorkerSelfController extends Controller
         return response()->json(['data' => ['id' => $rid]], 201);
     }
 
+    /**
+     * M-AUD «Mis accesos»: quién consultó los datos sensibles del trabajador (fecha, rol, qué dato y motivo); nunca el contenido.
+     * Los accesos del propio trabajador no se listan.
+     */
+    public function accesses(): JsonResponse
+    {
+        $w = WorkerSelf::row();
+        $labels = ['medical_exam' => 'Examen médico', 'medical_file' => 'Archivo médico', 'clinical_note' => 'Nota clínica', 'leave_detail' => 'Descanso médico',
+            'vulnerability_record' => 'Registro de vulnerabilidad', 'surveillance_case' => 'Vigilancia médica', 'medical_export' => 'Exportación médica', 'worker_sensitive_data' => 'Datos sensibles'];
+        $actions = ['read' => 'Consultó', 'download' => 'Descargó', 'export' => 'Exportó', 'create' => 'Registró', 'update' => 'Modificó', 'print' => 'Imprimió'];
+        $rows = DB::select("select s.occurred_at, s.resource, s.action, s.purpose, u.full_name as user_name, coalesce(r.name, s.role_code) as role_name
+                              from sensitive_access_logs s left join users u on u.id = s.user_id
+                              left join roles r on r.code = s.role_code and r.account_id is null
+                             where s.worker_id = ? and s.result = 'granted' and s.user_id is distinct from ? order by s.occurred_at desc limit 100", [$w->id, (string) auth()->id()]);
+
+        return response()->json(['data' => array_map(fn ($r) => ['at' => $r->occurred_at, 'who' => $r->user_name, 'role' => $r->role_name,
+            'what' => $labels[$r->resource] ?? $r->resource, 'action' => $actions[$r->action] ?? $r->action, 'purpose' => $r->purpose], $rows)]);
+    }
+
     /** M-ACR: «Mis acciones», las acciones correctivas que tiene a cargo el trabajador. */
     public function actions(): JsonResponse
     {

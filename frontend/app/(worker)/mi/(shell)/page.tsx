@@ -52,6 +52,7 @@ export default function WorkerHomePage() {
             line={e.has_voted ? "Ya votaste. ¡Gracias!" : `Vota hasta el ${fmtDate(e.voting_closes_at, true)}`} />
         )}
         <BigCard href="/mi/ficha" icon="user" title="Mi ficha" line="Tus datos, tu celular y tu contacto de emergencia" />
+        <BigCard href="/mi/accesos" icon="shield" title="Mis accesos" line="Quién consultó tus datos sensibles" />
       </nav>
     </>
   );

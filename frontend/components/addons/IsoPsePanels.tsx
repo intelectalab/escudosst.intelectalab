@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { api, ApiError } from "@/lib/api";
+import { downloadFile } from "@/lib/records";
 
 // RN-ISO-01/03: cobertura derivada por cláusula.
 const COVERAGE: Record<string, [string, string]> = {
@@ -21,6 +22,13 @@ export function IsoAssess({ onDone }: { onDone: () => void }) {
   const [res, setRes] = useState<{ standard: string; implemented: number; total: number; review?: number; clauses: { clause: string; title: string; status: string; coverage?: string; evidence: string }[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // SCR-ISO-01: al entrar se muestra la matriz guardada de la norma (sin recalcular); «Evaluar» la actualiza con los datos.
+  useEffect(() => {
+    api<{ data: { standard: string; covered: number; total: number; review: number; clauses: { clause: string; title: string; coverage: string; shared: boolean; evidence: string }[] } }>(`/iso/matrix?standard=${std}`, { withCompany: true })
+      .then((r) => setRes({ standard: r.data.standard, implemented: r.data.covered, total: r.data.total, review: r.data.review,
+        clauses: r.data.clauses.map((c) => ({ clause: c.clause, title: c.title + (c.shared ? " · común con otras normas" : ""), status: c.coverage, coverage: c.coverage, evidence: c.evidence })) }))
+      .catch(() => setRes(null));
+  }, [std]);
   const run = () => {
     setBusy(true);
     setMsg(null);
@@ -39,6 +47,7 @@ export function IsoAssess({ onDone }: { onDone: () => void }) {
           <option value="ISO14001">ISO 14001</option>
         </select>
         <Button variant="primary" loading={busy} onClick={run}>Evaluar con mis datos</Button>
+        <Button onClick={() => void downloadFile(`/iso/matrix.xlsx?standard=${std}`, `matriz-${std.toLowerCase()}.xlsx`)}>Matriz en Excel</Button>
       </div>
       {msg && <p className="text-bad">{msg}</p>}
       {res && (

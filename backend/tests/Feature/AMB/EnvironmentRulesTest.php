@@ -60,3 +60,16 @@ it('el Asistente IA respeta el cupo mensual del plan y muestra el consumo', func
         DB::connection('platform')->update('update plans set ai_requests_month = ? where id = ?', [$plan->ai_requests_month, $plan->id]);
     }
 });
+
+it('los criterios de significancia de la empresa se cambian, recalculan los aspectos y salen en los reportes', function () {
+    $base = ['activity' => 'Lavado', 'aspect' => 'Vertimiento', 'impact' => 'Agua', 'site_id' => $this->site];
+    $id = $this->postJson('/api/v1/records/AMB/environmental_aspects', $base + ['severity_value' => 2, 'probability_value' => 3], $this->h)->assertCreated()->json('data.id');
+    expect($this->getJson("/api/v1/records/AMB/environmental_aspects/{$id}", $this->h)->json('data.is_significant'))->toBeFalse();
+    $this->postJson('/api/v1/records/AMB/environmental_aspects', $base + ['severity_value' => 9, 'probability_value' => 1], $this->h)->assertStatus(422)->assertJsonValidationErrors('severity_value');
+    $this->putJson('/api/v1/amb/criteria', ['severity_max' => 5, 'probability_max' => 5, 'threshold' => 40], $this->h)->assertStatus(422);
+    $this->putJson('/api/v1/amb/criteria', ['severity_max' => 5, 'probability_max' => 5, 'threshold' => 6], $this->h)->assertOk()->assertJsonPath('data.threshold', 6);
+    expect($this->getJson("/api/v1/records/AMB/environmental_aspects/{$id}", $this->h)->json('data.is_significant'))->toBeTrue();
+    $this->get('/api/v1/amb/reports.xlsx?kind=aspects', $this->h)->assertOk();
+    $this->get('/api/v1/amb/reports.xlsx?kind=waste', $this->h)->assertOk();
+    DB::connection('platform')->delete("delete from legal_parameters where company_id = ? and key in ('amb_severity_max', 'amb_probability_max', 'amb_significance_threshold')", [HUAYLAS_ID]);
+});
