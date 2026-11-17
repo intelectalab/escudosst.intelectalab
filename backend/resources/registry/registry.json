@@ -8003,6 +8003,12 @@
      ],
      "default": "draft",
      "list": true
+    },
+    {
+     "name": "checklist",
+     "label": "Lista de verificación",
+     "type": "json",
+     "readonly": true
     }
    ]
   },

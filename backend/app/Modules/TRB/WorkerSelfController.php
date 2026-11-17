@@ -435,7 +435,7 @@ class WorkerSelfController extends Controller
                     continue;
                 }
                 $items[] = ['kind' => 'survey', 'id' => $s->id, 'title' => "Encuesta: {$s->title}", 'detail' => 'Es anónima'.($s->ends_on ? ' · hasta el '.date('d/m/Y', strtotime($s->ends_on)) : ''),
-                    'due' => $s->ends_on, 'at' => $s->created_at, 'url' => PsychosocialSurvey::publicUrl(app(CompanyContext::class)->companyId, $s->id)];
+                    'due' => $s->ends_on, 'at' => $s->created_at, 'url' => '/mi/encuesta/'.$s->id];
             }
         }
         if (WorkerSelf::usable('COM') && ($e = $this->election($w->id)) && $e['on_roll'] && ! $e['has_voted']) {
@@ -571,6 +571,40 @@ class WorkerSelfController extends Controller
     private function holder(object $w): array
     {
         return ['full_name' => $w->full_name, 'document_masked' => $w->document_last4 ? '****'.$w->document_last4 : null, 'position' => $w->position, 'site' => $w->site];
+    }
+
+    /** SCR-PSI-04: la encuesta en la app del trabajador (sin volver a escribir el documento); la respuesta es anónima. */
+    public function survey(string $id): JsonResponse
+    {
+        $w = WorkerSelf::row();
+        $this->module('PSI');
+        $s = $this->openSurvey($id);
+        $done = (bool) DB::selectOne("select 1 as ok from psychosocial_responses where survey_id = ? and respondent_token_hash = decode(?, 'hex')", [$s->id, PsychosocialSurvey::respondentHash($s->id, $w->id)]);
+        $q = json_decode((string) $s->questions, true);
+        unset($q['cutoffs']);
+
+        return response()->json(['data' => ['id' => $s->id, 'title' => $s->title, 'ends_on' => $s->ends_on, 'answered' => $done, 'questions' => $done ? null : $q]]);
+    }
+
+    public function answerSurvey(Request $request, string $id): JsonResponse
+    {
+        $w = WorkerSelf::row();
+        $this->module('PSI');
+        $s = $this->openSurvey($id);
+        $data = $request->validate(['answers' => ['required', 'array']]);
+        $row = DB::selectOne('select id, current_site_id, current_area_id from workers where id = ?', [$w->id]);
+        PsychosocialSurvey::store($s, $row, PsychosocialSurvey::answers($s, $data['answers']));
+
+        return response()->json(['data' => ['ok' => true]], 201);
+    }
+
+    private function openSurvey(string $id): object
+    {
+        $today = WorkerSelf::today();
+        $s = Str::isUuid($id) ? DB::selectOne("select * from psychosocial_surveys where id = ? and deleted_at is null and status = 'open'
+                                                 and (starts_on is null or starts_on <= ?::date) and (ends_on is null or ends_on >= ?::date)", [$id, $today, $today]) : null;
+
+        return $s ?? throw new ApiProblem(409, 'conflict', 'La encuesta no está abierta', 'Esta encuesta ya cerró o todavía no empieza.');
     }
 
     private function module(string $code): void

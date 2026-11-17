@@ -65,18 +65,7 @@ class PsiController extends Controller
             if (! $this->isOpen($s)) {
                 throw new ApiProblem(409, 'conflict', 'La encuesta no está abierta', 'Esta encuesta ya cerró o todavía no empieza.');
             }
-            $q = json_decode((string) $s->questions, true);
-            $answers = [];
-            foreach ($q['dimensions'] as $d) {
-                foreach ($d['items'] as $it) {
-                    $v = $data['answers'][$it['id']] ?? null;
-                    if (! is_numeric($v) || (int) $v < 0 || (int) $v > 4) {
-                        throw new ApiProblem(422, 'validation_failed', 'Faltan respuestas', 'Responde todas las preguntas antes de enviar.',
-                            ['errors' => ['answers' => ['Responde todas las preguntas.']]]);
-                    }
-                    $answers[$it['id']] = (int) $v;
-                }
-            }
+            $answers = PsychosocialSurvey::answers($s, $data['answers']);
             $doc = strtoupper((string) preg_replace('/[\s.\-]/', '', $data['document']));
             $w = null;
             foreach (['DNI', 'CE', 'PTP', 'PASSPORT', 'OTHER'] as $type) {
@@ -92,14 +81,8 @@ class PsiController extends Controller
                     'Ese documento no corresponde a un trabajador activo de la empresa. Revísalo o consulta con el área de SST.',
                     ['errors' => ['document' => ['Documento no encontrado entre los trabajadores.']]]);
             }
-            $token = PsychosocialSurvey::respondentHash($s->id, $w->id);
-            if (DB::selectOne("select 1 as ok from psychosocial_responses where survey_id = ? and respondent_token_hash = decode(?, 'hex')", [$s->id, $token])) {
-                throw new ApiProblem(409, 'conflict', 'Ya respondiste', 'Ya registramos tu respuesta a esta encuesta. Gracias por participar.');
-            }
             // Sin worker_id (RN-PSI-01): solo sede y área para los resultados agregados.
-            DB::insert("insert into psychosocial_responses (company_id, survey_id, respondent_token_hash, site_id, area_id, answers)
-                        values (?, ?, decode(?, 'hex'), ?, ?, ?::jsonb)",
-                [$s->company_id, $s->id, $token, $w->current_site_id, $w->current_area_id, json_encode($answers)]);
+            PsychosocialSurvey::store($s, $w, $answers);
 
             return response()->json(['data' => ['ok' => true]], 201);
         });

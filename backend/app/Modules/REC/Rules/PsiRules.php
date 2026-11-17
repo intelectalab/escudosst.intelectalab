@@ -24,8 +24,17 @@ class PsiRules extends RecordRules
             if (($values['instrument'] ?? 'custom') !== 'custom') {
                 $this->fail('instrument', 'Por ahora se usa el cuestionario base de EscudoSST; ISTAS21 y CoPsoQ requieren una licencia que aún no está contratada.');
             }
-            $values['instrument_version'] ??= 'EscudoSST base v1';
-            $extra['questions'] = ['?::jsonb', [json_encode(PsychosocialSurvey::defaultQuestions(), JSON_UNESCAPED_UNICODE)]];
+            // RN-PSI-04: la encuesta copia las preguntas y el baremo de la versión vigente del cuestionario de la empresa (o el base).
+            $inst = DB::selectOne("select id, version_number, title, questions, cutoffs from psychosocial_instruments where status = 'current' and deleted_at is null limit 1");
+            if ($inst) {
+                $q = json_decode((string) $inst->questions, true) + ['cutoffs' => json_decode((string) $inst->cutoffs, true)];
+                $values['instrument_version'] = mb_substr("{$inst->title} v{$inst->version_number}", 0, 100);
+                $extra['instrument_id'] = ['?', [$inst->id]];
+            } else {
+                $q = PsychosocialSurvey::defaultQuestions() + ['cutoffs' => PsychosocialSurvey::CUTOFFS];
+                $values['instrument_version'] ??= 'EscudoSST base v1';
+            }
+            $extra['questions'] = ['?::jsonb', [json_encode($q, JSON_UNESCAPED_UNICODE)]];
 
             return;
         }

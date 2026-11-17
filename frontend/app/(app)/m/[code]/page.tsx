@@ -29,6 +29,7 @@ import { EmoProtocols } from "@/components/modules/EmoProtocols";
 import { SimRun } from "@/components/modules/SimRun";
 import { AtsCopy } from "@/components/modules/AtsCopy";
 import { MagFollowUp, MagTools } from "@/components/modules/MagTools";
+import { ErgoSummary, PsiInstruments, Rm375Form, RulaForm } from "@/components/modules/PsiTools";
 import { ObsModule } from "@/components/modules/ObsModule";
 import { RebaForm } from "@/components/modules/RebaForm";
 import { PolOverview } from "@/components/modules/PolOverview";
@@ -329,6 +330,16 @@ function PsiPage({ readOnly }: { readOnly: boolean }) {
         <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Nueva evaluación REBA (con cálculo)</summary>
         <div className="border-t border-line p-4"><RebaForm readOnly={readOnly} onSaved={() => setV((x) => x + 1)} /></div>
       </details>
+      <details className="rounded-xl border border-line bg-surface">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Nueva evaluación RULA (con cálculo)</summary>
+        <div className="border-t border-line p-4"><RulaForm readOnly={readOnly} onSaved={() => setV((x) => x + 1)} /></div>
+      </details>
+      <details className="rounded-xl border border-line bg-surface">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Lista de verificación R.M. 375-2008-TR</summary>
+        <div className="border-t border-line p-4"><Rm375Form readOnly={readOnly} onSaved={() => setV((x) => x + 1)} /></div>
+      </details>
+      <ErgoSummary key={`e${v}`} />
+      <PsiInstruments readOnly={readOnly} />
       <ModuleRecords key={v} code="PSI" readOnly={readOnly} />
     </div>
   );

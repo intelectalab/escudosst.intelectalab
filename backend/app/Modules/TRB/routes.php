@@ -46,6 +46,8 @@ Route::middleware(['auth:sanctum', 'company'])->prefix('me/worker')->group(funct
     Route::post('sign', [\App\Modules\TRB\WorkerSelfController::class, 'sign'])->middleware('throttle:20,1');
     Route::get('trainings', [\App\Modules\TRB\WorkerSelfController::class, 'trainings']);
     Route::get('iperc', [\App\Modules\TRB\WorkerSelfController::class, 'iperc']);
+    Route::get('surveys/{id}', [\App\Modules\TRB\WorkerSelfController::class, 'survey'])->whereUuid('id');
+    Route::post('surveys/{id}', [\App\Modules\TRB\WorkerSelfController::class, 'answerSurvey'])->whereUuid('id')->middleware('throttle:20,1');
     Route::get('ppe', [\App\Modules\TRB\WorkerSelfController::class, 'ppe']);
     Route::get('reports', [\App\Modules\TRB\WorkerSelfController::class, 'reports']);
     Route::get('health', [\App\Modules\TRB\WorkerHealthController::class, 'summary']);

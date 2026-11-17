@@ -21516,6 +21516,17 @@
     "comment": null
    },
    {
+    "name": "checklist",
+    "type": "jsonb",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -21742,6 +21753,17 @@
      "reported"
     ],
     "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "instrument_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "psychosocial_instruments.id",
     "encrypted": false,
     "generated": null,
     "comment": null

@@ -18,6 +18,9 @@ final class PsychosocialSurvey
 {
     public const SCALE = ['Nunca', 'Casi nunca', 'A veces', 'Casi siempre', 'Siempre'];
 
+    /** Baremo del cuestionario base (puntaje 0–100 de la dimensión): desde «medium» es medio y desde «high» es alto. */
+    public const CUTOFFS = ['medium' => 33.3, 'high' => 66.7];
+
     /** Cuestionario base: 6 dimensiones, 3 preguntas cada una (redacción propia). */
     public static function defaultQuestions(): array
     {
@@ -69,21 +72,54 @@ final class PsychosocialSurvey
         return hash_hmac('sha256', "psi-respondent|{$surveyId}|{$workerId}", (string) config('app.key'));
     }
 
-    /** Nivel según el puntaje 0–100 de una dimensión. */
-    public static function level(float $score): string
+    /** Nivel según el puntaje 0–100 de una dimensión y el baremo del cuestionario (RN-PSI-04). */
+    public static function level(float $score, ?array $cutoffs = null): string
     {
-        return $score >= 66.7 ? 'high' : ($score >= 33.3 ? 'medium' : 'low');
+        $c = $cutoffs ?: self::CUTOFFS;
+
+        return $score >= (float) $c['high'] ? 'high' : ($score >= (float) $c['medium'] ? 'medium' : 'low');
+    }
+
+    /** Valida que estén todas las respuestas (0–4) del cuestionario de la encuesta. */
+    public static function answers(object $survey, array $input): array
+    {
+        $q = json_decode((string) $survey->questions, true) ?: self::defaultQuestions();
+        $out = [];
+        foreach ($q['dimensions'] as $d) {
+            foreach ($d['items'] as $it) {
+                $v = $input[$it['id']] ?? null;
+                if (! is_numeric($v) || (int) $v < 0 || (int) $v > 4) {
+                    throw new \App\Core\Http\ApiProblem(422, 'validation_failed', 'Faltan respuestas', 'Responde todas las preguntas antes de enviar.',
+                        ['errors' => ['answers' => ['Responde todas las preguntas.']]]);
+                }
+                $out[$it['id']] = (int) $v;
+            }
+        }
+
+        return $out;
+    }
+
+    /** Guarda la respuesta anónima (RN-PSI-01: sin worker_id; el token por encuesta impide responder dos veces). */
+    public static function store(object $survey, object $worker, array $answers): void
+    {
+        $token = self::respondentHash($survey->id, $worker->id);
+        if (DB::selectOne("select 1 as ok from psychosocial_responses where survey_id = ? and respondent_token_hash = decode(?, 'hex')", [$survey->id, $token])) {
+            throw new \App\Core\Http\ApiProblem(409, 'conflict', 'Ya respondiste', 'Ya registramos tu respuesta a esta encuesta. Gracias por participar.');
+        }
+        DB::insert("insert into psychosocial_responses (company_id, survey_id, respondent_token_hash, site_id, area_id, answers) values (?, ?, decode(?, 'hex'), ?, ?, ?::jsonb)",
+            [$survey->company_id, $survey->id, $token, $worker->current_site_id, $worker->current_area_id, json_encode($answers)]);
     }
 
     /** Resultados agregados (se llama al cerrar la encuesta, con el contexto de la empresa). */
     public static function results(object $survey): array
     {
         $q = json_decode((string) $survey->questions, true) ?: self::defaultQuestions();
+        $cut = $q['cutoffs'] ?? null;
         $min = (int) LegalParams::number('psychosocial_min_responses_report', 5);
         $rows = DB::select('select r.answers, r.area_id, a.name as area from psychosocial_responses r left join areas a on a.id = r.area_id
                              where r.survey_id = ? and r.deleted_at is null', [$survey->id]);
 
-        $score = function (array $subset) use ($q): array {
+        $score = function (array $subset) use ($q, $cut): array {
             $out = [];
             foreach ($q['dimensions'] as $d) {
                 $sum = 0;
@@ -98,7 +134,7 @@ final class PsychosocialSurvey
                     }
                 }
                 $s = $n ? round($sum / ($n * 4) * 100, 1) : null;
-                $out[] = ['code' => $d['code'], 'name' => $d['name'], 'score' => $s, 'level' => $s === null ? null : self::level($s)];
+                $out[] = ['code' => $d['code'], 'name' => $d['name'], 'score' => $s, 'level' => $s === null ? null : self::level($s, $cut)];
             }
 
             return $out;
