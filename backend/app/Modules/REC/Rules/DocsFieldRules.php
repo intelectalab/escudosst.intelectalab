@@ -57,6 +57,7 @@ class DocsFieldRules extends RecordRules
             'risst_deliveries' => $this->delivery($values, $current),
             'document_acknowledgements' => $this->ack($values),
             'risk_map_markers' => $this->marker($values, $current),
+            'emergency_equipment' => $this->equipment($values, $current, $extra),
             default => null,
         };
     }
@@ -118,6 +119,17 @@ class DocsFieldRules extends RecordRules
         }
         if ($t === 'equipment_checks') {
             $c = DB::selectOne('select * from equipment_checks where id = ?', [$id]);
+            // RN-EQE-01/02: la recarga, la prueba hidrostática y la inspección mensual mueven sus próximas fechas.
+            $on = substr($c->checked_at, 0, 10);
+            match ($c->check_type) {
+                'recharge' => DB::update('update emergency_equipment set last_recharge_on = ?, next_recharge_on = ?::date + make_interval(months => ?::int) where id = ?',
+                    [$on, $on, (int) \App\Core\Support\LegalParams::number('extinguisher_recharge_months', 12), $c->equipment_id]),
+                'hydrostatic_test' => DB::update('update emergency_equipment set last_hydrostatic_test_on = ?, next_hydrostatic_test_on = ?::date + make_interval(years => ?::int) where id = ?',
+                    [$on, $on, (int) \App\Core\Support\LegalParams::number('hydrostatic_test_years', 5), $c->equipment_id]),
+                'monthly_inspection' => DB::update('update emergency_equipment set next_inspection_on = ?::date + ?::int where id = ?',
+                    [$on, (int) \App\Core\Support\LegalParams::number('equipment_check_days', 30), $c->equipment_id]),
+                default => null,
+            };
             DB::update(
                 "update emergency_equipment set last_maintenance_on = greatest(coalesce(last_maintenance_on, ?::date), ?::date),
                         next_maintenance_on = coalesce(?::date, next_maintenance_on),
@@ -424,6 +436,25 @@ class DocsFieldRules extends RecordRules
             if (! $this->value($values, $current, 'report_file_id')) {
                 $this->fail('report_file_id', 'Para evaluar el simulacro adjunta su informe: qué salió bien, qué falló y qué se mejora.');
             }
+        }
+    }
+
+    /** RN-EQE-01/07: próximas recarga y prueba hidrostática desde las últimas; el extintor que pasó su vida útil queda fuera de servicio. */
+    private function equipment(array &$values, ?object $current, array &$extra): void
+    {
+        if ($this->value($values, $current, 'equipment_type') !== 'fire_extinguisher') {
+            return;
+        }
+        if (array_key_exists('last_recharge_on', $values) && $values['last_recharge_on']) {
+            $extra['next_recharge_on'] = ['?', [date('Y-m-d', strtotime($values['last_recharge_on'].' +'.(int) \App\Core\Support\LegalParams::number('extinguisher_recharge_months', 12).' months'))]];
+        }
+        if (array_key_exists('last_hydrostatic_test_on', $values) && $values['last_hydrostatic_test_on']) {
+            $extra['next_hydrostatic_test_on'] = ['?', [date('Y-m-d', strtotime($values['last_hydrostatic_test_on'].' +'.(int) \App\Core\Support\LegalParams::number('hydrostatic_test_years', 5).' years'))]];
+        }
+        $made = $this->value($values, $current, 'manufacture_date');
+        if ($made && date('Y-m-d', strtotime($made.' +'.(int) \App\Core\Support\LegalParams::number('extinguisher_max_life_years', 20).' years')) < date('Y-m-d')
+            && $this->value($values, $current, 'status') !== 'retired') {
+            $values['status'] = 'out_of_service';
         }
     }
 

@@ -75,6 +75,7 @@ abstract class RecordRules
         'risst_deliveries' => DocsFieldRules::class,
         'document_acknowledgements' => DocsFieldRules::class,
         'equipment_checks' => DocsFieldRules::class,
+        'emergency_equipment' => DocsFieldRules::class,
         'annual_plans' => ImprovementRules::class,
         'annual_plan_items' => ImprovementRules::class,
         'audits' => ImprovementRules::class,

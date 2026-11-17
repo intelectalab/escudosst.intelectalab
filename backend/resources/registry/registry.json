@@ -475,6 +475,11 @@
      "name": "evacuation_target_seconds",
      "label": "Meta de evacuación (segundos)",
      "type": "int"
+    },
+    {
+     "name": "min_extinguishers",
+     "label": "Mínimo de extintores",
+     "type": "int"
     }
    ]
   },
@@ -11731,6 +11736,39 @@
      ],
      "default": "operational",
      "list": true
+    },
+    {
+     "name": "last_recharge_on",
+     "label": "Última recarga",
+     "type": "date"
+    },
+    {
+     "name": "next_recharge_on",
+     "label": "Próxima recarga",
+     "readonly": true,
+     "type": "date"
+    },
+    {
+     "name": "last_hydrostatic_test_on",
+     "label": "Última prueba hidrostática",
+     "type": "date"
+    },
+    {
+     "name": "next_hydrostatic_test_on",
+     "label": "Próxima prueba hidrostática",
+     "readonly": true,
+     "type": "date"
+    },
+    {
+     "name": "manufacture_date",
+     "label": "Fecha de fabricación",
+     "type": "date"
+    },
+    {
+     "name": "next_inspection_on",
+     "label": "Próxima inspección",
+     "readonly": true,
+     "type": "date"
     }
    ]
   },

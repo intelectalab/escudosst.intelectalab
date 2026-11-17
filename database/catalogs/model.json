@@ -911,6 +911,17 @@
     "comment": null
    },
    {
+    "name": "min_extinguishers",
+    "type": "integer",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -29214,6 +29225,72 @@
      "out_of_service",
      "retired"
     ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "last_recharge_on",
+    "type": "date",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "next_recharge_on",
+    "type": "date",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "last_hydrostatic_test_on",
+    "type": "date",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "next_hydrostatic_test_on",
+    "type": "date",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "manufacture_date",
+    "type": "date",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "next_inspection_on",
+    "type": "date",
+    "not_null": false,
+    "default": null,
+    "values": null,
     "ref": null,
     "encrypted": false,
     "generated": null,

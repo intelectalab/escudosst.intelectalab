@@ -65,6 +65,10 @@ final class SstAlerts
         }
         // M-HOM RN-HOM-05: la homologación aprobada que pasó su vigencia queda «vencida».
         $db->update("update vendor_evaluations set status = 'expired', updated_at = now() where deleted_at is null and status = 'approved' and valid_until < current_date");
+        // M-EQE RN-EQE-07: el extintor que superó su vida útil desde la fabricación queda fuera de servicio aunque tenga recarga vigente.
+        $life = (int) \App\Core\Support\LegalParams::number('extinguisher_max_life_years', 20);
+        $db->update("update emergency_equipment set status = 'out_of_service', updated_at = now() where deleted_at is null and equipment_type = 'fire_extinguisher'
+                      and status not in ('out_of_service', 'retired') and manufacture_date is not null and manufacture_date + make_interval(years => ?::int) < current_date", [$life]);
         // EMO periódico (R.M. 312-2011-MINSA): a quien su aptitud vence en 30 días (o no tiene) y su puesto exige EMO,
         // se le deja una orden «programada» sin fecha para que el área de salud la agende. No se duplica.
         $db->insert(

@@ -36,6 +36,7 @@ import { PlaWizard } from "@/components/modules/PlaWizard";
 import { AuiTools } from "@/components/modules/AuiTools";
 import { RvdSummary } from "@/components/modules/RvdSummary";
 import { EstTools } from "@/components/modules/EstTools";
+import { EqeCalendar } from "@/components/modules/EqeCalendar";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
 import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
@@ -182,6 +183,7 @@ export default function ModulePage() {
             <span className="flex-1">Imprime el QR de cada equipo y pégalo en él: al escanearlo (con la sesión iniciada) se abre su inspección con el checklist.</span>
             <a href="/imprimir/qr-equipos" target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-lg border border-line px-3 font-semibold hover:border-brand hover:text-brand-strong">Imprimir QR de los equipos</a>
           </div>
+          <EqeCalendar />
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
       ) : m.code === "OBS" ? (

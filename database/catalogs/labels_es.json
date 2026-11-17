@@ -1242,7 +1242,14 @@
   "baseline_assessment_id": "Línea base",
   "previous_plan_id": "Versión anterior",
   "adjustments": "Ajustes después del cierre",
-  "includes_contractors": "Incluye contratistas"
+  "includes_contractors": "Incluye contratistas",
+  "last_recharge_on": "Última recarga",
+  "next_recharge_on": "Próxima recarga",
+  "last_hydrostatic_test_on": "Última prueba hidrostática",
+  "next_hydrostatic_test_on": "Próxima prueba hidrostática",
+  "manufacture_date": "Fecha de fabricación",
+  "next_inspection_on": "Próxima inspección",
+  "min_extinguishers": "Mínimo de extintores"
  },
  "values": {
   "A": "Tipo A",

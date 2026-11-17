@@ -117,3 +117,6 @@ Route::middleware(['auth:sanctum', 'company', 'module:AUI'])->prefix('aui')->con
 
 // Indicadores de la revisión por la dirección (M-RVD).
 Route::middleware(['auth:sanctum', 'company', 'module:RVD'])->get('rvd/summary', \App\Modules\REC\ReviewSummaryController::class);
+
+// Calendario de mantenimiento de equipos de emergencia y mínimo de extintores por sede (M-EQE SCR-EQE-04, RN-EQE-08).
+Route::middleware(['auth:sanctum', 'company', 'module:EQE'])->get('eqe/calendar', \App\Modules\REC\EquipmentCalendarController::class);
