@@ -32,6 +32,7 @@ import { MagTools } from "@/components/modules/MagTools";
 import { ObsModule } from "@/components/modules/ObsModule";
 import { RebaForm } from "@/components/modules/RebaForm";
 import { PolOverview } from "@/components/modules/PolOverview";
+import { PlaWizard } from "@/components/modules/PlaWizard";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
 import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
@@ -189,6 +190,8 @@ export default function ModulePage() {
           <PolOverview readOnly={m.mode === "read_only"} />
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
+      ) : m.code === "PLA" ? (
+        <PlaPage readOnly={m.mode === "read_only"} />
       ) : m.code === "CH5" ? (
         <Ch5Page readOnly={m.mode === "read_only"} />
       ) : m.code === "MRL" ? (
@@ -305,6 +308,17 @@ function PsiPage({ readOnly }: { readOnly: boolean }) {
         <div className="border-t border-line p-4"><RebaForm readOnly={readOnly} onSaved={() => setV((x) => x + 1)} /></div>
       </details>
       <ModuleRecords key={v} code="PSI" readOnly={readOnly} />
+    </div>
+  );
+}
+
+/** M-PLA: planes del año con indicadores y asistente, encima de la lista de planes. */
+function PlaPage({ readOnly }: { readOnly: boolean }) {
+  const [v, setV] = useState(0);
+  return (
+    <div className="space-y-6">
+      <PlaWizard readOnly={readOnly} onSaved={() => setV((x) => x + 1)} />
+      <ModuleRecords key={v} code="PLA" readOnly={readOnly} />
     </div>
   );
 }

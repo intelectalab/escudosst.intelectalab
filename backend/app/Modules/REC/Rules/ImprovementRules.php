@@ -43,8 +43,15 @@ class ImprovementRules extends RecordRules
     {
         if ($op === 'create') {
             $values['status'] = 'draft';
+            // RN-PLA-01: versión del plan por año (una nueva versión la crea /pla/plans/{id}/new-version).
+            $extra['version_number'] = ['?', [(int) DB::selectOne('select coalesce(max(version_number), 0) + 1 as n from annual_plans where year = ? and deleted_at is null',
+                [(int) ($values['year'] ?? date('Y'))])->n]];
 
             return;
+        }
+        // RN-PLA-04/08: el plan aprobado, vigente o cerrado no cambia sus datos (solo su estado).
+        if (in_array($current->status, ['approved', 'current', 'closed'], true) && array_diff(array_keys($values), ['status']) !== []) {
+            $this->conflict('El plan ya está aprobado o cerrado: sus datos no cambian. Crea una nueva versión.');
         }
         $to = $values['status'] ?? null;
         if (! $to || $to === $current->status) {
@@ -53,19 +60,66 @@ class ImprovementRules extends RecordRules
         if (! in_array($to, self::PLAN_FLOW[$current->status] ?? [], true)) {
             $this->fail('status', 'Ese cambio de estado no está permitido.');
         }
+        if (in_array($to, ['in_review', 'approved'], true)) {
+            $this->planReady($values, $current);
+        }
         if ($to === 'approved') {
             if (! DB::selectOne('select 1 as ok from annual_plan_items where annual_plan_id = ? and deleted_at is null', [$current->id])) {
                 $this->fail('status', 'El plan no tiene ítems (objetivos, metas y recursos).');
             }
+            // RN-PLA-01: un solo plan aprobado por año (una nueva versión reemplaza a la anterior al ponerse vigente).
+            if (DB::selectOne("select 1 as ok from annual_plans where year = ? and id <> ? and status = 'approved' and deleted_at is null", [$current->year, $current->id])) {
+                $this->fail('status', 'Ya hay otro plan aprobado de ese año: ponlo vigente o vuelve este a borrador.');
+            }
             $model = DB::selectOne('select sst_model from companies where id = ?', [$current->company_id])?->sst_model;
-            if ($model === 'committee' && ! $this->value($values, $current, 'committee_meeting_id')) {
-                $this->fail('committee_meeting_id', 'La empresa tiene Comité SST: indica la sesión en que se aprobó el plan.');
+            if ($model === 'committee') {
+                $meeting = $this->value($values, $current, 'committee_meeting_id');
+                if (! $meeting) {
+                    $this->fail('committee_meeting_id', 'La empresa tiene Comité SST: indica la sesión en que se aprobó el plan.');
+                }
+                // RN-PLA-03: la sesión del comité debe tener quórum.
+                if (! DB::selectOne('select 1 as ok from committee_meetings where id = ? and quorum_reached and deleted_at is null', [$meeting])) {
+                    $this->fail('committee_meeting_id', 'La sesión elegida no tiene quórum registrado: el plan se aprueba en una sesión con quórum.');
+                }
+            } elseif ($model === 'supervisor' && ! DB::selectOne("select 1 as ok from signatures where subject_type = 'annual_plans' and subject_id = ?", [$current->id])) {
+                // RN-PLA-03: con Supervisor SST, la aprobación lleva su firma (se pide con «Pedir firma»).
+                $this->fail('status', 'La empresa tiene Supervisor SST: el plan necesita su firma antes de aprobarse (usa «Pedir firma»).');
             }
             $extra['approved_by'] = ['?', [(string) auth()->id()]];
             $extra['approved_at'] = ['now()', []];
         }
         if ($to === 'current') {
-            DB::update("update annual_plans set status = 'closed' where id <> ? and status = 'current' and deleted_at is null", [$current->id]);
+            DB::update("update annual_plans set status = 'closed' where id <> ? and status = 'current' and year = ? and deleted_at is null", [$current->id, $current->year]);
+        }
+    }
+
+    /** RN-PLA-02/05: línea base aprobada, política vigente, al menos un objetivo y el PASST del mismo año. */
+    private function planReady(array $values, object $current): void
+    {
+        $year = (int) $current->year;
+        $baseline = $this->value($values, $current, 'baseline_assessment_id');
+        if (! $baseline || ! DB::selectOne("select 1 as ok from baseline_assessments where id = ? and status = 'approved' and deleted_at is null", [$baseline])) {
+            $this->fail('baseline_assessment_id', 'Vincula un diagnóstico de línea base aprobado.');
+        }
+        $policy = $this->value($values, $current, 'policy_id');
+        if (! $policy || ! DB::selectOne("select 1 as ok from sst_policies where id = ? and status in ('current', 'review_required') and deleted_at is null", [$policy])) {
+            $this->fail('policy_id', 'Vincula la política SST vigente.');
+        }
+        if (! DB::selectOne("select 1 as ok from annual_plan_items where annual_plan_id = ? and objective_id is not null and deleted_at is null", [$current->id])
+            && ! DB::selectOne("select 1 as ok from sst_objectives where year = ? and status <> 'cancelled' and deleted_at is null", [$year])) {
+            $this->fail('status', "El plan necesita al menos un objetivo SST del año {$year}.");
+        }
+        $pas = DB::selectOne("select year from annual_programs where annual_plan_id = ? and deleted_at is null order by created_at desc limit 1", [$current->id])
+            ?? DB::selectOne("select year from annual_programs where year = ? and deleted_at is null and status <> 'closed' limit 1", [$year]);
+        if (! $pas) {
+            $this->fail('status', "Falta el Programa Anual (PASST) del año {$year}.");
+        }
+        if ((int) $pas->year !== $year) {
+            $this->fail('status', 'El PASST vinculado es de otro año: el plan y sus programas deben ser del mismo año.');
+        }
+        $tp = $this->value($values, $current, 'training_program_id');
+        if ($tp && (int) (DB::selectOne('select year from training_programs where id = ?', [$tp])?->year ?? $year) !== $year) {
+            $this->fail('training_program_id', 'El programa de capacitación vinculado es de otro año.');
         }
     }
 

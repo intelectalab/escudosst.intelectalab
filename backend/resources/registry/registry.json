@@ -3918,7 +3918,8 @@
    "order": 0,
    "uniques": [
     [
-     "year"
+     "year",
+     "version_number"
     ]
    ],
    "fields": [
@@ -4005,6 +4006,37 @@
      "name": "file_id",
      "label": "Archivo",
      "type": "file"
+    },
+    {
+     "name": "baseline_assessment_id",
+     "label": "Línea base",
+     "type": "ref",
+     "ref": "baseline_assessments"
+    },
+    {
+     "name": "policy_id",
+     "label": "Política",
+     "type": "ref",
+     "ref": "sst_policies"
+    },
+    {
+     "name": "training_program_id",
+     "label": "Programa de capacitación",
+     "type": "ref",
+     "ref": "training_programs"
+    },
+    {
+     "name": "version_number",
+     "label": "N.º de versión",
+     "readonly": true,
+     "type": "int"
+    },
+    {
+     "name": "previous_plan_id",
+     "label": "Versión anterior",
+     "readonly": true,
+     "type": "ref",
+     "ref": "annual_plans"
     }
    ]
   },

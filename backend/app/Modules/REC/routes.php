@@ -99,3 +99,11 @@ Route::middleware(['auth:sanctum', 'company', 'module:PSI'])->post('psi/reba', \
 // Política SST (M-POL SCR-POL-01): resumen con % de cargos firmados y revisión pendiente; verificación pública del afiche (QR).
 Route::middleware(['auth:sanctum', 'company', 'module:POL'])->get('pol/overview', [\App\Modules\REC\PolicyOverviewController::class, 'overview']);
 Route::middleware('throttle:30,1')->get('public/verify/policy/{company}/{id}', [\App\Modules\REC\PolicyOverviewController::class, 'public'])->whereUuid('company')->whereUuid('id');
+
+// Plan Anual SST (M-PLA SCR-PLA-02/04): asistente que arma el plan, nuevas versiones e indicadores.
+Route::middleware(['auth:sanctum', 'company', 'module:PLA'])->prefix('pla')->controller(\App\Modules\REC\PlanWizardController::class)->group(function () {
+    Route::get('wizard', 'prefill');
+    Route::post('wizard', 'create');
+    Route::post('plans/{id}/new-version', 'newVersion')->whereUuid('id');
+    Route::get('plans/{id}/indicators', 'indicators')->whereUuid('id');
+});

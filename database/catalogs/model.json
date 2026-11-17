@@ -13805,6 +13805,61 @@
     "comment": null
    },
    {
+    "name": "baseline_assessment_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "baseline_assessments",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "policy_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "sst_policies",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "training_program_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "training_programs",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "version_number",
+    "type": "integer",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "previous_plan_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "annual_plans",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -13862,7 +13917,7 @@
   ],
   "checks": [],
   "uniques": [
-   "year"
+   "year, version_number"
   ]
  },
  {

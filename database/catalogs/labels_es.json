@@ -1238,7 +1238,9 @@
   "evacuation_target_seconds": "Meta de evacuación (segundos)",
   "topic_bank_id": "Tema del banco",
   "behavior_list_id": "Versión de la lista de comportamientos",
-  "principles_checklist": "Principios del art. 23 incluidos"
+  "principles_checklist": "Principios del art. 23 incluidos",
+  "baseline_assessment_id": "Línea base",
+  "previous_plan_id": "Versión anterior"
  },
  "values": {
   "A": "Tipo A",
