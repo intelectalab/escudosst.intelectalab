@@ -46095,6 +46095,28 @@
     "comment": null
    },
    {
+    "name": "period_start",
+    "type": "date",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "period_end",
+    "type": "date",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,

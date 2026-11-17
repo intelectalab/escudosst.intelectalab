@@ -80,6 +80,7 @@ abstract class RecordRules
         'audits' => ImprovementRules::class,
         'audit_findings' => ImprovementRules::class,
         'management_reviews' => ImprovementRules::class,
+        'management_review_outputs' => ImprovementRules::class,
         'measurements' => ImprovementRules::class,
         'change_requests' => ImprovementRules::class,
         'change_reviews' => ImprovementRules::class,

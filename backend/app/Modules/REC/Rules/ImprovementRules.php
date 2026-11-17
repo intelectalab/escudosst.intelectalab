@@ -30,6 +30,7 @@ class ImprovementRules extends RecordRules
             'audits' => $this->audit($op, $values, $current),
             'audit_findings' => $this->auditFinding($values, $current),
             'management_reviews' => $this->review($values, $current, $extra),
+            'management_review_outputs' => $this->reviewOutput($values, $current),
             'measurements' => $this->measurement($values, $current),
             'change_requests' => $this->change($op, $values, $current),
             'monitoring_campaigns' => $this->campaign($values, $current),
@@ -211,6 +212,10 @@ class ImprovementRules extends RecordRules
 
             return;
         }
+        // RN-RVD-05: firmada y cerrada, la revisión no cambia.
+        if ($current->status === 'closed' && $values !== []) {
+            $this->conflict('La revisión ya está cerrada y firmada: no se modifica.');
+        }
         if ($to && $to !== $current->status) {
             $flow = ['planned' => ['in_progress'], 'in_progress' => ['completed', 'planned'], 'completed' => ['closed', 'in_progress'], 'closed' => []];
             if (! in_array($to, $flow[$current->status] ?? [], true)) {
@@ -218,7 +223,7 @@ class ImprovementRules extends RecordRules
             }
         }
         if ($to === 'in_progress' && in_array($current->inputs, [null, '', 'null', '{}', '[]'], true)) {
-            $values['inputs'] = json_encode($this->reviewInputs((int) $current->year), JSON_UNESCAPED_UNICODE);
+            $values['inputs'] = json_encode($this->reviewInputs((int) $current->year, $this->value($values, $current, 'period_start'), $this->value($values, $current, 'period_end')), JSON_UNESCAPED_UNICODE);
         }
         if ($to === 'completed') {
             if (! $this->value($values, $current, 'conclusions')) {
@@ -234,12 +239,29 @@ class ImprovementRules extends RecordRules
         if ($to === 'closed' && DB::selectOne("select 1 as ok from management_review_outputs where review_id = ? and deleted_at is null and status in ('open','in_progress')", [$current->id])) {
             $this->fail('status', 'Hay decisiones de la revisión sin cumplir: complétalas o anúlalas antes de cerrarla.');
         }
+        // RN-RVD-03: se cierra con la firma de gerencia (pedida con «Pedir firma» y firmada por un usuario de gerencia).
+        if ($to === 'closed' && ! DB::selectOne(
+            "select 1 as ok from signatures s join memberships m on m.user_id = s.signer_user_id and m.company_id = s.company_id and m.deleted_at is null
+               join roles r on r.id = m.role_id where s.subject_type = 'management_reviews' and s.subject_id = ? and coalesce(r.base_role_code, r.code) = 'management'", [$current->id])) {
+            $this->fail('status', 'La revisión se cierra con la firma de gerencia: pide la firma a gerencia («Pedir firma») antes de cerrarla.');
+        }
     }
 
-    /** Entradas de la revisión: lo que el sistema ya sabe del año (estadísticas, auditorías, acciones, eventos y plan). */
-    private function reviewInputs(int $year): array
+    /** RN-RVD-02: una decisión de una revisión cerrada no cambia. */
+    private function reviewOutput(array &$values, ?object $current): void
+    {
+        $st = DB::selectOne('select status from management_reviews where id = ?', [$this->value($values, $current, 'review_id')])?->status;
+        if ($st === 'closed') {
+            $this->conflict('La revisión está cerrada: sus decisiones no cambian.');
+        }
+    }
+
+    /** Entradas de la revisión: lo que el sistema ya sabe del año o del periodo (estadísticas, auditorías, acciones, eventos, plan, objetivos y cambios legales). */
+    private function reviewInputs(int $year, ?string $from = null, ?string $to = null): array
     {
         $y = [$year];
+        $from ??= "{$year}-01-01";
+        $to ??= "{$year}-12-31";
         $stats = DB::selectOne('select coalesce(sum(hours_worked),0) as hh, coalesce(sum(accidents_fatal),0) as fatal, coalesce(sum(accidents_disabling),0) as disabling,
                                        coalesce(sum(lost_days),0) as days from monthly_statistics where deleted_at is null and site_id is null and period_year = ?', $y);
         $hh = (float) $stats->hh;
@@ -259,6 +281,12 @@ class ImprovementRules extends RecordRules
                                                     from corrective_actions where deleted_at is null and extract(year from created_at) = ?", $y),
             'annual_plan_items' => (int) DB::selectOne('select count(i.*) as n from annual_plans p join annual_plan_items i on i.annual_plan_id = p.id and i.deleted_at is null
                                              where p.deleted_at is null and p.year = ?', $y)->n,
+            'periodo' => ['desde' => $from, 'hasta' => $to],
+            // Foto de los objetivos del año y de los cambios legales del periodo (requisitos marcados para revisión por cambio normativo).
+            'objetivos' => DB::selectOne("select count(*) as total, count(*) filter (where status = 'achieved') as logrados, count(*) filter (where status = 'not_achieved') as no_logrados,
+                                                 count(*) filter (where status in ('draft', 'active')) as en_curso from sst_objectives where deleted_at is null and year = ?", $y),
+            'cambios_legales' => DB::selectOne('select count(*) as requisitos_por_revisar, count(*) filter (where reviewed_at is not null and reviewed_at::date between ? and ?) as revisados_en_el_periodo
+                                                  from legal_requirements where deleted_at is null and (needs_review or (review_flagged_at::date between ? and ?))', [$from, $to, $from, $to]),
         ];
     }
 
@@ -331,6 +359,15 @@ class ImprovementRules extends RecordRules
 
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
     {
+        // RN-RVD-02: toda decisión con responsable genera su acción en ACR al guardarse.
+        if ($res['table'] === 'management_review_outputs') {
+            $o = DB::selectOne('select o.*, r.company_id as rc from management_review_outputs o join management_reviews r on r.id = o.review_id where o.id = ?', [$id]);
+            if ($o && $o->responsible_user_id && ! $o->corrective_action_id && $o->status !== 'cancelled') {
+                $action = \App\Modules\ACR\AutoAction::create($o->company_id, 'management_review', $o->review_id, mb_substr('Revisión por la dirección: '.$o->description, 0, 300),
+                    $o->description, $o->responsible_user_id, $o->due_on, 'medium');
+                DB::update("update management_review_outputs set corrective_action_id = ?, status = case when status = 'open' then 'in_progress' else status end where id = ?", [$action, $id]);
+            }
+        }
         // RN-MAG-03: una medición sobre el límite crea su acción correctiva (prioridad alta) para el responsable de la campaña.
         if ($res['table'] === 'measurements') {
             $m = DB::selectOne('select m.*, c.responsible_user_id, p.site_id, p.area_id, p.name as point, a.name as agent from measurements m

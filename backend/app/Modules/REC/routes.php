@@ -114,3 +114,6 @@ Route::middleware(['auth:sanctum', 'company', 'module:AUI'])->prefix('aui')->con
     Route::post('audits/{id}/checklist', 'loadChecklist')->whereUuid('id');
     Route::post('audits/{id}/auditor-access', 'auditorAccess')->whereUuid('id')->middleware('throttle:login');
 });
+
+// Indicadores de la revisión por la dirección (M-RVD).
+Route::middleware(['auth:sanctum', 'company', 'module:RVD'])->get('rvd/summary', \App\Modules\REC\ReviewSummaryController::class);

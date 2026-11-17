@@ -20767,6 +20767,16 @@
      ],
      "default": "planned",
      "list": true
+    },
+    {
+     "name": "period_start",
+     "label": "Inicio del periodo",
+     "type": "date"
+    },
+    {
+     "name": "period_end",
+     "label": "Fin del periodo",
+     "type": "date"
     }
    ]
   },

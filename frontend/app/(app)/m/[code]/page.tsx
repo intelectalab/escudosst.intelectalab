@@ -34,6 +34,7 @@ import { RebaForm } from "@/components/modules/RebaForm";
 import { PolOverview } from "@/components/modules/PolOverview";
 import { PlaWizard } from "@/components/modules/PlaWizard";
 import { AuiTools } from "@/components/modules/AuiTools";
+import { RvdSummary } from "@/components/modules/RvdSummary";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
 import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
@@ -195,6 +196,11 @@ export default function ModulePage() {
         <PlaPage readOnly={m.mode === "read_only"} />
       ) : m.code === "AUI" ? (
         <AuiPage readOnly={m.mode === "read_only"} />
+      ) : m.code === "RVD" ? (
+        <div className="space-y-6">
+          <RvdSummary />
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
       ) : m.code === "CH5" ? (
         <Ch5Page readOnly={m.mode === "read_only"} />
       ) : m.code === "MRL" ? (
