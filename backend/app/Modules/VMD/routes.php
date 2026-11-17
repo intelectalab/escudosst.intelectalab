@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'company', 'module:VMD'])->prefix('vmd')->group(function () {
     Route::post('reauth', [VmdController::class, 'reauth'])->middleware('throttle:10,1');
     Route::get('programs', [VmdController::class, 'programs']);
+    Route::get('indicators', [VmdController::class, 'indicators']);
     Route::post('programs', [VmdController::class, 'createProgram']);
     Route::patch('programs/{id}', [VmdController::class, 'updateProgram'])->whereUuid('id');
     Route::get('cases', [VmdController::class, 'cases']);

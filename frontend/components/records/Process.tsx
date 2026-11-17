@@ -4,6 +4,7 @@
 // - TraceStrip: «Viene de» → este registro → «Generó», con enlaces a cada registro o lista filtrada (cualquier módulo).
 // - RecordActions: los pasos propios del proceso según la tabla (acción correctiva, inspección, hallazgo).
 
+import { AttendanceSign, CredentialVerify, TrainerWarning } from "./PeopleExtras";
 import { AtsTrainingCheck, EscalateReport, PermitQr, RotateQr, TemplateVersion } from "./FieldExtras";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -262,14 +263,27 @@ function RecordActionsInner({
       </div>
     );
   if (res.table === "inspection_templates" && res.can.create && !readOnly && row.status !== "draft") return <TemplateVersion row={row} onChanged={onChanged} />;
-  if (res.table === "work_permits" && !STEPS[res.table]) return <PermitQr row={row} />;
+  if (res.table === "credentials" || res.table === "work_permits")
+    return (
+      <div className="space-y-3">
+        <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />
+        {res.table === "credentials" ? <CredentialVerify row={row} /> : <PermitQr row={row} />}
+      </div>
+    );
   if (STEPS[res.table]) return <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "event_notifications") return <NotifyNow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "committee_meetings") return <MeetingFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "annual_programs" || res.table === "training_programs")
     return <ProgramFlow code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "program_activities") return <ActivityExecution row={row} onChanged={onChanged} />;
-  if (res.table === "training_sessions") return <SessionHeld row={row} canEdit={res.can.update} onChanged={onChanged} />;
+  if (res.table === "training_sessions")
+    return (
+      <div className="space-y-3">
+        <TrainerWarning row={row} />
+        <SessionHeld row={row} canEdit={res.can.update} onChanged={onChanged} />
+      </div>
+    );
+  if (res.table === "training_attendances" && res.can.update && !readOnly) return <AttendanceSign row={row} onChanged={onChanged} />;
   if (res.table === "trainings") return <IssueCertificates row={row} onChanged={onChanged} />;
   void code;
   return null;

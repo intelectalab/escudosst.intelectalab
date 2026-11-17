@@ -88,6 +88,16 @@ type Cred = {
 };
 
 export function CredentialSheet({ id }: { id: string }) {
+  return (
+    <div className="min-h-screen bg-gray-100 p-4 print:bg-white print:p-0">
+      <style>{`@page { size: 54mm 86mm; margin: 0 } @media print { .no-print { display: none } }`}</style>
+      <CredentialCard id={id} toolbar />
+    </div>
+  );
+}
+
+/** Tarjeta CR80 (54 × 86 mm) de un fotocheck; en el lote cada tarjeta va en su propia hoja (M-FOT SCR-FOT-04). */
+export function CredentialCard({ id, toolbar = false }: { id: string; toolbar?: boolean }) {
   const { data: c, error } = useSheet<Cred>(`/fot/credentials/${id}/print`);
   const [photo, setPhoto] = useState<string | null>(null);
   useEffect(() => {
@@ -102,10 +112,9 @@ export function CredentialSheet({ id }: { id: string }) {
   if (error) return <p className="p-8">{error}</p>;
   if (!c) return <p className="p-8">Preparando el fotocheck…</p>;
   return (
-    <div className="min-h-screen bg-gray-100 p-4 print:bg-white print:p-0">
-      <style>{`@page { size: 54mm 86mm; margin: 0 } @media print { .no-print { display: none } }`}</style>
-      <Toolbar hint={c.status === "active" ? "Imprime en tarjeta (54 × 86 mm)." : "Atención: el fotocheck no está activo; el QR dirá que no está habilitado."} />
-      <div className="mx-auto flex flex-col items-center overflow-hidden rounded-xl bg-white text-center text-gray-900 shadow print:shadow-none" style={{ width: "54mm", height: "86mm" }}>
+    <>
+      {toolbar && <Toolbar hint={c.status === "active" ? "Imprime en tarjeta (54 × 86 mm)." : "Atención: el fotocheck no está activo; el QR dirá que no está habilitado."} />}
+      <div className="mx-auto mb-4 flex flex-col items-center overflow-hidden rounded-xl bg-white text-center text-gray-900 shadow print:mb-0 print:shadow-none" style={{ width: "54mm", height: "86mm", breakAfter: "page" }}>
         <div className="w-full bg-[#0d3b6e] py-1.5 text-[9px] font-bold uppercase tracking-wider text-white">{c.company.name}</div>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         {photo ? <img src={photo} alt="" className="mt-2 h-[24mm] w-[20mm] rounded object-cover" /> : <div className="mt-2 h-[24mm] w-[20mm] rounded bg-gray-200" />}
@@ -115,6 +124,6 @@ export function CredentialSheet({ id }: { id: string }) {
         <p className="text-[7px] text-gray-600">{c.credential_number} · vence {d(c.expires_on)}</p>
         <p className="text-[7px] text-gray-500">{c.document_masked ?? ""}</p>
       </div>
-    </div>
+    </>
   );
 }

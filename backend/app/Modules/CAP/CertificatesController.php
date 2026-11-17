@@ -99,10 +99,12 @@ class CertificatesController extends Controller
             DB::selectOne(
                 "insert into training_certificates (company_id, training_id, worker_id, certificate_code, verification_code, holder_name, holder_document_masked,
                     course_title, issued_on, expires_on, hours, score, public_verification_enabled, status, certificate_template_id, validated_by, validated_at, created_by, updated_by)
-                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, case when ?::int is null then null else (?::date + make_interval(months => ?::int))::date end, ?, ?, false, ?, ?,
+                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, case when ?::int is null then null else (?::date + make_interval(months => ?::int))::date end, ?, ?, ?, ?, ?,
                          case when ? = 'validated' then ?::uuid end, case when ? = 'validated' then now() end, ?, ?) returning id",
                 [$t->company_id, $training, $p->worker_id, $code, strtoupper(substr(hash('sha256', Str::random(40)), 0, 32)), $p->full_name, $p->document_last4 ? '****'.$p->document_last4 : null,
-                    $t->title, $today, $t->certificate_validity_months, $today, $t->certificate_validity_months, $hours, $p->score, $status, $tpl?->id,
+                    $t->title, $today, $t->certificate_validity_months, $today, $t->certificate_validity_months, $hours, $p->score,
+                    // RN-CAP-12: verificable en la página pública solo si la empresa y el tema lo permiten.
+                    (\App\Core\Support\LegalParams::flag('certificate_public_verification', false) && ($t->public_verification_enabled ?? false)) ? 'true' : 'false', $status, $tpl?->id,
                     $status, (string) auth()->id(), $status, (string) auth()->id(), (string) auth()->id()]
             );
             if ($status === 'validated') {

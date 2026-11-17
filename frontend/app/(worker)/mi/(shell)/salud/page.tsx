@@ -33,6 +33,7 @@ export default function MyHealthPage() {
   const [busy, setBusy] = useState(false);
   const [reauth, setReauth] = useState<string | null>(null);
   const [exams, setExams] = useState<Exam[] | null>(null);
+  const [notes, setNotes] = useState<{ id: string; note_type: string; noted_at: string; assessment: string | null; plan: string | null; program: string }[]>([]);
 
   useEffect(() => {
     workerApi<Summary>("/health").then(setS).catch((e) => setError(errorText(e)));
@@ -46,6 +47,8 @@ export default function MyHealthPage() {
       const list = await workerApi<{ exams: Exam[] }>("/health/results", { headers: { "X-Medical-Reauth": r.reauth_id } });
       setReauth(r.reauth_id);
       setExams(list.exams);
+      // M-VMD: lo que el médico compartió contigo de tus controles de vigilancia.
+      workerApi<{ notes: typeof notes }>("/health/shared", { headers: { "X-Medical-Reauth": r.reauth_id } }).then((x) => setNotes(x.notes)).catch(() => setNotes([]));
       setAsking(false);
     } catch (e) {
       setPinError(errorText(e));
@@ -110,6 +113,14 @@ export default function MyHealthPage() {
           ))}
         </Panel>
       ))}
+      {notes.length > 0 && (
+        <Panel title="Indicaciones de tu médico (vigilancia médica)">
+          <ul className="space-y-2 text-sm">{notes.map((n) => (
+            <li key={n.id}><p className="text-xs text-muted">{fmtDate(n.noted_at)} · {n.program}</p>
+              {n.assessment && <p>{n.assessment}</p>}{n.plan && <p><b>Indicación:</b> {n.plan}</p>}</li>
+          ))}</ul>
+        </Panel>
+      )}
     </>
   );
 }

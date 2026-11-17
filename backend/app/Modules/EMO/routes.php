@@ -17,3 +17,9 @@ Route::middleware(['auth:sanctum', 'company', 'module:EMO'])->prefix('emo')->gro
     Route::post('protocols', [\App\Modules\EMO\ProtocolsController::class, 'save']);
     Route::patch('positions/{id}', [\App\Modules\EMO\ProtocolsController::class, 'position'])->whereUuid('id');
 });
+
+// Programación de EMO sin datos clínicos: vencidos por sede y puesto y órdenes en lote (M-EMO SCR-EMO-01).
+Route::middleware(['auth:sanctum', 'company', 'module:EMO'])->prefix('emo')->group(function () {
+    Route::get('due', [\App\Modules\EMO\EmoScheduleController::class, 'due']);
+    Route::post('orders/bulk', [\App\Modules\EMO\EmoScheduleController::class, 'bulk']);
+});

@@ -117,7 +117,8 @@ class DossierBuilder extends Controller
         $add('11', "Trabajadores con aptitud médica vigente ({$emo->ok} de {$emo->n})", 'EMO', 'fitness_status', null,
             (int) $emo->n === 0 ? 'not_applicable' : ($emo->ok === $emo->n ? 'included' : 'missing'), $emo->ok < $emo->n ? ($emo->n - $emo->ok).' trabajador(es) sin aptitud vigente.' : null);
 
-        $epp = (int) $one("select count(*) as n from ppe_deliveries where deleted_at is null and (delivered_at at time zone 'America/Lima')::date between ? and ?", [$from, $to])->n;
+        // RN-EPP-02: solo cuentan las entregas firmadas por el trabajador.
+        $epp = (int) $one("select count(*) as n from ppe_deliveries where deleted_at is null and status <> 'pending_signature' and signature_id is not null and (delivered_at at time zone 'America/Lima')::date between ? and ?", [$from, $to])->n;
         $add('12', "Registro de entrega de EPP en el periodo ({$epp})", 'EPP', 'ppe_deliveries', null, $epp > 0 ? 'included' : 'missing', $epp > 0 ? null : 'No hay entregas de EPP registradas.');
 
         $insp = (int) $one("select count(*) as n from inspections where deleted_at is null and status in ('completed','closed') and scheduled_on between ? and ?", [$from, $to])->n;
@@ -138,6 +139,15 @@ class DossierBuilder extends Controller
                                  and (e.occurred_at at time zone 'America/Lima')::date between ? and ?", [$from, $to])->n;
         $add('16', "Registros obligatorios del periodo (accidentes e incidentes: {$acc}) e investigaciones", 'REG', 'register_exports', null, $openInv === 0 ? 'included' : 'missing',
             $openInv === 0 ? null : "{$openInv} investigación(es) del periodo sin cerrar.");
+        // M-VUL: adecuaciones de puesto vigentes (sin la condición, que vive en la base médica); una vencida sin revisar es brecha (RN-VUL-04).
+        $adj = $one("select count(*) filter (where status = 'active' and (ends_on is null or ends_on >= ?::date)) as active,
+                            count(*) filter (where status = 'active' and ends_on < ?::date) as late from work_adjustments where deleted_at is null", [$to, $to]);
+        if ((int) $adj->active + (int) $adj->late > 0) {
+            $add('17', "Adecuaciones de puesto de trabajadores vulnerables ({$adj->active} vigentes)", 'VUL', 'work_adjustments', null, (int) $adj->late === 0 ? 'included' : 'expired',
+                (int) $adj->late === 0 ? null : "{$adj->late} adecuación(es) vencida(s) sin revisar.");
+        } else {
+            $add('17', 'Adecuaciones de puesto de trabajadores vulnerables', 'VUL', null, null, 'not_applicable');
+        }
 
         foreach ($selected as $worker) {
             $w = $worker->id;
@@ -151,7 +161,7 @@ class DossierBuilder extends Controller
             $fit = $one("select id, valid_until from fitness_status where worker_id = ? and is_current and status in ('fit','fit_with_restrictions') and deleted_at is null limit 1", [$w]);
             $add('W3', "{$n}: aptitud médica (EMO)", 'EMO', 'fitness_status', $fit?->id, ! $fit ? 'missing' : ($fit->valid_until && $fit->valid_until < date('Y-m-d') ? 'expired' : 'included'),
                 ! $fit ? 'No tiene aptitud médica registrada.' : ($fit->valid_until && $fit->valid_until < date('Y-m-d') ? 'La aptitud médica venció.' : null), $w);
-            $ppe = (int) $one("select count(*) as n from ppe_deliveries where worker_id = ? and deleted_at is null and (delivered_at at time zone 'America/Lima')::date <= ?", [$w, $to])->n;
+            $ppe = (int) $one("select count(*) as n from ppe_deliveries where worker_id = ? and deleted_at is null and status <> 'pending_signature' and signature_id is not null and (delivered_at at time zone 'America/Lima')::date <= ?", [$w, $to])->n;
             $add('W4', "{$n}: entregas de EPP ({$ppe})", 'EPP', 'ppe_deliveries', null, $ppe > 0 ? 'included' : 'missing', $ppe > 0 ? null : 'No registra entregas de EPP.', $w);
             $ris = $one("select id from risst_deliveries where worker_id = ? and status in ('delivered', 'signed') and deleted_at is null limit 1", [$w]);
             $add('W5', "{$n}: entrega del RISST", 'RIS', 'risst_deliveries', $ris?->id, $ris ? 'included' : ($workers >= $risstMin ? 'missing' : 'not_applicable'),

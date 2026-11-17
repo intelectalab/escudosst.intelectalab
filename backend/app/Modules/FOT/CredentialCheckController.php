@@ -78,6 +78,16 @@ class CredentialCheckController extends Controller
                 'training', 'induction' => $this->training($w->id, $r),
                 'sctr' => $this->sctr($w->id),
                 'accreditation' => ['ok', 'No aplica a trabajadores propios'],
+                'ppe_delivery' => (function () use ($w) {
+                    [$ok, $until, $missing] = \App\Modules\REC\Rules\PeopleRules::ppeRequirement($w->id);
+
+                    return $ok ? ['ok', $until ? 'Vigente hasta el '.date('d/m/Y', strtotime($until)) : 'Entregado'] : ['bad', 'Falta: '.implode(', ', $missing)];
+                })(),
+                'document' => (function () use ($w, $r) {
+                    [$ok, $until] = \App\Modules\REC\Rules\PeopleRules::documentRequirement($w->id, $r->worker_document_kind);
+
+                    return $ok ? ['ok', $until ? 'Vigente hasta el '.date('d/m/Y', strtotime($until)) : 'Registrado'] : ['bad', 'Falta el documento vigente'];
+                })(),
                 default => ['ok', 'Se revisa al emitir'],
             };
             $items[] = [

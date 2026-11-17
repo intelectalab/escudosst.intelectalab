@@ -21,6 +21,7 @@ import { SunSummary } from "@/components/modules/SunSummary";
 import { CapMatrix } from "@/components/modules/CapMatrix";
 import { PcaOverview } from "@/components/modules/PcaOverview";
 import { FotIssue } from "@/components/modules/FotIssue";
+import { CapTools, EmoDue, FotMatrix, VmdIndicators } from "@/components/modules/PeoplePanels";
 import { RegRegisters } from "@/components/modules/RegRegisters";
 import { hasModuleReports, ModuleReports } from "@/components/modules/ModuleReports";
 import { SctReconcile } from "@/components/modules/SctReconcile";
@@ -139,7 +140,7 @@ export default function ModulePage() {
           <CompanyUsers readOnly={m.mode === "read_only"} />
         </div>
       ) : m.code === "VMD" ? (
-        <VmdModule readOnly={m.mode === "read_only"} />
+        <div className="space-y-6"><VmdIndicators /><VmdModule readOnly={m.mode === "read_only"} /></div>
       ) : m.code === "AUD" ? (
         <CompanyAudit />
       ) : m.code === "CON" ? (
@@ -156,7 +157,7 @@ export default function ModulePage() {
         </div>
       ) : m.code === "SUN" || m.code === "CAP" || m.code === "FOT" || m.code === "EST" || m.code === "PCA" ? (
         <div className="space-y-6">
-          {m.code === "SUN" ? <SunSummary readOnly={m.mode === "read_only"} /> : m.code === "CAP" ? <CapMatrix /> : m.code === "PCA" ? <PcaOverview /> : m.code === "FOT" ? <FotIssue readOnly={m.mode === "read_only"} /> : <><EstSummary /><EstTools readOnly={m.mode === "read_only"} onSaved={() => undefined} /></>}
+          {m.code === "SUN" ? <SunSummary readOnly={m.mode === "read_only"} /> : m.code === "CAP" ? <><CapMatrix /><CapTools readOnly={m.mode === "read_only"} /></> : m.code === "PCA" ? <PcaOverview /> : m.code === "FOT" ? <><FotIssue readOnly={m.mode === "read_only"} /><FotMatrix /></> : <><EstSummary /><EstTools readOnly={m.mode === "read_only"} onSaved={() => undefined} /></>}
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
       ) : m.code === "MAP" ? (
@@ -175,6 +176,8 @@ export default function ModulePage() {
             <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Protocolos por puesto</summary>
             <div className="border-t border-line p-4"><EmoProtocols readOnly={m.mode === "read_only"} /></div>
           </details>
+          <EmoDue readOnly={m.mode === "read_only"} />
+          <VmdIndicators />
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
       ) : m.code === "SIM" ? (

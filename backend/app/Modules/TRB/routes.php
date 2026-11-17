@@ -54,5 +54,6 @@ Route::middleware(['auth:sanctum', 'company'])->prefix('me/worker')->group(funct
     Route::get('health', [\App\Modules\TRB\WorkerHealthController::class, 'summary']);
     Route::post('health/reauth', [\App\Modules\TRB\WorkerHealthController::class, 'reauth'])->middleware('throttle:10,1');
     Route::get('health/results', [\App\Modules\TRB\WorkerHealthController::class, 'results']);
+    Route::get('health/shared', [\App\Modules\TRB\WorkerHealthController::class, 'shared']);
     Route::get('health/files/{file}', [\App\Modules\TRB\WorkerHealthController::class, 'file'])->whereUuid('file');
 });

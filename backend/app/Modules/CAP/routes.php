@@ -23,3 +23,14 @@ Route::middleware('throttle:30,1')->prefix('public/verify')->group(function () {
 
 // Programa de capacitación (M-PCA SCR-PCA-01/03): vista anual temas × meses y matriz puesto × tema.
 Route::middleware(['auth:sanctum', 'company', 'module:PCA'])->get('pca/overview', \App\Modules\CAP\ProgramOverviewController::class);
+
+// Firma en pantalla, vencimientos y reentrenamiento, reportes, verificación pública y disponibilidad del capacitador (M-CAP SCR-CAP-05/09/13/14, RN-CAP-16).
+Route::middleware(['auth:sanctum', 'company', 'module:CAP'])->prefix('cap')->group(function () {
+    Route::post('attendances/{id}/sign', [\App\Modules\CAP\CapToolsController::class, 'sign'])->whereUuid('id')->middleware('throttle:60,1');
+    Route::get('expirations', [\App\Modules\CAP\CapToolsController::class, 'expirations']);
+    Route::post('expirations/retrain', [\App\Modules\CAP\CapToolsController::class, 'retrain']);
+    Route::get('reports.xlsx', [\App\Modules\CAP\CapToolsController::class, 'report']);
+    Route::get('verification', [\App\Modules\CAP\CapToolsController::class, 'verification']);
+    Route::put('verification', [\App\Modules\CAP\CapToolsController::class, 'setVerification']);
+    Route::get('sessions/{id}/trainer-check', [\App\Modules\CAP\CapToolsController::class, 'trainerCheck'])->whereUuid('id');
+});

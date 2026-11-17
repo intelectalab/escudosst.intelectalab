@@ -4,6 +4,12 @@
 
 use Illuminate\Support\Facades\DB;
 
+afterEach(function () {
+    app('auth')->forgetGuards();
+    \App\Core\Auth\Permissions::flush();
+    $GLOBALS['sus_tokens'] = [];
+});
+
 beforeEach(function () {
     $GLOBALS['sus_tokens'] = [];
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
@@ -58,7 +64,16 @@ it('la homologación aprobada vence según su vigencia y ya no se edita', functi
     $e = $this->postJson('/api/v1/records/HOM/vendor_evaluations', ['template_id' => $t, 'vendor_name' => 'Grúas del Norte', 'evaluated_on' => '2026-01-15'], $this->h)
         ->assertCreated()->json('data.id');
     $this->putJson("/api/v1/hom/evaluations/{$e}/scores", ['scores' => ['SST' => 4]], $this->h)->assertOk();
-    // RN-HOM-03: vence a los 12 meses de la evaluación.
+    // Flujo 2: SST la valida y la aprueba gerencia. RN-HOM-03: vence a los 12 meses de la evaluación.
+    $this->patchJson("/api/v1/records/HOM/vendor_evaluations/{$e}", ['status' => 'completed'], $this->h)->assertOk();
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $me = DB::selectOne('select id from app_auth_lookup_user(?)', [CORPORATIVO_EMAIL])->id;
+    DB::update("update memberships set role_id = (select id from roles where code = 'management' and account_id is null) where user_id = ? and company_id = ?", [$me, HUAYLAS_ID]);
+    DB::select("select set_config('app.company_id', '', false)");
+    $GLOBALS['sus_tokens'] = [];
+    app('auth')->forgetGuards();
+    \App\Core\Auth\Permissions::flush();
+    $this->h = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
     $this->patchJson("/api/v1/records/HOM/vendor_evaluations/{$e}", ['status' => 'approved'], $this->h)->assertOk()->assertJsonPath('data.valid_until', '2027-01-15');
     // RN-HOM-04: aprobada no se edita.
     $this->patchJson("/api/v1/records/HOM/vendor_evaluations/{$e}", ['vendor_name' => 'Otro'], $this->h)->assertStatus(409);

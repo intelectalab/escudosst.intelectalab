@@ -13000,6 +13000,11 @@
      "label": "Plantilla de certificado",
      "type": "ref",
      "ref": "certificate_templates"
+    },
+    {
+     "name": "public_verification_enabled",
+     "label": "Verificación pública habilitada",
+     "type": "bool"
     }
    ]
   },

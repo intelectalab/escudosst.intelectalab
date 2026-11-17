@@ -22,7 +22,11 @@ use Illuminate\Support\Str;
  *  GET   /vmd/cases?program_id=&status=&overdue=1&worker_id=   casos (requiere clave médica; queda registrado)
  *  POST  /vmd/cases                      abrir caso · PATCH /vmd/cases/{id} seguimiento / cierre
  *  GET   /vmd/cases/{id}                 caso con sus notas clínicas (registrado)
- *  POST  /vmd/cases/{id}/notes           nota clínica firmada por su autor; no se edita: se agrega una adenda (RN-VMD-03)
+ *  POST  /vmd/cases/{id}/notes           nota clínica firmada por su autor; no se edita: se agrega una adenda (RN-VMD-03); con
+ *                                        «share_with_worker» queda visible para el trabajador en su app (SCR-VMD-03)
+ *  GET   /vmd/indicators                 SCR-VMD-04 / RN-VMD-01: casos por programa y por área, agregados y sin nombres; un grupo con menos de
+ *                                        min_group_size casos no se muestra (para SST y gerencia, sin datos de personas)
+ *  PATCH /vmd/cases/{id} {work_restrictions} RN-VMD-05: la restricción funcional (sin diagnóstico) pasa a la aptitud vigente del trabajador
  *
  * Cada lectura o escritura de datos de personas se registra en medical_access_logs con la clave de re-autenticación.
  */
@@ -170,8 +174,8 @@ class VmdController extends Controller
         $reauth = $this->reauthId($request);
         $d = $request->validate([
             'status' => ['nullable', 'in:open,in_follow_up,closed'], 'next_control_on' => ['nullable', 'date'], 'risk_classification' => ['nullable', 'in:low,medium,high'],
-            'closure_reason' => ['nullable', 'string', 'max:2000'],
-        ], [], ['closure_reason' => 'motivo de cierre', 'next_control_on' => 'próximo control']);
+            'closure_reason' => ['nullable', 'string', 'max:2000'], 'work_restrictions' => ['nullable', 'string', 'max:1000'],
+        ], [], ['closure_reason' => 'motivo de cierre', 'next_control_on' => 'próximo control', 'work_restrictions' => 'restricción funcional']);
         $after = $this->med($reauth, function ($db) use ($id, $d) {
             $c = $this->find($db, 'surveillance_cases', $id, 'El caso no existe.');
             if ($c->status === 'closed') {
@@ -194,8 +198,58 @@ class VmdController extends Controller
             return $db->selectOne('select worker_id, assigned_doctor_user_id, next_control_on, status from surveillance_cases where id = ?', [$id]);
         });
         $this->scheduleFollowup($id, $after->worker_id, $after->assigned_doctor_user_id, $after->status === 'closed' ? null : $after->next_control_on);
+        // RN-VMD-05: la restricción derivada del caso se publica en la aptitud como restricción funcional (sin diagnóstico).
+        if (array_key_exists('work_restrictions', $d) && trim((string) $d['work_restrictions']) !== '') {
+            $f = DB::selectOne('select id, status from fitness_status where worker_id = ? and is_current and deleted_at is null limit 1', [$after->worker_id]);
+            if (! $f) {
+                throw new ApiProblem(409, 'conflict', 'Sin aptitud vigente', 'El trabajador no tiene una aptitud registrada: registra primero su EMO para publicar la restricción.');
+            }
+            DB::update("update fitness_status set work_restrictions = ?, status = case when status = 'fit' then 'fit_with_restrictions' else status end, updated_at = now(), updated_by = ? where id = ?",
+                [trim($d['work_restrictions']), $this->uid(), $f->id]);
+            DB::insert("insert into audit_logs (company_id, actor_user_id, actor_role, actor_type, action, module_code, entity_type, entity_id, changes) values (?, ?, ?, 'user', 'update', 'VMD', 'fitness_status', ?, ?::jsonb)",
+                [$this->company(), $this->uid(), app(CompanyContext::class)->roleCode, $f->id, json_encode(['work_restrictions' => 'actualizada desde vigilancia médica'])]);
+        }
 
         return response()->json(['data' => ['id' => $id]]);
+    }
+
+    public function indicators(): JsonResponse
+    {
+        $role = DB::selectOne('select coalesce(base_role_code, code) as c from roles where code = ? limit 1', [app(CompanyContext::class)->roleCode])?->c;
+        if (! in_array('vmd.surveillance_programs.read', Permissions::effective(), true) && ! in_array($role, ['sst_manager', 'management'], true)) {
+            throw ApiProblem::forbidden('Tu rol no ve los indicadores de vigilancia médica.');
+        }
+        $min = (int) \App\Core\Support\LegalParams::number('min_group_size', 5);
+        $db = DB::connection('medical');
+        // Solo conteos: la sesión de lectura es propia de esta consulta y queda registrada como acceso agregado.
+        $rows = $db->transaction(function () use ($db) {
+            $db->select("select set_config('app.company_id', ?, true), set_config('app.user_id', ?, true), set_config('app.reauth_session_id', ?, true)",
+                [$this->company(), $this->uid(), (string) Str::uuid()]);
+            $db->select('select med_log_access(?, null, ?, null, ?, ?, ?::inet)', ['surveillance_program', 'read', app(CompanyContext::class)->roleCode, 'Indicadores agregados', request()->ip()]);
+
+            return $db->select("select p.name as program, c.worker_id, c.status, c.risk_classification, (c.next_control_on < current_date) as overdue
+                                  from surveillance_cases c join surveillance_programs p on p.id = c.program_id where c.deleted_at is null and p.deleted_at is null");
+        });
+        $areas = collect(DB::select('select w.id, coalesce(a.name, \'Sin área\') as area from workers w left join areas a on a.id = w.current_area_id where w.id = any(?::uuid[])',
+            ['{'.implode(',', array_unique(array_column($rows, 'worker_id'))).'}']))->pluck('area', 'id');
+        $group = function (callable $key) use ($rows, $min) {
+            $g = [];
+            foreach ($rows as $r) {
+                $k = $key($r);
+                $g[$k] ??= ['name' => $k, 'cases' => 0, 'open' => 0, 'overdue' => 0, 'high' => 0];
+                $g[$k]['cases']++;
+                $g[$k]['open'] += $r->status !== 'closed' ? 1 : 0;
+                $g[$k]['overdue'] += $r->status !== 'closed' && $r->overdue ? 1 : 0;
+                $g[$k]['high'] += $r->risk_classification === 'high' ? 1 : 0;
+            }
+            $shown = array_values(array_filter($g, fn ($x) => $x['cases'] >= $min));
+
+            return ['groups' => $shown, 'hidden' => count($g) - count($shown)];
+        };
+        $total = count($rows);
+
+        return response()->json(['data' => ['min_group' => $min, 'total' => $total >= $min ? $total : null,
+            'by_program' => $group(fn ($r) => $r->program), 'by_area' => $group(fn ($r) => $areas[$r->worker_id] ?? 'Sin área')]]);
     }
 
     public function showCase(Request $request, string $id): JsonResponse
@@ -211,7 +265,7 @@ class VmdController extends Controller
             $this->log($db, 'surveillance_case', $id, $c->worker_id, 'read', null);
             $notes = [];
             if ($canNotes) {
-                $notes = $db->select('select id, note_type, noted_at, author_user_id, subjective, objective, assessment, plan, amended_note_id
+                $notes = $db->select('select id, note_type, noted_at, author_user_id, subjective, objective, assessment, plan, amended_note_id, not is_confidential as shared
                                         from clinical_notes where surveillance_case_id = ? and deleted_at is null order by noted_at', [$id]);
                 if ($notes) {
                     $this->log($db, 'clinical_note', null, $c->worker_id, 'read', 'Notas del caso '.$id);
@@ -236,7 +290,7 @@ class VmdController extends Controller
         $d = $request->validate([
             'note_type' => ['required', 'in:consultation,follow_up,evaluation,referral,other'], 'subjective' => ['nullable', 'string', 'max:5000'],
             'objective' => ['nullable', 'string', 'max:5000'], 'assessment' => ['nullable', 'string', 'max:5000'], 'plan' => ['nullable', 'string', 'max:5000'],
-            'amended_note_id' => ['nullable', 'uuid'],
+            'amended_note_id' => ['nullable', 'uuid'], 'share_with_worker' => ['boolean'],
         ], [], ['note_type' => 'tipo de nota']);
         if (! array_filter([$d['subjective'] ?? null, $d['objective'] ?? null, $d['assessment'] ?? null, $d['plan'] ?? null])) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Escribe al menos una parte de la nota.', ['errors' => ['subjective' => ['Escribe al menos una parte de la nota.']]]);
@@ -246,10 +300,10 @@ class VmdController extends Controller
             if (! empty($d['amended_note_id']) && ! $db->selectOne('select 1 as ok from clinical_notes where id = ? and surveillance_case_id = ?', [$d['amended_note_id'], $id])) {
                 throw ApiProblem::notFound('La nota que quieres corregir no existe en este caso.');
             }
-            $nid = $db->selectOne('insert into clinical_notes (company_id, surveillance_case_id, worker_id, note_type, noted_at, author_user_id, subjective, objective, assessment, plan, amended_note_id, created_by)
-                                   values (?, ?, ?, ?, now(), ?, ?, ?, ?, ?, ?, ?) returning id',
+            $nid = $db->selectOne('insert into clinical_notes (company_id, surveillance_case_id, worker_id, note_type, noted_at, author_user_id, subjective, objective, assessment, plan, amended_note_id, is_confidential, created_by)
+                                   values (?, ?, ?, ?, now(), ?, ?, ?, ?, ?, ?, ?, ?) returning id',
                 [$this->company(), $id, $c->worker_id, $d['note_type'], $this->uid(), $d['subjective'] ?? null, $d['objective'] ?? null, $d['assessment'] ?? null,
-                    $d['plan'] ?? null, $d['amended_note_id'] ?? null, $this->uid()])->id;
+                    $d['plan'] ?? null, $d['amended_note_id'] ?? null, ! empty($d['share_with_worker']) ? 'false' : 'true', $this->uid()])->id;
             if ($c->status === 'open') {
                 $db->update("update surveillance_cases set status = 'in_follow_up', updated_by = ? where id = ?", [$this->uid(), $id]);
             }

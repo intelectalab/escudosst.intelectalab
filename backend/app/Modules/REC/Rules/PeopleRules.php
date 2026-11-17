@@ -512,6 +512,23 @@ class PeopleRules extends RecordRules
 
                     return (int) $a->n > 0;
                 })(),
+                // M-FOT SCR-FOT-01: EPP obligatorio del puesto entregado (firmado) y vigente; documento del trabajador vigente.
+                'ppe_delivery' => (function () use ($worker, $cworker, &$until) {
+                    if (! $worker) {
+                        return true;
+                    }
+                    [$ok, $until] = self::ppeRequirement($worker);
+
+                    return $ok;
+                })(),
+                'document' => (function () use ($r, $worker, $cworker, &$until) {
+                    if (! $worker) {
+                        return true;
+                    }
+                    [$ok, $until] = self::documentRequirement($worker, $r->worker_document_kind);
+
+                    return $ok;
+                })(),
                 default => true,
             };
             if ($ok) {
@@ -525,13 +542,45 @@ class PeopleRules extends RecordRules
                 continue;
             }
             $reasons[] = ['type' => (string) $r->requirement_type, 'text' => $r->description ?: ['emo_fitness' => 'Aptitud médica vigente', 'training' => 'Capacitación vigente', 'induction' => 'Inducción',
-                'sctr' => 'SCTR salud y pensión vigentes', 'accreditation' => 'Contratista acreditado'][$r->requirement_type] ?? $r->requirement_type];
+                'sctr' => 'SCTR salud y pensión vigentes', 'accreditation' => 'Contratista acreditado', 'ppe_delivery' => 'EPP obligatorio entregado y vigente',
+                'document' => 'Documento vigente'][$r->requirement_type] ?? $r->requirement_type];
         }
         if ($expires && $expires < $today) {
             $reasons[] = ['type' => 'expired', 'text' => 'Fotocheck vencido'];
         }
 
         return ['reasons' => $reasons, 'until' => $dates ? min($dates) : null];
+    }
+
+    /**
+     * EPP obligatorio del puesto del trabajador: cada ítem con una entrega firmada (estado «entregada») y no vencida.
+     * @return array{0: bool, 1: ?string, 2: list<string>} [cumple, vence el más próximo, ítems que faltan]
+     */
+    public static function ppeRequirement(string $worker): array
+    {
+        $rows = DB::select(
+            "select i.name, (select min(d.expires_on) from ppe_deliveries d where d.worker_id = w.id and d.ppe_item_id = r.ppe_item_id and d.deleted_at is null and d.status = 'delivered'
+                                and (d.expires_on is null or d.expires_on >= current_date)) as until,
+                    exists (select 1 from ppe_deliveries d where d.worker_id = w.id and d.ppe_item_id = r.ppe_item_id and d.deleted_at is null and d.status = 'delivered'
+                              and (d.expires_on is null or d.expires_on >= current_date)) as ok
+               from workers w join ppe_position_requirements r on r.position_id = w.current_position_id and r.deleted_at is null and r.is_mandatory
+               join ppe_items i on i.id = r.ppe_item_id where w.id = ?", [$worker]);
+        $missing = array_column(array_filter($rows, fn ($x) => ! $x->ok), 'name');
+        $dates = array_filter(array_column($rows, 'until'));
+
+        return [$missing === [], $dates ? min($dates) : null, $missing];
+    }
+
+    /** Documento del trabajador de ese tipo, vigente. @return array{0: bool, 1: ?string} */
+    public static function documentRequirement(string $worker, ?string $kind): array
+    {
+        if (! $kind) {
+            return [true, null];
+        }
+        $d = DB::selectOne("select count(*) as n, bool_or(expires_on is null) as forever, max(expires_on) as until from worker_documents
+                             where worker_id = ? and document_kind = ? and deleted_at is null and status in ('valid', 'expiring') and (expires_on is null or expires_on >= current_date)", [$worker, $kind]);
+
+        return [(int) $d->n > 0, $d->forever ? null : $d->until];
     }
 
     // ── Permisos de trabajo ──

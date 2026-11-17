@@ -98,6 +98,23 @@ class WorkerHealthController extends Controller
         return response()->json(['data' => ['exams' => $exams]]);
     }
 
+    /** SCR-VMD-03 / M-VMD §4: lo que el médico compartió con el trabajador de sus casos de vigilancia (con su re-autenticación). */
+    public function shared(Request $request): JsonResponse
+    {
+        $this->module();
+        $w = WorkerSelf::row();
+        $reauth = $this->reauthId($request, $w->id);
+        $this->audit($w->id, 'clinical_note', null, 'read', $reauth);
+        $rows = $this->med($reauth, function ($db) use ($w) {
+            $this->log($db, 'clinical_note', null, $w->id, 'read');
+            return $db->select("select n.id, n.note_type, n.noted_at, n.assessment, n.plan, p.name as program from clinical_notes n
+                                  join surveillance_cases c on c.id = n.surveillance_case_id join surveillance_programs p on p.id = c.program_id
+                                 where n.worker_id = ? and n.deleted_at is null and not n.is_confidential order by n.noted_at desc", [$w->id]);
+        });
+
+        return response()->json(['data' => ['notes' => $rows]]);
+    }
+
     public function file(Request $request, string $file): Response
     {
         $this->module();

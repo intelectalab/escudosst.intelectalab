@@ -31504,6 +31504,17 @@
     "comment": null
    },
    {
+    "name": "public_verification_enabled",
+    "type": "boolean",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,

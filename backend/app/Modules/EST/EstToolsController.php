@@ -178,13 +178,7 @@ class EstToolsController extends Controller
         if (! $ok) {
             $this->fail('value', 'El valor no es válido para ese parámetro.');
         }
-        $company = app(CompanyContext::class)->companyId;
-        $g = DB::selectOne('select value_type, unit, description, legal_reference from legal_parameters where key = ? and company_id is null and deleted_at is null limit 1', [$d['key']]);
-        DB::update('update legal_parameters set valid_to = current_date - 1 where key = ? and company_id = ? and deleted_at is null and valid_to is null and valid_from < current_date', [$d['key'], $company]);
-        DB::update('update legal_parameters set deleted_at = now() where key = ? and company_id = ? and deleted_at is null and valid_from = current_date', [$d['key'], $company]);
-        DB::insert('insert into legal_parameters (company_id, key, value, value_type, unit, description, legal_reference, source, valid_from, to_confirm, created_by)
-                    values (?, ?, ?, ?, ?, ?, ?, ?, current_date, false, ?)',
-            [$company, $d['key'], $v, $g->value_type ?? 'text', $g->unit ?? null, $g->description ?? $d['key'], $g->legal_reference ?? null, 'Empresa', (string) auth()->id()]);
+        LegalParams::setForCompany($d['key'], $v);
 
         return response()->json(['data' => ['key' => $d['key'], 'value' => $v]]);
     }

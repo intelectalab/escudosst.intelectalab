@@ -65,4 +65,19 @@ final class LegalParams
 
         return $v && trim((string) $v->value) !== '' ? trim((string) $v->value) : $default;
     }
+
+    /** Fija el valor propio de la empresa activa desde hoy (el anterior queda con vigencia hasta ayer). */
+    public static function setForCompany(string $key, string $value): void
+    {
+        $company = app(CompanyContext::class)->companyId;
+        $g = DB::selectOne('select value_type, unit, description, legal_reference from legal_parameters where key = ? and company_id is null and deleted_at is null limit 1', [$key]);
+        DB::update('update legal_parameters set valid_to = current_date - 1 where key = ? and company_id = ? and deleted_at is null and valid_to is null and valid_from < current_date', [$key, $company]);
+        // Un cambio el mismo día corrige el valor de hoy (la clave única es empresa + parámetro + fecha de inicio).
+        if (DB::update('update legal_parameters set value = ?, deleted_at = null, valid_to = null, updated_at = now() where key = ? and company_id = ? and valid_from = current_date', [$value, $key, $company]) > 0) {
+            return;
+        }
+        DB::insert('insert into legal_parameters (company_id, key, value, value_type, unit, description, legal_reference, source, valid_from, to_confirm, created_by)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, current_date, false, ?)',
+            [$company, $key, $value, $g->value_type ?? 'text', $g->unit ?? null, $g->description ?? $key, $g->legal_reference ?? null, 'Empresa', auth()->id()]);
+    }
 }

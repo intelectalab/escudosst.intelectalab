@@ -16,7 +16,7 @@ type Case = {
   id: string; program_id: string; program: string; worker_id: string; worker: string; document_masked: string | null; opened_on: string; reason: string | null;
   risk_classification: "low" | "medium" | "high" | null; next_control_on: string | null; closed_on: string | null; status: string; overdue: boolean; closure_reason?: string | null;
 };
-type Note = { id: string; note_type: string; noted_at: string; author: string; subjective: string | null; objective: string | null; assessment: string | null; plan: string | null; amended_note_id: string | null };
+type Note = { id: string; note_type: string; noted_at: string; author: string; subjective: string | null; objective: string | null; assessment: string | null; plan: string | null; amended_note_id: string | null; shared?: boolean };
 
 const RISKS: Record<string, string> = {
   noise: "Ruido", respiratory: "Respiratorio", musculoskeletal: "Musculoesquelético", psychosocial: "Psicosocial", chemical: "Químico", biological: "Biológico",
@@ -277,7 +277,8 @@ function CaseForm({ med, programs, preset, onClose, onSaved }: { med: Med; progr
 function CaseDetail({ id, med, readOnly, onClose, onChanged }: { id: string; med: Med; readOnly: boolean; onClose: () => void; onChanged: () => void }) {
   const [data, setData] = useState<{ case: Case; notes: Note[]; can_notes: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [note, setNote] = useState({ note_type: "follow_up", subjective: "", objective: "", assessment: "", plan: "", amended_note_id: "" });
+  const [note, setNote] = useState({ note_type: "follow_up", subjective: "", objective: "", assessment: "", plan: "", amended_note_id: "", share_with_worker: false });
+  const [restriction, setRestriction] = useState("");
   const [control, setControl] = useState("");
   const [closing, setClosing] = useState(false);
   const [reason, setReason] = useState("");
@@ -318,6 +319,11 @@ function CaseDetail({ id, med, readOnly, onClose, onChanged }: { id: string; med
           </div>
           {c.status !== "closed" && !readOnly && (
             <div className="flex flex-wrap items-end gap-2 rounded-xl border border-line p-3">
+              <div className="flex w-full flex-wrap items-end gap-2">
+                <div className="min-w-[16rem] flex-1"><FormField label="Restricción funcional para su aptitud (sin diagnóstico)">
+                  <input className="filter-control w-full" value={restriction} onChange={(e) => setRestriction(e.target.value)} placeholder="Ej.: Sin exposición a ruido mayor a 80 dB" /></FormField></div>
+                <Button disabled={!restriction.trim() || busy} onClick={() => run(() => med(`/vmd/cases/${id}`, { method: "PATCH", body: { work_restrictions: restriction } })).then((ok) => ok && setRestriction(""))}>Publicar en la aptitud</Button>
+              </div>
               <FormField label="Reprogramar próximo control"><input type="date" className="filter-control" value={control} onChange={(e) => setControl(e.target.value)} /></FormField>
               <Button disabled={!control || busy} onClick={() => run(() => med(`/vmd/cases/${id}`, { method: "PATCH", body: { next_control_on: control } })).then((ok) => ok && setControl(""))}>Guardar fecha</Button>
               {!closing ? (
@@ -346,6 +352,7 @@ function CaseDetail({ id, med, readOnly, onClose, onChanged }: { id: string; med
                 {n.objective && <p><b>O:</b> {n.objective}</p>}
                 {n.assessment && <p><b>A:</b> {n.assessment}</p>}
                 {n.plan && <p><b>P:</b> {n.plan}</p>}
+                {n.shared && <p className="text-xs font-semibold text-brand-strong">Compartida con el trabajador</p>}
                 {c.status !== "closed" && !readOnly && (
                   <button className="mt-1 text-xs font-semibold text-brand hover:underline" onClick={() => setNote({ ...note, note_type: "other", amended_note_id: n.id })}>Corregir con una adenda</button>
                 )}
@@ -363,9 +370,11 @@ function CaseDetail({ id, med, readOnly, onClose, onChanged }: { id: string; med
                 <textarea key={k} rows={2} className="filter-control w-full" value={note[k]} onChange={(e) => setNote({ ...note, [k]: e.target.value })}
                   placeholder={{ subjective: "S · Lo que refiere el trabajador", objective: "O · Hallazgos y resultados", assessment: "A · Evaluación", plan: "P · Plan y próximos pasos" }[k]} />
               ))}
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={note.share_with_worker} onChange={(e) => setNote({ ...note, share_with_worker: e.target.checked })} />
+                Compartir esta nota con el trabajador (la verá en su app, confirmando su identidad)</label>
               <div className="flex gap-2">
                 <Button variant="primary" loading={busy} onClick={() => run(() => med(`/vmd/cases/${id}/notes`, { method: "POST", body: { ...note, amended_note_id: note.amended_note_id || null } }))
-                  .then((ok) => ok && setNote({ note_type: "follow_up", subjective: "", objective: "", assessment: "", plan: "", amended_note_id: "" }))}>Firmar y guardar nota</Button>
+                  .then((ok) => ok && setNote({ note_type: "follow_up", subjective: "", objective: "", assessment: "", plan: "", amended_note_id: "", share_with_worker: false }))}>Firmar y guardar nota</Button>
                 {note.amended_note_id && <Button onClick={() => setNote({ ...note, amended_note_id: "" })}>Cancelar adenda</Button>}
               </div>
             </div>
