@@ -507,6 +507,16 @@ class DocsFieldRules extends RecordRules
 
     private function target(array &$values, ?object $current, array &$extra): void
     {
+        // RN-POL-06: con el objetivo ligado a un indicador, el valor actual sale del último valor guardado del indicador.
+        $kpi = ($o = $this->value($values, $current, 'objective_id')) ? DB::selectOne('select indicator_kpi_id from sst_objectives where id = ?', [$o])?->indicator_kpi_id : null;
+        if ($kpi) {
+            if (array_key_exists('actual_value', $values) && ! app()->bound('pol.kpi_refresh')) {
+                $this->fail('actual_value', 'Esta meta está ligada a un indicador: su valor actual se toma del indicador y no se edita a mano.');
+            }
+            if (! $current && ($last = self::kpiValue($kpi, $this->value($values, $current, 'target_on')))) {
+                $values['actual_value'] = $last;
+            }
+        }
         $target = $this->value($values, $current, 'target_value');
         $actual = $this->value($values, $current, 'actual_value');
         if ($actual !== null && $target !== null && (float) $target != 0.0) {
@@ -519,6 +529,34 @@ class DocsFieldRules extends RecordRules
             }
             $values['measured_at'] = $this->value($values, $current, 'measured_at') ?? now()->toIso8601String();
         }
+    }
+
+    /** Último valor guardado del indicador (toda la empresa) hasta la fecha de la meta. */
+    public static function kpiValue(string $kpi, ?string $until): ?float
+    {
+        $v = DB::selectOne('select value from kpi_snapshots where kpi_definition_id = ? and site_id is null and area_id is null and deleted_at is null and value is not null
+                              and (?::date is null or period_end <= ?::date) order by period_end desc limit 1', [$kpi, $until, $until])?->value;
+
+        return $v === null ? null : (float) $v;
+    }
+
+    /** RN-POL-06/07: actualiza las metas ligadas a un indicador con su último valor y su color (lo llama el guardado diario de indicadores). */
+    public static function refreshKpiTargets(): int
+    {
+        $amber = (float) \App\Core\Support\LegalParams::number('objective_amber_pct', 70);
+        $n = 0;
+        foreach (DB::select("select t.id, t.target_value, t.target_on, o.indicator_kpi_id from objective_targets t join sst_objectives o on o.id = t.objective_id
+                              where t.deleted_at is null and o.deleted_at is null and o.indicator_kpi_id is not null and t.status <> 'achieved'") as $t) {
+            $v = self::kpiValue($t->indicator_kpi_id, $t->target_on);
+            if ($v === null || ! (float) $t->target_value) {
+                continue;
+            }
+            $pct = round($v * 100 / (float) $t->target_value, 2);
+            $n += DB::update('update objective_targets set actual_value = ?, achievement_pct = ?, status = ?, measured_at = now(), updated_at = now() where id = ?',
+                [$v, $pct, $pct >= 100 ? 'achieved' : ($pct >= $amber ? 'on_track' : 'at_risk'), $t->id]);
+        }
+
+        return $n;
     }
 
     private function delivery(array &$values, ?object $current): void

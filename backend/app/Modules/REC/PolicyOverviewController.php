@@ -19,6 +19,26 @@ use Illuminate\Support\Str;
  */
 class PolicyOverviewController extends Controller
 {
+    /**
+     * GET/PUT /pol/settings {objective_amber_pct} — RN-POL-07: umbral ámbar de las metas de la empresa (% de la meta desde el
+     * que la meta va «en camino»); el cambio queda con vigencia e historial en los parámetros de la empresa.
+     */
+    public function settings(\Illuminate\Http\Request $request): JsonResponse
+    {
+        if ($request->isMethod('put')) {
+            if (! in_array('pol.sst_objectives.update', Permissions::effective(), true)) {
+                throw ApiProblem::forbidden('Tu rol no cambia el umbral de las metas.');
+            }
+            $d = $request->validate(['objective_amber_pct' => ['required', 'integer', 'min:1', 'max:99']]);
+            \App\Core\Support\LegalParams::setForCompany('objective_amber_pct', (string) $d['objective_amber_pct']);
+            DB::transaction(fn () => \App\Modules\REC\Rules\DocsFieldRules::refreshKpiTargets());
+        } elseif (! in_array('pol.sst_policies.read', Permissions::effective(), true)) {
+            throw ApiProblem::forbidden('Tu rol no ve la política SST.');
+        }
+
+        return response()->json(['data' => ['objective_amber_pct' => (int) \App\Core\Support\LegalParams::number('objective_amber_pct', 70)]]);
+    }
+
     public function overview(): JsonResponse
     {
         if (! in_array('pol.sst_policies.read', Permissions::effective(), true)) {

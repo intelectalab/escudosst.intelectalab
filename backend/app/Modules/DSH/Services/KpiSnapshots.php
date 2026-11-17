@@ -29,6 +29,21 @@ final class KpiSnapshots
 
     public function forCompany(string $company): int
     {
+        $n = $this->snapshots($company);
+        try {
+            DB::transaction(function () use ($company) {
+                DbContext::setCompany($company);
+                \App\Modules\REC\Rules\DocsFieldRules::refreshKpiTargets();
+            });
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $n;
+    }
+
+    private function snapshots(string $company): int
+    {
         return DB::transaction(function () use ($company) {
             DbContext::setCompany($company);
             if (! DB::selectOne("select 1 as ok from feature_flags where module_code = 'DSH' and mode in ('enabled', 'read_only') and deleted_at is null")) {

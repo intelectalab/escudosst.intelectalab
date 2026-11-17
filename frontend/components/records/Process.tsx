@@ -6,6 +6,7 @@
 
 import { AttendanceSign, CredentialVerify, TrainerWarning } from "./PeopleExtras";
 import { InvWorkspace } from "./InvWorkspace";
+import { BaselineRadar } from "@/components/modules/LbaExtras";
 import { AccreditationScope } from "@/components/modules/CtrExtras";
 import { AtsTrainingCheck, EscalateReport, PermitQr, RotateQr, TemplateVersion } from "./FieldExtras";
 import Link from "next/link";
@@ -1089,12 +1090,26 @@ function BaselineFlow({ row, canEdit, onChanged }: { row: RecordRow; canEdit: bo
             >
               Cargar preguntas base
             </Button>
-            <Button variant="primary" onClick={() => act(() => records.update("LBA", "baseline_assessments", row.id, { status: "approved" }), "Diagnóstico aprobado: se generaron las brechas.")}>
-              Aprobar diagnóstico
-            </Button>
+            {st === "in_review" ? (
+              <>
+                <Button variant="primary" onClick={() => act(() => records.update("LBA", "baseline_assessments", row.id, { status: "approved" }), "Diagnóstico aprobado: se generaron las brechas.")}>
+                  Aprobar (conformidad del comité)
+                </Button>
+                <Button onClick={() => { const notes = window.prompt("Observaciones para devolver el diagnóstico"); if (notes) act(() => records.update("LBA", "baseline_assessments", row.id, { status: "draft", review_notes: notes }), "Diagnóstico devuelto con observaciones."); }}>
+                  Devolver con observaciones
+                </Button>
+              </>
+            ) : (
+              <Button variant="primary" onClick={() => act(() => records.update("LBA", "baseline_assessments", row.id, { status: "in_review" }), "Enviado a revisión del comité.")}>
+                Enviar a revisión del comité
+              </Button>
+            )}
           </div>
+          {row.review_notes ? <p className="text-xs text-amber-ink">Observaciones de la revisión: {String(row.review_notes)}</p> : null}
         </>
       )}
+      <a href="#" onClick={(e) => { e.preventDefault(); void downloadFile(`/lba/assessments/${row.id}.xlsx`, `linea-base-anexo3.xlsx`); }} className="inline-block text-xs font-semibold text-brand underline">Anexo 3 en Excel</a>
+      <BaselineRadar id={row.id} />
       {msg && <p className="text-brand-strong">{msg}</p>}
     </section>
   );

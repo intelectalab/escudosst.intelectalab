@@ -95,6 +95,8 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal')->group(funct
 // Lado del cliente (con empresa activa): estado de su suscripción y avisos en el sistema.
 Route::middleware(['auth:sanctum', 'company'])->group(function () {
     Route::get('me/subscription', [MySubscriptionController::class, 'show']);
+    Route::get('me/subscription/detail', [MySubscriptionController::class, 'detail']);
+    Route::post('me/subscription/upgrade', [MySubscriptionController::class, 'upgrade'])->middleware('throttle:10,1');
     Route::get('me/notifications', [MySubscriptionController::class, 'notifications']);
     Route::post('me/notifications/read-all', [MySubscriptionController::class, 'readAll']);
     Route::post('me/notifications/{notification}/read', [MySubscriptionController::class, 'read'])->whereUuid('notification');

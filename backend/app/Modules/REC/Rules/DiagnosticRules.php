@@ -42,6 +42,15 @@ class DiagnosticRules extends RecordRules
         if ($res['table'] === 'baseline_assessments' && ($values['status'] ?? null) === 'approved') {
             $this->gaps($id);
         }
+        // M-LBA §7: al enviarlo a revisión se avisa al comité (o supervisor); al devolverlo, a quien lo evalúa.
+        if ($res['table'] === 'baseline_assessments' && in_array($values['status'] ?? null, ['in_review', 'draft'], true) && ($current?->status ?? null) !== ($values['status'] ?? null)) {
+            $a = DB::selectOne('select id, title, evaluator_user_id, created_by from baseline_assessments where id = ?', [$id]);
+            $review = $values['status'] === 'in_review';
+            \App\Modules\NOT\Notify::users($review ? \App\Modules\NOT\Notify::roles(['committee_member']) : array_filter([$a->evaluator_user_id, $a->created_by]),
+                $review ? 'lba.review_requested' : 'lba.review_returned', 'LBA', $id, $review ? 'Diagnóstico de línea base para revisar' : 'Diagnóstico de línea base devuelto',
+                $review ? "Revisa el diagnóstico «{$a->title}» y apruébalo o devuélvelo con observaciones." : "El comité devolvió «{$a->title}» con observaciones.",
+                '/m/lba?t=baseline_assessments&open='.$id, 'normal', 'lba.review:'.$id.':'.$values['status'].':'.date('YmdHi'));
+        }
         if ($res['table'] === 'requirement_evaluations') {
             $e = DB::selectOne('select * from requirement_evaluations where id = ?', [$id]);
             DB::update('update legal_requirements set next_evaluation_on = ? where id = ?', [$e->next_evaluation_on, $e->legal_requirement_id]);
@@ -74,11 +83,22 @@ class DiagnosticRules extends RecordRules
             $this->conflict('El diagnóstico está aprobado: no se modifica. Para actualizarlo, crea un nuevo diagnóstico.');
         }
         $to = $values['status'] ?? null;
-        $flow = ['draft' => ['in_progress', 'completed', 'approved'], 'in_progress' => ['completed', 'approved', 'draft'], 'completed' => ['approved', 'in_progress'], 'approved' => ['archived'], 'archived' => []];
+        // M-LBA §9: se envía a revisión del comité o supervisor, que lo aprueba o lo devuelve con observaciones.
+        $flow = ['draft' => ['in_progress', 'completed', 'in_review'], 'in_progress' => ['completed', 'in_review', 'draft'], 'completed' => ['in_review', 'in_progress'],
+            'in_review' => ['approved', 'draft'], 'approved' => ['archived'], 'archived' => []];
         if ($to && $to !== $current->status && ! in_array($to, $flow[$current->status] ?? [], true)) {
             $this->fail('status', $current->status === 'approved' ? 'El diagnóstico aprobado no se reabre: crea un nuevo diagnóstico para actualizarlo.' : 'Ese cambio de estado no está permitido.');
         }
-        if (in_array($to, ['completed', 'approved'], true)) {
+        if ($to === 'approved' && $current->status !== 'in_review') {
+            $this->fail('status', 'Envía primero el diagnóstico a revisión del comité o supervisor.');
+        }
+        if ($to === 'draft' && $current->status === 'in_review' && trim((string) $this->value($values, $current, 'review_notes')) === '') {
+            $this->fail('review_notes', 'Escribe las observaciones para devolver el diagnóstico.');
+        }
+        if ($to === 'in_review') {
+            $extra['submitted_for_review_at'] = ['now()', []];
+        }
+        if (in_array($to, ['completed', 'in_review', 'approved'], true)) {
             $pending = (int) DB::selectOne("select count(*) as n from baseline_items where assessment_id = ? and deleted_at is null and result = 'pending'", [$current->id])->n;
             $total = (int) DB::selectOne('select count(*) as n from baseline_items where assessment_id = ? and deleted_at is null', [$current->id])->n;
             if ($total === 0) {

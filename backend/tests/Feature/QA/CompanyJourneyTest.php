@@ -216,6 +216,7 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
         $result = $i === 0 ? 'non_compliant' : ($i === 1 ? 'partial' : 'compliant');
         $this->patchJson("/api/v1/records/LBA/baseline_items/{$item['id']}", ['result' => $result, 'evidence_notes' => 'Revisado en planta'], $a)->qaStatus(200);
     }
+    $this->patchJson("/api/v1/records/LBA/baseline_assessments/{$lba}", ['status' => 'in_review'], $a)->assertOk();
     $this->patchJson("/api/v1/records/LBA/baseline_assessments/{$lba}", ['status' => 'approved'], $a)->qaStatus(200);
     $assess = $this->getJson("/api/v1/records/LBA/baseline_assessments/{$lba}", $a)->qaStatus(200);
     expect((float) $assess->json('data.score_pct'))->toBeGreaterThan(0)->toBeLessThan(100);

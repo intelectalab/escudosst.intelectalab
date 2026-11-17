@@ -19,6 +19,7 @@ it('asistente de línea base: crea, carga preguntas, responde y aprueba con brec
     foreach ($items as $k => $i) {
         $this->patchJson("/api/v1/records/LBA/baseline_items/{$i['id']}", ['result' => $k === 0 ? 'non_compliant' : 'compliant', 'evidence_notes' => null], $h)->assertOk();
     }
+    $this->patchJson("/api/v1/records/LBA/baseline_assessments/{$a}", ['status' => 'in_review'], $h)->assertOk();
     $this->patchJson("/api/v1/records/LBA/baseline_assessments/{$a}", ['status' => 'approved'], $h)->assertOk();
     expect($this->getJson("/api/v1/records/LBA/baseline_gaps?f[assessment_id]={$a}", $h)->json('meta.total'))->toBe(1);
 });

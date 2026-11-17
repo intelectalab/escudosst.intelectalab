@@ -48,6 +48,56 @@ class MySubscriptionController extends Controller
         ] : null]);
     }
 
+    /**
+     * GET /me/subscription/detail — SCR-SUS-05 «Mi suscripción» (administrador de la cuenta): plan, complementos y cada módulo
+     * con su estado; los precios se muestran «Por definir» (criterio de aceptación 2 de M-SUS).
+     */
+    public function detail(): JsonResponse
+    {
+        $this->billingOnly();
+        $company = app(CompanyContext::class)->companyId;
+        $s = DB::selectOne("select s.id, s.status, s.billing_period, s.started_at, s.trial_ends_at, s.current_period_end, p.code, p.name, p.max_workers, p.max_sites, p.max_companies
+                              from subscriptions s join plans p on p.id = s.plan_id where s.company_id = ? and s.deleted_at is null
+                             order by (s.status not in ('cancelled')) desc, s.started_at desc limit 1", [$company]);
+        $addons = $s ? DB::select("select a.code, a.name, sa.status from subscription_addons sa join addons a on a.id = sa.addon_id
+                                    where sa.subscription_id = ? and sa.deleted_at is null and (sa.company_id is null or sa.company_id = ?) order by a.name", [$s->id, $company]) : [];
+        $modules = DB::select("select m.code, m.name, m.group_number, m.is_addon, coalesce(f.mode, 'locked') as mode, coalesce(f.company_enabled, true) as company_enabled
+                                 from modules m left join feature_flags f on f.module_code = m.code and f.deleted_at is null and f.company_id = ?
+                                where m.deleted_at is null order by m.group_number, m.number", [$company]);
+
+        return response()->json(['data' => [
+            'plan' => $s ? ['code' => $s->code, 'name' => $s->name, 'status' => $s->status, 'billing_period' => $s->billing_period, 'started_at' => $s->started_at,
+                'trial_ends_at' => $s->trial_ends_at, 'current_period_end' => $s->current_period_end, 'limits' => ['workers' => $s->max_workers, 'sites' => $s->max_sites, 'companies' => $s->max_companies],
+                'price' => 'Por definir'] : null,
+            'addons' => $addons, 'modules' => $modules,
+        ]]);
+    }
+
+    /** POST /me/subscription/upgrade {module_code?, message?} — «Solicitar mejora»: llega como consulta al equipo de EscudoSST. */
+    public function upgrade(Request $request): JsonResponse
+    {
+        $this->billingOnly();
+        $d = $request->validate(['module_code' => ['nullable', 'string', 'size:3'], 'message' => ['nullable', 'string', 'max:1000']]);
+        $company = app(CompanyContext::class)->companyId;
+        $mod = ! empty($d['module_code']) ? DB::selectOne('select code, name from modules where code = ? and deleted_at is null', [strtoupper($d['module_code'])]) : null;
+        $subject = mb_substr('Solicitud de mejora'.($mod ? ": {$mod->code} · {$mod->name}" : ' del plan'), 0, 120);
+        $msg = trim((string) ($d['message'] ?? '')) ?: ($mod ? "La empresa solicita activar el módulo {$mod->name}." : 'La empresa solicita mejorar su plan.');
+        $db = DB::connection('platform');
+        $n = (int) $db->selectOne('select count(*) as n from support_tickets')->n + 1;
+        $code = 'CON-'.now('America/Lima')->format('Y').'-'.str_pad((string) $n, 4, '0', STR_PAD_LEFT);
+        $row = $db->selectOne("insert into support_tickets (code, company_id, user_id, topic, subject, message, page) values (?, ?, ?, 'billing', ?, ?, '/cuenta/suscripcion') returning id, code, status",
+            [$code, $company, (string) auth()->id(), $subject, mb_substr($msg, 0, 4000)]);
+
+        return response()->json(['data' => $row], 201);
+    }
+
+    private function billingOnly(): void
+    {
+        if (! in_array(app(CompanyContext::class)->roleCode, SubscriptionNotifier::RECIPIENT_ROLES, true)) {
+            throw \App\Core\Http\ApiProblem::forbidden('«Mi suscripción» la ve quien administra la cuenta.');
+        }
+    }
+
     public function notifications(Request $request): JsonResponse
     {
         $context = app(CompanyContext::class);

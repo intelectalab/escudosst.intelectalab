@@ -16,6 +16,7 @@ import { VmdModule } from "@/components/vmd/VmdModule";
 import { IaaModule } from "@/components/addons/IaaModule";
 import { MyCourses } from "@/components/addons/AulLearner";
 import { VtaCampaign, VtaDashboard, VtaPortal } from "@/components/addons/VtaPanels";
+import { BaselineCompare } from "@/components/modules/LbaExtras";
 import { AulLanding } from "@/components/modules/AulAdmin";
 import { LbaSummary } from "@/components/modules/LbaSummary";
 import { SunSummary } from "@/components/modules/SunSummary";
@@ -233,6 +234,7 @@ export default function ModulePage() {
       ) : m.code === "LBA" ? (
         <div className="space-y-6">
           <LbaSummary />
+          <BaselineCompare />
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
       ) : m.code === "VUL" || m.code === "DES" ? (

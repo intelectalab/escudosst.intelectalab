@@ -76,7 +76,28 @@ export function PolOverview({ readOnly }: { readOnly: boolean }) {
           {msg && <p role="alert" className="text-sm text-bad">{msg.text}</p>}
         </Card>
       )}
-      <p className="text-xs text-muted">Metas: en ámbar desde el {d.amber_pct} % de avance; por debajo, en rojo.</p>
+      <AmberSetting initial={d.amber_pct} readOnly={readOnly} />
+    </div>
+  );
+}
+
+/** RN-POL-07: umbral ámbar de las metas de la empresa (con historial en sus parámetros). Las metas ligadas a un indicador toman su valor de él. */
+function AmberSetting({ initial, readOnly }: { initial: number; readOnly: boolean }) {
+  const [v, setV] = useState(String(initial));
+  const [saved, setSaved] = useState(initial);
+  const [msg, setMsg] = useState<string | null>(null);
+  const save = () => api<{ data: { objective_amber_pct: number } }>("/pol/settings", { method: "PUT", withCompany: true, body: { objective_amber_pct: Number(v) } })
+    .then((r) => { setSaved(r.data.objective_amber_pct); setMsg("Guardado."); }).catch((e: ApiError) => setMsg(e.errors ? Object.values(e.errors).flat()[0] : e.detail ?? e.title));
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+      <span>Metas: en ámbar desde el {saved} % de avance; por debajo, en rojo. Las metas de un objetivo ligado a un indicador toman su valor del indicador.</span>
+      {!readOnly && (
+        <span className="flex items-center gap-1">
+          <input className="input !h-8 !w-16" inputMode="numeric" value={v} onChange={(e) => setV(e.target.value)} aria-label="Umbral ámbar en %" />%
+          <button type="button" className="rounded border border-line px-2 py-1 font-semibold" onClick={save}>Cambiar</button>
+          {msg && <span>{msg}</span>}
+        </span>
+      )}
     </div>
   );
 }

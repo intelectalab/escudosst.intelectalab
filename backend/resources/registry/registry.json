@@ -2893,6 +2893,10 @@
        "label": "Completado"
       },
       {
+       "value": "in_review",
+       "label": "En revisión"
+      },
+      {
        "value": "approved",
        "label": "Aprobado"
       },
@@ -2942,6 +2946,23 @@
      "name": "report_file_id",
      "label": "Archivo del informe",
      "type": "file"
+    },
+    {
+     "name": "review_notes",
+     "label": "Notas de revisión",
+     "type": "longtext"
+    },
+    {
+     "name": "submitted_for_review_at",
+     "label": "Enviado a revisión el",
+     "readonly": true,
+     "type": "datetime"
+    },
+    {
+     "name": "previous_assessment_id",
+     "label": "Diagnóstico anterior",
+     "type": "ref",
+     "ref": "baseline_assessments"
     }
    ]
   },
@@ -3453,6 +3474,12 @@
      ],
      "default": "draft",
      "list": true
+    },
+    {
+     "name": "indicator_kpi_id",
+     "label": "Indicador ligado",
+     "type": "ref",
+     "ref": "kpi_definitions"
     }
    ]
   },

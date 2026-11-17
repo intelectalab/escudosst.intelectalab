@@ -34,6 +34,7 @@ it('calcula la línea base, exige comentario en «no aplica» y genera brechas a
     $this->getJson("/api/v1/records/LBA/baseline_assessments/{$a}", $h)->assertJsonPath('data.score_pct', 81.25)
         ->assertJsonPath('data.total_items', 8)->assertJsonPath('data.compliant_items', 6)->assertJsonPath('data.status', 'in_progress');
 
+    $this->patchJson("/api/v1/records/LBA/baseline_assessments/{$a}", ['status' => 'in_review'], $h)->assertOk();
     $this->patchJson("/api/v1/records/LBA/baseline_assessments/{$a}", ['status' => 'approved'], $h)->assertOk();
     $gaps = $this->getJson("/api/v1/records/LBA/baseline_gaps?f[assessment_id]={$a}", $h)->json('data');
     expect($gaps)->toHaveCount(2);
@@ -85,4 +86,26 @@ it('calcula el mes estadístico con los factores legales y no lo cierra sin hora
     // Otras sedes activas de la empresa sin horas-hombre → no se cierra.
     $this->postJson("/api/v1/est/months/{$id}/close", [], $h)->assertStatus(422);
     $this->postJson('/api/v1/est/months', ['year' => 2099, 'month' => 1], $h)->assertStatus(422);
+});
+
+it('la línea base va a revisión del comité, se devuelve con observaciones y se compara con la anterior', function () {
+    $h = dg();
+    $mk = function (array $results) use ($h) {
+        $a = $this->postJson('/api/v1/records/LBA/baseline_assessments', ['title' => 'Línea base '.uniqid(), 'reference_norm' => 'R.M. 050-2013-TR'], $h)->json('data.id');
+        $this->postJson("/api/v1/lba/assessments/{$a}/load", [], $h)->assertOk();
+        foreach ($this->getJson("/api/v1/records/LBA/baseline_items?f[assessment_id]={$a}&per_page=100", $h)->json('data') as $k => $it) {
+            $this->patchJson("/api/v1/records/LBA/baseline_items/{$it['id']}", ['result' => $results[$k] ?? 'compliant', 'evidence_notes' => 'Revisado'], $h)->assertOk();
+        }
+
+        return $a;
+    };
+    $a = $mk(array_fill(0, 9, 'non_compliant'));
+    $this->patchJson("/api/v1/records/LBA/baseline_assessments/{$a}", ['status' => 'approved'], $h)->assertStatus(422);
+    $this->patchJson("/api/v1/records/LBA/baseline_assessments/{$a}", ['status' => 'in_review'], $h)->assertOk();
+    $this->patchJson("/api/v1/records/LBA/baseline_assessments/{$a}", ['status' => 'draft'], $h)->assertStatus(422)->assertJsonValidationErrors('review_notes');
+    $this->patchJson("/api/v1/records/LBA/baseline_assessments/{$a}", ['status' => 'draft', 'review_notes' => 'Falta evidencia del comité'], $h)->assertOk();
+    $b = $mk(array_fill(0, 9, 'compliant'));
+    $c = $this->getJson("/api/v1/lba/compare?a={$a}&b={$b}", $h)->assertOk()->json('data');
+    expect($c['diff'])->toEqual(100.0)->and($c['lineaments'])->not->toBeEmpty();
+    $this->get("/api/v1/lba/assessments/{$b}.xlsx", $h)->assertOk()->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 });

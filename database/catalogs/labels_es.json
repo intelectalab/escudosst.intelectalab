@@ -1278,7 +1278,10 @@
   "chronology": "Cronología",
   "interviews": "Entrevistas",
   "evidence_file_ids": "Evidencias",
-  "fitness_result": "Resultado de la constancia de aptitud"
+  "fitness_result": "Resultado de la constancia de aptitud",
+  "indicator_kpi_id": "Indicador ligado",
+  "submitted_for_review_at": "Enviado a revisión el",
+  "previous_assessment_id": "Diagnóstico anterior"
  },
  "values": {
   "A": "Tipo A",

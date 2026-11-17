@@ -11351,6 +11351,7 @@
      "draft",
      "in_progress",
      "completed",
+     "in_review",
      "approved",
      "archived"
     ],
@@ -11421,6 +11422,39 @@
     "default": null,
     "values": null,
     "ref": "files.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "review_notes",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "submitted_for_review_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "previous_assessment_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "baseline_assessments.id",
     "encrypted": false,
     "generated": null,
     "comment": null
@@ -12357,6 +12391,17 @@
      "cancelled"
     ],
     "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "indicator_kpi_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "kpi_definitions.id",
     "encrypted": false,
     "generated": null,
     "comment": null
