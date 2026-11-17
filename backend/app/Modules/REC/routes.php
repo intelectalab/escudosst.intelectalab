@@ -92,3 +92,6 @@ Route::middleware(['auth:sanctum', 'company', 'module:OBS'])->prefix('obs')->con
     Route::post('observe', 'observe')->middleware('throttle:60,1');
     Route::get('trends', 'trends');
 });
+
+// Evaluación ergonómica REBA con cálculo del puntaje (M-PSI SCR-PSI-02).
+Route::middleware(['auth:sanctum', 'company', 'module:PSI'])->post('psi/reba', \App\Modules\REC\RebaController::class)->middleware('throttle:60,1');

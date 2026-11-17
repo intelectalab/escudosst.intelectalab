@@ -30,6 +30,7 @@ import { SimRun } from "@/components/modules/SimRun";
 import { AtsCopy } from "@/components/modules/AtsCopy";
 import { MagTools } from "@/components/modules/MagTools";
 import { ObsModule } from "@/components/modules/ObsModule";
+import { RebaForm } from "@/components/modules/RebaForm";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
 import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
@@ -180,6 +181,8 @@ export default function ModulePage() {
         </div>
       ) : m.code === "OBS" ? (
         <ObsPage readOnly={m.mode === "read_only"} />
+      ) : m.code === "PSI" ? (
+        <PsiPage readOnly={m.mode === "read_only"} />
       ) : m.code === "CH5" ? (
         <Ch5Page readOnly={m.mode === "read_only"} />
       ) : m.code === "MRL" ? (
@@ -282,6 +285,20 @@ function ObsPage({ readOnly }: { readOnly: boolean }) {
     <div className="space-y-6">
       <ObsModule readOnly={readOnly} onSaved={() => setV((x) => x + 1)} />
       <ModuleRecords key={v} code="OBS" readOnly={readOnly} />
+    </div>
+  );
+}
+
+/** M-PSI: formulario REBA con cálculo encima de la lista de evaluaciones y encuestas. */
+function PsiPage({ readOnly }: { readOnly: boolean }) {
+  const [v, setV] = useState(0);
+  return (
+    <div className="space-y-6">
+      <details className="rounded-xl border border-line bg-surface">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Nueva evaluación REBA (con cálculo)</summary>
+        <div className="border-t border-line p-4"><RebaForm readOnly={readOnly} onSaved={() => setV((x) => x + 1)} /></div>
+      </details>
+      <ModuleRecords key={v} code="PSI" readOnly={readOnly} />
     </div>
   );
 }
