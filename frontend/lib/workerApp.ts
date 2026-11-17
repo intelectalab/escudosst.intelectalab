@@ -68,9 +68,9 @@ export type WorkerHome = {
   };
 };
 
-export type PendingItem = { kind: "signature" | "document" | "risst" | "ppe" | "talk" | "ats" | "course" | "survey" | "election"; id: string; title: string; detail: string; due: string | null; url?: string };
+export type PendingItem = { kind: "signature" | "document" | "risst" | "ppe" | "talk" | "ats" | "iperc" | "course" | "survey" | "election"; id: string; title: string; detail: string; due: string | null; url?: string };
 
-export type SignKind = "signature" | "document" | "risst" | "ppe" | "talk" | "ats";
+export type SignKind = "signature" | "document" | "risst" | "ppe" | "talk" | "ats" | "iperc";
 
 export type SignItem = {
   kind: SignKind; id: string; title: string; subtitle: string | null; signed: boolean; declaration: string;

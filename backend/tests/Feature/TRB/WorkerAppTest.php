@@ -253,3 +253,35 @@ it('pone las charlas y los ATS por firmar en sus pendientes y los firma con el P
     $signed = wappAs(HUAYLAS_ID, fn () => DB::selectOne('select (select signature_id from talk_attendances where id = ?) is not null as t, (select signed_at from ats_participants where id = ?) is not null as a', [$att, $part]));
     expect($signed->t)->toBeTrue()->and($signed->a)->toBeTrue();
 });
+
+it('muestra Mi IPERC con los riesgos de su puesto y firma «Lo conozco» con el PIN', function () {
+    $dni = (string) random_int(78000000, 78999999);
+    $w = wappWorker($dni, 'Iris');
+    $pos = wappAs(HUAYLAS_ID, fn () => DB::selectOne("insert into positions (company_id, code, name) values (?, ?, 'Soldador IPERC') returning id", [HUAYLAS_ID, 'SOLD-'.random_int(1000, 999999)])->id);
+    wappAs(HUAYLAS_ID, fn () => DB::update('update workers set current_position_id = ? where id = ?', [$pos, $w]));
+    $s = wappActivate($dni, wappIssue($w)['code'], '591736');
+    $ver = wappAs(HUAYLAS_ID, function () use ($pos) {
+        $crit = DB::selectOne('select id from risk_criteria where company_id = ? or company_id is null order by company_id nulls last limit 1', [HUAYLAS_ID])->id;
+        $m = DB::selectOne("insert into iperc_matrices (company_id, code, title, risk_criteria_id, position_id) values (?, ?, 'IPERC soldadura', ?, ?) returning id",
+            [HUAYLAS_ID, 'IPC-W-'.random_int(1000, 999999), $crit, $pos])->id;
+        $v = DB::selectOne("insert into iperc_versions (company_id, iperc_matrix_id, version_number, status, approved_at, effective_on) values (?, ?, 1, 'current', now(), current_date) returning id", [HUAYLAS_ID, $m])->id;
+        DB::update('update iperc_matrices set current_version_id = ? where id = ?', [$v, $m]);
+        $r = DB::selectOne("insert into iperc_rows (company_id, iperc_version_id, row_number, activity, task, hazard, risk, probability_value, severity_value, risk_level, is_significant)
+            values (?, ?, 1, 'Soldadura', 'Soldar estructuras', 'Radiación por arco', 'Quemadura ocular', 2, 3, 'important', true) returning id", [HUAYLAS_ID, $v])->id;
+        DB::insert("insert into iperc_controls (company_id, iperc_row_id, hierarchy, description, is_existing) values (?, ?, 'ppe', 'Careta de soldar', true)", [HUAYLAS_ID, $r]);
+
+        return $v;
+    });
+    $h = authHeaders($s['token'], HUAYLAS_ID);
+    wappAs(HUAYLAS_ID, fn () => DB::update("update feature_flags set mode = 'enabled' where company_id = ? and module_code = 'IPC'", [HUAYLAS_ID]));
+
+    $d = $this->getJson('/api/v1/me/worker/iperc', $h)->assertOk()->json('data');
+    $m = collect($d['matrices'])->firstWhere('version_id', $ver);
+    expect($m['signed'])->toBeFalse()->and($m['rows'][0]['hazard'])->toBe('Radiación por arco')->and($m['rows'][0]['controls'][0]['description'])->toBe('Careta de soldar');
+    expect(collect($this->getJson('/api/v1/me/worker/pending', $h)->json('data'))->map(fn ($i) => $i['kind'].':'.$i['id']))->toContain("iperc:{$ver}");
+    $this->getJson("/api/v1/me/worker/items/iperc/{$ver}", $h)->assertOk()->assertJsonPath('data.content_html', fn ($v) => str_contains($v, 'Careta de soldar'));
+
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'iperc', 'id' => $ver, 'pin' => '591736'], $h)->assertOk();
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'iperc', 'id' => $ver, 'pin' => '591736'], $h)->assertStatus(409);
+    expect(collect($this->getJson('/api/v1/me/worker/iperc', $h)->json('data.matrices'))->firstWhere('version_id', $ver)['signed'])->toBeTrue();
+});

@@ -29,12 +29,14 @@ use Illuminate\Support\Str;
  *  GET   /me/worker/trainings            Mis capacitaciones, certificados, cursos del aula y «Recomendados para ti»
  *  GET   /me/worker/ppe                  Mi EPP (SCR-EPP-06): entregas con vencimiento y si falta firmar la recepción
  *  GET   /me/worker/reports              Mis reportes (SCR-ACT-06) con su estado
+ *  GET   /me/worker/iperc                Mi IPERC (M-IPC SCR-IPC-08): peligros, riesgos, nivel y controles de mi puesto en las
+ *                                        matrices vigentes, y si ya firmé «Lo conozco» (firma con PIN, kind iperc = versión vigente)
  *
  * Un id de otro trabajador responde 404, igual que uno inexistente.
  */
 class WorkerSelfController extends Controller
 {
-    private const KINDS = ['signature', 'document', 'risst', 'ppe', 'talk', 'ats'];
+    private const KINDS = ['signature', 'document', 'risst', 'ppe', 'talk', 'ats', 'iperc'];
 
     public function home(): JsonResponse
     {
@@ -42,7 +44,7 @@ class WorkerSelfController extends Controller
         $ctx = app(CompanyContext::class);
         $today = WorkerSelf::today();
         $mods = [];
-        foreach (['FOT', 'FIR', 'DOC', 'RIS', 'CAP', 'AUL', 'EPP', 'EMO', 'ACT', 'COM', 'PSI', 'OFF'] as $c) {
+        foreach (['FOT', 'FIR', 'DOC', 'RIS', 'CAP', 'AUL', 'EPP', 'EMO', 'ACT', 'COM', 'PSI', 'OFF', 'IPC'] as $c) {
             $mods[$c] = WorkerSelf::usable($c);
         }
         $cred = $mods['FOT'] ? DB::selectOne("select status, expires_on from credentials where worker_id = ? and deleted_at is null and status <> 'revoked' order by issued_at desc nulls last limit 1", [$w->id]) : null;
@@ -226,6 +228,8 @@ class WorkerSelfController extends Controller
                 'ppe' => DB::update('update ppe_deliveries set signature_id = ?, updated_by = ? where id = ?', [$sig, $uid, $row->id]),
                 'talk' => DB::update('update talk_attendances set signature_id = ?, updated_by = ? where id = ?', [$sig, $uid, $row->id]),
                 // RN-ATS-02: si el ATS ya estaba firmado o en ejecución, queda como firma tardía.
+                // M-IPC SCR-IPC-08: la firma «Lo conozco» queda como firma del trabajador sobre la versión vigente del IPERC.
+                'iperc' => null,
                 'ats' => DB::update("update ats_participants p set signature_id = ?, signed_at = now(), updated_by = ?,
                         late_signature = exists (select 1 from ats_forms f where f.id = p.ats_form_id and f.status in ('signed', 'in_execution')) where p.id = ?", [$sig, $uid, $row->id]),
             };
@@ -236,6 +240,56 @@ class WorkerSelfController extends Controller
                 $request->ip(), mb_substr((string) $request->userAgent(), 0, 300)]);
 
         return response()->json(['data' => ['status' => 'signed', 'signature_id' => $sig]]);
+    }
+
+    /** GET /me/worker/iperc — Mi IPERC (M-IPC SCR-IPC-08). */
+    public function iperc(): JsonResponse
+    {
+        $w = WorkerSelf::row();
+        $this->module('IPC');
+        $out = [];
+        foreach ($this->ipercVersions($w) as $v) {
+            $out[] = ['version_id' => $v->version_id, 'code' => $v->code, 'title' => $v->title, 'version_number' => (int) $v->version_number, 'effective_on' => $v->effective_on,
+                'signed' => $v->signed, 'signed_at' => $v->signed_at, 'rows' => $this->ipercRows($v->version_id, $w)];
+        }
+
+        return response()->json(['data' => ['position' => $w->position, 'matrices' => $out]]);
+    }
+
+    /** Versiones vigentes de las matrices con filas de mi puesto (la fila o la matriz indica el puesto), y si ya firmé «Lo conozco». */
+    private function ipercVersions(object $w): array
+    {
+        $pos = DB::selectOne('select current_position_id from workers where id = ?', [$w->id])?->current_position_id;
+        if (! $pos) {
+            return [];
+        }
+        $rows = DB::select(
+            "select v.id as version_id, m.code, m.title, v.version_number, v.effective_on, v.approved_at,
+                    (select s.signed_at from signatures s where s.subject_type = 'iperc_versions' and s.subject_id = v.id and s.signer_worker_id = ? order by s.signed_at desc limit 1) as signed_at
+               from iperc_matrices m join iperc_versions v on v.id = m.current_version_id and v.status = 'current' and v.deleted_at is null
+              where m.deleted_at is null and m.status <> 'archived'
+                and exists (select 1 from iperc_rows r where r.iperc_version_id = v.id and r.deleted_at is null and coalesce(r.position_id, m.position_id) = ?)
+              order by m.code", [$w->id, $pos]);
+        foreach ($rows as $r) {
+            $r->signed = $r->signed_at !== null;
+        }
+
+        return $rows;
+    }
+
+    private function ipercRows(string $versionId, object $w): array
+    {
+        $pos = DB::selectOne('select current_position_id from workers where id = ?', [$w->id])?->current_position_id;
+        $rows = DB::select(
+            "select r.id, r.activity, r.task, r.is_routine, r.hazard, r.risk, r.consequence, r.risk_level, r.is_significant, r.residual_level
+               from iperc_rows r join iperc_versions v on v.id = r.iperc_version_id join iperc_matrices m on m.id = v.iperc_matrix_id
+              where r.iperc_version_id = ? and r.deleted_at is null and coalesce(r.position_id, m.position_id) = ? order by r.row_number", [$versionId, $pos]);
+        foreach ($rows as $r) {
+            $r->controls = DB::select('select hierarchy, description, is_existing from iperc_controls where iperc_row_id = ? and deleted_at is null order by is_existing desc, hierarchy', [$r->id]);
+            unset($r->id);
+        }
+
+        return $rows;
     }
 
     public function trainings(): JsonResponse
@@ -352,6 +406,14 @@ class WorkerSelfController extends Controller
                 $items[] = ['kind' => 'ats', 'id' => $r->id, 'title' => 'Firmar el ATS', 'detail' => trim(($r->code ? $r->code.' · ' : '').$r->task).($r->performed_on ? ' · '.date('d/m/Y', strtotime($r->performed_on)) : ''), 'due' => $r->performed_on, 'at' => $r->performed_on];
             }
         }
+        if (WorkerSelf::usable('IPC')) {
+            foreach ($this->ipercVersions($w) as $v) {
+                if (! $v->signed) {
+                    $items[] = ['kind' => 'iperc', 'id' => $v->version_id, 'title' => 'Conocer los riesgos de mi puesto (IPERC)',
+                        'detail' => trim(($v->code ? $v->code.' · ' : '').$v->title).' · versión '.$v->version_number, 'due' => null, 'at' => $v->approved_at];
+                }
+            }
+        }
         if (WorkerSelf::usable('AUL')) {
             foreach (DB::select(
                 "select e.id, c.title, e.progress_pct, e.due_on, e.enrolled_at from course_enrollments e join courses c on c.id = e.course_id
@@ -441,6 +503,19 @@ class WorkerSelfController extends Controller
                 return ['talk_attendances', $row, ['title' => 'Charla de 5 minutos', 'subtitle' => $t->topic.($t->talk_on ? ' · '.date('d/m/Y', strtotime($t->talk_on)) : ''),
                     'signed' => $t->signature_id !== null, 'declaration' => "Declaro que asistí a la charla «{$t->topic}» y que entendí lo explicado. Firmo con mi PIN.",
                     'content_html' => $t->content ? '<p>'.nl2br(e($t->content)).'</p>' : null, 'file_id' => null]];
+            case 'iperc':
+                $this->module('IPC');
+                $v = collect($this->ipercVersions($w))->firstWhere('version_id', $id) ?? throw $nf();
+                $rows = $this->ipercRows($v->version_id, $w);
+                $lvl = fn ($r) => $r->residual_level ?: $r->risk_level;
+                $html = '<ol>'.implode('', array_map(fn ($r) => '<li><b>'.e((string) ($r->task ?: $r->activity)).'</b> — <b>Peligro:</b> '.e((string) $r->hazard)
+                    .' — <b>Riesgo:</b> '.e((string) $r->risk).($lvl($r) ? ' — <b>Nivel:</b> '.e((string) $lvl($r)) : '')
+                    .($r->controls ? ' — <b>Controles:</b> '.e(implode('; ', array_column($r->controls, 'description'))) : '').'</li>', $rows)).'</ol>';
+                $row = DB::selectOne('select * from iperc_versions where id = ?', [$v->version_id]);
+
+                return ['iperc_versions', $row, ['title' => 'Mi IPERC', 'subtitle' => trim(($v->code ? $v->code.' · ' : '').$v->title).' · versión '.$v->version_number,
+                    'signed' => $v->signed, 'declaration' => 'Declaro que conozco los peligros, riesgos y controles de mi puesto que figuran en este IPERC y que aplicaré los controles. Firmo con mi PIN.',
+                    'content_html' => $html, 'file_id' => null]];
             case 'ats':
                 $this->module('ATS');
                 $p = DB::selectOne("select p.*, f.code, f.task, f.work_location, f.performed_on, f.status as form_status from ats_participants p join ats_forms f on f.id = p.ats_form_id
