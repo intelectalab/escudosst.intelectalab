@@ -73,6 +73,9 @@ it('exige el mínimo legal de capacitaciones y marca el tema ejecutado con la se
         ->assertStatus(422)->assertJsonPath('errors.status.0', 'El programa debe tener al menos 4 capacitaciones al año (Ley 29783, art. 35). Tiene 3.');
     $items[] = $this->postJson('/api/v1/records/PCA/training_program_items', ['training_program_id' => $prog, 'topic' => 'Respuesta ante emergencias',
         'training_type' => 'specific', 'planned_month' => 9, 'target_audience' => 'Brigadistas'], $h)->json('data.id');
+    $this->patchJson("/api/v1/records/PCA/training_programs/{$prog}", ['status' => 'approved'], $h)->assertStatus(422);   // RN-PCA-05: falta la firma del supervisor
+    supervisorSignsForTests(ANDINAS_ID, 'training_programs', $prog);
+    DB::select("select set_config('app.company_id', ?, false)", [ANDINAS_ID]);
     $this->patchJson("/api/v1/records/PCA/training_programs/{$prog}", ['status' => 'approved'], $h)->assertOk();
 
     // Capacitación del tema 1, una sesión con un asistente.

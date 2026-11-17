@@ -92,6 +92,10 @@ it('el simulacro evaluado vinculado al PASST registra su ejecución sola', funct
     $report = $this->post('/api/v1/files', ['file' => \Illuminate\Http\UploadedFile::fake()->create('informe.pdf', 20, 'application/pdf'), 'module' => 'SIM'], $h + ['Accept' => 'application/json'])->assertCreated()->json('data.id');
     $this->patchJson("/api/v1/records/SIM/drills/{$d}", ['status' => 'evaluated', 'result' => 'satisfactory', 'report_file_id' => $report], $h)->assertOk();
 
+    // RN-PAS-05: la ejecución automática queda pendiente de validar; validada, cuenta.
+    $this->getJson("/api/v1/records/PAS/program_activities/{$act}", $h)->assertJsonPath('data.progress_pct', 0);
+    $x = collect($this->getJson('/api/v1/pas/pending-validation', $h)->json('data'))->firstWhere('source_module', 'SIM');
+    $this->postJson("/api/v1/pas/executions/{$x['id']}/validate", [], $h)->assertOk();
     $this->getJson("/api/v1/records/PAS/program_activities/{$act}", $h)->assertJsonPath('data.executed_quantity', 1)->assertJsonPath('data.progress_pct', 50);
     $tr = $this->getJson("/api/v1/records/SIM/drills/{$d}/trace", $h)->json('data');
     expect(collect($tr['parents'])->pluck('table')->all())->toContain('program_activities');

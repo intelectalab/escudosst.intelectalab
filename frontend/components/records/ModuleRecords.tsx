@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { NO_CREATE, OneTimeSecret, PanelActions, RecordActions, TraceStrip, describeFilter, lockedReason } from "./Process";
 import { JSON_EDITORS } from "./JsonEditors";
+import { EvidencePicker } from "./EvidencePicker";
 import { ModuleKpis } from "./ModuleKpis";
 import { SignaturePanel } from "./SignaturePanel";
 import { api, ApiError } from "@/lib/api";
@@ -615,7 +616,13 @@ export function RecordForm({
         {(isNew || ftab === "detalle") && (isNew || full) && (
           <>
             <div className="grid gap-4 sm:grid-cols-2">
-              {editable.map((f) => (
+              {editable.map((f) => res.table === "requirement_evaluations" && f.name === "evidence_record_id" ? null : res.table === "requirement_evaluations" && f.name === "evidence_record_type" ? (
+                <div key={f.name} className="sm:col-span-2">
+                  <EvidencePicker type={String(values.evidence_record_type ?? "")} id={String(values.evidence_record_id ?? "")} disabled={!canEdit}
+                    error={errors.evidence_record_id?.[0] ?? errors.evidence_record_type?.[0]}
+                    onChange={(t, i) => setValues((x) => ({ ...x, evidence_record_type: t || null, evidence_record_id: i || null }))} />
+                </div>
+              ) : (
                 <div key={f.name} className={f.type === "longtext" || f.type === "tags" || f.type === "json" ? "sm:col-span-2" : ""}>
                   <Input
                     code={code}

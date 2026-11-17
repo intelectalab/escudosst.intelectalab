@@ -52,6 +52,7 @@ import { ConsultancyLink } from "@/components/modules/ConMatrix";
 import { CompanyAudit, CompanyUsers } from "@/components/usr/CompanyAdmin";
 import { DocModule } from "@/components/modules/DocModule";
 import { PasSchedule } from "@/components/modules/PasSchedule";
+import { PasTools } from "@/components/modules/PasTools";
 import { FirTools } from "@/components/modules/FirTools";
 import { VulModule } from "@/components/modules/VulModule";
 import { DesModule } from "@/components/modules/DesModule";
@@ -230,7 +231,7 @@ export default function ModulePage() {
         </div>
       ) : m.code === "DOC" || m.code === "PAS" || m.code === "FIR" ? (
         <div className="space-y-6">
-          {m.code === "DOC" ? <DocModule readOnly={m.mode === "read_only"} /> : m.code === "PAS" ? <PasSchedule readOnly={m.mode === "read_only"} /> : <FirTools readOnly={m.mode === "read_only"} />}
+          {m.code === "DOC" ? <DocModule readOnly={m.mode === "read_only"} /> : m.code === "PAS" ? <><PasTools readOnly={m.mode === "read_only"} /><PasSchedule readOnly={m.mode === "read_only"} /></> : <FirTools readOnly={m.mode === "read_only"} />}
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
       ) : hasModuleWizard(m.code) ? (

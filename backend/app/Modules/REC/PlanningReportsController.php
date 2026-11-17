@@ -63,7 +63,7 @@ class PlanningReportsController extends FieldReportsController
         $p = $this->row('annual_programs', $id, 'El programa no existe o es de otra empresa.');
         $acts = DB::select(
             "select a.code, a.title, a.activity_type, a.planned_months, a.goal_quantity, a.executed_quantity, a.status, a.progress_pct, u.full_name as responsible,
-                    (select array_agg(distinct extract(month from x.executed_on)::int) from activity_executions x where x.activity_id = a.id and x.deleted_at is null) as executed_months
+                    (select array_agg(distinct extract(month from x.executed_on)::int) from activity_executions x where x.activity_id = a.id and x.deleted_at is null and x.verified_at is not null) as executed_months
                from program_activities a left join users u on u.id = a.responsible_user_id
               where a.program_id = ? and a.deleted_at is null and a.status <> 'cancelled' order by a.code", [$id]);
         foreach ($acts as $a) {
@@ -83,6 +83,53 @@ class PlanningReportsController extends FieldReportsController
             'totals' => ['planned' => $planned, 'executed' => $done, 'pct' => $planned ? (int) round($done * 100 / $planned) : null],
             'signatures' => $this->signatures('annual_programs', $id),
         ]]);
+    }
+
+    /** M-PCA §11: programa anual de capacitación con sus temas, el acta o la firma del supervisor y el cumplimiento por tema. */
+    public function trainingProgram(string $id): JsonResponse
+    {
+        $this->can('pca.training_programs.read');
+        $p = $this->row('training_programs', $id, 'El programa no existe o es de otra empresa.');
+        $items = DB::select(
+            "select i.topic, i.training_type, i.is_mandatory_legal, i.target_audience, ps.name as position, i.planned_month, i.original_month, i.duration_minutes, i.modality, i.provider,
+                    i.status, u.full_name as responsible, t.title as training
+               from training_program_items i left join positions ps on ps.id = i.position_id left join users u on u.id = i.responsible_user_id left join trainings t on t.id = i.training_id
+              where i.training_program_id = ? and i.deleted_at is null and i.status <> 'cancelled' order by i.planned_month nulls last, i.topic", [$id]);
+        $meeting = $p->committee_meeting_id ? DB::selectOne('select number, meeting_type, held_at, scheduled_at from committee_meetings where id = ?', [$p->committee_meeting_id]) : null;
+
+        return response()->json(['data' => [
+            'company' => $this->company(),
+            'program' => ['year' => $p->year, 'title' => $p->title, 'status' => $p->status, 'approved_at' => $p->approved_at, 'notes' => $p->notes, 'meeting' => $meeting],
+            'items' => $items,
+            'totals' => ['items' => count($items), 'mandatory' => count(array_filter($items, fn ($i) => $i->is_mandatory_legal)), 'done' => count(array_filter($items, fn ($i) => $i->status === 'done'))],
+            'signatures' => $this->signatures('training_programs', $id),
+        ]]);
+    }
+
+    /** M-PCA §11: cumplimiento por tema, puesto y trabajador (Excel). */
+    public function trainingProgramXlsx(string $id): \Illuminate\Http\Response
+    {
+        $this->can('pca.training_programs.read');
+        $p = $this->row('training_programs', $id, 'El programa no existe o es de otra empresa.');
+        $c = $this->company();
+        $rows = DB::select(
+            "select i.topic, coalesce(ps.name, 'Toda la empresa') as position, w.full_name, '••••'||w.document_last4 as doc,
+                    (select min(s.starts_at) from training_attendances a join training_sessions s on s.id = a.session_id and s.status = 'held' and s.deleted_at is null
+                      where s.training_id = i.training_id and a.worker_id = w.id and a.attended and a.deleted_at is null) as attended_at
+               from training_program_items i left join positions ps on ps.id = i.position_id
+               join workers w on w.status = 'active' and w.deleted_at is null and (i.position_id is null or w.current_position_id = i.position_id)
+              where i.training_program_id = ? and i.deleted_at is null and i.status <> 'cancelled'
+              order by i.planned_month nulls last, i.topic, w.full_name", [$id]);
+        $out = [['CUMPLIMIENTO DEL PROGRAMA ANUAL DE CAPACITACIÓN '.$p->year], ["{$c['legal_name']} · RUC {$c['ruc']}"], [$p->title.' · generado '.now('America/Lima')->format('d/m/Y H:i')], [],
+            ['Tema', 'Puesto', 'Trabajador', 'Documento', 'Asistió', 'Fecha']];
+        foreach ($rows as $r) {
+            $out[] = [$r->topic, $r->position, $r->full_name, $r->doc, $r->attended_at ? 'Sí' : 'No', $r->attended_at ? date('d/m/Y', strtotime($r->attended_at)) : ''];
+        }
+
+        return response(\App\Core\Support\Xlsx::build('Cumplimiento', $out, 5), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="cumplimiento-capacitacion-'.$p->year.'.xlsx"',
+        ]);
     }
 
     public function baseline(string $id): JsonResponse

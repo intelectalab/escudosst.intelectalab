@@ -26,7 +26,7 @@ SYSTEM = {"id", "company_id", "created_at", "created_by", "updated_at", "updated
 SECRET_COLS = {"webhooks.secret"}
 HIDDEN_REFS = {"signature_requests", "signatures", "devices", "sync_batches", "accounts", "companies", "ai_requests", "memberships", "bulk_imports"}
 # Campos que calcula el sistema: se muestran pero no se editan.
-READONLY = {"vendor_evaluations.approved_by", "vendor_evaluations.approved_at", "emergency_equipment.next_recharge_on", "emergency_equipment.next_hydrostatic_test_on", "emergency_equipment.next_inspection_on", "man_hours.validated_by", "man_hours.validated_at", "monthly_statistics.adjustments", "monthly_statistics.includes_contractors", "annual_plans.version_number", "annual_plans.previous_plan_id",  "register_exports.snapshot", "register_exports.data_hash", "register_exports.format_version", "register_exports.superseded_by", "register_exports.status", "register_exports.sha256", "register_exports.rows_count","psychosocial_surveys.is_anonymous", "psychosocial_surveys.min_responses_param", "psychosocial_responses.worker_id", "areas.depth", "workers.document_last4", "workers.activated_at", "workers.whatsapp_opt_in_at",
+READONLY = {"annual_programs.version_number", "annual_programs.previous_program_id", "program_activities.previous_activity_id", "credential_requirements.training_program_item_id", "vendor_evaluations.approved_by", "vendor_evaluations.approved_at", "emergency_equipment.next_recharge_on", "emergency_equipment.next_hydrostatic_test_on", "emergency_equipment.next_inspection_on", "man_hours.validated_by", "man_hours.validated_at", "monthly_statistics.adjustments", "monthly_statistics.includes_contractors", "annual_plans.version_number", "annual_plans.previous_plan_id",  "register_exports.snapshot", "register_exports.data_hash", "register_exports.format_version", "register_exports.superseded_by", "register_exports.status", "register_exports.sha256", "register_exports.rows_count","psychosocial_surveys.is_anonymous", "psychosocial_surveys.min_responses_param", "psychosocial_responses.worker_id", "areas.depth", "workers.document_last4", "workers.activated_at", "workers.whatsapp_opt_in_at",
             "workers.full_name",
             # IPERC: lo calcula el sistema o lo fija el flujo de aprobación (M-IPC RN-IPC-01, 02, 06, 08).
             "iperc_matrices.current_version_id", "iperc_matrices.next_review_on",
@@ -258,6 +258,8 @@ def main():
                     continue
                 f["type"] = "ref"
                 f["ref"] = ref
+            elif name == "evidence_record_id" and any(x["name"] == "evidence_record_type" for x in t["columns"]):
+                f["type"] = "text"  # M-MRL RN-MRL-08: id del registro del sistema elegido como evidencia (según evidence_record_type)
             elif name == "source_id" and any(x["name"] == "source_type" for x in t["columns"]):
                 f["type"] = "source"  # registro de origen (según source_type); lo fija el flujo que crea el registro
             elif base == "uuid" or base == "uuid[]" or base.startswith("inet"):

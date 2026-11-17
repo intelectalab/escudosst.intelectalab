@@ -3900,6 +3900,16 @@
      "name": "next_evaluation_on",
      "label": "Próxima evaluación",
      "type": "date"
+    },
+    {
+     "name": "evidence_record_type",
+     "label": "Registro del sistema (tipo)",
+     "type": "text"
+    },
+    {
+     "name": "evidence_record_id",
+     "label": "Registro del sistema",
+     "type": "text"
     }
    ]
   },
@@ -4237,6 +4247,19 @@
      "label": "Cerrado el",
      "readonly": true,
      "type": "datetime"
+    },
+    {
+     "name": "version_number",
+     "label": "N.º de versión",
+     "readonly": true,
+     "type": "int"
+    },
+    {
+     "name": "previous_program_id",
+     "label": "Versión anterior",
+     "readonly": true,
+     "type": "ref",
+     "ref": "annual_programs"
     }
    ]
   },
@@ -4391,7 +4414,7 @@
      "name": "executed_quantity",
      "label": "Cantidad ejecutada",
      "readonly": true,
-     "type": "int",
+     "type": "number",
      "default": 0,
      "list": true
     },
@@ -4442,6 +4465,13 @@
      "name": "cancel_reason",
      "label": "Motivo de cancelación",
      "type": "longtext"
+    },
+    {
+     "name": "previous_activity_id",
+     "label": "Actividad de la versión anterior",
+     "readonly": true,
+     "type": "ref",
+     "ref": "program_activities"
     }
    ]
   },
@@ -4449,7 +4479,8 @@
    "columns": [
     "description",
     "activity_id",
-    "executed_on"
+    "executed_on",
+    "status"
    ],
    "module": "PAS",
    "tab": "Ejecuciones",
@@ -4521,6 +4552,27 @@
      "label": "Verificado el",
      "readonly": true,
      "type": "datetime"
+    },
+    {
+     "name": "status",
+     "label": "Estado",
+     "type": "enum",
+     "options": [
+      {
+       "value": "executed",
+       "label": "Ejecutado"
+      },
+      {
+       "value": "partial",
+       "label": "Parcial"
+      }
+     ],
+     "list": true
+    },
+    {
+     "name": "planned_month",
+     "label": "Mes planificado",
+     "type": "int"
     }
    ]
   },
@@ -16217,6 +16269,13 @@
      "label": "Días de gracia",
      "type": "int",
      "default": 0
+    },
+    {
+     "name": "training_program_item_id",
+     "label": "Ítem del programa de capacitación",
+     "readonly": true,
+     "type": "ref",
+     "ref": "training_program_items"
     }
    ]
   },

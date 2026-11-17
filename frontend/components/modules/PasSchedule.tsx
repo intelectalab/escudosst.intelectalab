@@ -16,7 +16,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
 import { Bar, Card, Kpi, TONE_TEXT, toneOf } from "./Summary";
 
-type CellState = "executed" | "extra" | "overdue" | "planned" | "cancelled" | "rescheduled" | null;
+type CellState = "executed" | "extra" | "to_validate" | "overdue" | "planned" | "cancelled" | "rescheduled" | null;
 type Cell = { month: number; planned: boolean; quantity: number; state: CellState; rescheduled_to?: number; reschedule_reason?: string };
 type Reschedule = { id: string; from_month: number; to_month: number; reason: string; created_at: string; created_by_name: string | null };
 type Exec = { id: string; executed_on: string; quantity: number; description: string | null; evidence_file_id: string | null; evidence_name: string | null; source_module: string | null };
@@ -37,6 +37,7 @@ const MONTHS_FULL = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "jul
 const STATE: Record<Exclude<CellState, null>, { short: string; long: string; cls: string }> = {
   executed: { short: "Ejec.", long: "Ejecutado", cls: "bg-ok-soft text-ok border-ok/30" },
   extra: { short: "Ejec.*", long: "Ejecutado fuera de lo programado", cls: "bg-brand-soft text-brand-strong border-brand/30" },
+  to_validate: { short: "Valid.", long: "Registrado, por validar", cls: "bg-brand-soft text-brand-strong border-brand/30 border-dashed" },
   overdue: { short: "Atras.", long: "Atrasado", cls: "bg-bad-soft text-bad border-bad/30" },
   planned: { short: "Prog.", long: "Programado", cls: "bg-amber-soft text-amber-ink border-[#F4B90F]/40" },
   cancelled: { short: "Canc.", long: "Actividad cancelada", cls: "bg-na-soft text-muted border-line" },
@@ -200,7 +201,7 @@ export function PasSchedule({ readOnly }: { readOnly: boolean }) {
 function Legend() {
   return (
     <ul className="flex flex-wrap gap-2 text-xs" aria-label="Leyenda del cronograma">
-      {(["planned", "executed", "overdue", "extra", "rescheduled"] as const).map((k) => (
+      {(["planned", "to_validate", "executed", "overdue", "extra", "rescheduled"] as const).map((k) => (
         <li key={k} className={`rounded-md border px-2 py-1 font-semibold ${STATE[k].cls}`}>
           {STATE[k].short} = {STATE[k].long}
         </li>

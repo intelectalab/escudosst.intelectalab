@@ -13610,6 +13610,28 @@
     "comment": null
    },
    {
+    "name": "evidence_record_type",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "evidence_record_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -14279,6 +14301,28 @@
     "comment": null
    },
    {
+    "name": "version_number",
+    "type": "integer",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "previous_program_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "annual_programs.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -14539,7 +14583,7 @@
    },
    {
     "name": "executed_quantity",
-    "type": "integer",
+    "type": "numeric(10,2)",
     "not_null": true,
     "default": "0",
     "values": null,
@@ -14594,6 +14638,17 @@
     "default": null,
     "values": null,
     "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "previous_activity_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "program_activities.id",
     "encrypted": false,
     "generated": null,
     "comment": null
@@ -14793,6 +14848,31 @@
    {
     "name": "verified_at",
     "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "status",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": [
+     "executed",
+     "partial"
+    ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "planned_month",
+    "type": "smallint",
     "not_null": false,
     "default": null,
     "values": null,
@@ -37835,6 +37915,17 @@
     "default": "0",
     "values": null,
     "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "training_program_item_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "training_program_items.id",
     "encrypted": false,
     "generated": null,
     "comment": null

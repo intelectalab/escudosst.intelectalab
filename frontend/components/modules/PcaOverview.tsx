@@ -5,6 +5,8 @@
 
 import { useEffect, useState } from "react";
 import { api, type ApiError } from "@/lib/api";
+import { downloadFile } from "@/lib/records";
+import { Button } from "@/components/ui/Button";
 import { Card, Kpi } from "./Summary";
 
 type Item = { id: string; topic: string; is_mandatory_legal: boolean; position_id: string | null; position: string | null; planned_month: number | null; original_month: number | null;
@@ -52,7 +54,9 @@ export function PcaOverview() {
         <Kpi label="No ejecutados" value={String(count("not_executed"))} color="text-bad" sub="Mes cerrado sin capacitación" />
       </div>
 
-      <Card title={`Programa ${p.year}: temas por mes`}>
+      <Card title={`Programa ${p.year}: temas por mes`} action={<div className="flex gap-2">
+        <a href={`/imprimir/programa-capacitacion/${p.id}`} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center rounded-lg border border-line px-3 text-sm font-semibold hover:border-brand hover:text-brand-strong">PDF</a>
+        <Button size="sm" icon="download" onClick={() => downloadFile(`/reports/training_programs/${p.id}/compliance.xlsx`, `cumplimiento-capacitacion-${p.year}.xlsx`)}>Cumplimiento (Excel)</Button></div>}>
         <div className="mb-3 flex flex-wrap gap-2 text-xs">
           {(Object.keys(STATE) as Item["state"][]).map((k) => <span key={k} className={`rounded-full px-2 py-0.5 font-semibold ${STATE[k].cls}`}>{STATE[k].short} {STATE[k].label}</span>)}
         </div>

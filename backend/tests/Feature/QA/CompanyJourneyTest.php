@@ -296,6 +296,7 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
         $pcaItems[] = $this->postJson('/api/v1/records/PCA/training_program_items', ['training_program_id' => $pca, 'topic' => $topic, 'training_type' => 'specific',
             'planned_month' => $k + 1, 'target_audience' => 'Todo el personal'], $a)->qaStatus(201)->json('data.id');
     }
+    supervisorSignsForTests($cid, 'training_programs', $pca);   // RN-PCA-05: sin comité, firma del supervisor
     $this->patchJson("/api/v1/records/PCA/training_programs/{$pca}", ['status' => 'approved'], $a)->qaStatus(200);
     $this->getJson('/api/v1/pas/schedule', $a)->qaStatus(200);
 

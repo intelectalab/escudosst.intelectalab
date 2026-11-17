@@ -161,3 +161,20 @@ function approveBudgetForTests(\Tests\TestCase $t, string $id, array $h, string 
     DB::select("select set_config('app.company_id', ?, false)", [$companyId]);
     DB::update("update budgets set status = 'approved', approved_at = now() where id = ?", [$id]);
 }
+
+/**
+ * M-PCA RN-PCA-05: sin comité, el programa de capacitación se aprueba con la firma del Supervisor SST. Para las pruebas que solo
+ * necesitan aprobarlo, un usuario con rol de supervisor en esa empresa deja su firma en el registro.
+ */
+function supervisorSignsForTests(string $companyId, string $table, string $id): void
+{
+    DB::select("select set_config('app.company_id', ?, false)", [$companyId]);
+    $uid = DB::selectOne('select id from app_auth_lookup_user(?)', [ESENCIAL_EMAIL])->id;
+    $role = DB::selectOne("select id from roles where code = 'sst_supervisor' and account_id is null")->id;
+    if (! DB::selectOne("select 1 as ok from memberships where company_id = ? and user_id = ? and role_id = ? and status = 'active' and deleted_at is null", [$companyId, $uid, $role])) {
+        DB::insert("insert into memberships (company_id, user_id, role_id, status, accepted_at) values (?, ?, ?, 'active', now())", [$companyId, $uid, $role]);
+    }
+    DB::insert("insert into signatures (company_id, subject_type, subject_id, signer_user_id, signer_name, method, document_hash, evidence_hash, signed_at)
+                values (?, ?, ?, ?, 'Supervisor SST', 'pin', 'x', 'x', now())", [$companyId, $table, $id, $uid]);
+    DB::select("select set_config('app.company_id', '', false)");
+}

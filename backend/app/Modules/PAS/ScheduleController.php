@@ -77,11 +77,14 @@ class ScheduleController extends Controller
             $cells = [];
             for ($m = 1; $m <= 12; $m++) {
                 $isPlanned = in_array($m, $planned, true);
-                $qty = array_sum(array_map(fn ($e) => (int) $e->quantity, $byMonth[$m] ?? []));
+                // RN-PAS-01: solo cuentan las ejecuciones validadas; las que esperan validación se ven «por validar».
+                $qty = array_sum(array_map(fn ($e) => $e->verified_at ? (int) ($e->quantity ?? 1) : 0, $byMonth[$m] ?? []));
+                $toValidate = collect($byMonth[$m] ?? [])->contains(fn ($e) => ! $e->verified_at);
                 $moved = collect($resch[$a->id] ?? [])->where('from_month', $m)->last();
                 $state = match (true) {
                     $qty > 0 && $isPlanned => 'executed',
                     $qty > 0 => 'extra',
+                    $toValidate && $isPlanned => 'to_validate',
                     ! $isPlanned && $moved !== null => 'rescheduled',
                     ! $isPlanned => null,
                     $a->status === 'cancelled' => 'cancelled',

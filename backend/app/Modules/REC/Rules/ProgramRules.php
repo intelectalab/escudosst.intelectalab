@@ -48,6 +48,12 @@ class ProgramRules extends RecordRules
 
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
     {
+        if ($res['table'] === 'annual_programs' && ($values['status'] ?? null) === 'approved' && $current?->status !== 'approved') {
+            self::supersede($id);
+        }
+        if ($res['table'] === 'training_programs' && ($values['status'] ?? null) === 'approved' && $current?->status !== 'approved') {
+            self::syncCredentialRequirements($id);
+        }
         if ($res['table'] === 'activity_executions') {
             $this->recalcActivity(DB::selectOne('select activity_id from activity_executions where id = ?', [$id])->activity_id);
         }
@@ -65,6 +71,9 @@ class ProgramRules extends RecordRules
         if ($res['table'] === 'trainings' && ($values['training_program_item_id'] ?? null)) {
             DB::update("update training_program_items set training_id = ?, status = case when status = 'planned' then 'scheduled' else status end where id = ?",
                 [$id, $values['training_program_item_id']]);
+            if ($p = DB::selectOne("select p.id from training_program_items i join training_programs p on p.id = i.training_program_id where i.id = ? and p.status in ('approved', 'in_execution')", [$values['training_program_item_id']])) {
+                self::syncCredentialRequirements($p->id);
+            }
         }
     }
 
@@ -133,6 +142,12 @@ class ProgramRules extends RecordRules
             if ($model === 'committee' && ! $this->value($values, $current, 'committee_meeting_id')) {
                 $this->fail('committee_meeting_id', 'La empresa tiene Comité SST: indica la sesión en que se aprobó el programa.');
             }
+            // RN-PCA-05: sin comité, basta la firma del supervisor SST en el programa.
+            if ($model !== 'committee' && $table === 'training_programs' && ! DB::selectOne(
+                "select 1 as ok from signatures s join memberships m on m.user_id = s.signer_user_id and m.company_id = s.company_id and m.status = 'active' and m.deleted_at is null
+                   join roles r on r.id = m.role_id where s.subject_type = 'training_programs' and s.subject_id = ? and coalesce(r.base_role_code, r.code) = 'sst_supervisor'", [$current->id])) {
+                $this->fail('status', 'Sin Comité SST, el programa se aprueba con la firma del Supervisor SST: pídele que lo firme en la pestaña «Firmas».');
+            }
             $extra['approved_at'] = ['now()', []];
             if ($table === 'annual_programs') {
                 $extra['approved_by'] = ['?', [(string) auth()->id()]];
@@ -186,6 +201,9 @@ class ProgramRules extends RecordRules
 
     private function execution(string $op, array &$values, ?object $current, array &$extra): void
     {
+        if ($current && $current->verified_at && $values !== []) {
+            $this->conflict('La ejecución ya fue validada: no se modifica. Si hubo un error, archívala y registra otra.');
+        }
         $activity = $this->value($values, $current, 'activity_id');
         $st = DB::selectOne('select p.status from program_activities a join annual_programs p on p.id = a.program_id where a.id = ?', [$activity])?->status;
         if (! in_array($st, ['approved', 'in_execution'], true)) {
@@ -207,6 +225,14 @@ class ProgramRules extends RecordRules
             $this->fail('quantity', 'La cantidad ejecutada debe ser mayor que cero.');
         }
         if ($op === 'create') {
+            $values['status'] ??= 'executed';
+            $values['planned_month'] ??= (int) date('n', strtotime((string) ($this->value($values, $current, 'executed_on') ?? date('Y-m-d'))));
+            // RN-PAS-01: solo cuentan las ejecuciones validadas. Si la registra quien valida (Jefe SST), queda validada; si la registra
+            // el responsable, espera la validación del Jefe SST.
+            if (in_array('pas.activity_executions.verify', \App\Core\Auth\Permissions::effective(), true)) {
+                $extra['verified_by'] = ['?', [(string) auth()->id()]];
+                $extra['verified_at'] = ['now()', []];
+            }
             $extra['recorded_by'] = ['?', [(string) auth()->id()]];
             if ($st === 'approved') {
                 DB::update("update annual_programs set status = 'in_execution' from program_activities a where a.id = ? and annual_programs.id = a.program_id", [$activity]);
@@ -320,16 +346,57 @@ class ProgramRules extends RecordRules
         }
     }
 
-    private function recalcActivity(string $activityId): void
+    /**
+     * RN-PAS-03: al aprobarse una nueva versión, la anterior se cierra y las ejecuciones de cada actividad pasan a su actividad de la
+     * nueva versión (las actividades quitadas conservan sus ejecuciones en la versión anterior).
+     */
+    public static function supersede(string $programId): void
+    {
+        $p = DB::selectOne('select previous_program_id from annual_programs where id = ?', [$programId]);
+        if (! $p?->previous_program_id) {
+            return;
+        }
+        DB::update('update activity_executions x set activity_id = a.id from program_activities a
+                     where a.program_id = ? and a.previous_activity_id = x.activity_id and a.deleted_at is null and x.deleted_at is null', [$programId]);
+        DB::update("update annual_programs set status = 'closed', closed_at = now() where id = ? and status <> 'closed'", [$p->previous_program_id]);
+        foreach (DB::select('select id from program_activities where program_id in (?, ?) and deleted_at is null', [$programId, $p->previous_program_id]) as $a) {
+            (new self)->recalcActivity($a->id);
+        }
+    }
+
+    /**
+     * RN-PCA-07: cada tema obligatorio con puesto y capacitación pasa a requisito (bloqueante) del fotocheck de los trabajadores de
+     * ese puesto, en cada tipo de fotocheck activo para trabajadores. No duplica los que ya existen.
+     */
+    public static function syncCredentialRequirements(string $programId): int
+    {
+        $n = 0;
+        $types = DB::select("select id from credential_types where deleted_at is null and coalesce(is_active, true) and applies_to in ('workers', 'both')");
+        $items = DB::select("select id, company_id, topic, position_id, training_id from training_program_items
+                              where training_program_id = ? and deleted_at is null and status <> 'cancelled' and is_mandatory_legal and position_id is not null and training_id is not null", [$programId]);
+        foreach ($types as $t) {
+            foreach ($items as $i) {
+                $n += DB::affectingStatement(
+                    "insert into credential_requirements (company_id, credential_type_id, requirement_type, training_id, position_id, description, is_blocking, training_program_item_id, created_by, updated_by)
+                     select ?, ?, 'training', ?, ?, ?, true, ?, ?, ? where not exists (select 1 from credential_requirements where credential_type_id = ? and training_id = ? and position_id = ? and deleted_at is null)",
+                    [$i->company_id, $t->id, $i->training_id, $i->position_id, 'Tema obligatorio del programa de capacitación: '.$i->topic, $i->id, auth()->id(), auth()->id(), $t->id, $i->training_id, $i->position_id]);
+            }
+        }
+
+        return $n;
+    }
+
+    public function recalcActivity(string $activityId): void
     {
         DB::update(
             "update program_activities a set executed_quantity = x.q,
                     progress_pct = least(100, round(x.q * 100.0 / greatest(coalesce(a.goal_quantity, 1), 1), 2)),
                     status = case when a.status = 'cancelled' then a.status when x.q >= greatest(coalesce(a.goal_quantity, 1), 1) then 'done'
                                   when x.q > 0 then 'in_progress' else a.status end
-               from (select coalesce(sum(quantity), 0) as q from activity_executions where activity_id = ? and deleted_at is null) x
+               from (select coalesce(sum(coalesce(quantity, 1) * case when status = 'partial' then ?::numeric else 1 end), 0) as q
+                       from activity_executions where activity_id = ? and deleted_at is null and verified_at is not null) x
               where a.id = ?",
-            [$activityId, $activityId]
+            [(float) LegalParams::number('partial_execution_weight', 0.5), $activityId, $activityId]
         );
         DB::update(
             "update annual_programs p set progress_pct = coalesce((select round(avg(progress_pct), 2) from program_activities

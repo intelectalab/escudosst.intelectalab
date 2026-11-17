@@ -135,7 +135,7 @@ export function TraceStrip({ module, table, id, version }: { module: string; tab
 const FIELD_PDF: Record<string, [string, string][]> = {
   inspections: [["inspeccion", "Descargar PDF"]], work_permits: [["petar", "Descargar PDF"]], ats_forms: [["ats", "Descargar PDF"]],
   workers: [["legajo", "Legajo SST en PDF"], ["entrega-epp", "Entregas de EPP en PDF"]],
-  sst_policies: [["politica", "Descargar PDF"]], annual_plans: [["plan-anual", "Descargar PDF"]], annual_programs: [["passt", "Descargar PDF"]],
+  sst_policies: [["politica", "Descargar PDF"]], annual_plans: [["plan-anual", "Descargar PDF"]], annual_programs: [["passt", "Descargar PDF"]], training_programs: [["programa-capacitacion", "Descargar PDF"]],
   baseline_assessments: [["linea-base", "Descargar PDF"]], legal_requirements: [["matriz-legal", "Matriz legal en PDF"]],
   management_reviews: [["revision-direccion", "Informe en PDF"]], elections: [["acta-convocatoria", "Acta de convocatoria en PDF"]],
   committees: [["acta-instalacion", "Acta de instalación en PDF"]], documents: [["documento", "Historial y cargos en PDF"]],

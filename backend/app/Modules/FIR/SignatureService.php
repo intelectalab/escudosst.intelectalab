@@ -20,6 +20,8 @@ class SignatureService
         // Informe de investigación: lo que firma el equipo (no su estado, que avanza a aprobada o cerrada).
         // Versión de un registro obligatorio: sus datos congelados (huella data_hash), no su estado (pasa a firmado o reemplazado).
         'register_exports' => ['id', 'company_id', 'register_type', 'period_from', 'period_to', 'site_id', 'format_version', 'data_hash', 'rows_count'],
+        // Programa de capacitación: lo que firma el supervisor (su contenido, no su estado, que pasa a aprobado).
+        'training_programs' => ['id', 'company_id', 'year', 'title', 'annual_program_id', 'notes'],
         'investigations' => ['id', 'company_id', 'event_id', 'code', 'method', 'started_on', 'summary', 'immediate_causes', 'basic_causes', 'conclusions', 'lessons_learned'],
     ];
 

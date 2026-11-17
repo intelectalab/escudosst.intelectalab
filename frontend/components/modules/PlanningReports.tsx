@@ -170,6 +170,53 @@ export function ProgramReport({ id }: { id: string }) {
   );
 }
 
+// ─────────────── Programa de capacitación
+
+type TProg = {
+  company: Company;
+  program: { year: number; title: string; status: string; approved_at: string | null; notes: string | null; meeting: { number: number | null; held_at: string | null; scheduled_at: string | null } | null };
+  items: { topic: string; training_type: string; is_mandatory_legal: boolean; target_audience: string | null; position: string | null; planned_month: number | null; original_month: number | null;
+    duration_minutes: number | null; modality: string | null; provider: string | null; status: string; responsible: string | null; training: string | null }[];
+  totals: { items: number; mandatory: number; done: number };
+  signatures: Sig[];
+};
+const MODALITY: Record<string, string> = { in_person: "Presencial", virtual: "Virtual", blended: "Mixta" };
+const ITEM_STATUS: Record<string, string> = { planned: "Programado", scheduled: "Con capacitación", done: "Ejecutado", cancelled: "Cancelado" };
+
+export function TrainingProgramReport({ id }: { id: string }) {
+  const { data: d, error } = useReport<TProg>(`/reports/training_programs/${id}`);
+  if (!d) return <ReportLoading error={error} />;
+  const p = d.program;
+  return (
+    <Sheet company={d.company} title={`Programa Anual de Capacitación en SST ${p.year}`} sub={`${p.title} · ${DOC_STATUS[p.status] ?? p.status}`}
+      draft={["approved", "in_execution", "closed"].includes(p.status) ? null : "BORRADOR · el programa aún no está aprobado"}>
+      <Section n={1} title="Datos">
+        <Facts rows={[["Año", String(p.year)], ["Aprobado el", fmtD(p.approved_at)], ["Acta de aprobación", p.meeting ? meetingText(p.meeting) : "Sin comité: firma del Supervisor SST"],
+          ["Temas", `${d.totals.items} (${d.totals.mandatory} obligatorios) · ${d.totals.done} ejecutados`], ["Notas", p.notes]]} />
+      </Section>
+      <Section n={2} title="Temas del programa">
+        <table className="w-full border-collapse text-[11px]">
+          <thead><tr className="bg-gray-100"><th className={cell}>Mes</th><th className={cell}>Tema</th><th className={cell}>Obligatorio</th><th className={cell}>Puesto / público</th>
+            <th className={cell}>Modalidad</th><th className={cell}>Duración</th><th className={cell}>Responsable</th><th className={cell}>Estado</th></tr></thead>
+          <tbody>{d.items.map((i, k) => (
+            <tr key={k} style={{ breakInside: "avoid" }}>
+              <td className={cell}>{i.planned_month ? MONTHS[i.planned_month - 1] : "—"}{i.original_month && i.original_month !== i.planned_month ? ` (antes ${MONTHS[i.original_month - 1]})` : ""}</td>
+              <td className={cell}>{i.topic}{i.training ? <span className="block text-gray-500">{i.training}</span> : null}</td>
+              <td className={cell}>{i.is_mandatory_legal ? "Sí" : "No"}</td>
+              <td className={cell}>{i.position ?? i.target_audience ?? "—"}</td>
+              <td className={cell}>{i.modality ? MODALITY[i.modality] ?? i.modality : "—"}</td>
+              <td className={cell}>{i.duration_minutes ? `${i.duration_minutes} min` : "—"}</td>
+              <td className={cell}>{i.responsible ?? i.provider ?? "—"}</td>
+              <td className={cell}>{ITEM_STATUS[i.status] ?? i.status}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </Section>
+      <Section n={3} title="Firmas"><SigBlock list={d.signatures} /></Section>
+    </Sheet>
+  );
+}
+
 // ─────────────── Línea base
 
 type Base = {

@@ -30,6 +30,8 @@ Route::middleware(['auth:sanctum', 'company'])->prefix('reports')->controller(\A
     Route::get('sst_policies/{id}', 'policy')->whereUuid('id')->middleware('module:POL');
     Route::get('annual_plans/{id}', 'plan')->whereUuid('id')->middleware('module:PLA');
     Route::get('annual_programs/{id}', 'program')->whereUuid('id')->middleware('module:PAS');
+    Route::get('training_programs/{id}', 'trainingProgram')->whereUuid('id')->middleware('module:PCA');
+    Route::get('training_programs/{id}/compliance.xlsx', 'trainingProgramXlsx')->whereUuid('id')->middleware('module:PCA');
     Route::get('baseline_assessments/{id}', 'baseline')->whereUuid('id')->middleware('module:LBA');
     Route::get('legal_matrix', 'legalMatrix')->middleware('module:MRL');
 });
@@ -135,3 +137,6 @@ Route::middleware(['auth:sanctum', 'company', 'module:RIS'])->prefix('ris')->gro
     Route::post('deliver-all', [\App\Modules\REC\RisstToolsController::class, 'deliverAll']);
     Route::get('deliveries.xlsx', [\App\Modules\REC\RisstToolsController::class, 'deliveriesXlsx']);
 });
+
+// Registros del sistema como evidencia de un requisito legal (M-MRL SCR-MRL-04, RN-MRL-08).
+Route::middleware(['auth:sanctum', 'company', 'module:MRL'])->get('mrl/evidence-options', \App\Modules\REC\MrlEvidenceController::class);

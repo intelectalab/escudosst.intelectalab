@@ -172,6 +172,14 @@ class DiagnosticRules extends RecordRules
         DB::update('update requirement_evaluations set corrective_action_id = ? where id = ?', [$action, $e->id]);
     }
 
+    /** Registros del sistema que sirven como evidencia de un requisito legal (M-MRL SCR-MRL-04, RN-MRL-08): tabla => [módulo, nombre]. */
+    public const EVIDENCE_TABLES = [
+        'trainings' => ['CAP', 'Capacitación'], 'inspections' => ['INS', 'Inspección'], 'drills' => ['SIM', 'Simulacro'],
+        'committee_meetings' => ['COM', 'Sesión del comité'], 'safety_talks' => ['CH5', 'Charla de 5 minutos'], 'measurements' => ['MAG', 'Monitoreo de agentes'],
+        'management_reviews' => ['RVD', 'Revisión por la dirección'], 'documents' => ['DOC', 'Documento'], 'iperc_matrices' => ['IPC', 'Matriz IPERC'],
+        'ppe_deliveries' => ['EPP', 'Entrega de EPP'], 'audits' => ['AUI', 'Auditoría'], 'risst_versions' => ['RIS', 'RISST'], 'sst_policies' => ['POL', 'Política SST'],
+    ];
+
     private function evaluation(string $op, array &$values): void
     {
         if ($op === 'update') {
@@ -179,6 +187,17 @@ class DiagnosticRules extends RecordRules
         }
         $values['evaluated_on'] ??= date('Y-m-d');
         $values['evaluator_user_id'] ??= (string) auth()->id();
+        // RN-MRL-08: la evidencia puede ser un registro del sistema; debe existir y ser de la misma empresa (RLS).
+        $type = $values['evidence_record_type'] ?? null;
+        $rid = $values['evidence_record_id'] ?? null;
+        if ($type || $rid) {
+            if (! $type || ! $rid || ! isset(self::EVIDENCE_TABLES[$type])) {
+                $this->fail('evidence_record_id', 'Elige el tipo y el registro del sistema que respalda el cumplimiento.');
+            }
+            if (! \Illuminate\Support\Str::isUuid((string) $rid) || ! DB::selectOne("select 1 as ok from \"{$type}\" where id = ? and deleted_at is null", [$rid])) {
+                $this->fail('evidence_record_id', 'Ese registro no existe en tu empresa.');
+            }
+        }
         if (! isset($values['next_evaluation_on'])) {
             $months = (int) LegalParams::number('legal_evaluation_months', 12);
             $values['next_evaluation_on'] = date('Y-m-d', strtotime($values['evaluated_on']." +{$months} months"));
