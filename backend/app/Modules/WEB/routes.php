@@ -59,6 +59,7 @@ Route::middleware('throttle:web-chat')->prefix('public/chatbot')->group(function
 Route::middleware('throttle:web-read')->prefix('public')->group(function () {
     Route::get('site', [PublicSiteController::class, 'site']);
     Route::get('home', [HomeEditorController::class, 'publicShow']);
+    Route::get('blog-posts', [\App\Modules\WEB\Http\Controllers\BlogPostsController::class, 'index']);
     Route::get('pricing', [PublicSiteController::class, 'pricing']);
     Route::get('modules', [PublicSiteController::class, 'modules']);
     Route::get('legal/{slug}', [LegalDocumentsController::class, 'publicPage'])->where('slug', '[a-z0-9-]+');

@@ -84,6 +84,8 @@ export const getSite = () =>
   get<SiteData>("site", { settings: { legal_name: "GRUPO DE SOLUCIONES CREATIVAS SAC", trade_name: "EscudoSST", ruc: "20607431117" } as SiteSettings, products: [] });
 /** Lo que el dueño cambió en la portada (Sitio web › Portada). */
 export const getHome = () => get<{ sections: import("@/lib/home").HomeSection[] }>("home", { sections: [] });
+/** Últimos artículos del blog de WordPress (si el dueño lo activó en Sitio web › Ajustes). */
+export const getBlogPosts = () => get<{ title: string; link: string; date: string; excerpt: string }[]>("blog-posts", []);
 export const getPricing = () => get<Pricing>("pricing", { annual_discount_pct: 0, plans: [], addons: [], comparison: [] });
 
 export type BillingPeriod = "monthly" | "annual";

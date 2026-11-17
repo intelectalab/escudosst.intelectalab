@@ -9,7 +9,7 @@ import { FaqJsonLd, FaqList, TestimonialCards } from "@/components/site/FaqTesti
 import { Reveal } from "@/components/site/Reveal";
 import { ReviewsBlock } from "@/components/site/ReviewsBlock";
 import { Icon } from "@/components/ui/Icon";
-import { contactHref, getFaqs, getHome, getModules, getPricing, getSite, getTestimonials, homeVideo, whatsappLink } from "@/lib/site";
+import { contactHref, getBlogPosts, getFaqs, getHome, getModules, getPricing, getSite, getTestimonials, homeVideo, whatsappLink } from "@/lib/site";
 import { highlightParts, homeSection, type HomeKey } from "@/lib/home";
 import { ModuleTabs } from "@/components/site/ModuleTabs";
 import { DemoVideoPlayer } from "@/components/site/DemoVideoPlayer";
@@ -45,7 +45,7 @@ const STEPS = [
 ];
 
 export default async function HomePage() {
-  const [site, pricing, modules, faqs, testimonials, home] = await Promise.all([getSite(), getPricing(), getModules(), getFaqs(), getTestimonials(), getHome()]);
+  const [site, pricing, modules, faqs, testimonials, home, posts] = await Promise.all([getSite(), getPricing(), getModules(), getFaqs(), getTestimonials(), getHome(), getBlogPosts()]);
   // Textos y secciones visibles según Sitio web › Portada (lo no cambiado es el texto de fábrica).
   const sec = (k: HomeKey) => homeSection(home.sections, k);
   const s = site.settings;
@@ -410,6 +410,23 @@ export default async function HomePage() {
         <section className="px-4 py-14 lg:px-8">
           <div className="mx-auto max-w-[1360px]">
             <TrustSeals />
+          </div>
+        </section>
+      )}
+
+      {posts.length > 0 && (
+        <section className="px-4 py-14 lg:px-8">
+          <div className="mx-auto max-w-[1360px] space-y-6">
+            <h2 className="font-display text-2xl font-bold">Del blog</h2>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {posts.map((p) => (
+                <a key={p.link} href={p.link} target="_blank" rel="noopener" className="space-y-2 rounded-2xl border border-line bg-surface p-5 hover:border-brand">
+                  <span className="text-xs text-muted">{p.date ? new Date(p.date).toLocaleDateString("es-PE") : ""}</span>
+                  <b className="block leading-snug">{p.title}</b>
+                  {p.excerpt && <span className="block text-sm text-muted">{p.excerpt}</span>}
+                </a>
+              ))}
+            </div>
           </div>
         </section>
       )}

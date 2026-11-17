@@ -322,3 +322,22 @@ Artisan::command('escudo:access-expiry', function (\App\Modules\USR\Services\Acc
 })->purpose('Cierra los accesos vencidos y sus sesiones');
 
 Schedule::command('escudo:access-expiry')->hourlyAt(5)->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:access-expiry');
+
+/*
+| M-WEB: los datos personales de los contactos de la web (leads) se borran al pasar su plazo de conservación
+| (retain_until o, si no tiene, última actividad + web.lead_retention_months). Los convertidos en cliente se conservan.
+| El registro queda anónimo (para las métricas) y eliminado lógicamente.
+| Uso: php artisan escudo:web-retention
+*/
+Artisan::command('escudo:web-retention', function () {
+    $months = (int) \App\Core\Support\LegalParams::number('web.lead_retention_months', 24);
+    $n = DB::connection('platform')->update(
+        "update marketing_leads set email = 'borrado-' || replace(id::text, '-', '') || '@anonimo.invalid', full_name = null, company_name = null, ruc = null, phone = null,
+                notes = null, ip_hash = null, utm_source = null, utm_medium = null, utm_campaign = null, marketing_consent = false, marketing_consent_at = null,
+                deleted_at = now(), updated_at = now()
+          where deleted_at is null and status <> 'converted'
+            and coalesce(retain_until, (coalesce(last_activity_at, created_at) + make_interval(months => ?))::date) < current_date", [$months]);
+    $this->info("Contactos anonimizados: {$n}");
+})->purpose('Borra los datos personales de los contactos de la web al pasar el plazo');
+
+Schedule::command('escudo:web-retention')->dailyAt('03:10')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:web-retention');
