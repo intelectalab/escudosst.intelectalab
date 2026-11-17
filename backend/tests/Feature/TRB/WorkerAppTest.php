@@ -285,3 +285,25 @@ it('muestra Mi IPERC con los riesgos de su puesto y firma «Lo conozco» con el 
     $this->postJson('/api/v1/me/worker/sign', ['kind' => 'iperc', 'id' => $ver, 'pin' => '591736'], $h)->assertStatus(409);
     expect(collect($this->getJson('/api/v1/me/worker/iperc', $h)->json('data.matrices'))->firstWhere('version_id', $ver)['signed'])->toBeTrue();
 });
+
+it('«Mis acciones»: el trabajador ve las suyas, sube evidencia con foto y la envía a verificación', function () {
+    $w = wappWorker('76767610', 'Iván');
+    $other = wappWorker('76767611', 'Otro');
+    $s = wappActivate('76767610', wappIssue($w)['code'], '375194');
+    $boss = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
+    $mk = fn ($worker) => $this->postJson('/api/v1/records/ACR/corrective_actions', ['source_type' => 'other', 'description' => 'Orden y limpieza', 'action_type' => 'corrective',
+        'title' => 'Ordenar el almacén', 'due_on' => now()->addDays(7)->toDateString(), 'responsible_worker_id' => $worker], $boss)->assertCreated()->json('data.id');
+    $mine = $mk($w);
+    $theirs = $mk($other);
+    app('auth')->forgetGuards();
+    $h = authHeaders($s['token'], HUAYLAS_ID);
+    expect(collect($this->getJson('/api/v1/me/worker/actions', $h)->assertOk()->json('data'))->pluck('id')->all())->toBe([$mine]);
+    $this->postJson("/api/v1/me/worker/actions/{$theirs}/evidence", ['description' => 'Hecho'], $h)->assertNotFound();
+    $this->postJson("/api/v1/me/worker/actions/{$mine}/evidence", [], $h)->assertStatus(422);
+    $photo = \Illuminate\Http\UploadedFile::fake()->image('accion.jpg', 400, 300);
+    $this->post("/api/v1/me/worker/actions/{$mine}/evidence", ['photo' => $photo, 'description' => 'Almacén ordenado', 'done' => '1'], $h + ['Accept' => 'application/json'])
+        ->assertCreated()->assertJsonPath('data.status', 'pending_verification');
+    $r = wappAs(HUAYLAS_ID, fn () => DB::selectOne("select a.status, e.evidence_type, f.exif_stripped from corrective_actions a join action_evidences e on e.corrective_action_id = a.id
+                                                    join files f on f.id = e.file_id where a.id = ?", [$mine]));
+    expect($r->status)->toBe('pending_verification')->and($r->evidence_type)->toBe('photo')->and($r->exif_stripped)->toBeTrue();
+});

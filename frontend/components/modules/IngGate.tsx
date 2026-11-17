@@ -25,6 +25,22 @@ const BIG = "h-12 min-h-12 rounded-xl px-5 text-base font-semibold";
 type Detector = { detect: (src: HTMLVideoElement) => Promise<{ rawValue: string }[]> };
 type DetectorCtor = new (o: { formats: string[] }) => Detector;
 
+// RN-ING-06: sin conexión se usa la última lista de estados del punto (antigüedad máxima access_offline_max_age) y los
+// ingresos quedan en cola marcados «sin conexión» hasta que vuelva la red.
+type Roster = { access_point_id: string; generated_at: string; max_age_hours: number; people: { th: string; nh: string | null; name: string; company: string | null; ok: boolean; note: string | null }[] };
+type Queued = { point: string; hash: string; direction: "in" | "out"; occurred_at: string; client_id: string };
+const ROSTER_KEY = (p: string) => `escudo.garita.roster.${p}`;
+const QUEUE_KEY = "escudo.garita.queue";
+const store = {
+  get<T>(k: string, d: T): T { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : d; } catch { return d; } },
+  set(k: string, v: unknown) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* sin almacenamiento */ } },
+};
+async function sha256(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+const codeKey = (raw: string) => { const m = raw.match(/\/verificar\/fotocheck\/([A-Za-z0-9]{8,64})/); return (m ? m[1] : raw).trim().toUpperCase(); };
+
 const errText = (e: unknown) => (e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : null) ?? e.detail ?? e.title : "No se pudo completar.");
 const hour = (iso: string) => new Date(iso.replace(" ", "T")).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
 const initials = (n: string | null) => (n ?? "?").split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
@@ -41,6 +57,58 @@ export function IngGate() {
   const [visitor, setVisitor] = useState(false);
   const [inside, setInside] = useState<InsidePerson[]>([]);
   const [toast, setToast] = useState<{ m: string; t?: "ok" | "bad" } | null>(null);
+  const [queued, setQueued] = useState<number>(() => store.get<Queued[]>(QUEUE_KEY, []).length);
+  const [offline, setOffline] = useState(false);
+
+  // Lista de estados del punto para operar sin conexión; se renueva al elegir el punto y cada 30 minutos.
+  useEffect(() => {
+    if (!point) return;
+    const pull = () => api<{ data: Roster }>(`/ing/gate/roster?access_point_id=${point}`, { withCompany: true }).then((r) => store.set(ROSTER_KEY(point), r.data)).catch(() => undefined);
+    void pull();
+    const t = setInterval(pull, 30 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [point]);
+
+  // Al volver la conexión se envían los ingresos registrados sin red.
+  const flush = useCallback(async () => {
+    const q = store.get<Queued[]>(QUEUE_KEY, []);
+    if (!q.length || !navigator.onLine) return;
+    const left: Queued[] = [];
+    for (const p of Array.from(new Set(q.map((x) => x.point)))) {
+      const mine = q.filter((x) => x.point === p);
+      try {
+        await api("/ing/gate/sync", { method: "POST", withCompany: true, body: { access_point_id: p, events: mine.map(({ hash, direction, occurred_at, client_id }) => ({ hash, direction, occurred_at, client_id })) } });
+      } catch { left.push(...mine); }
+    }
+    store.set(QUEUE_KEY, left);
+    setQueued(left.length);
+    if (left.length < q.length) { setOffline(false); setToast({ m: `Se enviaron ${q.length - left.length} ingreso(s) registrados sin conexión.`, t: "ok" }); }
+  }, []);
+  useEffect(() => {
+    void flush();
+    window.addEventListener("online", flush);
+    return () => window.removeEventListener("online", flush);
+  }, [flush]);
+
+  async function verifyOffline(value: string) {
+    const roster = store.get<Roster | null>(ROSTER_KEY(point), null);
+    const key = codeKey(value);
+    const hash = await sha256(key);
+    const hit = roster?.people.find((p) => p.th === hash || p.nh === hash);
+    const old = !roster || Date.now() - new Date(roster.generated_at).getTime() > roster.max_age_hours * 3600 * 1000;
+    setOffline(true);
+    if (!hit) {
+      setResult({ result: "unknown", granted: false, person: null, reasons: [roster ? "Código no está en la lista guardada. Pide un documento y avisa al área SST." : "Sin conexión y sin lista guardada para este punto."], code: value });
+      return;
+    }
+    const q = store.get<Queued[]>(QUEUE_KEY, []);
+    q.push({ point, hash, direction, occurred_at: new Date().toISOString(), client_id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}` });
+    store.set(QUEUE_KEY, q);
+    setQueued(q.length);
+    const reasons = [...(hit.ok ? [] : [hit.note ?? "Requisito pendiente"]), "Registrado sin conexión: se enviará al volver la red.", ...(old ? ["La lista guardada es antigua: confirma con el área SST."] : [])];
+    setResult({ result: hit.ok ? "granted" : "denied", granted: hit.ok, person: { kind: "", name: hit.name, company: hit.company, document_masked: null, position: null, photo_file_id: null }, reasons, code: value });
+    setCode("");
+  }
 
   const loadInside = useCallback(() => {
     api<{ data: { people: InsidePerson[]; kpis: Kpis } }>("/ing/inside", { withCompany: true })
@@ -80,6 +148,7 @@ export function IngGate() {
   async function verify(raw: string, override?: string) {
     const value = raw.trim();
     if (!value || !point || busy) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine && !override) { await verifyOffline(value); return; }
     setBusy(true);
     try {
       const r = await api<{ data: ScanResult }>("/ing/gate/scan", {
@@ -92,7 +161,8 @@ export function IngGate() {
       if (navigator.vibrate) navigator.vibrate(r.data.granted ? 80 : [120, 80, 120]);
       loadInside();
     } catch (e) {
-      setToast({ m: errText(e), t: "bad" });
+      if (!(e instanceof ApiError) && !override) await verifyOffline(value);
+      else setToast({ m: errText(e), t: "bad" });
     } finally {
       setBusy(false);
     }
@@ -127,6 +197,12 @@ export function IngGate() {
         )}
       </div>
 
+      {(offline || queued > 0) && (
+        <p role="status" className="rounded-xl bg-amber-soft px-4 py-2 text-sm text-amber-ink">
+          {offline ? "Sin conexión: se usa la lista guardada del punto. " : ""}{queued > 0 ? `${queued} ingreso(s) por enviar.` : ""}
+          {queued > 0 && <button type="button" className="ml-2 font-semibold underline" onClick={() => void flush()}>Enviar ahora</button>}
+        </p>
+      )}
       {points.length === 0 ? (
         <div className="rounded-xl border border-line bg-surface p-6 text-muted">
           No hay puntos de acceso activos. El Jefe SST los crea en <Link href="/m/ing" className="font-semibold text-brand hover:underline">Ingreso por QR › Puntos de acceso</Link>.

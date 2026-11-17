@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type ApiError } from "@/lib/api";
 import { downloadFile } from "@/lib/records";
+import { MedReauth, useMedicalKey } from "./MedicalGate";
 import { Button } from "@/components/ui/Button";
 import { Card } from "./Summary";
 
@@ -37,7 +38,7 @@ const REGISTERS: [string, string][] = [
 type Missing = { id: string; code: string | null; missing: string[]; link: string };
 type VersionRow = { id: string; register_type: string; period_from: string; period_to: string; status: string; data_hash: string; rows_count: number;
   generated_at: string; site: string | null; generated_by: string | null; signed: number; signers: number };
-type Panel = { sites: { id: string; name: string }[]; signers: { id: string; full_name: string }[]; members: { id: string; full_name: string }[]; versions: VersionRow[] };
+type Panel = { sites: { id: string; name: string }[]; signers: { id: string; full_name: string }[]; members: { id: string; full_name: string }[]; versions: VersionRow[]; medical?: boolean };
 const VSTATUS: Record<string, [string, string]> = {
   generated: ["Generado", "bg-bg text-muted"],
   pending_signature: ["Pendiente de firma", "bg-amber-soft text-amber-ink"],
@@ -86,6 +87,8 @@ export function RegRegisters({ readOnly }: { readOnly: boolean }) {
   const [employer, setEmployer] = useState("");
   const [missing, setMissing] = useState<Missing[]>([]);
   const [done, setDone] = useState<string | null>(null);
+  const medKey = useMedicalKey();
+  const [askKey, setAskKey] = useState(false);
   const period = opts.find((o) => o.key === per) ?? opts[3];
   const q = `from=${period.from}&to=${period.to}${site ? `&site_id=${site}` : ""}`;
 
@@ -134,6 +137,18 @@ export function RegRegisters({ readOnly }: { readOnly: boolean }) {
       setMsg(err.errors ? Object.values(err.errors).flat()[0] : (err.detail ?? err.title));
     } finally {
       setBusy("");
+    }
+  };
+
+  // RN-REG-04: versión completa del registro de EMO (con diagnósticos), solo el médico y con su contraseña confirmada.
+  const fullEmo = async (key = medKey.key) => {
+    if (!key) { setAskKey(true); return; }
+    setMsg(null);
+    try {
+      await downloadFile(`/reg/emo/medical.xlsx?${q}`, `registro-emo-completo-${period.from}-${period.to}.xlsx`, { "X-Medical-Reauth": key.id });
+    } catch (e) {
+      const err = e as ApiError;
+      if (err.type === "reauth_required") { medKey.clear(); setAskKey(true); } else setMsg(err.detail ?? err.title);
     }
   };
 
@@ -213,7 +228,14 @@ export function RegRegisters({ readOnly }: { readOnly: boolean }) {
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button variant="primary" icon="check" loading={busy === "pdf"} disabled={!!busy || missing.length > 0 || !signer} onClick={generate}>Generar y pedir firma</Button>
                 <Button icon="download" loading={busy === "xlsx"} disabled={!!busy} onClick={excel}>Excel sin firma</Button>
+                {type === "emo" && panel?.medical && <Button icon="download" onClick={() => fullEmo()}>Versión completa (médico)</Button>}
               </div>
+              {askKey && (
+                <div className="mt-3">
+                  <MedReauth endpoint="/emo/reauth" who="el médico ocupacional" onCancel={() => setAskKey(false)}
+                    onOk={(k) => { medKey.setKey(k); setAskKey(false); void fullEmo(k); }} />
+                </div>
+              )}
             </>
           )}
           {done && (

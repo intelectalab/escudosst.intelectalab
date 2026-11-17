@@ -7,6 +7,7 @@ use App\Core\Tenancy\CompanyContext;
 use App\Http\Controllers\Controller;
 use App\Modules\REC\RecordsService;
 use App\Modules\REC\Registry;
+use App\Modules\REC\Rules\PeopleRules;
 use App\Modules\REC\Rules\WorkerRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -167,6 +168,112 @@ class GateController extends Controller
     }
 
     // ── Apoyo ──
+
+    /**
+     * GET /ing/gate/roster?access_point_id= — RN-ING-06: lista de estados para operar sin conexión. Por cada fotocheck vigente:
+     * huella SHA-256 del token del QR y del número (el navegador compara la huella del código leído), nombre, empresa y si
+     * hoy pasaría por este punto. Sin datos médicos: lo pendiente se muestra como «Requisito pendiente».
+     */
+    public function roster(Request $request): JsonResponse
+    {
+        $in = $request->validate(['access_point_id' => ['required', 'uuid']]);
+        $p = $this->point($in['access_point_id']);
+        $out = [];
+        foreach (DB::select(
+            "select c.id, c.credential_type_id, c.worker_id, c.contractor_worker_id, c.expires_on, encode(c.token_hash, 'hex') as th, c.credential_number,
+                    coalesce(w.full_name, trim(cw.first_name || ' ' || cw.paternal_last_name)) as name, coalesce(ct.legal_name, co.trade_name, co.legal_name) as company
+               from credentials c
+               left join workers w on w.id = c.worker_id and w.deleted_at is null and w.status = 'active'
+               left join contractor_workers cw on cw.id = c.contractor_worker_id and cw.deleted_at is null and cw.status = 'active'
+               left join contractors ct on ct.id = cw.contractor_id
+               left join companies co on co.id = c.company_id
+              where c.deleted_at is null and c.status <> 'revoked' and (w.id is not null or cw.id is not null)") as $c) {
+            $ok = ! PeopleRules::credentialReasonItems($c->credential_type_id, $c->worker_id, $c->contractor_worker_id, $c->expires_on);
+            if ($ok && $c->contractor_worker_id && $p->site_id) {
+                $ok = (bool) DB::selectOne(
+                    "select 1 as ok from contractor_accreditations a join contractor_workers w on w.contractor_id = a.contractor_id
+                      where w.id = ? and a.deleted_at is null and a.status in ('accredited', 'expiring') and (a.expires_on is null or a.expires_on >= current_date)
+                        and (a.starts_on is null or a.starts_on <= current_date) and (a.ends_on is null or a.ends_on >= current_date)
+                        and (a.site_ids = '{}' or ?::uuid = any(a.site_ids)) and (a.contractor_worker_ids = '{}' or w.id = any(a.contractor_worker_ids))", [$c->contractor_worker_id, $p->site_id]);
+            }
+            $out[] = ['th' => $c->th, 'nh' => $c->credential_number ? hash('sha256', strtoupper($c->credential_number)) : null, 'name' => $c->name, 'company' => $c->company, 'ok' => $ok,
+                'note' => $ok ? null : 'Requisito pendiente'];
+        }
+
+        return response()->json(['data' => ['access_point_id' => $p->id, 'generated_at' => now()->toIso8601String(),
+            'max_age_hours' => (int) \App\Core\Support\LegalParams::number('access_offline_max_age', 12), 'people' => $out]]);
+    }
+
+    /**
+     * POST /ing/gate/sync {access_point_id, events: [{hash, direction, occurred_at, client_id}]} — eventos registrados sin conexión:
+     * se crean con su hora real, marcados offline (RN-ING-06) y sin duplicarse si se envían dos veces (client_id).
+     */
+    public function sync(Request $request): JsonResponse
+    {
+        $in = $request->validate([
+            'access_point_id' => ['required', 'uuid'],
+            'events' => ['required', 'array', 'max:500'],
+            'events.*.hash' => ['required', 'regex:/^[a-f0-9]{64}$/'],
+            'events.*.direction' => ['required', 'in:in,out'],
+            'events.*.occurred_at' => ['required', 'date', 'before_or_equal:now'],
+            'events.*.client_id' => ['required', 'string', 'max:80'],
+        ]);
+        $this->point($in['access_point_id']);
+        $done = 0;
+        $unknown = 0;
+        foreach ($in['events'] as $e) {
+            $key = 'offline:'.$e['client_id'];
+            if (DB::selectOne('select 1 as ok from access_events where idempotency_key = ?', [$key])) {
+                $done++;
+                continue;
+            }
+            $cred = DB::selectOne("select worker_id, contractor_worker_id from credentials where deleted_at is null and (token_hash = decode(?, 'hex') or encode(sha256(convert_to(upper(credential_number), 'UTF8')), 'hex') = ?) limit 1",
+                [$e['hash'], $e['hash']]);
+            if (! $cred) {
+                $unknown++;
+                continue;
+            }
+            // Los eventos de portería son inalterables: la marca offline y la clave van al crearlos (AddonRules::access).
+            $request->attributes->set('ing_offline', ['key' => $key]);
+            $this->create(['access_point_id' => $in['access_point_id'], 'direction' => $e['direction'], 'occurred_at' => $e['occurred_at'],
+                'subject_type' => $cred->worker_id ? 'worker' : 'contractor_worker', $cred->worker_id ? 'worker_id' : 'contractor_worker_id' => $cred->worker_id ?? $cred->contractor_worker_id]);
+            $request->attributes->remove('ing_offline');
+            $done++;
+        }
+
+        return response()->json(['data' => ['synced' => $done, 'unknown' => $unknown]]);
+    }
+
+    /** GET /ing/reports.xlsx?from=&to=&by=day|point|contractor — M-ING §11: ingresos por día, punto o empresa contratista. */
+    public function report(Request $request): \Symfony\Component\HttpFoundation\Response
+    {
+        $d = $request->validate(['from' => ['nullable', 'date'], 'to' => ['nullable', 'date'], 'by' => ['nullable', 'in:day,point,contractor']]);
+        $from = $d['from'] ?? now('America/Lima')->startOfMonth()->toDateString();
+        $to = $d['to'] ?? now('America/Lima')->toDateString();
+        $by = $d['by'] ?? 'day';
+        [$group, $label] = match ($by) {
+            'point' => ["coalesce(p.name, 'Sin punto')", 'Punto de acceso'],
+            'contractor' => ["coalesce(ct.legal_name, case e.subject_type when 'worker' then 'Personal propio' when 'visitor' then 'Visitas' else 'Otros' end)", 'Empresa'],
+            default => ["to_char((e.occurred_at at time zone 'America/Lima')::date, 'YYYY-MM-DD')", 'Día'],
+        };
+        $rows = DB::select(
+            "select {$group} as g, count(*) filter (where e.direction = 'in' and e.result in ('granted', 'overridden')) as ins,
+                    count(*) filter (where e.direction = 'out') as outs, count(*) filter (where e.result = 'denied') as denied,
+                    count(*) filter (where e.result = 'overridden') as overridden, count(*) filter (where e.is_offline) as offline,
+                    count(distinct coalesce(e.worker_id, e.contractor_worker_id)) as people
+               from access_events e left join access_points p on p.id = e.access_point_id
+               left join contractor_workers cw on cw.id = e.contractor_worker_id left join contractors ct on ct.id = cw.contractor_id
+              where (e.occurred_at at time zone 'America/Lima')::date between ? and ? group by 1 order by 1", [$from, $to]);
+        $out = [["Ingresos por {$label}"], ["Del {$from} al {$to}."], [], [$label, 'Ingresos', 'Salidas', 'Negados', 'Por excepción', 'Sin conexión', 'Personas distintas']];
+        foreach ($rows as $r) {
+            $out[] = [$r->g, (int) $r->ins, (int) $r->outs, (int) $r->denied, (int) $r->overridden, (int) $r->offline, (int) $r->people];
+        }
+
+        return response(\App\Core\Support\Xlsx::build('Ingresos', $out, 4), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"ingresos-{$by}-{$from}-{$to}.xlsx\"",
+        ]);
+    }
 
     /** Crea el evento por el motor de registros (regla de acceso, auditoría) y lo devuelve tal como quedó. */
     private function create(array $values): array

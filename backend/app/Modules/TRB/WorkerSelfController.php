@@ -44,7 +44,7 @@ class WorkerSelfController extends Controller
         $ctx = app(CompanyContext::class);
         $today = WorkerSelf::today();
         $mods = [];
-        foreach (['FOT', 'FIR', 'DOC', 'RIS', 'CAP', 'AUL', 'EPP', 'EMO', 'ACT', 'COM', 'PSI', 'OFF', 'IPC'] as $c) {
+        foreach (['FOT', 'FIR', 'DOC', 'RIS', 'CAP', 'AUL', 'EPP', 'EMO', 'ACT', 'COM', 'PSI', 'OFF', 'IPC', 'ACR'] as $c) {
             $mods[$c] = WorkerSelf::usable($c);
         }
         $cred = $mods['FOT'] ? DB::selectOne("select status, expires_on from credentials where worker_id = ? and deleted_at is null and status <> 'revoked' order by issued_at desc nulls last limit 1", [$w->id]) : null;
@@ -369,6 +369,59 @@ class WorkerSelfController extends Controller
             "{$w->full_name} pide reponer «{$d->name}».", '/m/epp', 'normal', 'epp.replacement:'.$rid);
 
         return response()->json(['data' => ['id' => $rid]], 201);
+    }
+
+    /** M-ACR: «Mis acciones», las acciones correctivas que tiene a cargo el trabajador. */
+    public function actions(): JsonResponse
+    {
+        $this->module('ACR');
+        $w = WorkerSelf::row();
+
+        return response()->json(['data' => DB::select(
+            "select a.id, a.code, a.title, a.description, a.due_on, a.status, a.priority,
+                    (select count(*) from action_evidences e where e.corrective_action_id = a.id and e.deleted_at is null) as evidences
+               from corrective_actions a
+              where a.deleted_at is null and a.status in ('open', 'in_progress', 'overdue', 'pending_verification') and (a.responsible_worker_id = ? or a.responsible_user_id = ?)
+              order by (a.status = 'pending_verification'), a.due_on nulls last limit 50", [$w->id, (string) auth()->id()])]);
+    }
+
+    /**
+     * Evidencia de una acción desde el celular: foto tomada con la cámara (sin metadatos de ubicación) y/o descripción;
+     * con «done» la acción pasa a verificación del área SST (la verifica otra persona).
+     */
+    public function actionEvidence(Request $request, string $id): JsonResponse
+    {
+        $this->module('ACR');
+        $w = WorkerSelf::row();
+        $uid = (string) auth()->id();
+        $a = Str::isUuid($id) ? DB::selectOne('select * from corrective_actions where id = ? and deleted_at is null and (responsible_worker_id = ? or responsible_user_id = ?)', [$id, $w->id, $uid]) : null;
+        if (! $a) {
+            throw ApiProblem::notFound('No encontramos esa acción a tu cargo.');
+        }
+        if (in_array($a->status, ['verified', 'cancelled', 'pending_verification'], true)) {
+            throw new ApiProblem(409, 'conflict', 'Acción cerrada', $a->status === 'pending_verification' ? 'La acción ya está en verificación.' : 'La acción ya está cerrada.');
+        }
+        $in = $request->validate(['photo' => ['nullable', 'image', 'max:8192'], 'file_id' => ['nullable', 'uuid'], 'description' => ['nullable', 'string', 'max:1000'], 'done' => ['nullable', 'boolean']],
+            ['photo.image' => 'La foto debe ser una imagen.']);
+        $company = app(CompanyContext::class)->companyId;
+        $file = $request->hasFile('photo') ? \App\Modules\ACT\ReportPointController::cleanPhoto($company, $request->file('photo'))
+            : (! empty($in['file_id']) && DB::selectOne('select 1 as ok from files where id = ? and created_by = ? and deleted_at is null', [$in['file_id'], $uid]) ? $in['file_id'] : null);
+        if ($file) {
+            DB::update("update files set module_code = 'ACR', entity_type = 'action_evidences', original_name = 'evidencia-accion.jpg' where id = ?", [$file]);
+        }
+        if (! $file && trim((string) ($in['description'] ?? '')) === '') {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Toma una foto o describe lo que hiciste.', ['errors' => ['photo' => ['Toma una foto o describe lo que hiciste.']]]);
+        }
+        $eid = DB::selectOne("insert into action_evidences (company_id, corrective_action_id, evidence_type, description, file_id, submitted_by, submitted_at, created_by, updated_by)
+                              values (?, ?, ?, ?, ?, ?, now(), ?, ?) returning id",
+            [$company, $a->id, $file ? 'photo' : 'other', trim((string) ($in['description'] ?? '')) ?: null, $file, $uid, $uid, $uid])->id;
+        $status = ! empty($in['done']) ? 'pending_verification' : ($a->status === 'open' ? 'in_progress' : $a->status);
+        DB::update('update corrective_actions set status = ?, completed_at = case when ? then now() else completed_at end, updated_by = ?, updated_at = now() where id = ?',
+            [$status, $status === 'pending_verification' ? 'true' : 'false', $uid, $a->id]);
+        \App\Modules\NOT\Notify::users([$a->created_by, ...\App\Modules\NOT\Notify::roles(['sst_manager'])], 'acr.evidence', 'ACR', $a->id, 'Evidencia de acción para verificar',
+            "{$w->full_name} subió evidencia de {$a->code} · {$a->title}.", '/m/acr?t=corrective_actions&open='.$a->id, 'normal', 'acr.evidence:'.$eid);
+
+        return response()->json(['data' => ['evidence_id' => $eid, 'status' => $status]], 201);
     }
 
     public function reports(): JsonResponse

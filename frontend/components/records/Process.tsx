@@ -5,6 +5,8 @@
 // - RecordActions: los pasos propios del proceso según la tabla (acción correctiva, inspección, hallazgo).
 
 import { AttendanceSign, CredentialVerify, TrainerWarning } from "./PeopleExtras";
+import { InvWorkspace } from "./InvWorkspace";
+import { AccreditationScope } from "@/components/modules/CtrExtras";
 import { AtsTrainingCheck, EscalateReport, PermitQr, RotateQr, TemplateVersion } from "./FieldExtras";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -177,6 +179,7 @@ function RecordActionsInner({
   if (res.table === "investigations")
     return (
       <div className="space-y-3">
+        <InvWorkspace row={row} readOnly={readOnly} onChanged={onChanged} />
         <InvScatPanel row={row} readOnly={readOnly} onChanged={onChanged} />
         <InvTeamSignatures investigationId={row.id} readOnly={readOnly} />
         <InvTreeWithGuide row={row} readOnly={readOnly} />
@@ -220,6 +223,12 @@ function RecordActionsInner({
   if (res.table === "vendor_evaluation_templates") return <CriteriaEditor row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "vendor_evaluations") return <ScoreForm row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "course_offers") return <SellOffer row={row} onChanged={onChanged} />;
+  if (res.table === "contractor_accreditations") return (
+    <div className="space-y-3">
+      <AccreditationScope row={row} canEdit={res.can.update && !readOnly} onChanged={onChanged} />
+      {!readOnly && STEPS[res.table] && <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />}
+    </div>
+  );
   if (res.table === "questions") return <QuestionOptions row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "course_enrollments") return <Link href={`/aula/${row.id}`} className="inline-block rounded-lg border border-line px-3 py-1.5 text-sm font-semibold text-brand hover:border-brand">Abrir el curso de esta matrícula</Link>;
   if (res.table === "orders" && row.status === "pending") return <PayOrder id={row.id} label={`Pedido ${String(row.order_number ?? "")}`} onChanged={onChanged} />;

@@ -260,12 +260,14 @@ function UploadModal({ upload, onClose, onDone }: { upload: Upload; onClose: () 
   const [file, setFile] = useState<File | null>(null);
   const [issued, setIssued] = useState("");
   const [expires, setExpires] = useState("");
+  const [fitness, setFitness] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const medical = /emo|apt|médic|medic/i.test(`${upload.req.code} ${upload.req.name}`);
 
   async function send() {
     if (!file) return setError("Elige el archivo del documento.");
+    if (medical && (!fitness || !expires)) return setError("Indica el resultado de la constancia de aptitud y hasta cuándo vale.");
     setBusy(true);
     setError(null);
     try {
@@ -273,7 +275,7 @@ function UploadModal({ upload, onClose, onDone }: { upload: Upload; onClose: () 
       await api("/ctr/portal/documents", {
         method: "POST",
         withCompany: true,
-        body: { requirement_id: upload.req.id, file_id: f.id, contractor_worker_id: upload.worker?.id, issued_on: issued || undefined, expires_on: expires || undefined },
+        body: { requirement_id: upload.req.id, file_id: f.id, contractor_worker_id: upload.worker?.id, issued_on: issued || undefined, expires_on: expires || undefined, fitness_result: medical ? fitness : undefined },
       });
       onDone();
     } catch (e) {
@@ -301,6 +303,13 @@ function UploadModal({ upload, onClose, onDone }: { upload: Upload; onClose: () 
       <div className="space-y-4">
         {medical && (
           <p className="rounded-lg bg-amber-soft px-3 py-2 text-sm text-amber-ink">Sube solo la constancia de aptitud médica. No subas informes clínicos ni diagnósticos.</p>
+        )}
+        {medical && (
+          <FormField label="Resultado de la constancia">
+            <select className="input" value={fitness} onChange={(e) => setFitness(e.target.value)}>
+              <option value="">Elige…</option><option value="fit">Apto</option><option value="fit_with_restrictions">Apto con restricciones</option><option value="unfit">No apto</option>
+            </select>
+          </FormField>
         )}
         <FormField label="Archivo" hint="PDF o imagen, hasta 15 MB">
           <input className="input" type="file" accept="application/pdf,image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
@@ -386,7 +395,8 @@ function WorkerModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
 
 function AccreditationModal({ sites, defaultService, onClose, onDone }: { sites: { id: string; name: string }[]; defaultService: string; onClose: () => void; onDone: () => void }) {
   const today = new Date().toISOString().slice(0, 10);
-  const [f, setF] = useState({ service_description: defaultService, contract_reference: "", site_id: "", starts_on: today, ends_on: "" });
+  const [f, setF] = useState({ service_description: defaultService, contract_reference: "", starts_on: today, ends_on: "" });
+  const [siteIds, setSiteIds] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -397,7 +407,7 @@ function AccreditationModal({ sites, defaultService, onClose, onDone }: { sites:
     setError(null);
     setErrors({});
     try {
-      await api("/ctr/portal/accreditations", { method: "POST", withCompany: true, body: Object.fromEntries(Object.entries(f).filter(([, v]) => v !== "")) });
+      await api("/ctr/portal/accreditations", { method: "POST", withCompany: true, body: { ...Object.fromEntries(Object.entries(f).filter(([, v]) => v !== "")), site_ids: siteIds } });
       onDone();
     } catch (e) {
       const [msg, errs] = errorText(e);
@@ -427,11 +437,14 @@ function AccreditationModal({ sites, defaultService, onClose, onDone }: { sites:
             <textarea className="input min-h-20" value={f.service_description} onChange={set("service_description")} aria-invalid={!!errors.service_description} />
           </FormField>
         </div>
-        <FormField label="Sede" hint="Opcional">
-          <select className="input" value={f.site_id} onChange={set("site_id")}>
-            <option value="">Todas / por definir</option>
-            {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+        <FormField label="Sedes" hint="Sin marcar: por definir con la empresa principal">
+          <div className="flex flex-wrap gap-3 pt-1 text-sm">
+            {sites.map((s) => (
+              <label key={s.id} className="flex items-center gap-1">
+                <input type="checkbox" checked={siteIds.includes(s.id)} onChange={() => setSiteIds(siteIds.includes(s.id) ? siteIds.filter((x) => x !== s.id) : [...siteIds, s.id])} />{s.name}
+              </label>
+            ))}
+          </div>
         </FormField>
         <FormField label="N.° de contrato u orden" hint="Opcional">
           <input className="input" value={f.contract_reference} onChange={set("contract_reference")} />

@@ -116,3 +116,31 @@ it('no registra resultados en una orden anulada', function () {
     $r = $this->postJson('/api/v1/emo/reauth', ['password' => DEMO_PASSWORD], $doc)->json('data.reauth_id');
     $this->putJson("/api/v1/emo/orders/{$order}/clinical", ['exam_on' => now()->toDateString(), 'fitness_result' => 'pending'], $doc + ['X-Medical-Reauth' => $r])->assertStatus(409);
 });
+
+it('la versión completa del registro de EMO solo la descarga el médico con su contraseña confirmada', function () {
+    $sst = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
+    $w = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => '63636399', 'first_name' => 'Raúl', 'paternal_last_name' => 'Registro'], $sst)->json('data.id');
+    $order = emoOrder($w);
+    $doc = authHeaders(tokenFor(ESENCIAL_EMAIL), HUAYLAS_ID);
+    $r = $this->postJson('/api/v1/emo/reauth', ['password' => DEMO_PASSWORD], $doc)->json('data.reauth_id');
+    $m = $doc + ['X-Medical-Reauth' => $r];
+    $this->putJson("/api/v1/emo/orders/{$order}/clinical", ['exam_on' => now()->toDateString(), 'examining_doctor_name' => 'Dra. Salud', 'examining_doctor_cmp' => '12345',
+        'diagnoses' => [['code' => 'H83.3', 'description' => 'Ruido']], 'fitness_result' => 'fit', 'fitness_valid_until' => now()->addYear()->toDateString()], $m)->assertCreated();
+    $q = '?from='.now()->startOfYear()->toDateString().'&to='.now()->toDateString();
+
+    // El Jefe SST no la genera; el médico sin contraseña confirmada tampoco.
+    app('auth')->forgetGuards();
+    Permissions::flush();
+    $this->get('/api/v1/reg/emo/medical.xlsx'.$q, $sst + ['Accept' => 'application/json'])->assertStatus(403);
+    app('auth')->forgetGuards();
+    Permissions::flush();
+    $this->get('/api/v1/reg/emo/medical.xlsx'.$q, $doc + ['Accept' => 'application/json'])->assertStatus(403)->assertJsonPath('type', 'reauth_required');
+    $res = $this->get('/api/v1/reg/emo/medical.xlsx'.$q, $m + ['Accept' => 'application/json'])->assertOk();
+    expect($res->headers->get('content-type'))->toContain('spreadsheetml');
+    $zip = tempnam(sys_get_temp_dir(), 'x');
+    file_put_contents($zip, $res->getContent());
+    $z = new ZipArchive();
+    $z->open($zip);
+    expect($z->getFromName('xl/worksheets/sheet1.xml').$z->getFromName('xl/sharedStrings.xml'))->toContain('H83.3');
+    expect(DB::selectOne("select count(*) as n from sensitive_access_logs where resource = 'medical_export' and action = 'export'")->n)->toBeGreaterThan(0);
+});

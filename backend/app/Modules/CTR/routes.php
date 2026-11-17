@@ -13,6 +13,10 @@ Route::middleware(['auth:sanctum', 'company', 'module:CTR'])->prefix('ctr')->gro
     Route::post('invitations', [InvitationController::class, 'store'])->middleware('throttle:login');
     Route::post('invitations/{contractor}/resend', [InvitationController::class, 'resend'])->whereUuid('contractor')->middleware('throttle:login');
 
+    Route::get('summary', [\App\Modules\CTR\CtrToolsController::class, 'summary']);
+    Route::get('accreditations/{id}/workers', [\App\Modules\CTR\CtrToolsController::class, 'accreditationWorkers'])->whereUuid('id');
+    Route::put('accreditations/{id}/scope', [\App\Modules\CTR\CtrToolsController::class, 'scope'])->whereUuid('id');
+    Route::get('reports.xlsx', [\App\Modules\CTR\CtrToolsController::class, 'report']);
     Route::get('review', [ReviewController::class, 'index']);
     Route::post('review/{document}', [ReviewController::class, 'review'])->whereUuid('document');
 

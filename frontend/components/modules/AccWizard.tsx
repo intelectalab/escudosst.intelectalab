@@ -7,7 +7,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { records, recordsHref, toLocalInput, type RecordRow } from "@/lib/records";
+import { records, recordsHref, toLocalInput, uploadFile, type RecordRow } from "@/lib/records";
 import { FormField } from "@/components/ui/Form";
 import { RefSelect } from "./RefSelect";
 import { EnabledChip, RequirementChips, useRequirements } from "./WorkerChecks";
@@ -30,6 +30,9 @@ type Data = {
   site_id: string;
   site_label: string;
   exact_location: string;
+  latitude: number | null;
+  longitude: number | null;
+  photos: { id: string; name: string }[];
   description: string;
   activity_at_time: string;
   immediate_actions: string;
@@ -112,7 +115,7 @@ function WorkerCard({ id }: { id: string }) {
 
 export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const initial: Data = {
-    event_type: "minor_accident", occurred_at: toLocalInput(new Date().toISOString()), site_id: "", site_label: "", exact_location: "", description: "",
+    event_type: "minor_accident", occurred_at: toLocalInput(new Date().toISOString()), site_id: "", site_label: "", exact_location: "", latitude: null, longitude: null, photos: [], description: "",
     activity_at_time: "", immediate_actions: "", iperc_row_id: "", iperc_row_label: "", person: "worker", worker_id: "", worker_label: "", external_name: "", injury_type: "", body_part: "", injury_agent: "",
     lost_days: "", medical_place: "", witnesses: [], notified: false, notification_number: "", notified_at: "",
   };
@@ -139,6 +142,27 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
           <FormField label="Lugar exacto">
             <input className="input" value={d.exact_location} maxLength={300} placeholder="Ej.: Línea de prensas 3" onChange={(e) => set({ exact_location: e.target.value })} />
           </FormField>
+          <div className="flex flex-wrap items-center gap-2 text-sm sm:col-span-2">
+            <button type="button" className={BTN} onClick={() => {
+              if (typeof navigator === "undefined" || !navigator.geolocation) return;
+              navigator.geolocation.getCurrentPosition((p) => set({ latitude: Number(p.coords.latitude.toFixed(6)), longitude: Number(p.coords.longitude.toFixed(6)) }), () => undefined, { timeout: 8000 });
+            }}>Usar mi ubicación (GPS)</button>
+            {d.latitude !== null ? <span className="text-ok">Ubicación tomada: {d.latitude}, {d.longitude}</span> : <span className="text-muted">Opcional: guarda el punto exacto del hecho.</span>}
+          </div>
+          <div className="sm:col-span-2">
+            <FormField label="Fotos (opcional)" hint="Del lugar o de lo ocurrido, sin rostros si no es necesario. Hasta 10.">
+              <input type="file" accept="image/*" capture="environment" multiple className="block text-sm" onChange={async (e) => {
+                const files = Array.from(e.target.files ?? []).slice(0, 10 - d.photos.length);
+                const up: { id: string; name: string }[] = [];
+                for (const f of files) {
+                  try { const u = await uploadFile(f, "ACC"); up.push({ id: u.id, name: u.original_name }); } catch { /* la foto que falla no se adjunta */ }
+                }
+                set({ photos: [...d.photos, ...up] });
+                e.target.value = "";
+              }} />
+            </FormField>
+            {d.photos.length > 0 && <p className="text-xs text-muted">{d.photos.length} foto(s): {d.photos.map((x) => x.name).join(", ")}</p>}
+          </div>
           <div className="sm:col-span-2">
             <FormField label="Descripción" hint="Qué pasó, en orden, sin juzgar a nadie.">
               <textarea className="input min-h-[96px]" value={d.description} maxLength={5000} onChange={(e) => set({ description: e.target.value })} />
@@ -293,6 +317,7 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
           <SummaryRow label="Fecha y hora" value={d.occurred_at.replace("T", " ").split(" ").map((p, i) => (i === 0 ? p.split("-").reverse().join("/") : p)).join(" ")} onEdit={() => goTo(0)} />
           <SummaryRow label="Lugar" value={[d.site_label, d.exact_location].filter(Boolean).join(" · ")} onEdit={() => goTo(0)} />
           <SummaryRow label="Descripción" value={d.description} onEdit={() => goTo(0)} />
+          <SummaryRow label="Ubicación y fotos" value={[d.latitude !== null ? "GPS tomado" : "Sin GPS", `${d.photos.length} foto(s)`].join(" · ")} onEdit={() => goTo(0)} />
           <SummaryRow label="Persona afectada" value={d.person === "worker" ? d.worker_label : d.person === "external" ? d.external_name : "Nadie"} onEdit={() => goTo(1)} />
           {d.person !== "none" && <SummaryRow label="Lesión" value={[d.injury_type, d.body_part, d.injury_agent, d.lost_days ? `${d.lost_days} día(s) de descanso` : ""].filter(Boolean).join(" · ")} onEdit={() => goTo(2)} />}
           <SummaryRow label="Testigos" value={d.witnesses.map((w) => w.label).join(", ") || "Sin testigos"} onEdit={() => goTo(2)} />
@@ -305,6 +330,8 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
           occurred_at: new Date(d.occurred_at).toISOString(),
           site_id: d.site_id,
           exact_location: d.exact_location.trim() || null,
+          latitude: d.latitude, longitude: d.longitude,
+          photo_file_ids: d.photos.map((x) => x.id),
           description: d.description.trim(),
           activity_at_time: d.activity_at_time.trim() || null,
           immediate_actions: d.immediate_actions.trim() || null,

@@ -111,8 +111,75 @@ class RegistersController extends Controller
         ]);
     }
 
-    /** Versión del formato referencial (RN-REG-06): un cambio de formato crea una versión nueva sin tocar las exportaciones previas. */
+    /** Versión del formato referencial por defecto (RN-REG-06). La vigente se administra en el parámetro reg_format_version. */
     public const FORMAT_VERSION = 'rm050-v1';
+
+    /**
+     * RN-REG-06: los formatos son plantillas versionadas. La versión vigente es un parámetro con vigencia e historial
+     * (reg_format_version); cambiarla crea las exportaciones nuevas con esa versión y no altera las anteriores.
+     */
+    public static function formatVersion(): string
+    {
+        $v = trim(\App\Core\Support\LegalParams::text('reg_format_version', self::FORMAT_VERSION));
+
+        return $v !== '' ? mb_substr($v, 0, 40) : self::FORMAT_VERSION;
+    }
+
+    /**
+     * GET /reg/emo/medical.xlsx?from=&to= — RN-REG-04: versión completa del registro de EMO (con diagnósticos, restricciones y
+     * recomendaciones) solo para el médico ocupacional, con su contraseña confirmada (cabecera X-Medical-Reauth). El acceso
+     * queda en los registros de la base principal y de la base médica, y una copia cifrada del archivo queda en el almacén médico.
+     */
+    public function emoMedical(Request $request): Response
+    {
+        $this->can('reg.register_exports.create');
+        if (! in_array('emo.medical_exams.read_sensitive', Permissions::effective(), true)) {
+            \App\Modules\VUL\MedicalAccess::denied('Registro de EMO completo sin permiso médico');
+            throw ApiProblem::forbidden('La versión completa del registro de exámenes médicos solo la genera el médico ocupacional.');
+        }
+        [$from, $to] = $this->period($request, 'emo');
+        $reauth = \App\Modules\VUL\MedicalAccess::reauthId($request);
+        \App\Modules\VUL\MedicalAccess::audit('medical_export', null, null, 'export', $reauth, "Registro de EMO completo {$from} a {$to}");
+        $dec = function ($v) {
+            if ($v === null || $v === '') {
+                return '';
+            }
+            try {
+                return (string) \App\Modules\EMO\MedicalCipher::decrypt(is_string($v) && str_starts_with($v, '"') ? (json_decode($v) ?? $v) : $v);
+            } catch (\Throwable) {
+                return (string) $v;
+            }
+        };
+        $exams = \App\Modules\VUL\MedicalAccess::med($reauth, function ($db) use ($from, $to) {
+            \App\Modules\VUL\MedicalAccess::log($db, 'medical_export', null, null, 'export', "Registro de EMO completo {$from} a {$to}");
+
+            return $db->select("select worker_id, exam_on, exam_type, clinic_name, examining_doctor_name, examining_doctor_cmp, diagnoses, fitness_result, work_restrictions, recommendations, fitness_valid_until
+                                  from medical_exams where deleted_at is null and status <> 'annulled' and exam_on between ? and ? order by exam_on", [$from, $to]);
+        });
+        $names = collect(DB::select('select w.id, w.full_name, w.document_last4, p.name as position from workers w left join positions p on p.id = w.current_position_id where w.id = any(?::uuid[])',
+            ['{'.implode(',', array_unique(array_column($exams, 'worker_id'))).'}']))->keyBy('id');
+        $type = ['pre_employment' => 'Preocupacional', 'periodic' => 'Periódico', 'exit' => 'De retiro', 'return_to_work' => 'De reintegro', 'position_change' => 'Por cambio de puesto', 'other' => 'Otro'];
+        $rows = [[self::TYPES['emo'].' — versión completa (confidencial)'], ["Del {$from} al {$to}. Solo para el médico ocupacional. Formato ".self::formatVersion().'.'], [],
+            ['Trabajador', 'Documento (últimos 4)', 'Puesto', 'Tipo de examen', 'Fecha', 'Centro médico', 'Médico (CMP)', 'Diagnósticos (CIE-10)', 'Aptitud', 'Restricciones', 'Recomendaciones', 'Vigente hasta']];
+        foreach ($exams as $e) {
+            $w = $names[$e->worker_id] ?? null;
+            $dx = json_decode($dec($e->diagnoses), true);
+            $dxText = is_array($dx) ? implode('; ', array_map(fn ($x) => trim(($x['code'] ?? '').' '.($x['description'] ?? '')), $dx)) : '';
+            $rows[] = [$w?->full_name ?? '', $w?->document_last4 ?? '', $w?->position ?? '', $type[$e->exam_type] ?? (string) $e->exam_type, (string) $e->exam_on, (string) $e->clinic_name,
+                trim($e->examining_doctor_name.($e->examining_doctor_cmp ? " ({$e->examining_doctor_cmp})" : '')), $dxText,
+                $this->label('fitness_status', 'status', $e->fitness_result), $dec($e->work_restrictions), $dec($e->recommendations), (string) $e->fitness_valid_until];
+        }
+        $bytes = Xlsx::build('EMO completo', $rows, 4);
+        $disk = (string) config('escudo.medical.files_disk', 'local');
+        \Illuminate\Support\Facades\Storage::disk($disk)->put('medical/'.app(CompanyContext::class)->companyId.'/registros/emo-completo-'.$from.'-'.$to.'-'.now()->format('YmdHis').'.bin',
+            \App\Modules\EMO\MedicalCipher::encrypter()->encryptString($bytes));
+
+        return response($bytes, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"registro-emo-completo-{$from}-{$to}.xlsx\"",
+            'Cache-Control' => 'no-store',
+        ]);
+    }
 
     /** Estados de una versión generada (§9). */
     private const VERSION_STATES = ['generated', 'pending_signature', 'signed', 'superseded'];
@@ -141,6 +208,7 @@ class RegistersController extends Controller
                         (select count(*) from signature_requests r where r.subject_type = 'register_exports' and r.subject_id = x.id and r.deleted_at is null and r.status <> 'cancelled') as signers
                    from register_exports x left join sites s on s.id = x.site_id left join users u on u.id = x.requested_by
                   where x.deleted_at is null and x.status = any(?::text[]) order by x.generated_at desc limit 200", ['{'.implode(',', self::VERSION_STATES).'}']),
+            'medical' => in_array('emo.medical_exams.read_sensitive', Permissions::effective(), true) && in_array('reg.register_exports.create', Permissions::effective(), true),
         ]]);
     }
 
@@ -198,7 +266,7 @@ class RegistersController extends Controller
                 "insert into register_exports (company_id, register_type, period_from, period_to, site_id, format, template_version, format_version, status, snapshot,
                     data_hash, rows_count, requested_by, requested_at, generated_at, created_by, updated_by)
                  values (?, ?, ?, ?, ?, 'pdf', ?, ?, 'generated', ?::jsonb, ?, ?, ?, now(), now(), ?, ?) returning id",
-                [$company, $type, $from, $to, $site, self::FORMAT_VERSION, self::FORMAT_VERSION, $json, $hash, count($rows), $uid, $uid, $uid]
+                [$company, $type, $from, $to, $site, self::formatVersion(), self::formatVersion(), $json, $hash, count($rows), $uid, $uid, $uid]
             )->id;
             // RN-REG-03: la versión anterior del mismo registro, periodo y sede queda «reemplazada»; sus firmas pendientes se anulan.
             $old = array_column(DB::select(

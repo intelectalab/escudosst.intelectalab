@@ -1271,7 +1271,14 @@
   "refund_reason": "Motivo del reembolso",
   "refunded_quantity": "Cantidad reembolsada",
   "previous_course_id": "Versión anterior",
-  "allow_self_enrollment": "Permite matricularse por cuenta propia"
+  "allow_self_enrollment": "Permite matricularse por cuenta propia",
+  "photo_file_ids": "Fotos",
+  "classified_at": "Clasificado el",
+  "classified_by": "Clasificado por",
+  "chronology": "Cronología",
+  "interviews": "Entrevistas",
+  "evidence_file_ids": "Evidencias",
+  "fitness_result": "Resultado de la constancia de aptitud"
  },
  "values": {
   "A": "Tipo A",
@@ -1983,7 +1990,10 @@
   "substandard_reports.status.escalated": "Escalado a evento",
   "ppe_deliveries.status.due_for_replacement": "Para reponer",
   "ppe_deliveries.status.pending_signature": "Pendiente de firma",
-  "partially_refunded": "Reembolso parcial"
+  "partially_refunded": "Reembolso parcial",
+  "medical_center": "Centro asistencial",
+  "principal_company": "Empresa principal",
+  "sst_events.status.registered": "Clasificado"
  },
  "tables": {
   "absences": "Ausencias",

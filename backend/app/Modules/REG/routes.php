@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'company', 'module:REG'])->prefix('reg')->group(function () {
     Route::get('types', [RegistersController::class, 'index']);
     Route::get('panel', [RegistersController::class, 'panel']);
+    Route::get('emo/medical.xlsx', [RegistersController::class, 'emoMedical'])->middleware('throttle:10,1');
     Route::get('{type}/preview', [RegistersController::class, 'preview'])->where('type', '[a-z_]+');
     Route::get('{type}.xlsx', [RegistersController::class, 'export'])->where('type', '[a-z_]+');
     // Versiones generadas y firmadas (RN-REG-02/03/05): validación previa, generación, consulta y Excel desde los datos congelados.

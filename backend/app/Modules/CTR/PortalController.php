@@ -135,6 +135,7 @@ class PortalController extends Controller
             'file_id' => $file,
             'issued_on' => $request->input('issued_on') ?: null,
             'expires_on' => $expires,
+            'fitness_result' => $request->input('fitness_result') ?: null,
             'status' => 'submitted',
         ], fn ($v) => $v !== null));
 
@@ -174,6 +175,15 @@ class PortalController extends Controller
         if ($site && (! Str::isUuid((string) $site) || ! DB::selectOne('select 1 as ok from sites where id = ? and deleted_at is null', [$site]))) {
             $this->fail('site_id', 'Elige una sede válida.');
         }
+        // M-CTR §5: varias sedes y, si se elige, solo algunos trabajadores.
+        $sites = array_values(array_unique(array_filter(array_merge((array) $request->input('site_ids', []), $site ? [$site] : []), fn ($x) => Str::isUuid((string) $x))));
+        if ($sites && count(DB::select('select id from sites where id = any(?::uuid[]) and deleted_at is null', ['{'.implode(',', $sites).'}'])) !== count($sites)) {
+            $this->fail('site_ids', 'Elige sedes válidas.');
+        }
+        $workers = array_values(array_unique(array_filter((array) $request->input('contractor_worker_ids', []), fn ($x) => Str::isUuid((string) $x))));
+        if ($workers && count(DB::select('select id from contractor_workers where id = any(?::uuid[]) and contractor_id = ? and deleted_at is null', ['{'.implode(',', $workers).'}', $c->id])) !== count($workers)) {
+            $this->fail('contractor_worker_ids', 'Elige trabajadores de tu empresa.');
+        }
         if (DB::selectOne("select 1 as ok from contractor_accreditations where contractor_id = ? and deleted_at is null and status in ('submitted', 'under_review')", [$c->id])) {
             throw new ApiProblem(409, 'conflict', 'Solicitud en revisión', 'Ya tienes una solicitud de acreditación en revisión.');
         }
@@ -187,6 +197,8 @@ class PortalController extends Controller
             'status' => 'submitted',
         ], fn ($v) => $v !== null));
 
+        DB::update('update contractor_accreditations set site_ids = ?::uuid[], contractor_worker_ids = ?::uuid[] where id = ?',
+            ['{'.implode(',', $sites).'}', '{'.implode(',', $workers).'}', $row['id']]);
         $team = array_column(DB::select(
             "select m.user_id from memberships m join roles r on r.id = m.role_id
               where m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) in ('sst_manager', 'sst_supervisor')"), 'user_id');

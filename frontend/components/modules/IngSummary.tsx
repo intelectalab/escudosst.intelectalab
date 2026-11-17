@@ -1,5 +1,7 @@
 "use client";
 
+import { ReportButton } from "./CtrExtras";
+
 // Resumen del módulo Ingreso por QR (M-ING): indicadores de hoy, acceso a la portería (pantalla para tablet o
 // celular) y «Quiénes están dentro» (útil en emergencias y simulacros). Va sobre los registros del módulo.
 
@@ -52,6 +54,11 @@ export function IngSummary({ readOnly }: { readOnly?: boolean }) {
           <Icon name="idcard" size={18} /> Portería
         </Link>
       )}
+      <div className="flex flex-wrap gap-2">
+        <ReportButton path="/ing/reports.xlsx?by=day" file={`ingresos-por-dia-${new Date().toISOString().slice(0, 10)}.xlsx`} label="Ingresos por día" />
+        <ReportButton path="/ing/reports.xlsx?by=point" file={`ingresos-por-punto-${new Date().toISOString().slice(0, 10)}.xlsx`} label="Por punto" />
+        <ReportButton path="/ing/reports.xlsx?by=contractor" file={`ingresos-por-empresa-${new Date().toISOString().slice(0, 10)}.xlsx`} label="Por empresa contratista" />
+      </div>
       {people === null ? (
         <div className="h-24 animate-pulse rounded-xl bg-surface" />
       ) : (

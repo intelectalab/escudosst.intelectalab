@@ -131,14 +131,16 @@ class EventRules extends RecordRules
         }
         if ($res['table'] === 'event_people') {
             $event = DB::selectOne('select event_id from event_people where id = ?', [$id])->event_id;
+            $before = (int) DB::selectOne('select lost_days from sst_events where id = ?', [$event])->lost_days;
             DB::update('update sst_events set lost_days = (select coalesce(sum(greatest(lost_days, 0)), 0) from event_people where event_id = ? and deleted_at is null and person_role in '.self::AFFECTED.'),
                         injured_count = (select count(*) from event_people where event_id = ? and deleted_at is null and person_role in '.self::AFFECTED.')
                         where id = ?', [$event, $event, $event]);
+            $this->closedMonthAdjustment($event, $before);
         }
         if ($res['table'] === 'event_notifications' && in_array($values['status'] ?? null, ['sent', 'acknowledged'], true)) {
             $n = DB::selectOne('select event_id from event_notifications where id = ?', [$id]);
             DB::update("update sst_events set status = 'notified' where id = ? and status in ('reported','registered')
-                         and not exists (select 1 from event_notifications where event_id = ? and status = 'pending' and deleted_at is null)", [$n->event_id, $n->event_id]);
+                         and not exists (select 1 from event_notifications where event_id = ? and status = 'pending' and deleted_at is null and (deadline_at is not null or authority = 'mtpe_sat'))", [$n->event_id, $n->event_id]);
             DB::update('update sst_events set notification_overdue = exists (select 1 from event_notifications where event_id = ? and notification_overdue and deleted_at is null) where id = ?',
                 [$n->event_id, $n->event_id]);
         }
@@ -166,6 +168,14 @@ class EventRules extends RecordRules
             $values['status'] = 'reported';
             $extra['reporter_user_id'] = ['?', [(string) auth()->id()]];
         }
+        if (array_key_exists('photo_file_ids', $values)) {
+            $ids = is_array($values['photo_file_ids']) ? $values['photo_file_ids'] : (json_decode((string) $values['photo_file_ids'], true) ?: []);
+            $ids = array_values(array_filter($ids, fn ($x) => is_string($x) && \Illuminate\Support\Str::isUuid($x)));
+            if (count($ids) > 10) {
+                $this->fail('photo_file_ids', 'Adjunta hasta 10 fotos.');
+            }
+            $values['photo_file_ids'] = $ids;
+        }
         if (($occ = $values['occurred_at'] ?? null) && strtotime($occ) > time() + 300) {
             $this->fail('occurred_at', 'La fecha del evento no puede ser futura.');
         }
@@ -173,6 +183,17 @@ class EventRules extends RecordRules
         if ($op === 'update' && $to && $to !== $current->status) {
             if (! in_array($to, self::FLOW[$current->status] ?? [], true)) {
                 $this->fail('status', 'Ese cambio de estado no está permitido.');
+            }
+            // M-ACC §9: clasificación por SST (tipo y, en accidentes, gravedad); desde aquí se registran acciones.
+            if ($to === 'registered') {
+                if (! $this->value($values, $current, 'event_type')) {
+                    $this->fail('event_type', 'Indica el tipo de evento para clasificarlo.');
+                }
+                if (str_contains((string) $this->value($values, $current, 'event_type'), 'accident') && ! $this->value($values, $current, 'severity')) {
+                    $this->fail('severity', 'Indica la gravedad del accidente para clasificarlo.');
+                }
+                $extra['classified_at'] = ['now()', []];
+                $extra['classified_by'] = ['?', [(string) auth()->id()]];
             }
             if ($to === 'discarded' && ! $this->value($values, $current, 'discarded_reason')) {
                 $this->fail('discarded_reason', 'Para descartar el evento indica el motivo.');
@@ -191,7 +212,8 @@ class EventRules extends RecordRules
                     && ! DB::selectOne("select 1 as ok from event_people where event_id = ? and person_role in ('injured','affected') and deleted_at is null", [$current->id])) {
                     $this->fail('status', 'Registra al menos una persona afectada antes de cerrar el accidente.');
                 }
-                if (DB::selectOne("select 1 as ok from event_notifications where event_id = ? and status in ('pending', 'overdue') and deleted_at is null", [$current->id])) {
+                // Las notificaciones con plazo (y la del MTPE) deben estar hechas; las de plazo por confirmar no bloquean el cierre.
+                if (DB::selectOne("select 1 as ok from event_notifications where event_id = ? and status in ('pending', 'overdue') and deleted_at is null and (deadline_at is not null or authority = 'mtpe_sat')", [$current->id])) {
                     $this->fail('status', 'Hay notificaciones obligatorias pendientes.');
                 }
                 $extra['closed_at'] = ['now()', []];
@@ -240,6 +262,27 @@ class EventRules extends RecordRules
             }
             $values['started_on'] ??= date('Y-m-d');
             $values['due_on'] ??= date('Y-m-d', strtotime('+'.(int) LegalParams::number('investigation_due_days', 10).' days'));
+        }
+        // SCR-INV-02: cronología, entrevistas y evidencias como listas (RN-INV-07: sin datos de salud en las entrevistas).
+        foreach (['chronology' => 50, 'interviews' => 30, 'evidence_file_ids' => 30] as $col => $max) {
+            if (! array_key_exists($col, $values)) {
+                continue;
+            }
+            $list = is_array($values[$col]) ? $values[$col] : (json_decode((string) $values[$col], true) ?: []);
+            if (count($list) > $max) {
+                $this->fail($col, "Registra hasta {$max} elementos.");
+            }
+            if ($col === 'evidence_file_ids') {
+                $list = array_values(array_filter($list, fn ($x) => is_string($x) && \Illuminate\Support\Str::isUuid($x)));
+            } elseif ($col === 'chronology') {
+                $list = array_values(array_map(fn ($x) => ['at' => mb_substr((string) ($x['at'] ?? ''), 0, 25), 'what' => mb_substr(trim((string) ($x['what'] ?? '')), 0, 500)],
+                    array_filter($list, fn ($x) => is_array($x) && trim((string) ($x['what'] ?? '')) !== '')));
+            } else {
+                $list = array_values(array_map(fn ($x) => ['name' => mb_substr(trim((string) ($x['name'] ?? '')), 0, 120), 'role' => mb_substr(trim((string) ($x['role'] ?? '')), 0, 60),
+                    'on' => mb_substr((string) ($x['on'] ?? ''), 0, 10), 'summary' => mb_substr(trim((string) ($x['summary'] ?? '')), 0, 2000)],
+                    array_filter($list, fn ($x) => is_array($x) && trim((string) ($x['name'] ?? '')) !== '')));
+            }
+            $values[$col] = $list;
         }
         $to = $values['status'] ?? null;
         if ($to && $current && $to !== $current->status) {
@@ -355,6 +398,7 @@ class EventRules extends RecordRules
                     (string) auth()->id(), (string) auth()->id()]
             );
         }
+        $this->extraRecipients($e);
         if (in_array($e->event_type, self::NEEDS_INVESTIGATION, true) && ! DB::selectOne('select 1 as ok from investigations where event_id = ? and deleted_at is null', [$id])) {
             $n = (int) DB::selectOne('select count(*) + 1 as n from investigations where extract(year from created_at) = extract(year from now())')->n;
             do {
@@ -366,6 +410,56 @@ class EventRules extends RecordRules
                 [$e->company_id, $id, $code, (int) LegalParams::number('investigation_due_days', 10), (string) auth()->id(), (string) auth()->id()]
             );
             DB::update("update sst_events set status = 'under_investigation' where id = ? and status = 'reported'", [$id]);
+        }
+    }
+
+    /**
+     * M-ACC §5/§7: además del MTPE, una notificación por destinatario según el tipo de evento (centro asistencial, aseguradora
+     * del SCTR) y, en eventos de contratistas, a la empresa principal. Destinatarios y plazos son parámetros (RN-ACC-01);
+     * con plazo 0 la notificación queda pendiente sin plazo hasta que se confirme. Si el destinatario no aplica, se marca «no requerida».
+     */
+    private function extraRecipients(object $e): void
+    {
+        $map = json_decode(LegalParams::text('acc_notification_recipients', '{}'), true) ?: [];
+        $list = array_merge($map[$e->event_type] ?? [], $e->is_contractor_event ? ($map['contractor_event'] ?? []) : []);
+        $notes = ['medical_center' => 'Aviso al centro asistencial que atendió al afectado.', 'insurer_sctr' => 'Aviso a la aseguradora del SCTR (si el trabajador tiene SCTR).',
+            'principal_company' => 'Aviso del contratista a la empresa principal.'];
+        foreach (array_unique(array_intersect($list, array_keys($notes))) as $r) {
+            if (DB::selectOne('select 1 as ok from event_notifications where event_id = ? and authority = ? and deleted_at is null', [$e->id, $r])) {
+                continue;
+            }
+            $hours = (int) LegalParams::number("notify_deadline_{$r}_hours", 0);
+            $deadline = $hours > 0 ? (new \DateTimeImmutable($e->occurred_at))->modify("+{$hours} hours")->format(DATE_ATOM) : null;
+            DB::insert("insert into event_notifications (company_id, event_id, authority, notification_type, legal_parameter_key, deadline_at, status, notes, created_by, updated_by)
+                        values (?, ?, ?, 'initial', ?, ?, 'pending', ?, ?, ?)",
+                [$e->company_id, $e->id, $r, "notify_deadline_{$r}_hours", $deadline, $notes[$r].($deadline ? '' : ' Plazo por confirmar.'), (string) auth()->id(), (string) auth()->id()]);
+        }
+    }
+
+    /**
+     * RN-ACC-07: los días perdidos de un mes estadístico cerrado no cambian en silencio: el cambio queda como ajuste del mes
+     * (empresa y sede), con su motivo, y se recalculan sus índices (igual que «Ajustar» en Estadísticas).
+     */
+    private function closedMonthAdjustment(string $eventId, int $before): void
+    {
+        $e = DB::selectOne("select code, site_id, lost_days, extract(year from occurred_at at time zone 'America/Lima')::int as y, extract(month from occurred_at at time zone 'America/Lima')::int as m
+                              from sst_events where id = ?", [$eventId]);
+        $delta = (int) $e->lost_days - $before;
+        if ($delta === 0 || LegalParams::text('lost_days_allocation', 'event_month') !== 'event_month') {
+            return;
+        }
+        $user = DB::selectOne('select full_name from users where id = ?', [(string) auth()->id()])?->full_name;
+        foreach (DB::select('select * from monthly_statistics where period_year = ? and period_month = ? and is_closed and deleted_at is null and (site_id is null or site_id is not distinct from ?)',
+            [$e->y, $e->m, $e->site_id]) as $ms) {
+            $lost = max(0, (int) $ms->lost_days + $delta);
+            $h = (float) $ms->hours_worked;
+            $si = $h > 0 ? round($lost * (float) $ms->severity_factor / $h, 2) : null;
+            $ai = $h > 0 && $ms->frequency_index !== null ? round((float) $ms->frequency_index * $si / (float) $ms->accident_rate_divisor, 2) : null;
+            $adj = json_decode((string) $ms->adjustments, true) ?: [];
+            $adj[] = ['at' => now()->toIso8601String(), 'user_id' => (string) auth()->id(), 'user' => $user, 'field' => 'lost_days', 'from' => (int) $ms->lost_days, 'to' => $lost,
+                'reason' => "Cambio de días perdidos del evento {$e->code} después del cierre del mes"];
+            DB::update('update monthly_statistics set lost_days = ?, severity_index = ?, accident_rate_index = ?, adjustments = ?::jsonb, updated_at = now() where id = ?',
+                [$lost, $si, $ai, json_encode($adj, JSON_UNESCAPED_UNICODE), $ms->id]);
         }
     }
 

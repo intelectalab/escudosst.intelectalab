@@ -106,6 +106,13 @@ class PeopleRules extends RecordRules
 
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
     {
+        // RN-CTR-05: la constancia de aptitud aprobada actualiza la aptitud y su vigencia en la ficha del trabajador contratista.
+        if ($res['table'] === 'contractor_documents' && ($values['status'] ?? null) === 'approved') {
+            $d = DB::selectOne('select contractor_worker_id, fitness_result, expires_on from contractor_documents where id = ?', [$id]);
+            if ($d?->contractor_worker_id && $d->fitness_result) {
+                DB::update('update contractor_workers set emo_fitness = ?, emo_valid_until = ?, updated_at = now() where id = ?', [$d->fitness_result, $d->expires_on, $d->contractor_worker_id]);
+            }
+        }
         if ($res['table'] === 'work_permits' && $op === 'create') {
             $p = DB::selectOne('select w.company_id, t.approval_chain from work_permits w join permit_types t on t.id = w.permit_type_id where w.id = ?', [$id]);
             foreach (json_decode($p->approval_chain ?? '[]', true) ?: [] as $i => $step) {
@@ -322,6 +329,18 @@ class PeopleRules extends RecordRules
         if (($values['status'] ?? null) === 'approved' && $exp && $exp < date('Y-m-d')) {
             $this->fail('expires_on', 'El documento está vencido: no se puede aprobar.');
         }
+        // RN-CTR-05: para EMO solo la constancia de aptitud (resultado y vigencia), nunca informes clínicos ni diagnósticos.
+        $req = ($r = $this->value($values, $current, 'requirement_id')) ? DB::selectOne('select document_kind, requirement_code, name from contractor_requirements where id = ?', [$r]) : null;
+        if ($req && preg_match('/emo|aptitud|m[eé]dic/iu', $req->document_kind.' '.$req->requirement_code.' '.$req->name)) {
+            if (! in_array($this->value($values, $current, 'fitness_result'), ['fit', 'fit_with_restrictions', 'unfit'], true)) {
+                $this->fail('fitness_result', 'Indica el resultado de la constancia de aptitud (apto, apto con restricciones o no apto).');
+            }
+            if (! $exp) {
+                $this->fail('expires_on', 'Indica hasta cuándo vale la constancia de aptitud.');
+            }
+        } elseif (array_key_exists('fitness_result', $values)) {
+            $values['fitness_result'] = null;
+        }
     }
 
     private function accreditation(array &$values, ?object $current, array &$extra): void
@@ -349,6 +368,17 @@ class PeopleRules extends RecordRules
             );
             if ($missing) {
                 $this->fail('status', 'Faltan requisitos aprobados y vigentes: '.implode(', ', array_column($missing, 'name')).'.');
+            }
+            // RN-CTR-02: si la acreditación lista trabajadores, cada uno debe tener sus requisitos aprobados y vigentes.
+            $listed = trim((string) $this->value($values, $current, 'contractor_worker_ids'), '{}');
+            $faltan = [];
+            foreach ($listed !== '' ? DB::select('select id, first_name, paternal_last_name from contractor_workers where id = any(?::uuid[])', ['{'.$listed.'}']) : [] as $w) {
+                if ($m = \App\Modules\CTR\CtrToolsController::workerMissing($w->id)) {
+                    $faltan[] = trim($w->first_name.' '.$w->paternal_last_name).' ('.implode(', ', $m).')';
+                }
+            }
+            if ($faltan) {
+                $this->fail('status', 'Trabajadores con requisitos pendientes: '.implode('; ', $faltan).'.');
             }
             $first = DB::selectOne("select min(expires_on) as d from contractor_documents where contractor_id = ? and status = 'approved' and deleted_at is null and expires_on is not null",
                 [$current->contractor_id])->d;

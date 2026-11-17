@@ -107,3 +107,53 @@ it('oculta los motivos médicos', function () {
     expect(GateController::safeReasons(['Fotocheck no habilitado: Aptitud médica vigente, SCTR salud y pensión vigentes', 'Sin fotocheck']))
         ->toBe(['Fotocheck no habilitado: Requisito pendiente, SCTR salud y pensión vigentes', 'Sin fotocheck']);
 });
+
+it('funciona sin conexión: lista de estados, eventos sincronizados marcados offline y reporte por día', function () {
+    [$h, $pt, $w, $cred] = gateSetup($this);
+    $token = PeopleRules::credentialToken(HUAYLAS_ID, $cred['credential_number']);
+    $roster = $this->getJson('/api/v1/ing/gate/roster?access_point_id='.$pt, $h)->assertOk()->json('data');
+    $me = collect($roster['people'])->firstWhere('name', 'Lucía Vera');
+    expect($me['th'])->toBe(hash('sha256', strtoupper($token)))->and($me['ok'])->toBeFalse()->and($me['note'])->toBe('Requisito pendiente')
+        ->and($roster['max_age_hours'])->toBeGreaterThan(0);
+
+    $ev = ['hash' => hash('sha256', strtoupper($token)), 'direction' => 'in', 'occurred_at' => now()->subMinutes(30)->toIso8601String(), 'client_id' => 'off-'.uniqid()];
+    $this->postJson('/api/v1/ing/gate/sync', ['access_point_id' => $pt, 'events' => [$ev, $ev]], $h)->assertOk()->assertJsonPath('data.synced', 2);
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    expect(DB::selectOne('select count(*) as n from access_events where idempotency_key = ? and is_offline', ['offline:'.$ev['client_id']])->n)->toBe(1);
+    DB::select("select set_config('app.company_id', '', false)");
+    $this->get('/api/v1/ing/reports.xlsx?by=day', $h)->assertOk()->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+});
+
+it('el trabajador del contratista solo ingresa en las sedes de su acreditación', function () {
+    $h = gh();
+    $siteA = $this->postJson('/api/v1/records/TEN/sites', ['code' => 'CSA', 'name' => 'Sede A contratista'], $h)->json('data.id');
+    $siteB = $this->postJson('/api/v1/records/TEN/sites', ['code' => 'CSB', 'name' => 'Sede B contratista'], $h)->json('data.id');
+    $pt = $this->postJson('/api/v1/records/ING/access_points', ['site_id' => $siteA, 'code' => 'CSA1', 'name' => 'Garita A', 'point_type' => 'main_gate'], $h)->assertCreated()->json('data.id');
+    $ctr = $this->postJson('/api/v1/records/CTR/contractors', ['ruc' => '20'.random_int(100000000, 999999999), 'legal_name' => 'Contrata Sedes SAC'], $h)->assertCreated()->json('data.id');
+    $cw = $this->postJson('/api/v1/records/CTR/contractor_workers', ['contractor_id' => $ctr, 'document_type' => 'DNI', 'document_number' => '86868686', 'first_name' => 'Pepe',
+        'paternal_last_name' => 'Sede', 'status' => 'active'], $h)->assertCreated()->json('data.id');
+    $type = $this->postJson('/api/v1/records/FOT/credential_types', ['code' => 'FOT-CTS', 'name' => 'Fotocheck contratista', 'validity_months' => 12, 'applies_to' => 'contractor_workers'], $h)
+        ->assertCreated()->json('data.id');
+    $cred = $this->postJson('/api/v1/records/FOT/credentials', ['credential_type_id' => $type, 'contractor_worker_id' => $cw], $h)->assertCreated()->json('data');
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    DB::update("update contractors set status = 'active' where id = ?", [$ctr]);
+    DB::update('update contractor_workers set access_enabled = true where id = ?', [$cw]);
+    $acc = DB::selectOne("insert into contractor_accreditations (company_id, contractor_id, service_description, starts_on, status, site_ids, approved_by, approved_at)
+                          values (?, ?, 'Mantenimiento', current_date, 'accredited', array[?::uuid], ?, now()) returning id",
+        [HUAYLAS_ID, $ctr, $siteB, DB::selectOne('select id from app_auth_lookup_user(?)', [CORPORATIVO_EMAIL])->id])->id;
+    DB::select("select set_config('app.company_id', '', false)");
+
+    $r = $this->postJson('/api/v1/ing/gate/scan', ['access_point_id' => $pt, 'code' => $cred['credential_number']], $h)->assertCreated();
+    expect($r->json('data.result'))->toBe('denied')->and(json_encode($r->json('data.reasons'), JSON_UNESCAPED_UNICODE))->toContain('acreditación vigente para esta sede');
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    DB::update('update contractor_accreditations set site_ids = array[?::uuid, ?::uuid] where id = ?', [$siteA, $siteB, $acc]);
+    DB::select("select set_config('app.company_id', '', false)");
+    $r = $this->postJson('/api/v1/ing/gate/scan', ['access_point_id' => $pt, 'code' => $cred['credential_number']], $h)->assertCreated();
+    expect(json_encode($r->json('data.reasons'), JSON_UNESCAPED_UNICODE))->not->toContain('acreditación vigente para esta sede');
+
+    // Lo que le falta a cada trabajador, el resumen y los reportes.
+    $this->getJson("/api/v1/ctr/accreditations/{$acc}/workers", $h)->assertOk()->assertJsonPath('data.all_workers', true);
+    expect(collect($this->getJson('/api/v1/ctr/summary', $h)->assertOk()->json('data'))->firstWhere('id', $ctr))->not->toBeNull();
+    $this->get('/api/v1/ctr/reports.xlsx?by=worker', $h)->assertOk();
+    $this->get('/api/v1/sct/coverage.xlsx', $h)->assertOk();
+});

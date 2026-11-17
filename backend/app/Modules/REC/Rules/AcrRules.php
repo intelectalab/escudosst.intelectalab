@@ -190,6 +190,10 @@ class AcrRules extends RecordRules
             if ($table && ! DB::selectOne('select 1 as ok from "'.$table.'" where id = ?', [$source])) {
                 $this->fail('source_type', 'El registro de origen no existe en esta empresa.');
             }
+            // M-ACC §9: las acciones de un evento se registran después de clasificarlo.
+            if ($type === 'event' && DB::selectOne("select 1 as ok from sst_events where id = ? and status = 'reported'", [$source])) {
+                $this->fail('source_id', 'Clasifica el evento (tipo y gravedad) antes de registrar sus acciones.');
+            }
         }
 
         if ($op === 'update' && array_key_exists('status', $values) && $values['status'] !== $current->status) {

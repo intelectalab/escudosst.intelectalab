@@ -1,5 +1,7 @@
 "use client";
 
+import { CtrSummary } from "./CtrExtras";
+
 // Contratistas, lado de la empresa principal (M-CTR SCR-CTR-02 y SCR-CTR-04; prototipo m-modulos.js cfgSimple('CTR')):
 // «Invitar contratista» (RUC, razón social, correo del administrador, servicio y nivel de riesgo) y la bandeja de
 // revisión de documentos con visor y «Aprobar» / «Observar» con motivo.
@@ -53,6 +55,7 @@ export function CtrClientPanel({ readOnly }: { readOnly?: boolean }) {
           </Button>
         </div>
       )}
+      <CtrSummary />
       <ReviewInbox readOnly={readOnly} reload={reload} />
       {invite && (
         <InviteModal

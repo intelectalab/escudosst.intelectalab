@@ -81,12 +81,17 @@ class AddonRules extends RecordRules
     {
         $values['occurred_at'] ??= now()->toIso8601String();
         $extra['guard_user_id'] = ['?', [(string) auth()->id()]];
+        // RN-ING-06: evento registrado sin conexión y sincronizado después (lo marca GateController::sync).
+        if ($off = request()->attributes->get('ing_offline')) {
+            $extra['is_offline'] = ['true', []];
+            $extra['idempotency_key'] = ['?', [$off['key']]];
+        }
         $type = $values['subject_type'] ?? 'worker';
         // Motivos neutros (RN-ING-02): el texto y el código se guardan sin términos médicos; la aptitud médica queda
         // como «Requisito pendiente» en portería, en la lista de ingresos y en cualquier reporte.
         $reasons = [];
         $codes = [];
-        $point = ($values['access_point_id'] ?? null) ? DB::selectOne('select is_active, allows_visitors, requires_credential from access_points where id = ?', [$values['access_point_id']]) : null;
+        $point = ($values['access_point_id'] ?? null) ? DB::selectOne('select is_active, allows_visitors, requires_credential, site_id from access_points where id = ?', [$values['access_point_id']]) : null;
         if ($point && ! $point->is_active) {
             $reasons[] = 'Punto de acceso inactivo';
             $codes[] = 'point_inactive';
@@ -122,6 +127,15 @@ class AddonRules extends RecordRules
             if ($cw && $cw->contractor_status !== 'active') {
                 $reasons[] = 'Contratista '.($cw->contractor_status === 'suspended' ? 'suspendido' : 'bloqueado');
                 $codes[] = $cw->contractor_status === 'suspended' ? 'contractor_suspended' : 'contractor_blocked';
+            }
+            // RN-CTR-06 / M-ING: la acreditación vigente debe cubrir la sede del punto de ingreso y, si lista trabajadores, a esta persona.
+            if ($point?->site_id && ! DB::selectOne(
+                "select 1 as ok from contractor_accreditations a join contractor_workers w on w.contractor_id = a.contractor_id
+                  where w.id = ? and a.deleted_at is null and a.status in ('accredited', 'expiring') and (a.expires_on is null or a.expires_on >= current_date)
+                    and (a.starts_on is null or a.starts_on <= current_date) and (a.ends_on is null or a.ends_on >= current_date)
+                    and (a.site_ids = '{}' or ?::uuid = any(a.site_ids)) and (a.contractor_worker_ids = '{}' or w.id = any(a.contractor_worker_ids))", [$person, $point->site_id])) {
+                $reasons[] = 'Sin acreditación vigente para esta sede';
+                $codes[] = 'site_not_accredited';
             }
         }
         $cred = DB::selectOne("select id, status, credential_type_id, worker_id, contractor_worker_id, expires_on from credentials where {$col} = ? and deleted_at is null and status <> 'revoked'

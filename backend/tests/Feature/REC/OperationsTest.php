@@ -29,7 +29,7 @@ it('un accidente incapacitante calcula su plazo, abre la investigación y no se 
     expect($ev->json('data.code'))->toStartWith('ACC-')
         ->and(substr($ev->json('data.notification_deadline_at'), 0, 10))->toBe('2026-11-30'); // último día hábil del mes siguiente
 
-    $notif = $this->getJson("/api/v1/records/ACC/event_notifications?f[event_id]={$id}", $h)->json('data');
+    $notif = $this->getJson("/api/v1/records/ACC/event_notifications?f[event_id]={$id}&f[authority]=mtpe_sat", $h)->json('data');
     expect($notif)->toHaveCount(1)->and($notif[0]['status'])->toBe('pending');
     $inv = $this->getJson("/api/v1/records/INV/investigations?f[event_id]={$id}", $h)->json('data');
     expect($inv)->toHaveCount(1);
@@ -91,7 +91,7 @@ it('marca fuera de plazo la notificación tardía de un accidente mortal (24 h)'
     $h = op();
     $id = $this->postJson('/api/v1/records/ACC/sst_events', ['event_type' => 'fatal_accident', 'occurred_at' => '2026-10-01T08:00:00-05:00', 'site_id' => opSite($this),
         'description' => 'Caída de altura'], $h)->assertCreated()->assertJsonPath('data.notification_deadline_at', '2026-10-02 08:00:00-05')->json('data.id');
-    $n = $this->getJson("/api/v1/records/ACC/event_notifications?f[event_id]={$id}", $h)->json('data.0.id');
+    $n = $this->getJson("/api/v1/records/ACC/event_notifications?f[event_id]={$id}&f[authority]=mtpe_sat", $h)->json('data.0.id');
     // Sin número ni constancia no se da por notificada; tampoco con fecha anterior al evento.
     $this->patchJson("/api/v1/records/ACC/event_notifications/{$n}", ['status' => 'sent', 'notified_at' => '2026-10-03T10:00:00-05:00'], $h)
         ->assertStatus(422)->assertJsonValidationErrors('notification_number');

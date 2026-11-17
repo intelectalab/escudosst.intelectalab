@@ -149,6 +149,21 @@ class DossierBuilder extends Controller
             $add('17', 'Adecuaciones de puesto de trabajadores vulnerables', 'VUL', null, null, 'not_applicable');
         }
 
+        // M-CTR §11: evidencia de contratistas: acreditación vigente y documentos sin vencer.
+        $ctr = $one("select count(*) as n,
+                            count(*) filter (where exists (select 1 from contractor_accreditations a where a.contractor_id = c.id and a.deleted_at is null and a.status in ('accredited', 'expiring')
+                                                             and (a.expires_on is null or a.expires_on >= current_date))) as ok,
+                            (select count(*) from contractor_documents d where d.deleted_at is null and d.status = 'approved' and d.expires_on < current_date) as expired
+                       from contractors c where c.deleted_at is null and c.status = 'active'");
+        if ((int) $ctr->n > 0) {
+            $add('18', "Contratistas acreditados ({$ctr->ok} de {$ctr->n})", 'CTR', 'contractor_accreditations', null,
+                (int) $ctr->ok === (int) $ctr->n && (int) $ctr->expired === 0 ? 'included' : ((int) $ctr->expired > 0 ? 'expired' : 'missing'),
+                (int) $ctr->ok === (int) $ctr->n && (int) $ctr->expired === 0 ? null : trim(((int) $ctr->n - (int) $ctr->ok > 0 ? ((int) $ctr->n - (int) $ctr->ok).' contratista(s) sin acreditación vigente. ' : '')
+                    .((int) $ctr->expired > 0 ? "{$ctr->expired} documento(s) de contratistas vencido(s)." : '')));
+        } else {
+            $add('18', 'Contratistas acreditados', 'CTR', null, null, 'not_applicable');
+        }
+
         foreach ($selected as $worker) {
             $w = $worker->id;
             $n = $worker->full_name;

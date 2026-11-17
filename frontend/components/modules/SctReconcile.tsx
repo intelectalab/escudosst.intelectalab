@@ -1,5 +1,7 @@
 "use client";
 
+import { ReportButton } from "./CtrExtras";
+
 // Conciliación SCTR (M-SCT SCR-SCT-02, RN-SCT-04): se elige la póliza y el periodo, se sube la lista de asegurados (Excel/CSV)
 // o se pegan los números de documento, y se revisa: asegurados que son trabajadores activos, asegurados que no están activos o no
 // son trabajadores, y trabajadores que requieren SCTR y no están cubiertos. «Registrar cobertura» la guarda para los activos.
@@ -92,6 +94,7 @@ export function SctReconcile({ readOnly }: { readOnly: boolean }) {
 
   return (
     <Card title="Conciliar la planilla de asegurados del periodo">
+      <div className="mb-3"><ReportButton path="/sct/coverage.xlsx" file={`cobertura-sctr-${new Date().toISOString().slice(0, 10)}.xlsx`} label="Reporte de cobertura del SCTR" /></div>
       <div className="grid gap-3 md:grid-cols-4">
         <label className="text-sm md:col-span-2">
           <span className="mb-1 block text-xs font-semibold text-muted">Póliza</span>

@@ -134,7 +134,7 @@ export function recordsHref(module: string, table: string, opts: { filters?: Rec
 }
 
 /** Descarga un archivo de la API (Excel, PDF) con la sesión y la empresa activas. */
-export async function downloadFile(path: string, filename: string) {
+export async function downloadFile(path: string, filename: string, extraHeaders: Record<string, string> = {}) {
   const { session } = await import("./session");
   const { API_URL, ApiError } = await import("./api");
   const headers: Record<string, string> = { Accept: "*/*" };
@@ -142,6 +142,7 @@ export async function downloadFile(path: string, filename: string) {
   const company = session.getCompanyId();
   if (token) headers.Authorization = `Bearer ${token}`;
   if (company) headers["X-Company-Id"] = company;
+  Object.assign(headers, extraHeaders);
   const res = await fetch(`${API_URL}/api/v1${path}`, { headers });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

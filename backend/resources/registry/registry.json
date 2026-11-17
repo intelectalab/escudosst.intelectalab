@@ -19147,7 +19147,7 @@
       },
       {
        "value": "registered",
-       "label": "Registrado"
+       "label": "Clasificado"
       },
       {
        "value": "notified",
@@ -19185,6 +19185,24 @@
      "label": "Fila de IPERC",
      "type": "ref",
      "ref": "iperc_rows"
+    },
+    {
+     "name": "photo_file_ids",
+     "label": "Fotos",
+     "type": "json"
+    },
+    {
+     "name": "classified_at",
+     "label": "Clasificado el",
+     "readonly": true,
+     "type": "datetime"
+    },
+    {
+     "name": "classified_by",
+     "label": "Clasificado por",
+     "readonly": true,
+     "type": "ref",
+     "ref": "users"
     }
    ]
   },
@@ -19409,6 +19427,14 @@
       {
        "value": "osinergmin",
        "label": "Osinergmin"
+      },
+      {
+       "value": "medical_center",
+       "label": "Centro asistencial"
+      },
+      {
+       "value": "principal_company",
+       "label": "Empresa principal"
       },
       {
        "value": "other",
@@ -19724,6 +19750,21 @@
      "label": "Adendas",
      "type": "json",
      "readonly": true
+    },
+    {
+     "name": "chronology",
+     "label": "Cronología",
+     "type": "json"
+    },
+    {
+     "name": "interviews",
+     "label": "Entrevistas",
+     "type": "json"
+    },
+    {
+     "name": "evidence_file_ids",
+     "label": "Evidencias",
+     "type": "json"
     }
    ]
   },
@@ -22010,6 +22051,25 @@
      ],
      "default": "submitted",
      "list": true
+    },
+    {
+     "name": "fitness_result",
+     "label": "Resultado de la constancia de aptitud",
+     "type": "enum",
+     "options": [
+      {
+       "value": "fit",
+       "label": "Apto"
+      },
+      {
+       "value": "fit_with_restrictions",
+       "label": "Apto con restricciones"
+      },
+      {
+       "value": "unfit",
+       "label": "No apto"
+      }
+     ]
     }
    ]
   },

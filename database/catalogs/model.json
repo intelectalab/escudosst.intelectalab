@@ -43197,6 +43197,39 @@
     "comment": null
    },
    {
+    "name": "photo_file_ids",
+    "type": "jsonb",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "classified_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "classified_by",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "users.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -43740,6 +43773,8 @@
      "eps",
      "insurer_sctr",
      "osinergmin",
+     "medical_center",
+     "principal_company",
      "other"
     ],
     "ref": null,
@@ -44188,6 +44223,39 @@
    },
    {
     "name": "addenda",
+    "type": "jsonb",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "chronology",
+    "type": "jsonb",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "interviews",
+    "type": "jsonb",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "evidence_file_ids",
     "type": "jsonb",
     "not_null": false,
     "default": null,
@@ -48140,6 +48208,21 @@
      "observed",
      "rejected",
      "expired"
+    ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "fitness_result",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": [
+     "fit",
+     "fit_with_restrictions",
+     "unfit"
     ],
     "ref": null,
     "encrypted": false,

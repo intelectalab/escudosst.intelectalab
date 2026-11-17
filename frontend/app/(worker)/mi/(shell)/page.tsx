@@ -34,6 +34,7 @@ export default function WorkerHomePage() {
           line={s.notices ? `Tienes ${s.notices} aviso(s) sin leer` : "No tienes avisos nuevos"} badge={s.notices || null} />
         {m.IPC && <BigCard href="/mi/iperc" icon="shield" title="Mi IPERC" line="Los peligros de tu puesto y cómo cuidarte" />}
         {m.ACT && <BigCard href="/mi/reportar" icon="megaphone" title="Reportar" tone="amber" line="Acto o condición insegura, con foto" />}
+        {m.ACR && <BigCard href="/mi/acciones" icon="checklist" title="Mis acciones" line="Las acciones a tu cargo y su evidencia con la cámara" />}
         {(m.CAP || m.AUL) && (
           <BigCard href="/mi/capacitaciones" icon="graduation" title={m.AUL ? "Mis capacitaciones y cursos" : "Mis capacitaciones"}
             line={[s.certificates ? `${s.certificates} certificado(s)` : null, m.AUL && s.courses ? `${s.courses} curso(s) por terminar` : null].filter(Boolean).join(" · ") || "Tus constancias y certificados"} />
