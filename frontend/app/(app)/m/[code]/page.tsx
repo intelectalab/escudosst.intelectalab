@@ -3,6 +3,7 @@
 // Página de cada módulo: sus registros (motor común) o, si no está en el plan, la pantalla
 // «Bloqueado por plan» (docs/07-pantallas-y-ux.md §3.7).
 
+import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useApp } from "@/components/AppContext";
@@ -23,6 +24,7 @@ import { FotIssue } from "@/components/modules/FotIssue";
 import { RegRegisters } from "@/components/modules/RegRegisters";
 import { hasModuleReports, ModuleReports } from "@/components/modules/ModuleReports";
 import { SctReconcile } from "@/components/modules/SctReconcile";
+import { Ch5Talks } from "@/components/modules/Ch5Talks";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
 import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
@@ -149,6 +151,8 @@ export default function ModulePage() {
           <SctReconcile readOnly={m.mode === "read_only"} />
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
+      ) : m.code === "CH5" ? (
+        <Ch5Page readOnly={m.mode === "read_only"} />
       ) : m.code === "MRL" ? (
         <MrlModule readOnly={m.mode === "read_only"} />
       ) : m.code === "REG" ? (
@@ -196,4 +200,15 @@ export default function ModulePage() {
 
 function Card({ children, center }: { children: React.ReactNode; center?: boolean }) {
   return <div className={`space-y-3 rounded-xl border border-line bg-surface p-8 ${center ? "text-center" : ""}`}>{children}</div>;
+}
+
+/** M-CH5: registro rápido y cobertura por área encima de la lista de charlas (la lista se recarga al registrar). */
+function Ch5Page({ readOnly }: { readOnly: boolean }) {
+  const [v, setV] = useState(0);
+  return (
+    <div className="space-y-6">
+      <Ch5Talks readOnly={readOnly} onSaved={() => setV((x) => x + 1)} />
+      <ModuleRecords key={v} code="CH5" readOnly={readOnly} />
+    </div>
+  );
 }

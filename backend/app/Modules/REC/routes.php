@@ -55,3 +55,10 @@ Route::middleware(['auth:sanctum', 'company'])->prefix('reports')->controller(\A
     Route::get('investigation_causes', 'causes')->middleware('module:INV');
     Route::get('signature_requests.xlsx', 'pendingSignatures')->middleware('module:FIR');
 });
+
+// Charlas de 5 minutos (M-CH5 SCR-CH5-01/02): trabajadores del área, registro rápido y cobertura del día por área.
+Route::middleware(['auth:sanctum', 'company', 'module:CH5'])->prefix('ch5')->controller(\App\Modules\REC\TalksController::class)->group(function () {
+    Route::get('area-workers', 'areaWorkers');
+    Route::post('quick', 'quick')->middleware('throttle:30,1');
+    Route::get('coverage', 'coverage');
+});
