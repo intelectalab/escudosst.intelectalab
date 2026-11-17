@@ -131,20 +131,28 @@ export function TraceStrip({ module, table, id, version }: { module: string; tab
   );
 }
 
-/** Informes imprimibles (§11 de las fichas): inspección, PETAR, ATS y legajo SST del trabajador en PDF desde el navegador. */
-const FIELD_PDF: Record<string, string> = { inspections: "inspeccion", work_permits: "petar", ats_forms: "ats", workers: "legajo",
-  sst_policies: "politica", annual_plans: "plan-anual", annual_programs: "passt", baseline_assessments: "linea-base", legal_requirements: "matriz-legal" };
+/** Informes imprimibles (§11 de las fichas) en PDF desde el navegador: [página, texto del botón] por tabla. */
+const FIELD_PDF: Record<string, [string, string][]> = {
+  inspections: [["inspeccion", "Descargar PDF"]], work_permits: [["petar", "Descargar PDF"]], ats_forms: [["ats", "Descargar PDF"]],
+  workers: [["legajo", "Legajo SST en PDF"], ["entrega-epp", "Entregas de EPP en PDF"]],
+  sst_policies: [["politica", "Descargar PDF"]], annual_plans: [["plan-anual", "Descargar PDF"]], annual_programs: [["passt", "Descargar PDF"]],
+  baseline_assessments: [["linea-base", "Descargar PDF"]], legal_requirements: [["matriz-legal", "Matriz legal en PDF"]],
+  management_reviews: [["revision-direccion", "Informe en PDF"]], elections: [["acta-convocatoria", "Acta de convocatoria en PDF"]],
+  committees: [["acta-instalacion", "Acta de instalación en PDF"]], documents: [["documento", "Historial y cargos en PDF"]],
+};
 
 export function RecordActions(props: { code: string; res: RecordResource; row: RecordRow; readOnly: boolean; onChanged: () => void }) {
-  const page = FIELD_PDF[props.res.table];
-  if (!page) return <RecordActionsInner {...props} />;
+  const pages = FIELD_PDF[props.res.table];
+  if (!pages) return <RecordActionsInner {...props} />;
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <a href={page === "matriz-legal" ? "/imprimir/matriz-legal" : `/imprimir/${page}/${props.row.id}`} target="_blank" rel="noreferrer"
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-semibold hover:border-brand hover:text-brand-strong">
-          {page === "matriz-legal" ? "Matriz legal en PDF" : "Descargar PDF"}
-        </a>
+      <div className="flex flex-wrap justify-end gap-2">
+        {pages.map(([page, label]) => (
+          <a key={page} href={page === "matriz-legal" ? "/imprimir/matriz-legal" : `/imprimir/${page}/${props.row.id}`} target="_blank" rel="noreferrer"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-semibold hover:border-brand hover:text-brand-strong">
+            {label}
+          </a>
+        ))}
       </div>
       <RecordActionsInner {...props} />
     </div>

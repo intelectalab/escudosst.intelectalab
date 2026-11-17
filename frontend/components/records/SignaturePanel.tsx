@@ -128,6 +128,7 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
                 <Button size="sm" variant="ghost" icon="bell" onClick={() => remind(r)}>Reenviar recordatorio</Button>
               )}
               {r.has_image && r.signature_id && <SignatureThumb id={r.signature_id} />}
+              {r.signature_id && <a href={`/imprimir/constancia-firma/${r.signature_id}`} target="_blank" rel="noreferrer" className="text-xs font-semibold text-brand-strong underline">Constancia</a>}
               <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${cls}`}>{label}</span>
             </span>
             {assist?.id === r.id && (

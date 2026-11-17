@@ -33,3 +33,14 @@ Route::middleware(['auth:sanctum', 'company'])->prefix('reports')->controller(\A
     Route::get('baseline_assessments/{id}', 'baseline')->whereUuid('id')->middleware('module:LBA');
     Route::get('legal_matrix', 'legalMatrix')->middleware('module:MRL');
 });
+
+// Informes imprimibles de registros (§11 de las fichas): revisión por la dirección, constancia de firma, actas de convocatoria e
+// instalación del comité, entregas de EPP por trabajador y cargos e historial de un documento.
+Route::middleware(['auth:sanctum', 'company'])->prefix('reports')->controller(\App\Modules\REC\RecordReportsController::class)->group(function () {
+    Route::get('management_reviews/{id}', 'review')->whereUuid('id')->middleware('module:RVD');
+    Route::get('signatures/{id}', 'signature')->whereUuid('id')->middleware('module:FIR');
+    Route::get('elections/{id}/call', 'electionCall')->whereUuid('id')->middleware('module:COM');
+    Route::get('committees/{id}', 'committee')->whereUuid('id')->middleware('module:COM');
+    Route::get('ppe_deliveries/worker/{id}', 'ppeWorker')->whereUuid('id')->middleware('module:EPP');
+    Route::get('documents/{id}', 'document')->whereUuid('id')->middleware('module:DOC');
+});
