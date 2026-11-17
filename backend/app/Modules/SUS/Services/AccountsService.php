@@ -511,7 +511,7 @@ class AccountsService
     }
 
     /** Parámetro legal committee_threshold_workers (Ley 29783, art. 29) vigente a hoy. */
-    private function committeeThreshold(): int
+    public function committeeThreshold(): int
     {
         $v = $this->db()->selectOne(
             "select value from legal_parameters
