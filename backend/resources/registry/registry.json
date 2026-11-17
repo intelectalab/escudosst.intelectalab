@@ -22358,8 +22358,7 @@
     {
      "name": "criteria",
      "label": "Criterios",
-     "type": "json",
-     "readonly": true
+     "type": "json"
     },
     {
      "name": "passing_score",
@@ -22392,6 +22391,11 @@
      ],
      "default": "active",
      "list": true
+    },
+    {
+     "name": "validity_months",
+     "label": "Vigencia (meses)",
+     "type": "int"
     }
    ]
   },
@@ -22457,8 +22461,7 @@
     {
      "name": "scores",
      "label": "Puntajes",
-     "type": "json",
-     "readonly": true
+     "type": "json"
     },
     {
      "name": "total_score",
@@ -22508,6 +22511,10 @@
        "label": "Borrador"
       },
       {
+       "value": "submitted",
+       "label": "Enviado"
+      },
+      {
        "value": "completed",
        "label": "Completado"
       },
@@ -22516,12 +22523,29 @@
        "label": "Aprobado"
       },
       {
+       "value": "rejected",
+       "label": "Rechazado"
+      },
+      {
        "value": "expired",
        "label": "Vencido"
       }
      ],
      "default": "draft",
      "list": true
+    },
+    {
+     "name": "approved_by",
+     "label": "Aprobado por",
+     "readonly": true,
+     "type": "ref",
+     "ref": "users"
+    },
+    {
+     "name": "approved_at",
+     "label": "Aprobado el",
+     "readonly": true,
+     "type": "datetime"
     }
    ]
   },

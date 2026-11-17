@@ -15,6 +15,7 @@ import { Toast } from "@/components/ui/Toast";
 import { Bar, Card, Chip, Kpi } from "./Summary";
 import { AccreditationChip, type DocState, fmtDate, StateChip } from "./CtrShared";
 import { CtrSctrCard, CtrWorkersImport } from "./CtrPortalExtras";
+import { HomSelfAssessment } from "./HomViews";
 
 type ReqItem = {
   id: string;
@@ -184,6 +185,7 @@ export function CtrPortal() {
 
       <CtrSctrCard key={data.workers.length} />
 
+      <HomSelfAssessment />
       <Card
         title="Acreditación"
         action={!pendingAcc && <Button size="sm" variant="primary" icon="check" onClick={() => setRequestAcc(true)}>Solicitar acreditación</Button>}

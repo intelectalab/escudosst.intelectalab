@@ -37,6 +37,7 @@ import { AuiTools } from "@/components/modules/AuiTools";
 import { RvdSummary } from "@/components/modules/RvdSummary";
 import { EstTools } from "@/components/modules/EstTools";
 import { EqeCalendar } from "@/components/modules/EqeCalendar";
+import { HomRatings } from "@/components/modules/HomViews";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
 import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
@@ -145,7 +146,7 @@ export default function ModulePage() {
         <CtrPortal />
       ) : m.code === "COM" || m.code === "CTR" || m.code === "ING" ? (
         <div className="space-y-6">
-          {m.code === "COM" ? <ComModule readOnly={m.mode === "read_only"} /> : m.code === "CTR" ? <CtrClientPanel readOnly={m.mode === "read_only"} /> : <IngSummary readOnly={m.mode === "read_only"} />}
+          {m.code === "COM" ? <ComModule readOnly={m.mode === "read_only"} /> : m.code === "CTR" ? <><CtrClientPanel readOnly={m.mode === "read_only"} /><HomRatings /></> : <IngSummary readOnly={m.mode === "read_only"} />}
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
       ) : m.code === "SUN" || m.code === "CAP" || m.code === "FOT" || m.code === "EST" || m.code === "PCA" ? (

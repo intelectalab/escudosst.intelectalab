@@ -48970,6 +48970,17 @@
     "comment": null
    },
    {
+    "name": "validity_months",
+    "type": "integer",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -49193,10 +49204,34 @@
     "default": "'draft'",
     "values": [
      "draft",
+     "submitted",
      "completed",
      "approved",
+     "rejected",
      "expired"
     ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "approved_by",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "users",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "approved_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
     "ref": null,
     "encrypted": false,
     "generated": null,

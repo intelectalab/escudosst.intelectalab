@@ -26,7 +26,7 @@ class AddonRules extends RecordRules
             'sctr_coverages' => $this->coverage($values, $current),
             'access_events' => $this->access($values, $extra),
             'vendor_evaluations' => $this->vendor($values, $current, $extra),
-            'vendor_evaluation_templates' => $current === null ? $extra['criteria'] = ["'[]'::jsonb", []] : null,
+            'vendor_evaluation_templates' => $this->vendorTemplate($values, $current, $extra),
             // Pregunta nueva: alternativas vacías; se completan con «Alternativas» (editor del aula virtual).
             'questions' => $current === null ? $extra[($values['question_type'] ?? '') === 'short_answer' ? 'accepted_answers' : 'options'] = ["'[]'::jsonb", []] : null,
             'environmental_aspects' => $this->aspect($values, $current, $extra),
@@ -219,34 +219,88 @@ class AddonRules extends RecordRules
         }
     }
 
+    /** RN-HOM-01: los pesos de los criterios suman 100. */
+    private function vendorTemplate(array &$values, ?object $current, array &$extra): void
+    {
+        if ($current === null && ! array_key_exists('criteria', $values)) {
+            $extra['criteria'] = ["'[]'::jsonb", []];
+
+            return;
+        }
+        $c = $values['criteria'] ?? null;
+        $c = is_string($c) ? json_decode($c, true) : $c;
+        if (is_array($c) && $c !== []) {
+            $sum = array_sum(array_map(fn ($x) => (float) ($x['weight'] ?? 0), $c));
+            if (abs($sum - 100) > 0.01) {
+                $this->fail('criteria', "Los pesos de los criterios deben sumar 100 (suman {$sum}).");
+            }
+        }
+    }
+
     private function vendor(array &$values, ?object $current, array &$extra): void
     {
         // RN-HOM-04: una evaluación aprobada no se edita (solo puede pasar a vencida).
-        if ($current && $current->status === 'approved' && array_diff(array_keys($values), ['status']) !== []) {
-            $this->conflict('La evaluación está aprobada: no se edita. Crea una nueva para volver a evaluar al proveedor.');
+        if ($current && in_array($current->status, ['approved', 'rejected'], true) && array_diff(array_keys($values), ['status']) !== []) {
+            $this->conflict('La evaluación ya fue resuelta por gerencia: no se edita. Crea una nueva para volver a evaluar al proveedor.');
         }
         if ($current && $current->status === 'approved' && ($values['status'] ?? 'approved') !== 'expired' && ($values['status'] ?? 'approved') !== 'approved') {
             $this->fail('status', 'Una evaluación aprobada solo puede pasar a vencida.');
         }
-        // RN-HOM-03: al aprobarse vale hasta la fecha de evaluación + vendor_validity_months.
-        if (($values['status'] ?? null) === 'approved' && $current?->status !== 'approved' && ! $this->value($values, $current, 'valid_until')) {
-            $months = (int) \App\Core\Support\LegalParams::number('vendor_validity_months', 12);
+        $to = $values['status'] ?? null;
+        if ($current && $to && $to !== $current->status) {
+            $flow = ['draft' => ['submitted', 'completed'], 'submitted' => ['completed', 'draft'], 'completed' => ['approved', 'rejected', 'submitted'], 'approved' => ['expired'], 'rejected' => [], 'expired' => []];
+            if (! in_array($to, $flow[$current->status] ?? [], true)) {
+                $this->fail('status', 'Ese cambio de estado no está permitido: borrador → autoevaluación enviada → validada por SST → aprobada o rechazada por gerencia.');
+            }
+            // Flujo 2: la homologación la aprueba (o rechaza) gerencia.
+            if (in_array($to, ['approved', 'rejected'], true)) {
+                if (! in_array('hom.vendor_evaluations.approve', \App\Core\Auth\Permissions::effective(), true)) {
+                    $this->fail('status', 'La homologación la aprueba la gerencia.');
+                }
+                $extra['approved_by'] = ['?', [(string) auth()->id()]];
+                $extra['approved_at'] = ['now()', []];
+            }
+        }
+        // RN-HOM-03: al aprobarse vale hasta la fecha de evaluación + validity_months de la plantilla (o vendor_validity_months).
+        if ($to === 'approved' && $current?->status !== 'approved' && ! $this->value($values, $current, 'valid_until')) {
+            $months = (int) (DB::selectOne('select validity_months from vendor_evaluation_templates where id = ?', [$this->value($values, $current, 'template_id')])?->validity_months
+                ?? \App\Core\Support\LegalParams::number('vendor_validity_months', 12));
             $values['valid_until'] = date('Y-m-d', strtotime(($this->value($values, $current, 'evaluated_on') ?? date('Y-m-d'))." +{$months} months"));
         }
         if ($current === null) {
-            $extra['scores'] = ["'{}'::jsonb", []];   // se califican después con «Calificar»
+            $extra['scores'] = ["'{}'::jsonb", []];   // se califican después con «Calificar» o con la autoevaluación del proveedor
         }
         $scores = $this->value($values, $current, 'scores');
         if (is_string($scores)) {
             $scores = json_decode($scores, true);
         }
-        $nums = is_array($scores) ? array_values(array_filter(array_map(fn ($v) => is_array($v) ? ($v['score'] ?? null) : $v, $scores), 'is_numeric')) : [];
-        if ($nums) {
-            $total = round(array_sum($nums) / count($nums), 2);
-            $values['total_score'] = $total;
-            $passing = DB::selectOne('select passing_score from vendor_evaluation_templates where id = ?', [$this->value($values, $current, 'template_id')])?->passing_score;
-            if ($passing !== null && ! array_key_exists('rating', $values)) {
-                $values['rating'] = $total >= (float) $passing ? 'approved' : 'rejected';
+        // RN-HOM-01: puntaje total = suma ponderada por los pesos de la plantilla (sin plantilla o sin pesos, promedio simple).
+        if (is_array($scores) && $scores !== []) {
+            $tpl = DB::selectOne('select criteria, passing_score from vendor_evaluation_templates where id = ?', [$this->value($values, $current, 'template_id')]);
+            $weights = [];
+            foreach (json_decode((string) ($tpl->criteria ?? '[]'), true) ?: [] as $c) {
+                $weights[$c['name'] ?? ''] = (float) ($c['weight'] ?? 0);
+            }
+            $num = 0.0;
+            $den = 0.0;
+            $plain = [];
+            foreach ($scores as $name => $v) {
+                $sc = is_array($v) ? ($v['score'] ?? null) : $v;
+                if (! is_numeric($sc)) {
+                    continue;
+                }
+                $plain[] = (float) $sc;
+                $w = $weights[$name] ?? 0;
+                $num += (float) $sc * $w;
+                $den += $w;
+            }
+            if ($plain) {
+                $total = round($den > 0 ? $num / $den : array_sum($plain) / count($plain), 2);
+                $values['total_score'] = $total;
+                if ($tpl?->passing_score !== null && ! array_key_exists('rating', $values)) {
+                    // RN-HOM-02: aprueba si llega al puntaje mínimo (A); B «con condiciones» la pone SST; C no aprueba.
+                    $values['rating'] = $total >= (float) $tpl->passing_score ? 'approved' : 'rejected';
+                }
             }
         }
         if ($current === null) {

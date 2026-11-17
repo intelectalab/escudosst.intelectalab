@@ -26,7 +26,7 @@ SYSTEM = {"id", "company_id", "created_at", "created_by", "updated_at", "updated
 SECRET_COLS = {"webhooks.secret"}
 HIDDEN_REFS = {"signature_requests", "signatures", "devices", "sync_batches", "accounts", "companies", "ai_requests", "memberships", "bulk_imports"}
 # Campos que calcula el sistema: se muestran pero no se editan.
-READONLY = {"emergency_equipment.next_recharge_on", "emergency_equipment.next_hydrostatic_test_on", "emergency_equipment.next_inspection_on", "man_hours.validated_by", "man_hours.validated_at", "monthly_statistics.adjustments", "monthly_statistics.includes_contractors", "annual_plans.version_number", "annual_plans.previous_plan_id",  "register_exports.snapshot", "register_exports.data_hash", "register_exports.format_version", "register_exports.superseded_by", "register_exports.status", "register_exports.sha256", "register_exports.rows_count","psychosocial_surveys.is_anonymous", "psychosocial_surveys.min_responses_param", "psychosocial_responses.worker_id", "areas.depth", "workers.document_last4", "workers.activated_at", "workers.whatsapp_opt_in_at",
+READONLY = {"vendor_evaluations.approved_by", "vendor_evaluations.approved_at", "emergency_equipment.next_recharge_on", "emergency_equipment.next_hydrostatic_test_on", "emergency_equipment.next_inspection_on", "man_hours.validated_by", "man_hours.validated_at", "monthly_statistics.adjustments", "monthly_statistics.includes_contractors", "annual_plans.version_number", "annual_plans.previous_plan_id",  "register_exports.snapshot", "register_exports.data_hash", "register_exports.format_version", "register_exports.superseded_by", "register_exports.status", "register_exports.sha256", "register_exports.rows_count","psychosocial_surveys.is_anonymous", "psychosocial_surveys.min_responses_param", "psychosocial_responses.worker_id", "areas.depth", "workers.document_last4", "workers.activated_at", "workers.whatsapp_opt_in_at",
             "workers.full_name",
             # IPERC: lo calcula el sistema o lo fija el flujo de aprobación (M-IPC RN-IPC-01, 02, 06, 08).
             "iperc_matrices.current_version_id", "iperc_matrices.next_review_on",
@@ -171,7 +171,9 @@ WRITABLE_JSON = {"iperc_rows.probability_detail", "iperc_versions.participants",
                  # El asistente del PETAR envía la cuadrilla; las mediciones de gases se registran al activar el trabajo (RN-PTR-03).
                  "work_permits.crew", "work_permits.gas_measurements", "work_permits.isolation_points",
                  # M-POL RN-POL-01 (principios del art. 23) y M-EQE SCR-EQE-02 (checklist de la inspección por QR).
-                 "sst_policies.principles_checklist", "equipment_checks.checklist"}
+                 "sst_policies.principles_checklist", "equipment_checks.checklist",
+                 # M-HOM: criterios con peso de la plantilla y puntajes por criterio de la evaluación.
+                 "vendor_evaluation_templates.criteria", "vendor_evaluations.scores"}
 # Obligatorios en la base pero que calcula una regla si no se envían.
 COMPUTED = {"vendor_evaluation_templates.criteria", "vendor_evaluations.scores", "work_shifts.hours_per_day", "areas.depth", "iperc_rows.probability_value",
             "iperc_rows.hazard", "iperc_rows.risk", "measurements.result", "work_permits.valid_until", "access_events.result", "access_events.occurred_at", "api_clients.scopes", "webhooks.event_codes", "corrective_actions.code", "inspections.code", "trainings.code",

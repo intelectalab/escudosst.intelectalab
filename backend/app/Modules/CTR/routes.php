@@ -26,6 +26,8 @@ Route::middleware(['auth:sanctum', 'company', 'module:CTR'])->prefix('ctr')->gro
     Route::post('portal/workers/preview', [PortalImport::class, 'preview'])->middleware('throttle:30,1');
     Route::post('portal/workers/import', [PortalImport::class, 'import'])->middleware('throttle:10,1');
     Route::get('portal/sctr', [PortalSctr::class, 'show']);
+    Route::get('portal/homologations', [\App\Modules\CTR\VendorSelfController::class, 'index']);
+    Route::post('portal/homologations/{id}', [\App\Modules\CTR\VendorSelfController::class, 'answer'])->whereUuid('id');
     Route::post('portal/sctr/policies', [PortalSctr::class, 'storePolicy']);
     Route::post('portal/sctr/coverages', [PortalSctr::class, 'storeCoverages']);
 });

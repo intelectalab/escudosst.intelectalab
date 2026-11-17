@@ -36,11 +36,16 @@ class InvitationController extends Controller
             "select c.id, c.ruc, c.legal_name, c.services_description, c.risk_level, c.status,
                     (select json_agg(json_build_object('membership_id', m.id, 'email', u.email, 'full_name', u.full_name, 'status', m.status, 'invited_at', m.invited_at, 'accepted_at', m.accepted_at) order by m.invited_at)
                        from membership_scopes s join memberships m on m.id = s.membership_id and m.deleted_at is null join users u on u.id = m.user_id
-                      where s.contractor_id = c.id and s.scope_type = 'contractor' and s.deleted_at is null) as admins
+                      where s.contractor_id = c.id and s.scope_type = 'contractor' and s.deleted_at is null) as admins,
+                    (select json_build_object('rating', v.rating, 'total_score', v.total_score, 'valid_until', v.valid_until, 'status', v.status)
+                       from vendor_evaluations v where v.contractor_id = c.id and v.deleted_at is null and v.status in ('approved', 'rejected', 'expired')
+                      order by v.approved_at desc nulls last, v.created_at desc limit 1) as homologation
                from contractors c where c.deleted_at is null order by c.legal_name"
         );
         foreach ($rows as $r) {
             $r->admins = $r->admins ? json_decode($r->admins, true) : [];
+            // M-HOM: calificación de la última homologación resuelta (A aprobado, B con condiciones, C no aprobado).
+            $r->homologation = $r->homologation ? json_decode($r->homologation, true) : null;
         }
 
         return response()->json(['data' => $rows]);
