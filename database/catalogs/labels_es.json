@@ -1973,7 +1973,8 @@
   "due_for_replacement": "Para reponer",
   "inspections.status.signed": "Firmada",
   "substandard_reports.status.escalated": "Escalado a evento",
-  "ppe_deliveries.status.due_for_replacement": "Para reponer"
+  "ppe_deliveries.status.due_for_replacement": "Para reponer",
+  "ppe_deliveries.status.pending_signature": "Pendiente de firma"
  },
  "tables": {
   "absences": "Ausencias",

@@ -71,7 +71,7 @@ export function lockedReason(table: string, row: RecordRow): string | null {
     return st === "verified" ? "Acción verificada: queda como registro cerrado." : "Acción anulada: queda como registro cerrado.";
   if (table === "sst_events" && ["closed", "discarded"].includes(st)) return "Evento cerrado: queda como registro.";
   if (table === "committee_meetings" && st === "minutes_signed") return "Acta firmada: la sesión no se modifica.";
-  if (table === "ppe_deliveries") return st === "delivered" ? null : "Entrega cerrada: queda como registro.";
+  if (table === "ppe_deliveries") return ["delivered", "pending_signature"].includes(st) ? null : "Entrega cerrada: queda como registro.";
   if ((table === "annual_programs" || table === "training_programs") && st === "closed") return "Programa cerrado.";
   if (["sst_policies", "risst_versions", "procedure_versions", "document_versions"].includes(table) && ["current", "obsolete"].includes(st))
     return st === "current" ? "Versión vigente: no se edita. Para cambiarla, crea una nueva versión." : "Versión obsoleta: queda como historial.";

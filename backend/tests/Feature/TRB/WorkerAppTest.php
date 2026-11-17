@@ -117,7 +117,7 @@ it('devuelve solo los datos propios: el id de otro trabajador responde 404', fun
     $sa = wappActivate('74747474', wappIssue($a)['code'], '397154');
     [$mine, $theirs] = wappAs(HUAYLAS_ID, function () use ($a, $b) {
         $item = DB::selectOne("insert into ppe_items (company_id, code, name, category) values (?, 'EPP-WAPP', 'Guantes anticorte', 'hand') returning id", [HUAYLAS_ID])->id;
-        $ins = fn ($w) => DB::selectOne('insert into ppe_deliveries (company_id, worker_id, ppe_item_id, quantity, delivered_at, expires_on) values (?, ?, ?, 1, now(), current_date + 90) returning id',
+        $ins = fn ($w) => DB::selectOne("insert into ppe_deliveries (company_id, worker_id, ppe_item_id, quantity, delivered_at, expires_on, status) values (?, ?, ?, 1, now(), current_date + 90, 'pending_signature') returning id",
             [HUAYLAS_ID, $w, $item])->id;
 
         return [$ins($a), $ins($b)];

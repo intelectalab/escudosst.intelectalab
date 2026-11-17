@@ -29247,6 +29247,7 @@
     "not_null": true,
     "default": "'delivered'",
     "values": [
+     "pending_signature",
      "delivered",
      "due_for_replacement",
      "returned",

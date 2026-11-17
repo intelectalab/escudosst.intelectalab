@@ -107,7 +107,16 @@ it('el EPP exige su capacitación, no entrega sin stock, queda «para reponer»,
                               values (?, ?, ?, 'CFG-2026-000001', 'VFGTEST000001', 'Pedro', 'Uso de arnés', current_date, 'validated', now(), ?)", [HUAYLAS_ID, $w, $tr, $this->me]));
     $this->postJson('/api/v1/records/EPP/ppe_deliveries', ['worker_id' => $w, 'ppe_item_id' => $item], $this->h)->assertStatus(422)->assertJsonValidationErrors('quantity');
     $this->postJson('/api/v1/records/EPP/ppe_stock_movements', ['ppe_item_id' => $item, 'site_id' => $this->site, 'movement_type' => 'in', 'quantity' => 5], $this->h)->assertCreated();
-    $d = $this->postJson('/api/v1/records/EPP/ppe_deliveries', ['worker_id' => $w, 'ppe_item_id' => $item], $this->h)->assertCreated()->json('data.id');
+    $d = $this->postJson('/api/v1/records/EPP/ppe_deliveries', ['worker_id' => $w, 'ppe_item_id' => $item], $this->h)->assertCreated()->assertJsonPath('data.status', 'pending_signature')->json('data.id');
+    // RN-EPP-02: sin firma no cuenta; con la firma del trabajador queda entregada.
+    expect(collect($this->getJson('/api/v1/epp/matrix', $this->h)->json('data.workers'))->firstWhere('worker_id', $w)['compliant'])->toBeFalse();
+    fgAs(function () use ($d) {
+        DB::insert("insert into signatures (company_id, subject_type, subject_id, signer_user_id, signer_name, method, document_hash, evidence_hash, signed_at) values (?, 'ppe_deliveries', ?, ?, 'Pedro', 'pin', 'x', 'x', now())", [HUAYLAS_ID, $d, $this->me]);
+        $r = DB::selectOne("insert into signature_requests (company_id, subject_type, subject_id, document_hash, signer_user_id, role_in_document, sequence_order, status, signed_at)
+                            values (?, 'ppe_deliveries', ?, decode('00', 'hex'), ?, 'worker', 1, 'signed', now()) returning id", [HUAYLAS_ID, $d, $this->me])->id;
+        \App\Modules\NOT\FichaEvents::signed($r);
+    });
+    expect(fgAs(fn () => DB::selectOne('select status from ppe_deliveries where id = ?', [$d])->status))->toBe('delivered');
     $m = $this->getJson('/api/v1/epp/matrix', $this->h)->assertOk()->json('data');
     expect(collect($m['workers'])->firstWhere('worker_id', $w)['compliant'])->toBeTrue();
     fgAs(function () use ($d) {

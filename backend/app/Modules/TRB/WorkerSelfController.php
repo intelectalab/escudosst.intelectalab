@@ -49,7 +49,7 @@ class WorkerSelfController extends Controller
         }
         $cred = $mods['FOT'] ? DB::selectOne("select status, expires_on from credentials where worker_id = ? and deleted_at is null and status <> 'revoked' order by issued_at desc nulls last limit 1", [$w->id]) : null;
         $ppe = $mods['EPP'] ? DB::selectOne("select count(*) as n, count(*) filter (where signature_id is null) as unsigned, count(*) filter (where expires_on between ?::date and ?::date + 30) as expiring
-                                              from ppe_deliveries where worker_id = ? and deleted_at is null and status = 'delivered'", [$today, $today, $w->id]) : null;
+                                              from ppe_deliveries where worker_id = ? and deleted_at is null and status in ('delivered', 'pending_signature')", [$today, $today, $w->id]) : null;
         $fit = $mods['EMO'] ? DB::selectOne('select status, valid_until from fitness_status where worker_id = ? and is_current and deleted_at is null limit 1', [$w->id]) : null;
         $certs = $mods['CAP'] ? (int) DB::selectOne("select count(*) as n from training_certificates where worker_id = ? and deleted_at is null and status = 'validated'", [$w->id])->n : 0;
         $courses = $mods['AUL'] ? (int) DB::selectOne("select count(*) as n from course_enrollments where worker_id = ? and deleted_at is null and status in ('enrolled', 'in_progress')", [$w->id])->n : 0;
@@ -230,7 +230,7 @@ class WorkerSelfController extends Controller
                     [$ctx->companyId, $row->id, $w->id, $uid, $sig, $request->ip(), mb_substr((string) $request->userAgent(), 0, 300), $uid]),
                 'risst' => DB::update("update risst_deliveries set status = 'signed', method = 'app_signature', signature_id = ?, delivered_on = coalesce(delivered_on, ?::date), updated_by = ? where id = ?",
                     [$sig, WorkerSelf::today(), $uid, $row->id]),
-                'ppe' => DB::update('update ppe_deliveries set signature_id = ?, updated_by = ? where id = ?', [$sig, $uid, $row->id]),
+                'ppe' => DB::update("update ppe_deliveries set signature_id = ?, status = case when status = 'pending_signature' then 'delivered' else status end, updated_by = ? where id = ?", [$sig, $uid, $row->id]),
                 'talk' => DB::update('update talk_attendances set signature_id = ?, updated_by = ? where id = ?', [$sig, $uid, $row->id]),
                 // RN-ATS-02: si el ATS ya estaba firmado o en ejecución, queda como firma tardía.
                 // M-IPC SCR-IPC-08: la firma «Lo conozco» queda como firma del trabajador sobre la versión vigente del IPERC.
@@ -420,7 +420,7 @@ class WorkerSelfController extends Controller
         if (WorkerSelf::usable('EPP')) {
             foreach (DB::select(
                 "select d.id, i.name, d.quantity, d.delivered_at from ppe_deliveries d join ppe_items i on i.id = d.ppe_item_id
-                  where d.worker_id = ? and d.signature_id is null and d.status = 'delivered' and d.deleted_at is null order by d.delivered_at", [$w->id]) as $r) {
+                  where d.worker_id = ? and d.signature_id is null and d.status = 'pending_signature' and d.deleted_at is null order by d.delivered_at", [$w->id]) as $r) {
                 $items[] = ['kind' => 'ppe', 'id' => $r->id, 'title' => 'Confirmar entrega de EPP', 'detail' => "{$r->name} × {$r->quantity} · ".date('d/m/Y', strtotime($r->delivered_at)), 'due' => null, 'at' => $r->delivered_at];
             }
         }

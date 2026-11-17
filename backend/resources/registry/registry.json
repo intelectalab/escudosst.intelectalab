@@ -11764,6 +11764,10 @@
      "type": "enum",
      "options": [
       {
+       "value": "pending_signature",
+       "label": "Pendiente de firma"
+      },
+      {
        "value": "delivered",
        "label": "Entregado"
       },

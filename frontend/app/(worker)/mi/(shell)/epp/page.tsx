@@ -10,7 +10,7 @@ import { errorText, fmtDate, workerApi } from "@/lib/workerApp";
 type Delivery = { id: string; item: string; quantity: number; size: string | null; delivered_at: string; expires_on: string | null; status: string; signed: boolean; expiry: "none" | "ok" | "soon" | "expired"; replacement_requested: boolean };
 
 const EXPIRY: Record<Delivery["expiry"], [string, Tone] | null> = { none: null, ok: ["Vigente", "ok"], soon: ["Vence pronto", "amber"], expired: ["Vencido: pide el cambio", "bad"] };
-const STATUS: Record<string, string> = { returned: "Devuelto", replaced: "Reemplazado", lost: "Perdido", due_for_replacement: "Para reponer" };
+const STATUS: Record<string, string> = { returned: "Devuelto", replaced: "Reemplazado", lost: "Perdido", due_for_replacement: "Para reponer", pending_signature: "Falta tu firma" };
 const REASONS: [string, string][] = [["worn", "Está gastado"], ["damaged", "Se dañó"], ["lost", "Se perdió"], ["size", "No es mi talla"], ["other", "Otro motivo"]];
 
 export default function MyPpePage() {
@@ -53,9 +53,9 @@ export default function MyPpePage() {
                       Entregado el {fmtDate(d.delivered_at)}{d.size ? ` · talla ${d.size}` : ""}{d.expires_on ? ` · vence ${fmtDate(d.expires_on)}` : ""}
                     </span>
                   </span>
-                  {d.status !== "delivered" ? <Pill tone="na">{STATUS[d.status] ?? d.status}</Pill> : e && <Pill tone={e[1]}>{e[0]}</Pill>}
+                  {d.status !== "delivered" && d.status !== "pending_signature" ? <Pill tone="na">{STATUS[d.status] ?? d.status}</Pill> : e && <Pill tone={e[1]}>{e[0]}</Pill>}
                 </div>
-                {d.status === "delivered" && !d.signed && <BigButton onClick={() => setSign(d.id)}>Firmar la recepción</BigButton>}
+                {d.status === "pending_signature" && !d.signed && <BigButton onClick={() => setSign(d.id)}>Firmar la recepción</BigButton>}
                 {d.signed && <p className="text-xs text-ok">Recepción firmada</p>}
                 {["delivered", "due_for_replacement"].includes(d.status) && (d.replacement_requested ? <p className="text-xs text-muted">Reposición pedida: el área de SST la está atendiendo.</p>
                   : ask?.id === d.id ? (

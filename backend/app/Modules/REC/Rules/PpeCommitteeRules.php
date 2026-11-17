@@ -93,7 +93,8 @@ class PpeCommitteeRules extends RecordRules
         if (! isset($values['expires_on']) && $item->useful_life_days) {
             $values['expires_on'] = date('Y-m-d', strtotime(substr($values['delivered_at'], 0, 10).' +'.(int) $item->useful_life_days.' days'));
         }
-        $values['status'] = 'delivered';
+        // RN-EPP-02: sin la firma del trabajador la entrega queda «pendiente de firma» y no cuenta como entregada.
+        $values['status'] = ! empty($values['signature_id']) ? 'delivered' : 'pending_signature';
         $extra['delivered_by'] = ['?', [(string) auth()->id()]];
         // RN-EPP-06: el EPP que exige capacitación de uso se entrega a quien la tiene vigente.
         if ($item->requires_training && $item->training_id && ! DB::selectOne(
