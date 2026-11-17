@@ -20380,6 +20380,11 @@
      ],
      "default": "open",
      "list": true
+    },
+    {
+     "name": "dismiss_reason",
+     "label": "Motivo de descarte",
+     "type": "longtext"
     }
    ]
   },

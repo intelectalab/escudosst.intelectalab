@@ -143,6 +143,18 @@ class ImprovementRules extends RecordRules
         if ($op === 'create') {
             $values['status'] = 'planned';
         }
+        // RN-AUI-04: cerrada, la auditoría y su informe no cambian.
+        if ($current && $current->status === 'closed' && $values !== []) {
+            $this->conflict('La auditoría está cerrada: su informe no se modifica.');
+        }
+        // RN-AUI-01: la auditoría legal obligatoria registra el número de registro del auditor ante el MTPE desde que se guarda.
+        if ($this->value($values, $current, 'audit_type') === 'legal_mandatory' && trim((string) $this->value($values, $current, 'auditor_registration')) === '') {
+            $this->fail('auditor_registration', 'La auditoría obligatoria la hace un auditor registrado en el MTPE: indica su número de registro (Ley 29783, art. 43).');
+        }
+        // RN-AUI-04: se cierra con el informe adjunto.
+        if ($to === 'closed' && ! $this->value($values, $current, 'report_file_id')) {
+            $this->fail('report_file_id', 'Adjunta el informe de la auditoría para cerrarla.');
+        }
         if ($current && $to && $to !== $current->status) {
             $flow = ['planned' => ['in_progress', 'cancelled'], 'in_progress' => ['report_draft', 'completed', 'cancelled'], 'report_draft' => ['completed', 'in_progress'],
                 'completed' => ['closed'], 'closed' => [], 'cancelled' => []];
@@ -183,6 +195,10 @@ class ImprovementRules extends RecordRules
         }
         if ($to === 'dismissed' && in_array($type, ['major_nc', 'minor_nc'], true)) {
             $this->fail('status', 'Una no conformidad no se descarta: asígnale una acción correctiva.');
+        }
+        // RN-AUI-06: una observación u oportunidad se cierra sin acción con su justificación.
+        if ($to === 'dismissed' && trim((string) $this->value($values, $current, 'dismiss_reason')) === '') {
+            $this->fail('dismiss_reason', 'Escribe la justificación para cerrar el hallazgo sin acción.');
         }
     }
 

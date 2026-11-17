@@ -33,6 +33,7 @@ import { ObsModule } from "@/components/modules/ObsModule";
 import { RebaForm } from "@/components/modules/RebaForm";
 import { PolOverview } from "@/components/modules/PolOverview";
 import { PlaWizard } from "@/components/modules/PlaWizard";
+import { AuiTools } from "@/components/modules/AuiTools";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
 import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
@@ -192,6 +193,8 @@ export default function ModulePage() {
         </div>
       ) : m.code === "PLA" ? (
         <PlaPage readOnly={m.mode === "read_only"} />
+      ) : m.code === "AUI" ? (
+        <AuiPage readOnly={m.mode === "read_only"} />
       ) : m.code === "CH5" ? (
         <Ch5Page readOnly={m.mode === "read_only"} />
       ) : m.code === "MRL" ? (
@@ -319,6 +322,17 @@ function PlaPage({ readOnly }: { readOnly: boolean }) {
     <div className="space-y-6">
       <PlaWizard readOnly={readOnly} onSaved={() => setV((x) => x + 1)} />
       <ModuleRecords key={v} code="PLA" readOnly={readOnly} />
+    </div>
+  );
+}
+
+/** M-AUI: programa anual, preparación y herramientas por auditoría encima de la lista. */
+function AuiPage({ readOnly }: { readOnly: boolean }) {
+  const [v, setV] = useState(0);
+  return (
+    <div className="space-y-6">
+      <AuiTools readOnly={readOnly} onSaved={() => setV((x) => x + 1)} />
+      <ModuleRecords key={v} code="AUI" readOnly={readOnly} />
     </div>
   );
 }
