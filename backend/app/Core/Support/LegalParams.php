@@ -52,4 +52,17 @@ final class LegalParams
 
         return is_array($d) ? array_values(array_map('strval', $d)) : $default;
     }
+
+    /** Parámetro de texto; sin parámetro vigente, el valor de respaldo. */
+    public static function text(string $key, string $default): string
+    {
+        $company = app()->bound(CompanyContext::class) ? app(CompanyContext::class)->companyId : null;
+        $v = DB::selectOne(
+            'select value from legal_parameters where key = ? and (company_id is null or company_id = ?) and valid_from <= current_date
+                and (valid_to is null or valid_to >= current_date) and deleted_at is null order by company_id nulls last, valid_from desc limit 1',
+            [$key, $company]
+        );
+
+        return $v && trim((string) $v->value) !== '' ? trim((string) $v->value) : $default;
+    }
 }

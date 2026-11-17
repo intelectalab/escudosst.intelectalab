@@ -45527,6 +45527,28 @@
     "comment": null
    },
    {
+    "name": "validated_by",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "users",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "validated_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -45866,6 +45888,28 @@
    {
     "name": "closed_at",
     "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "adjustments",
+    "type": "jsonb",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "includes_contractors",
+    "type": "boolean",
     "not_null": false,
     "default": null,
     "values": null,

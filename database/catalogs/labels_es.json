@@ -1240,7 +1240,9 @@
   "behavior_list_id": "Versión de la lista de comportamientos",
   "principles_checklist": "Principios del art. 23 incluidos",
   "baseline_assessment_id": "Línea base",
-  "previous_plan_id": "Versión anterior"
+  "previous_plan_id": "Versión anterior",
+  "adjustments": "Ajustes después del cierre",
+  "includes_contractors": "Incluye contratistas"
  },
  "values": {
   "A": "Tipo A",

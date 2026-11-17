@@ -20491,6 +20491,19 @@
      "name": "notes",
      "label": "Notas",
      "type": "longtext"
+    },
+    {
+     "name": "validated_by",
+     "label": "Validado por",
+     "readonly": true,
+     "type": "ref",
+     "ref": "users"
+    },
+    {
+     "name": "validated_at",
+     "label": "Validado el",
+     "readonly": true,
+     "type": "datetime"
     }
    ]
   },
@@ -20660,6 +20673,18 @@
      "name": "closed_at",
      "label": "Cerrado el",
      "type": "datetime"
+    },
+    {
+     "name": "adjustments",
+     "label": "Ajustes después del cierre",
+     "readonly": true,
+     "type": "json"
+    },
+    {
+     "name": "includes_contractors",
+     "label": "Incluye contratistas",
+     "readonly": true,
+     "type": "bool"
     }
    ]
   },

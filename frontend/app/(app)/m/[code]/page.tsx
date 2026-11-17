@@ -35,6 +35,7 @@ import { PolOverview } from "@/components/modules/PolOverview";
 import { PlaWizard } from "@/components/modules/PlaWizard";
 import { AuiTools } from "@/components/modules/AuiTools";
 import { RvdSummary } from "@/components/modules/RvdSummary";
+import { EstTools } from "@/components/modules/EstTools";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
 import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
@@ -148,7 +149,7 @@ export default function ModulePage() {
         </div>
       ) : m.code === "SUN" || m.code === "CAP" || m.code === "FOT" || m.code === "EST" || m.code === "PCA" ? (
         <div className="space-y-6">
-          {m.code === "SUN" ? <SunSummary readOnly={m.mode === "read_only"} /> : m.code === "CAP" ? <CapMatrix /> : m.code === "PCA" ? <PcaOverview /> : m.code === "FOT" ? <FotIssue readOnly={m.mode === "read_only"} /> : <EstSummary />}
+          {m.code === "SUN" ? <SunSummary readOnly={m.mode === "read_only"} /> : m.code === "CAP" ? <CapMatrix /> : m.code === "PCA" ? <PcaOverview /> : m.code === "FOT" ? <FotIssue readOnly={m.mode === "read_only"} /> : <><EstSummary /><EstTools readOnly={m.mode === "read_only"} onSaved={() => undefined} /></>}
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
       ) : m.code === "MAP" ? (

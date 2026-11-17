@@ -35,7 +35,11 @@ class MonthlyStatsController extends Controller
         $ff = LegalParams::number('frequency_index_factor', 1000000);
         $sf = LegalParams::number('severity_index_factor', 1000000);
         $div = LegalParams::number('accident_rate_divisor', 1000);
-        $snapshot = json_encode(['frequency_index_factor' => $ff, 'severity_index_factor' => $sf, 'accident_rate_divisor' => $div], JSON_UNESCAPED_UNICODE);
+        // RN-EST-07 y RN-EST-04: inclusión de contratistas e imputación de los días perdidos (parámetros a confirmar).
+        $withContractors = LegalParams::flag('include_contractors_in_stats', false);
+        $allocation = LegalParams::text('lost_days_allocation', 'event_month');
+        $snapshot = json_encode(['frequency_index_factor' => $ff, 'severity_index_factor' => $sf, 'accident_rate_divisor' => $div,
+            'include_contractors_in_stats' => $withContractors, 'lost_days_allocation' => $allocation], JSON_UNESCAPED_UNICODE);
         $company = app(CompanyContext::class)->companyId;
         $user = (string) auth()->id();
 
@@ -49,7 +53,8 @@ class MonthlyStatsController extends Controller
             }
             $siteSql = $site ? ' and site_id = ?' : '';
             $bind = $site ? [$year, $month, $site] : [$year, $month];
-            $hours = DB::selectOne('select coalesce(sum(hours_worked), 0) as h, coalesce(sum(worker_count), 0) as w from man_hours
+            $hours = DB::selectOne('select coalesce(sum(hours_worked'.($withContractors ? ' + coalesce(contractor_hours, 0)' : '').'), 0) as h,
+                                            coalesce(sum(worker_count'.($withContractors ? ' + coalesce(contractor_worker_count, 0)' : '').'), 0) as w from man_hours
                                      where deleted_at is null and period_year = ? and period_month = ?'.$siteSql, $bind);
             $ev = DB::selectOne(
                 "select count(*) filter (where event_type = 'fatal_accident') as fatal, count(*) filter (where event_type = 'disabling_accident') as disabling,
@@ -60,6 +65,15 @@ class MonthlyStatsController extends Controller
                     and extract(year from occurred_at at time zone 'America/Lima') = ? and extract(month from occurred_at at time zone 'America/Lima') = ?".$siteSql,
                 $bind
             );
+            if ($allocation === 'loss_month') {
+                // RN-EST-04: los días perdidos se imputan a los meses en que se pierden (desde el día siguiente al evento, días calendario).
+                $ev->days = (int) DB::selectOne(
+                    "select coalesce(sum(greatest(0, least(e.d0 + e.lost_days - 1, m.last) - greatest(e.d0, m.first) + 1)), 0) as d
+                       from (select (occurred_at at time zone 'America/Lima')::date + 1 as d0, lost_days, site_id from sst_events
+                              where deleted_at is null and status <> 'discarded' and lost_days > 0) e,
+                            (select make_date(?, ?, 1) as first, (make_date(?, ?, 1) + interval '1 month - 1 day')::date as last) m
+                      where e.d0 <= m.last".($site ? ' and e.site_id = ?' : ''), $site ? [$year, $month, $year, $month, $site] : [$year, $month, $year, $month])->d;
+            }
             $h = (float) $hours->h;
             $lost = (int) $ev->fatal + (int) $ev->disabling;
             $fi = $h > 0 ? round($lost * $ff / $h, 2) : null;
@@ -72,16 +86,16 @@ class MonthlyStatsController extends Controller
                 DB::update(
                     'update monthly_statistics set worker_count = ?, hours_worked = ?, accidents_fatal = ?, accidents_disabling = ?, accidents_minor = ?, dangerous_incidents = ?,
                         incidents = ?, occupational_diseases = ?, lost_days = ?, frequency_index = ?, severity_index = ?, accident_rate_index = ?, frequency_factor = ?,
-                        severity_factor = ?, accident_rate_divisor = ?, parameters_snapshot = ?::jsonb, computed_at = now(), updated_by = ? where id = ?',
-                    [...$values, $user, $existing->id]
+                        severity_factor = ?, accident_rate_divisor = ?, parameters_snapshot = ?::jsonb, computed_at = now(), includes_contractors = ?, updated_by = ? where id = ?',
+                    [...$values, $withContractors, $user, $existing->id]
                 );
             } else {
                 DB::insert(
                     'insert into monthly_statistics (company_id, period_year, period_month, site_id, worker_count, hours_worked, accidents_fatal, accidents_disabling,
                         accidents_minor, dangerous_incidents, incidents, occupational_diseases, lost_days, frequency_index, severity_index, accident_rate_index,
-                        frequency_factor, severity_factor, accident_rate_divisor, parameters_snapshot, computed_at, is_closed, created_by, updated_by)
-                     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, now(), false, ?, ?)',
-                    [$company, $year, $month, $site, ...$values, $user, $user]
+                        frequency_factor, severity_factor, accident_rate_divisor, parameters_snapshot, computed_at, is_closed, includes_contractors, created_by, updated_by)
+                     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, now(), false, ?, ?, ?)',
+                    [$company, $year, $month, $site, ...$values, $withContractors, $user, $user]
                 );
             }
             $rows[] = ['site_id' => $site, 'hours_worked' => $h, 'frequency_index' => $fi, 'severity_index' => $si, 'accident_rate_index' => $ai, 'lost_days' => (int) $ev->days];
@@ -106,6 +120,13 @@ class MonthlyStatsController extends Controller
         );
         if ($missing) {
             throw new ApiProblem(422, 'validation_failed', 'Faltan horas-hombre', 'Registra las horas-hombre del mes de: '.implode(', ', array_column($missing, 'name')).'.');
+        }
+        // RN-EST-03: las horas-hombre del mes deben estar validadas.
+        $unvalidated = DB::select(
+            "select coalesce(s.name, 'Toda la empresa') as name from man_hours h left join sites s on s.id = h.site_id
+              where h.period_year = ? and h.period_month = ? and h.deleted_at is null and h.validated_at is null", [$m->period_year, $m->period_month]);
+        if ($unvalidated) {
+            throw new ApiProblem(422, 'validation_failed', 'Horas-hombre sin validar', 'Valida las horas-hombre del mes de: '.implode(', ', array_unique(array_column($unvalidated, 'name'))).'.');
         }
         DB::update('update monthly_statistics set is_closed = true, closed_by = ?, closed_at = now() where period_year = ? and period_month = ? and deleted_at is null',
             [(string) auth()->id(), $m->period_year, $m->period_month]);
