@@ -12,4 +12,8 @@ Route::middleware(['auth:sanctum', 'company', 'module:EMO'])->prefix('emo')->gro
     Route::post('exams/{exam}/files', [EmoClinicalController::class, 'upload'])->whereUuid('exam');
     Route::get('files/{file}', [EmoClinicalController::class, 'download'])->whereUuid('file');
     Route::get('workers/{worker}/history', [EmoClinicalController::class, 'history'])->whereUuid('worker');
+    // Protocolos por puesto (SCR-EMO-06), sin datos clínicos.
+    Route::get('protocols', [\App\Modules\EMO\ProtocolsController::class, 'index']);
+    Route::post('protocols', [\App\Modules\EMO\ProtocolsController::class, 'save']);
+    Route::patch('positions/{id}', [\App\Modules\EMO\ProtocolsController::class, 'position'])->whereUuid('id');
 });

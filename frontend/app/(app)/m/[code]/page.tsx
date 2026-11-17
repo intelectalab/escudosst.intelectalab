@@ -25,6 +25,7 @@ import { RegRegisters } from "@/components/modules/RegRegisters";
 import { hasModuleReports, ModuleReports } from "@/components/modules/ModuleReports";
 import { SctReconcile } from "@/components/modules/SctReconcile";
 import { Ch5Talks } from "@/components/modules/Ch5Talks";
+import { EmoProtocols } from "@/components/modules/EmoProtocols";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
 import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
@@ -149,6 +150,14 @@ export default function ModulePage() {
       ) : m.code === "SCT" ? (
         <div className="space-y-6">
           <SctReconcile readOnly={m.mode === "read_only"} />
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
+      ) : m.code === "EMO" ? (
+        <div className="space-y-6">
+          <details className="rounded-xl border border-line bg-surface">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Protocolos por puesto</summary>
+            <div className="border-t border-line p-4"><EmoProtocols readOnly={m.mode === "read_only"} /></div>
+          </details>
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
       ) : m.code === "CH5" ? (
