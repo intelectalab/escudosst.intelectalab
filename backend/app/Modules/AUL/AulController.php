@@ -37,11 +37,113 @@ class AulController extends Controller
         )]);
     }
 
+    /** SCR-AUL-21: «Recomendados para ti» (al verlos quedan vistos). */
+    public function myRecommendations(): JsonResponse
+    {
+        [$worker] = $this->me();
+        if (! $worker) {
+            return response()->json(['data' => []]);
+        }
+        $rows = DB::select(
+            "select r.id, r.reason_code, r.message, r.status, c.id as course_id, c.title, c.summary, c.hours, c.allow_self_enrollment
+               from course_recommendations r join courses c on c.id = r.course_id and c.deleted_at is null and c.status = 'published'
+              where r.worker_id = ? and r.deleted_at is null and r.status in ('sent', 'viewed', 'clicked') and (r.expires_at is null or r.expires_at > now())
+              order by r.created_at desc limit 20", [$worker]);
+        if ($rows) {
+            DB::update("update course_recommendations set status = 'viewed', viewed_at = coalesce(viewed_at, now()) where id = any(?::uuid[]) and status = 'sent'",
+                ['{'.implode(',', array_column($rows, 'id')).'}']);
+        }
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /** «Matricularme»: el trabajador se matricula desde la recomendación si el curso permite automatrícula (queda como convertida). */
+    public function enrollFromRecommendation(string $id): JsonResponse
+    {
+        $r = $this->myRecommendation($id);
+        $c = DB::selectOne("select id, allow_self_enrollment from courses where id = ? and status = 'published' and deleted_at is null", [$r->course_id]);
+        if (! $c || ! $c->allow_self_enrollment) {
+            throw new ApiProblem(409, 'conflict', 'Sin automatrícula', 'Este curso no permite matricularse por cuenta propia: pídelo al área de SST.');
+        }
+        [$worker, $user] = $this->me();
+        $existing = DB::selectOne("select id from course_enrollments where course_id = ? and worker_id = ? and deleted_at is null and status <> 'cancelled'", [$c->id, $worker]);
+        $eid = $existing?->id ?? DB::selectOne("insert into course_enrollments (company_id, course_id, worker_id, user_id, source, enrolled_by, enrolled_at, status, created_by)
+                                                 values (?, ?, ?, ?, 'self_enrollment', ?, now(), 'enrolled', ?) returning id",
+            [$r->company_id, $c->id, $worker, $user, $user, $user])->id;
+        DB::update("update course_recommendations set status = 'converted', clicked_at = coalesce(clicked_at, now()), converted_at = now(), converted_enrollment_id = ? where id = ?", [$eid, $r->id]);
+
+        return response()->json(['data' => ['enrollment_id' => $eid]], 201);
+    }
+
+    /** «No me interesa»: la descarta con motivo (cuenta en el reporte de conversión). */
+    public function dismissRecommendation(Request $request, string $id): JsonResponse
+    {
+        $r = $this->myRecommendation($id);
+        $d = $request->validate(['reason' => ['nullable', 'string', 'max:300']]);
+        DB::update("update course_recommendations set status = 'dismissed', dismissed_at = now(), dismiss_reason = ? where id = ?", [$d['reason'] ?? 'No me interesa', $r->id]);
+
+        return response()->json(['data' => ['dismissed' => true]]);
+    }
+
+    private function myRecommendation(string $id): object
+    {
+        [$worker] = $this->me();
+        $r = Str::isUuid($id) && $worker ? DB::selectOne("select * from course_recommendations where id = ? and worker_id = ? and deleted_at is null and status in ('sent', 'viewed', 'clicked')", [$id, $worker]) : null;
+
+        return $r ?? throw ApiProblem::notFound('La recomendación no existe o ya no está vigente.');
+    }
+
     public function show(string $id): JsonResponse
     {
         $e = $this->enrollment($id);
+        // RN-AUL-16: con compromiso obligatorio el contenido no se abre hasta aceptarlo.
+        if ($c = $this->pendingCommitment($e)) {
+            $course = DB::selectOne('select id, title, summary, hours from courses where id = ?', [$e->course_id]);
+
+            return response()->json(['data' => ['enrollment' => ['id' => $e->id, 'status' => $e->status], 'course' => $course, 'sections' => [], 'lessons' => [],
+                'commitment' => ['required' => true, 'text' => $c->commitment_text]]]);
+        }
 
         return response()->json(['data' => self::player($e->course_id, $e)]);
+    }
+
+    /** POST /aul/enrollments/{id}/commitment — acepta el compromiso de culminación {target_date?}; guarda el texto aceptado y la fecha. */
+    public function commitment(Request $request, string $id): JsonResponse
+    {
+        $e = $this->enrollment($id);
+        $d = $request->validate(['target_date' => ['nullable', 'date', 'after_or_equal:today']]);
+        $c = DB::selectOne('select completion_commitment, commitment_text from courses where id = ?', [$e->course_id]);
+        if (! $c || $c->completion_commitment === 'none' || ! $c->completion_commitment) {
+            throw new ApiProblem(409, 'conflict', 'Sin compromiso', 'Este curso no tiene compromiso de culminación.');
+        }
+        if ($e->commitment_accepted_at) {
+            throw new ApiProblem(409, 'conflict', 'Ya aceptado', 'Ya aceptaste el compromiso de este curso.');
+        }
+        DB::insert('insert into completion_commitments (company_id, enrollment_id, course_id, commitment_text_snapshot, text_version, accepted_at, accepted_by_user_id, ip_hash, user_agent, created_by)
+                    values (?, ?, ?, ?, ?, now(), ?, decode(?, \'hex\'), ?, ?)',
+            [$e->company_id, $e->id, $e->course_id, $c->commitment_text, 1, (string) auth()->id(),
+                hash_hmac('sha256', (string) $request->ip(), (string) config('app.key')), mb_substr((string) $request->userAgent(), 0, 300), (string) auth()->id()]);
+        DB::update('update course_enrollments set commitment_accepted_at = now(), due_on = coalesce(?::date, due_on), updated_at = now() where id = ?', [$d['target_date'] ?? null, $e->id]);
+
+        return response()->json(['data' => ['accepted' => true]], 201);
+    }
+
+    /** Curso con compromiso obligatorio aún no aceptado. */
+    private function pendingCommitment(object $e): ?object
+    {
+        if ($e->commitment_accepted_at) {
+            return null;
+        }
+        $c = DB::selectOne('select completion_commitment, commitment_text from courses where id = ?', [$e->course_id]);
+
+        return $c && $c->completion_commitment === 'mandatory' ? $c : null;
+    }
+
+    private function requireCommitment(object $e): void
+    {
+        if ($this->pendingCommitment($e)) {
+            throw new ApiProblem(409, 'commitment_required', 'Acepta el compromiso', 'Antes de empezar el curso acepta el compromiso de culminación.');
+        }
     }
 
     /**
@@ -94,6 +196,23 @@ class AulController extends Controller
         if ($l->lesson_type === 'exam') {
             throw new ApiProblem(409, 'conflict', 'Es un examen', 'Esta lección es un examen: se completa al aprobarlo.');
         }
+        $this->requireCommitment($e);
+        // RN-AUL-04/09: el servidor comprueba que la lección se vio: texto y documento con su permanencia mínima, video con su % reproducido.
+        $seen = DB::selectOne('select coalesce(sum(active_seconds), 0) as active, coalesce(max(video_max_position_seconds), 0) as pos, coalesce(sum(video_seconds), 0) as video
+                                 from learning_activity_sessions where enrollment_id = ? and lesson_id = ? and deleted_at is null and not is_flagged', [$e->id, $l->id]);
+        if (in_array($l->lesson_type, ['text', 'document'], true)) {
+            $min = (int) \App\Core\Support\LegalParams::number('aul_min_active_seconds', 30);
+            if ((int) $seen->active < $min) {
+                throw new ApiProblem(409, 'not_seen', 'Aún no se completa', 'Lee el contenido un poco más: faltan '.($min - (int) $seen->active).' segundos de permanencia.');
+            }
+        }
+        if ($l->lesson_type === 'video' && (int) $l->duration_minutes > 0) {
+            $pct = (int) ($l->min_view_pct ?: \App\Core\Support\LegalParams::number('aul_min_video_pct', 90));
+            $watched = max((int) $seen->pos, (int) $seen->video) * 100 / ((int) $l->duration_minutes * 60);
+            if ($watched + 0.01 < $pct) {
+                throw new ApiProblem(409, 'not_seen', 'Aún no se completa', "Mira el video hasta el final: llevas ".((int) round($watched))." % y se pide {$pct} %.");
+            }
+        }
 
         return response()->json(['data' => Progress::mark($e, $l->id, ['done' => true, 'at' => now()->toIso8601String()])]);
     }
@@ -102,6 +221,7 @@ class AulController extends Controller
     public function startAttempt(string $id, string $lesson): JsonResponse
     {
         $e = $this->enrollment($id);
+        $this->requireCommitment($e);
         $l = $this->examLesson($e, $lesson);
         $a = DB::transaction(fn () => ExamEngine::start($e, $l));
 
@@ -140,6 +260,7 @@ class AulController extends Controller
     public function heartbeat(Request $request, string $id): JsonResponse
     {
         $e = $this->enrollment($id);
+        $this->requireCommitment($e);
         $d = $request->validate([
             'client_session_id' => ['required', 'string', 'max:70', 'regex:/^[A-Za-z0-9_\-:.]+$/'], 'lesson_id' => ['nullable', 'uuid'], 'seq' => ['required', 'integer', 'min:1'],
             'interactions' => ['nullable', 'integer', 'min:0', 'max:10000'], 'video_seconds' => ['nullable', 'integer', 'min:0', 'max:3600'],

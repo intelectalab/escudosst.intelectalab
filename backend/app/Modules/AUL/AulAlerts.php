@@ -66,6 +66,7 @@ final class AulAlerts
             $n += self::completedMany($recent('completed_at', "= 'completed'"), $db, $company);
             $n += $this->dueSoon($db, $company);
             $n += $this->inactive($db, $company);
+            $n += $this->commitmentPending($db, $company);
             if ($digest ?? ((int) now('America/Lima')->format('G') >= self::days('digest_hour', 7))) {
                 $n += $this->pendingRecommendations($db, $company);
             }
@@ -244,6 +245,23 @@ final class AulAlerts
                 $n += self::note($db, $company, 'aul.inactive_learner', $p->id, $u, null, 'Participante rezagado', $body, '/m/aul/'.$p->course_id, 'low',
                     "aul.inactive_learner:{$p->id}:".$from->format('Y-m-d'));
             }
+        }
+
+        return $n;
+    }
+
+    /** M-AUL §10 / RN-AUL-16: compromiso de culminación obligatorio sin aceptar pasados aul_commitment_reminder_days → participante. */
+    private function commitmentPending(ConnectionInterface $db, string $company): int
+    {
+        $days = self::days('aul_commitment_reminder_days', 2);
+        $ids = array_column($db->select(
+            "select e.id from course_enrollments e join courses c on c.id = e.course_id and c.completion_commitment = 'mandatory'
+              where e.deleted_at is null and e.status in ('enrolled', 'in_progress') and e.commitment_accepted_at is null
+                and coalesce(e.enrolled_at, e.created_at) < now() - make_interval(days => ?::int)", [$days]), 'id');
+        $n = 0;
+        foreach (self::participants($db, $ids) as $p) {
+            $n += self::note($db, $company, 'aul.commitment_pending', $p->id, $p->user_id, $p->user_id ? null : $p->worker_id, 'Acepta el compromiso del curso',
+                "Para empezar «{$p->title}» acepta su compromiso de culminación.", self::learnerLink($p), 'normal', 'aul.commitment_pending:'.$p->id);
         }
 
         return $n;

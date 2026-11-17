@@ -172,10 +172,44 @@ export function AulLanding({ readOnly }: { readOnly: boolean }) {
         <Icon name="clock" size={18} className="mt-0.5 shrink-0" />
         <span><b className="text-fg">Tiempo de permanencia real.</b> Se mide por actividad dentro del curso (lectura, video, respuestas); una ventana abierta sin interacción no suma. Así se acreditan las horas de capacitación.</span>
       </p>
+      {!readOnly && <ModuleSwitches />}
       {creating && <NewCourse onClose={() => setCreating(false)} />}
       {moodle && <MoodleModal readOnly={readOnly} onClose={() => setMoodle(false)} />}
       {trainers && <TrainersModal canEdit={data.can.trainers && !readOnly} onClose={() => setTrainers(false)} />}
     </div>
+  );
+}
+
+// ─────────────── Activación del aula y de la venta (RN-AUL-20/21) ───────────────
+
+type Flag = { mode: string; company_enabled: boolean; in_plan: boolean };
+
+/** Solo lo ve quien administra la empresa. La venta necesita el aula activa; sin aula, lo emitido queda en solo lectura. */
+function ModuleSwitches() {
+  const [st, setSt] = useState<{ aul: Flag; vta: Flag } | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    api<{ data: { aul: Flag; vta: Flag } }>("/aul/settings", { withCompany: true }).then((r) => setSt(r.data)).catch(() => setSt(null));
+  }, []);
+  if (!st) return null;
+  const change = (body: { aul?: boolean; vta?: boolean }) => {
+    setMsg(null);
+    api<{ data: { aul: Flag; vta: Flag } }>("/aul/settings", { method: "PUT", withCompany: true, body })
+      .then((r) => { setSt(r.data); setMsg({ ok: true, text: "Cambio guardado." }); })
+      .catch((e) => setMsg({ ok: false, text: errorText(e) }));
+  };
+  const row = (label: string, f: Flag, key: "aul" | "vta", help: string) => (
+    <label className="flex items-start justify-between gap-3 py-2">
+      <span><b className="block text-fg">{label}</b><span className="text-xs">{f.in_plan ? help : "No está incluido en el plan de la empresa."}</span></span>
+      <input type="checkbox" className="mt-1 h-5 w-5" disabled={!f.in_plan} checked={f.company_enabled && f.in_plan} onChange={(e) => change({ [key]: e.target.checked })} />
+    </label>
+  );
+  return (
+    <section className="divide-y divide-line rounded-xl border border-line bg-surface px-4 py-2 text-sm text-muted">
+      {row("Aula virtual activa", st.aul, "aul", "Si la desactivas, los cursos quedan en solo lectura y los certificados emitidos siguen verificables.")}
+      {row("Venta de cursos activa", st.vta, "vta", "Necesita el aula virtual activa.")}
+      {msg && <p role="status" className={`py-2 ${msg.ok ? "text-ok" : "text-bad"}`}>{msg.text}</p>}
+    </section>
   );
 }
 

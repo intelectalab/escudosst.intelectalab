@@ -27,6 +27,10 @@ Route::prefix('public/courses/{catalog}')->where(['catalog' => '[A-Za-z0-9-]{3,6
 // Aula virtual para quien aprende: mis cursos, lecciones, examen; y alternativas de las preguntas.
 Route::middleware(['auth:sanctum', 'company', 'module:AUL'])->prefix('aul')->group(function () {
     Route::get('my', [AulController::class, 'my']);
+    Route::get('my/recommendations', [AulController::class, 'myRecommendations']);
+    Route::post('my/recommendations/{id}/enroll', [AulController::class, 'enrollFromRecommendation'])->whereUuid('id')->middleware('throttle:20,1');
+    Route::post('my/recommendations/{id}/dismiss', [AulController::class, 'dismissRecommendation'])->whereUuid('id')->middleware('throttle:20,1');
+    Route::post('enrollments/{id}/commitment', [AulController::class, 'commitment'])->whereUuid('id')->middleware('throttle:20,1');
     Route::get('enrollments/{id}', [AulController::class, 'show'])->whereUuid('id');
     Route::post('enrollments/{id}/lessons/{lesson}/done', [AulController::class, 'done'])->whereUuid(['id', 'lesson']);
     Route::post('enrollments/{id}/lessons/{lesson}/attempts', [AulController::class, 'startAttempt'])->whereUuid(['id', 'lesson'])->middleware('throttle:20,1');
@@ -42,6 +46,7 @@ Route::middleware(['auth:sanctum', 'company', 'module:AUL'])->prefix('aul/admin'
     Route::post('courses', 'createCourse')->middleware('permission:aul.courses.create');
     Route::get('courses/{id}', 'course')->whereUuid('id')->middleware('permission:aul.courses.read');
     Route::post('courses/{id}/publish', 'publish')->whereUuid('id')->middleware('permission:aul.courses.publish');
+    Route::post('courses/{id}/new-version', 'newVersion')->whereUuid('id')->middleware('permission:aul.courses.create');
     Route::post('courses/{id}/sections', 'addSection')->whereUuid('id')->middleware('permission:aul.course_sections.create');
     Route::post('courses/{id}/lessons', 'addLesson')->whereUuid('id')->middleware('permission:aul.course_lessons.create');
     Route::put('courses/{id}/order', 'order')->whereUuid('id')->middleware('permission:aul.course_lessons.update');
@@ -92,4 +97,10 @@ Route::middleware(['auth:sanctum', 'company', 'module:AUL'])->prefix('aul/admin'
     Route::get('banks/{id}/import/template', [QuestionImport::class, 'template'])->whereUuid('id')->middleware('permission:aul.questions.import');
     Route::post('banks/{id}/import/preview', [QuestionImport::class, 'preview'])->whereUuid('id')->middleware(['permission:aul.questions.import', 'throttle:30,1']);
     Route::post('banks/{id}/import', [QuestionImport::class, 'import'])->whereUuid('id')->middleware(['permission:aul.questions.import', 'throttle:10,1']);
+});
+
+// Activación por empresa del aula y de la venta de cursos (M-AUL RN-AUL-20/21). Sin el módulo activo también se consulta.
+Route::middleware(['auth:sanctum', 'company'])->prefix('aul/settings')->group(function () {
+    Route::get('/', [\App\Modules\AUL\ModuleSettingsController::class, 'show']);
+    Route::put('/', [\App\Modules\AUL\ModuleSettingsController::class, 'update']);
 });

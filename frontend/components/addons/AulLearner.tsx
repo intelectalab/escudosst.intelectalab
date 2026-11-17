@@ -48,6 +48,7 @@ type Lesson = {
 type Player = {
   enrollment: { id: string; status: string; progress_pct: number; certificate_id: string | null; active_seconds_total: number; final_score_label: string | null } | null;
   course: { id: string; title: string; summary: string | null; min_active_time_pct: number | null; hours: number | null }; lessons: Lesson[]; heartbeat_seconds: number; preview?: boolean;
+  commitment?: { required: boolean; text: string | null };
 };
 type Result = { score_pct: number | null; passing: number; passed: boolean | null; pending: boolean; label: string | null; detail: { id: string; ok: boolean | null; feedback: string | null }[] };
 
@@ -84,6 +85,28 @@ function useHeartbeat(enrollmentId: string | null, lessonId: string | null, seco
   }, [enrollmentId, seconds]);
 }
 
+/** RN-AUL-16: compromiso de culminación obligatorio; el contenido se abre al aceptarlo. */
+function Commitment({ enrollmentId, title, text, onAccepted }: { enrollmentId: string; title: string; text: string | null; onAccepted: () => void }) {
+  const [target, setTarget] = useState("");
+  const [ok, setOk] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const accept = () => api(`/aul/enrollments/${enrollmentId}/commitment`, { method: "POST", withCompany: true, body: target ? { target_date: target } : {} })
+    .then(onAccepted).catch((e) => setErr(errText(e)));
+  return (
+    <section className="mx-auto max-w-xl space-y-3 rounded-2xl border border-line bg-surface p-5">
+      <h1 className="font-display text-lg font-semibold">{title}</h1>
+      <p className="text-sm text-muted">Antes de empezar, acepta el compromiso de culminación del curso.</p>
+      <blockquote className="whitespace-pre-line rounded-xl bg-bg p-3 text-sm">{text || "Me comprometo a culminar este curso."}</blockquote>
+      <label className="block text-sm">Fecha en la que me comprometo a terminar (opcional)
+        <input type="date" value={target} onChange={(e) => setTarget(e.target.value)} className="mt-1 block rounded-lg border border-line bg-bg px-3 py-2" />
+      </label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} /> Leí y acepto el compromiso</label>
+      {err && <p role="alert" className="text-sm text-bad">{err}</p>}
+      <Button disabled={!ok} onClick={accept}>Aceptar y empezar</Button>
+    </section>
+  );
+}
+
 /**
  * Reproductor del curso (SCR-AUL-22/23). Con `preview` es «Ver como participante» del administrador: el curso tal
  * como lo ve quien aprende, sin matrícula, sin avance y sin guardar intentos.
@@ -101,8 +124,9 @@ export function CoursePlayer({ id, preview = false }: { id: string; preview?: bo
     }).catch((e) => setMsg({ text: errText(e), ok: false }));
   }, [id, preview]);
   useEffect(load, [load]);
-  useHeartbeat(!preview && data?.enrollment ? data.enrollment.id : null, active, data?.heartbeat_seconds ?? 30, setActiveSeconds);
+  useHeartbeat(!preview && data?.enrollment && !data.commitment?.required ? data.enrollment.id : null, active, data?.heartbeat_seconds ?? 30, setActiveSeconds);
   if (!data) return <p className="p-6 text-sm text-muted">{msg?.text ?? "Cargando el curso…"}</p>;
+  if (data.commitment?.required) return <Commitment enrollmentId={id} title={data.course.title} text={data.commitment.text} onAccepted={load} />;
   const l = data.lessons.find((x) => x.id === active);
   const e = data.enrollment;
   const need = data.course.min_active_time_pct != null && data.course.hours != null ? Math.ceil(Number(data.course.hours) * 3600 * Number(data.course.min_active_time_pct) / 100) : 0;

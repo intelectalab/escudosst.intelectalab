@@ -4,6 +4,8 @@
 // «Recomendados para ti» (docs/07 §5.2 punto 4).
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Alert, Empty, Loading, Panel, Pill, Title } from "@/components/worker/WorkerUi";
@@ -16,7 +18,7 @@ type Data = {
   certificates: { id: string; course_title: string; certificate_code: string; issued_on: string; expires_on: string | null; hours: number | null; status: string }[];
   aul_enabled: boolean;
   courses: { id: string; title: string; hours: number | null; status: string; progress_pct: number; due_on: string | null; passed: boolean | null; certificate_id: string | null }[];
-  recommended: { id: string; title: string; hours: number | null; message: string }[];
+  recommended: { id: string; title: string; hours: number | null; message: string; allow_self_enrollment: boolean }[];
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -24,10 +26,17 @@ const today = () => new Date().toISOString().slice(0, 10);
 export default function MyTrainingsPage() {
   const [d, setD] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
   useEffect(() => {
     workerApi<Data>("/trainings").then(setD).catch((e) => setError(errorText(e)));
   }, []);
 
+  // «Matricularme» abre el curso; «No me interesa» lo quita de la lista (cuenta en el reporte de recomendaciones).
+  const act = (id: string, what: "enroll" | "dismiss") =>
+    api<{ data: { enrollment_id?: string } }>(`/aul/my/recommendations/${id}/${what}`, { method: "POST", withCompany: true, body: {} }).then((r) => {
+      if (what === "enroll" && r.data.enrollment_id) router.push(`/mi/cursos/${r.data.enrollment_id}`);
+      else setD((x) => x && { ...x, recommended: x.recommended.filter((y) => y.id !== id) });
+    }).catch((e) => setError(errorText(e)));
   if (error) return <Alert>{error}</Alert>;
   if (!d) return <Loading />;
   const open = d.courses.filter((c) => c.status === "enrolled" || c.status === "in_progress");
@@ -72,9 +81,15 @@ export default function MyTrainingsPage() {
         <Panel title="Recomendados para ti">
           <ul className="space-y-2">
             {d.recommended.map((r) => (
-              <li key={r.id} className="rounded-xl bg-brand-soft px-4 py-3">
+              <li key={r.id} className="space-y-2 rounded-xl bg-brand-soft px-4 py-3">
                 <b className="block">{r.title}</b>
                 <span className="text-sm text-muted">{r.message || "El área de SST te sugiere este curso."}{r.hours ? ` · ${r.hours} h` : ""}</span>
+                <div className="flex flex-wrap gap-2">
+                  {r.allow_self_enrollment
+                    ? <button type="button" onClick={() => act(r.id, "enroll")} className="rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white">Matricularme</button>
+                    : <span className="text-xs text-muted">Para matricularte pídelo al área de SST.</span>}
+                  <button type="button" onClick={() => act(r.id, "dismiss")} className="rounded-lg border border-line bg-surface px-3 py-1.5 text-sm">No me interesa</button>
+                </div>
               </li>
             ))}
           </ul>

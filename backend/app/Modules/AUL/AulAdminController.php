@@ -162,7 +162,59 @@ class AulAdminController extends Controller
             throw new ApiProblem(422, 'validation_failed', 'Aún no se puede publicar', implode(' ', $errors), ['errors' => ['status' => $errors]]);
         }
 
-        return response()->json(['data' => $this->records->update($res, $id, ['status' => 'published', 'published_at' => now()->toIso8601String(), 'published_by' => (string) auth()->id()])]);
+        $out = $this->records->update($res, $id, ['status' => 'published', 'published_at' => now()->toIso8601String(), 'published_by' => (string) auth()->id()]);
+        // RN-AUL-17: al publicar la versión nueva, la anterior se archiva (sus matrículas en curso terminan en ella).
+        if ($c->previous_course_id) {
+            DB::update("update courses set status = 'archived', updated_at = now() where id = ? and status = 'published'", [$c->previous_course_id]);
+        }
+
+        return response()->json(['data' => $out]);
+    }
+
+    /**
+     * POST /aul/admin/courses/{id}/new-version — RN-AUL-17: copia el curso (datos, secciones y actividades) como versión nueva en borrador
+     * para cambiar preguntas calificadas, escala o nota mínima sin tocar a quienes ya lo cursan.
+     */
+    public function newVersion(string $id): JsonResponse
+    {
+        $c = $this->find($id);
+        if ($c->status !== 'published') {
+            throw new ApiProblem(409, 'conflict', 'Curso en borrador', 'Mientras el curso está en borrador se cambia directamente.');
+        }
+        if (DB::selectOne("select 1 as ok from courses where previous_course_id = ? and status = 'draft' and deleted_at is null", [$c->id])) {
+            throw new ApiProblem(409, 'conflict', 'Ya hay una versión en borrador', 'Ya existe una nueva versión en borrador de este curso.');
+        }
+        $uid = (string) auth()->id();
+
+        return DB::transaction(function () use ($c, $uid) {
+            $v = (int) $c->version_number + 1;
+            $base = preg_replace('/-V\d+$/', '', (string) $c->code);
+            $new = DB::selectOne(
+                "insert into courses (company_id, code, title, summary, description, objectives, target_audience, category, source, cover_file_id, promo_video_provider, promo_video_id, modality,
+                        delivery_mode, sequential, grading_scale_id, passing_score, max_attempts, randomize_questions, randomize_options, completion_commitment, commitment_text, hours,
+                        min_active_time_pct, certificate_enabled, certificate_template_id, certificate_validity_months, public_verification_enabled, is_mandatory_induction,
+                        allow_self_enrollment, status, version_number, previous_course_id, created_by, updated_by)
+                 select company_id, ?, title, summary, description, objectives, target_audience, category, source, cover_file_id, promo_video_provider, promo_video_id, modality,
+                        delivery_mode, sequential, grading_scale_id, passing_score, max_attempts, randomize_questions, randomize_options, completion_commitment, commitment_text, hours,
+                        min_active_time_pct, certificate_enabled, certificate_template_id, certificate_validity_months, public_verification_enabled, is_mandatory_induction,
+                        allow_self_enrollment, 'draft', ?, id, ?, ? from courses where id = ? returning id", [mb_substr($base, 0, 40)."-V{$v}", $v, $uid, $uid, $c->id])->id;
+            $map = [];
+            foreach (DB::select('select * from course_sections where course_id = ? and deleted_at is null order by sort_order', [$c->id]) as $sct) {
+                $map[$sct->id] = DB::selectOne('insert into course_sections (company_id, course_id, section_number, title, description, sort_order, is_visible, created_by, updated_by)
+                                                 values (?, ?, ?, ?, ?, ?, ?, ?, ?) returning id', [$sct->company_id, $new, $sct->section_number, $sct->title, $sct->description, $sct->sort_order,
+                    $sct->is_visible ? 'true' : 'false', $uid, $uid])->id;
+            }
+            foreach (DB::select('select * from course_lessons where course_id = ? and deleted_at is null order by sort_order', [$c->id]) as $l) {
+                DB::insert('insert into course_lessons (company_id, course_id, section_id, lesson_number, title, lesson_type, content_html, file_id, video_provider, video_external_id, external_url,
+                                duration_minutes, is_required, min_view_pct, question_bank_id, exam_config, passing_score, max_attempts, time_limit_minutes, sort_order, created_by, updated_by)
+                            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?)',
+                    [$l->company_id, $new, $l->section_id ? ($map[$l->section_id] ?? null) : null, $l->lesson_number, $l->title, $l->lesson_type, $l->content_html, $l->file_id, $l->video_provider,
+                        $l->video_external_id, $l->external_url, $l->duration_minutes, $l->is_required ? 'true' : 'false', $l->min_view_pct, $l->question_bank_id, $l->exam_config,
+                        $l->passing_score, $l->max_attempts, $l->time_limit_minutes, $l->sort_order, $uid, $uid]);
+            }
+
+            return response()->json(['data' => ['id' => $new, 'version_number' => $v]], 201);
+        });
     }
 
     public function addSection(Request $request, string $id): JsonResponse

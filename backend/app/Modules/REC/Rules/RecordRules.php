@@ -119,6 +119,8 @@ abstract class RecordRules
         'risk_map_markers' => DocsFieldRules::class,
         'psychosocial_surveys' => PsiRules::class,
         'psychosocial_responses' => PsiRules::class,
+        'courses' => AulRules::class,
+        'course_lessons' => AulRules::class,
         'api_clients' => ApiRules::class,
         'webhooks' => ApiRules::class,
     ];

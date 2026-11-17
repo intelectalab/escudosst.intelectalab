@@ -11454,7 +11454,7 @@ BEGIN
     END IF;
     -- company_enabled solo se fija al crear el flag (VTA en falso); después lo decide la empresa.
     INSERT INTO feature_flags (company_id, module_code, mode, source, valid_from, company_enabled)
-    VALUES (p_company_id, m.code, new_mode, new_source, now(), m.code <> 'VTA')
+    VALUES (p_company_id, m.code, new_mode, new_source, now(), m.code <> 'VTA' AND new_mode <> 'disabled_by_company')
     ON CONFLICT (company_id, module_code) WHERE deleted_at IS NULL
     DO UPDATE SET mode = EXCLUDED.mode, source = EXCLUDED.source, valid_from = now(), valid_until = NULL
      WHERE feature_flags.mode IS DISTINCT FROM EXCLUDED.mode OR feature_flags.source IS DISTINCT FROM EXCLUDED.source;

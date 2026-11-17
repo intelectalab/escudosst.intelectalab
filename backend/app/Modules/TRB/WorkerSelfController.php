@@ -324,7 +324,7 @@ class WorkerSelfController extends Controller
                 "select e.id, c.title, c.hours, e.status, e.progress_pct, e.due_on, e.passed, e.certificate_id from course_enrollments e join courses c on c.id = e.course_id
                   where e.worker_id = ? and e.deleted_at is null and e.status <> 'cancelled' order by (e.status in ('enrolled','in_progress')) desc, e.enrolled_at desc", [$w->id]) : [],
             'recommended' => $aul ? DB::select(
-                "select r.id, c.title, c.hours, coalesce(r.message, '') as message, r.reason_code from course_recommendations r join courses c on c.id = r.course_id
+                "select r.id, c.title, c.hours, coalesce(r.message, '') as message, r.reason_code, c.allow_self_enrollment from course_recommendations r join courses c on c.id = r.course_id
                   where r.worker_id = ? and r.deleted_at is null and r.status in ('sent', 'viewed', 'clicked')
                     and not exists (select 1 from course_enrollments e where e.course_id = r.course_id and e.worker_id = r.worker_id and e.deleted_at is null and e.status <> 'cancelled')
                   order by r.created_at desc limit 10", [$w->id]) : [],

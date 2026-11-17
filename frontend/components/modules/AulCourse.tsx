@@ -92,6 +92,19 @@ export function AulCourse({ id, readOnly }: { id: string; readOnly: boolean }) {
     }
   };
 
+  // RN-AUL-17: con matriculados, los cambios de evaluación o nota mínima van en una versión nueva (borrador); al publicarla se archiva esta.
+  const newVersion = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api<{ data: { id: string; version_number: number } }>(`/aul/admin/courses/${id}/new-version`, { method: "POST", withCompany: true });
+      window.location.href = `/m/aul/${r.data.id}`;
+    } catch (e) {
+      setMsg({ ok: false, text: errorText(e) });
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <AulCrumbs items={[{ label: c.title }]} />
@@ -113,6 +126,7 @@ export function AulCourse({ id, readOnly }: { id: string; readOnly: boolean }) {
           {d.can.time && <Link href={`/m/aul/${id}/permanencia`} className="inline-flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-semibold hover:border-brand"><Icon name="clock" size={16} /> Tiempo de permanencia</Link>}
           {can.publish && c.status === "draft" && <Button variant="primary" icon="check" loading={busy} onClick={() => publish(true)}>Publicar</Button>}
           {can.publish && c.status === "published" && d.kpis.enrolled === 0 && <Button loading={busy} onClick={() => publish(false)}>Volver a borrador</Button>}
+          {can.publish && c.status === "published" && d.kpis.enrolled > 0 && <Button loading={busy} onClick={newVersion}>Nueva versión</Button>}
         </div>
       </div>
       {msg && <p role="status" className={`rounded-lg px-4 py-2 text-sm ${msg.ok ? "bg-ok-soft text-ok" : "bg-bad-soft text-bad"}`}>{msg.text}</p>}
