@@ -1237,7 +1237,8 @@
   "evacuation_complete_time": "Hora de evacuación completa",
   "evacuation_target_seconds": "Meta de evacuación (segundos)",
   "topic_bank_id": "Tema del banco",
-  "behavior_list_id": "Versión de la lista de comportamientos"
+  "behavior_list_id": "Versión de la lista de comportamientos",
+  "principles_checklist": "Principios del art. 23 incluidos"
  },
  "values": {
   "A": "Tipo A",

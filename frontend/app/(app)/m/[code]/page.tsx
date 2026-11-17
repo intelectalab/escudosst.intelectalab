@@ -31,6 +31,7 @@ import { AtsCopy } from "@/components/modules/AtsCopy";
 import { MagTools } from "@/components/modules/MagTools";
 import { ObsModule } from "@/components/modules/ObsModule";
 import { RebaForm } from "@/components/modules/RebaForm";
+import { PolOverview } from "@/components/modules/PolOverview";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
 import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
@@ -183,6 +184,11 @@ export default function ModulePage() {
         <ObsPage readOnly={m.mode === "read_only"} />
       ) : m.code === "PSI" ? (
         <PsiPage readOnly={m.mode === "read_only"} />
+      ) : m.code === "POL" ? (
+        <div className="space-y-6">
+          <PolOverview readOnly={m.mode === "read_only"} />
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
       ) : m.code === "CH5" ? (
         <Ch5Page readOnly={m.mode === "read_only"} />
       ) : m.code === "MRL" ? (

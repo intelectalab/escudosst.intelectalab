@@ -95,3 +95,7 @@ Route::middleware(['auth:sanctum', 'company', 'module:OBS'])->prefix('obs')->con
 
 // Evaluación ergonómica REBA con cálculo del puntaje (M-PSI SCR-PSI-02).
 Route::middleware(['auth:sanctum', 'company', 'module:PSI'])->post('psi/reba', \App\Modules\REC\RebaController::class)->middleware('throttle:60,1');
+
+// Política SST (M-POL SCR-POL-01): resumen con % de cargos firmados y revisión pendiente; verificación pública del afiche (QR).
+Route::middleware(['auth:sanctum', 'company', 'module:POL'])->get('pol/overview', [\App\Modules\REC\PolicyOverviewController::class, 'overview']);
+Route::middleware('throttle:30,1')->get('public/verify/policy/{company}/{id}', [\App\Modules\REC\PolicyOverviewController::class, 'public'])->whereUuid('company')->whereUuid('id');

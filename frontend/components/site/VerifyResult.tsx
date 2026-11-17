@@ -24,25 +24,33 @@ const CRED: Record<string, [string, string]> = {
   invalid: ["Fotocheck no reconocido", "bg-[#FDECEB] text-[#a3261f]"],
 };
 
+const POL: Record<string, [string, string]> = {
+  valid: ["Política vigente", "bg-[#E8F7EE] text-[#17703e]"],
+  not_current: ["Esta versión de la política ya no está vigente", "bg-[#FFF6DB] text-[#7a5300]"],
+  invalid: ["No encontramos esa política", "bg-[#FDECEB] text-[#a3261f]"],
+};
+
 const d = (v: unknown) => (v ? String(v).slice(0, 10).split("-").reverse().join("/") : "—");
 
-export function VerifyResult({ kind, code }: { kind: "certificate" | "credential"; code: string }) {
+export function VerifyResult({ kind, code }: { kind: "certificate" | "credential" | "policy"; code: string }) {
   const [r, setR] = useState<Result | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
-    api<{ data: Result }>(`/public/verify/${kind}/${encodeURIComponent(code)}`)
+    api<{ data: Result }>(`/public/verify/${kind}/${kind === "policy" ? code.split("/").map(encodeURIComponent).join("/") : encodeURIComponent(code)}`)
       .then((x) => setR(x.data))
       .catch(() => setError(true));
   }, [kind, code]);
 
-  const map = kind === "certificate" ? CERT : CRED;
+  const map = kind === "certificate" ? CERT : kind === "policy" ? POL : CRED;
   if (error) return <p className="site-card p-6">No pudimos verificar en este momento. Inténtalo de nuevo en unos minutos.</p>;
   if (!r) return <p className="site-card p-6">Verificando…</p>;
   const [label, tone] = map[r.result] ?? map.invalid;
   const rows: [string, unknown][] =
     kind === "certificate"
       ? [["Titular", r.holder_name], ["Documento", r.holder_document_masked], ["Curso o tema", r.course_title], ["Horas", r.hours], ["Emitido", d(r.issued_on)], ["Vence", r.expires_on ? d(r.expires_on) : "Sin vencimiento"], ["Código", r.certificate_code], ["Empresa emisora", r.company]]
-      : [["Titular", r.name], ["Puesto", r.position], ["Fotocheck", r.credential_number], ["Vence", d(r.expires_on)], ["Empresa", r.company]];
+      : kind === "policy"
+        ? [["Empresa", r.company], ["RUC", r.ruc], ["Política", r.title], ["Versión", r.version_number], ["Vigente desde", d(r.effective_on)], ["Aprobada", d(r.approved_at)]]
+        : [["Titular", r.name], ["Puesto", r.position], ["Fotocheck", r.credential_number], ["Vence", d(r.expires_on)], ["Empresa", r.company]];
   return (
     <div className="site-card space-y-4 p-6">
       <p className={`rounded-xl px-4 py-3 text-lg font-bold ${tone}`}>{label}</p>
@@ -58,7 +66,7 @@ export function VerifyResult({ kind, code }: { kind: "certificate" | "credential
       )}
       {r.result === "not_enabled" && <p className="text-sm">Consulta el motivo con el área de Seguridad y Salud en el Trabajo de la empresa.</p>}
       {r.result === "not_public" && <p className="text-sm">La empresa {String(r.company ?? "")} no habilitó la verificación pública de este certificado.</p>}
-      <p className="text-xs text-[var(--site-text-2)]">Verificación hecha en EscudoSST el {new Date().toLocaleString("es-PE")} · Cada consulta queda registrada.</p>
+      <p className="text-xs text-[var(--site-text-2)]">Verificación hecha en EscudoSST el {new Date().toLocaleString("es-PE")}{kind === "policy" ? "" : " · Cada consulta queda registrada."}</p>
     </div>
   );
 }

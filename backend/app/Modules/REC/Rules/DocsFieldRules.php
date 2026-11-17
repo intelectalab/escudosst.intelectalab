@@ -192,6 +192,23 @@ class DocsFieldRules extends RecordRules
         if ($t === 'procedure_versions' && in_array($to, ['in_review', 'approved'], true) && ($msg = \App\Modules\PET\PetStepsController::missingControl($current->id))) {
             $this->fail('status', $msg);
         }
+        if ($t === 'sst_policies' && in_array($to, ['in_review', 'approved'], true)) {
+            // RN-POL-01: no se envía a revisión ni se aprueba sin todos los principios del art. 23 marcados como incluidos.
+            $need = \App\Core\Support\LegalParams::list('pol_policy_principles');
+            $raw = $this->value($values, $current, 'principles_checklist');
+            for ($i = 0; $i < 2 && is_string($raw); $i++) {
+                $raw = json_decode($raw, true);
+            }
+            $have = is_array($raw) ? $raw : [];
+            $missing = array_values(array_diff($need, $have));
+            if ($need && $missing) {
+                $this->fail('principles_checklist', 'Marca todos los principios del art. 23 que la política incluye. Falta: «'.implode('», «', $missing).'».');
+            }
+        }
+        if ($t === 'sst_policies' && $to === 'approved' && ! in_array('pol.sst_policies.approve', \App\Core\Auth\Permissions::effective(), true)) {
+            // RN-POL-02: solo gerencia aprueba la política.
+            $this->fail('status', 'La política la aprueba la gerencia (su rol tiene el permiso de aprobar la política).');
+        }
         if ($to === 'approved') {
             $author = $current->prepared_by ?? $current->submitted_by ?? null;
             if ($author && $author === (string) auth()->id()) {
@@ -418,7 +435,9 @@ class DocsFieldRules extends RecordRules
             $pct = round((float) $actual * 100 / (float) $target, 2);
             $extra['achievement_pct'] = ['?', [$pct]];
             if (! array_key_exists('status', $values)) {
-                $values['status'] = $pct >= 100 ? 'achieved' : ($pct >= 70 ? 'on_track' : 'at_risk');
+                // RN-POL-07: el umbral ámbar es el parámetro objective_amber_pct.
+                $amber = \App\Core\Support\LegalParams::number('objective_amber_pct', 70);
+                $values['status'] = $pct >= 100 ? 'achieved' : ($pct >= $amber ? 'on_track' : 'at_risk');
             }
             $values['measured_at'] = $this->value($values, $current, 'measured_at') ?? now()->toIso8601String();
         }

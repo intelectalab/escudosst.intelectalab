@@ -169,7 +169,9 @@ LIST = {
 WRITABLE_JSON = {"iperc_rows.probability_detail", "iperc_versions.participants", "management_reviews.participants",
                  "permit_types.checklist", "permit_types.approval_chain",
                  # El asistente del PETAR envía la cuadrilla; las mediciones de gases se registran al activar el trabajo (RN-PTR-03).
-                 "work_permits.crew", "work_permits.gas_measurements", "work_permits.isolation_points"}
+                 "work_permits.crew", "work_permits.gas_measurements", "work_permits.isolation_points",
+                 # M-POL RN-POL-01 (principios del art. 23) y M-EQE SCR-EQE-02 (checklist de la inspección por QR).
+                 "sst_policies.principles_checklist", "equipment_checks.checklist"}
 # Obligatorios en la base pero que calcula una regla si no se envían.
 COMPUTED = {"vendor_evaluation_templates.criteria", "vendor_evaluations.scores", "work_shifts.hours_per_day", "areas.depth", "iperc_rows.probability_value",
             "iperc_rows.hazard", "iperc_rows.risk", "measurements.result", "work_permits.valid_until", "access_events.result", "access_events.occurred_at", "api_clients.scopes", "webhooks.event_codes", "corrective_actions.code", "inspections.code", "trainings.code",

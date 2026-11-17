@@ -38,4 +38,18 @@ final class LegalParams
 
         return $b ?? $default;
     }
+
+    /** Parámetro con una lista (JSON); sin parámetro vigente, la lista de respaldo. @return list<string> */
+    public static function list(string $key, array $default = []): array
+    {
+        $company = app()->bound(CompanyContext::class) ? app(CompanyContext::class)->companyId : null;
+        $v = DB::selectOne(
+            'select value from legal_parameters where key = ? and (company_id is null or company_id = ?) and valid_from <= current_date
+                and (valid_to is null or valid_to >= current_date) and deleted_at is null order by company_id nulls last, valid_from desc limit 1',
+            [$key, $company]
+        );
+        $d = $v ? json_decode((string) $v->value, true) : null;
+
+        return is_array($d) ? array_values(array_map('strval', $d)) : $default;
+    }
 }
