@@ -1236,7 +1236,8 @@
   "alarm_time": "Hora de la alarma",
   "evacuation_complete_time": "Hora de evacuación completa",
   "evacuation_target_seconds": "Meta de evacuación (segundos)",
-  "topic_bank_id": "Tema del banco"
+  "topic_bank_id": "Tema del banco",
+  "behavior_list_id": "Versión de la lista de comportamientos"
  },
  "values": {
   "A": "Tipo A",

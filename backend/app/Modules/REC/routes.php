@@ -83,3 +83,12 @@ Route::middleware(['auth:sanctum', 'company', 'module:MAG'])->prefix('mag')->con
     Route::post('import', 'import')->middleware('throttle:20,1');
     Route::get('trend', 'trend');
 });
+
+// Observación de conducta segura (M-OBS SCR-OBS-01/02/03): lista de comportamientos con versiones, captura rápida y tendencias.
+Route::middleware(['auth:sanctum', 'company', 'module:OBS'])->prefix('obs')->controller(\App\Modules\REC\BehaviorController::class)->group(function () {
+    Route::get('lists', 'lists');
+    Route::post('lists', 'saveList');
+    Route::post('lists/publish', 'publish');
+    Route::post('observe', 'observe')->middleware('throttle:60,1');
+    Route::get('trends', 'trends');
+});

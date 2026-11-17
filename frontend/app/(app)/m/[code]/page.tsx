@@ -29,6 +29,7 @@ import { EmoProtocols } from "@/components/modules/EmoProtocols";
 import { SimRun } from "@/components/modules/SimRun";
 import { AtsCopy } from "@/components/modules/AtsCopy";
 import { MagTools } from "@/components/modules/MagTools";
+import { ObsModule } from "@/components/modules/ObsModule";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
 import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
@@ -177,6 +178,8 @@ export default function ModulePage() {
           </div>
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
+      ) : m.code === "OBS" ? (
+        <ObsPage readOnly={m.mode === "read_only"} />
       ) : m.code === "CH5" ? (
         <Ch5Page readOnly={m.mode === "read_only"} />
       ) : m.code === "MRL" ? (
@@ -268,6 +271,17 @@ function MagPage({ readOnly }: { readOnly: boolean }) {
     <div className="space-y-6">
       <MagTools readOnly={readOnly} onSaved={() => setV((x) => x + 1)} />
       <ModuleRecords key={v} code="MAG" readOnly={readOnly} />
+    </div>
+  );
+}
+
+/** M-OBS: observar, tendencias y lista de comportamientos encima de la lista de observaciones. */
+function ObsPage({ readOnly }: { readOnly: boolean }) {
+  const [v, setV] = useState(0);
+  return (
+    <div className="space-y-6">
+      <ObsModule readOnly={readOnly} onSaved={() => setV((x) => x + 1)} />
+      <ModuleRecords key={v} code="OBS" readOnly={readOnly} />
     </div>
   );
 }
