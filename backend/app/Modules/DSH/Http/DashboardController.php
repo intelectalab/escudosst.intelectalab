@@ -118,4 +118,44 @@ class DashboardController extends Controller
             'companies' => $rows,
         ]]);
     }
+
+    /**
+     * GET /dsh/history?year=&site_id=&code=   historia mensual de los indicadores (kpi_snapshots): valor acumulado del año al cierre de
+     * cada mes, por sede (sin sede = toda la empresa). Con «.xlsx» (GET /dsh/history.xlsx) devuelve las series en Excel.
+     */
+    public function history(Request $request)
+    {
+        $year = (int) ($request->query('year') ?: date('Y'));
+        $site = $request->query('site_id');
+        $site = $site && Str::isUuid((string) $site) ? $site : null;
+        $code = $request->query('code');
+        $rows = DB::select(
+            "select k.code, k.name, k.unit, extract(month from s.period_start)::int as month, s.value, s.numerator, s.denominator, s.status_color, s.period_end
+               from kpi_snapshots s join kpi_definitions k on k.id = s.kpi_definition_id
+              where s.deleted_at is null and extract(year from s.period_start) = ? and s.site_id is not distinct from ?::uuid".($code ? ' and k.code = ?' : '').'
+              order by k.name, month', $code ? [$year, $site, $code] : [$year, $site]);
+        $series = [];
+        foreach ($rows as $r) {
+            $series[$r->code] ??= ['code' => $r->code, 'name' => $r->name, 'unit' => $r->unit, 'points' => []];
+            $series[$r->code]['points'][] = ['month' => $r->month, 'value' => $r->value === null ? null : (float) $r->value, 'numerator' => $r->numerator, 'denominator' => $r->denominator,
+                'color' => $r->status_color, 'as_of' => $r->period_end];
+        }
+        if (str_ends_with($request->path(), '.xlsx')) {
+            $months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
+            $c = DB::selectOne('select legal_name, ruc from companies where id = ?', [app(\App\Core\Tenancy\CompanyContext::class)->companyId]);
+            $sheet = [['INDICADORES SST '.$year.' (ACUMULADO DEL AÑO AL CIERRE DE CADA MES)'], ["{$c->legal_name} · RUC ".trim((string) $c->ruc)
+                .($site ? ' · Sede: '.DB::selectOne('select name from sites where id = ?', [$site])?->name : ' · Toda la empresa')], [], array_merge(['Indicador', 'Unidad'], $months)];
+            foreach ($series as $s) {
+                $byMonth = array_column($s['points'], 'value', 'month');
+                $sheet[] = array_merge([$s['name'], $s['unit']], array_map(fn ($m) => $byMonth[$m] ?? null, range(1, 12)));
+            }
+
+            return response(\App\Core\Support\Xlsx::build('Indicadores', $sheet, 4), 200, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Disposition' => "attachment; filename=\"indicadores-{$year}.xlsx\"",
+            ]);
+        }
+
+        return response()->json(['data' => ['year' => $year, 'site_id' => $site, 'series' => array_values($series)]]);
+    }
 }

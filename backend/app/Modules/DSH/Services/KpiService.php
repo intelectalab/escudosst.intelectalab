@@ -26,9 +26,10 @@ final class KpiService
     private string $today;
     private ?string $site;
 
-    public function overview(int $year, ?string $site): array
+    /** @param string|null $asOf  fecha de corte (por defecto hoy); la usa la historia de indicadores (KpiSnapshots). */
+    public function overview(int $year, ?string $site, ?string $asOf = null): array
     {
-        $this->today = DB::selectOne("select (now() at time zone 'America/Lima')::date as d")->d;
+        $this->today = $asOf ?? DB::selectOne("select (now() at time zone 'America/Lima')::date as d")->d;
         $this->from = "{$year}-01-01";
         $this->to = min("{$year}-12-31", $this->today);
         $this->site = $site;

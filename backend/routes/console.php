@@ -301,3 +301,13 @@ Artisan::command('escudo:aul-recommendations', function (\App\Modules\AUL\Recomm
 })->purpose('Evalúa las reglas de recomendación de cursos del aula virtual');
 
 Schedule::command('escudo:aul-recommendations')->dailyAt('06:00')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:aul-recommendations');
+
+/*
+| Historia de indicadores (M-DSH): guarda cada día el valor de los indicadores de cada empresa por mes y sede.
+| Uso: php artisan escudo:kpi-snapshots
+*/
+Artisan::command('escudo:kpi-snapshots', function (\App\Modules\DSH\Services\KpiSnapshots $snapshots) {
+    $this->info('Valores guardados: '.$snapshots->run());
+})->purpose('Guarda el valor diario de los indicadores para su historia');
+
+Schedule::command('escudo:kpi-snapshots')->dailyAt('01:30')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:kpi-snapshots');

@@ -3,6 +3,7 @@
 // Tablero principal (M-DSH, SCR-DSH-01): indicadores con semáforo, alertas para actuar hoy y accesos.
 // Cada tarjeta explica de dónde sale su valor (numerador / denominador) y lleva al módulo de sus registros.
 
+import { KpiHistory } from "./KpiHistory";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
@@ -198,6 +199,7 @@ export function Dashboard() {
             </div>
             {filtered.length === 0 && <p className="rounded-xl bg-bg px-4 py-3 text-sm text-muted">No hay indicadores con ese estado.</p>}
           </section>
+          <KpiHistory year={data.year} site={site} />
           {!isManagement && home?.monthly && <MonthlyCard data={home.monthly} />}
           {home?.actions && <ActionsCard data={home.actions} />}
 
