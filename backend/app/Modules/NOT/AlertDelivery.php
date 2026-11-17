@@ -49,7 +49,7 @@ final class AlertDelivery
 
     /** Avisos del resumen diario (SstAlerts): por WhatsApp en un solo mensaje por persona y día. */
     public const DIGEST_EVENTS = ['acr.overdue', 'acr.due_soon', 'acc.notification', 'ipc.review', 'ins.late', 'emo.expiring', 'epp.expiring', 'fot.expiring',
-        'cap.expiring', 'fot.blocked', 'act.untriaged', 'vul.adjustment_expiring', 'vul.adjustment_expired', 'des.return_to_work'];
+        'cap.expiring', 'fot.blocked', 'act.untriaged', 'vul.adjustment_expiring', 'vul.adjustment_expired', 'des.return_to_work', 'amb.manifest_missing'];
 
     private ?WhatsAppCloud $wa = null;
 
@@ -126,17 +126,24 @@ final class AlertDelivery
     private function emails(ConnectionInterface $db, string $company, string $companyName, string $front): int
     {
         $rows = $db->select(
-            "select n.id, n.event_code, n.recipient_user_id, n.title, n.body, n.link, n.priority, u.full_name, u.email
+            // M-NOT §7: un aviso con intentos fallidos se reintenta con espera creciente (2, 4, 8… minutos) hasta max_retries.
+            "select n.id, n.event_code, n.recipient_user_id, n.title, n.body, n.link, n.priority, u.full_name, u.email, u.email_invalid_at,
+                    (select count(*) from notification_deliveries d where d.notification_id = n.id and d.channel = 'email' and d.status = 'failed') as failures,
+                    (select max(d.attempted_at) from notification_deliveries d where d.notification_id = n.id and d.channel = 'email' and d.status = 'failed') as last_failed_at
                from notifications n join users u on u.id = n.recipient_user_id and u.deleted_at is null
               where n.company_id = ? and n.deleted_at is null and coalesce(n.scheduled_for, n.created_at) > now() - interval '".self::WINDOW."'
                 and coalesce(n.scheduled_for, n.created_at) <= now()
                 and (n.priority = 'critical' or n.event_code = any(?::text[]) or (n.event_code = 'acc.event_registered' and n.priority = 'high'))
-                and not exists (select 1 from notification_deliveries d where d.notification_id = n.id and d.channel = 'email')
+                and not exists (select 1 from notification_deliveries d where d.notification_id = n.id and d.channel = 'email' and d.status <> 'failed')
+                and (select count(*) from notification_deliveries d where d.notification_id = n.id and d.channel = 'email' and d.status = 'failed') <= ?
               order by n.created_at limit 200",
-            [$company, '{'.implode(',', self::EMAIL_EVENTS).'}']
+            [$company, '{'.implode(',', self::EMAIL_EVENTS).'}', (int) \App\Core\Support\LegalParams::number('max_retries', 3)]
         );
         $sent = 0;
         foreach ($rows as $n) {
+            if ((int) $n->failures > 0 && strtotime((string) $n->last_failed_at) + 60 * (2 ** (int) $n->failures) > time()) {
+                continue;   // espera creciente entre reintentos
+            }
             $ok = $this->allowed($db, $n->event_code, 'email', $n->priority);
             if ($ok === null) {
                 continue;
@@ -151,6 +158,12 @@ final class AlertDelivery
                                                                  and event_category = '*' and digest_mode = 'daily' and deleted_at is null", [$company, $n->recipient_user_id])) {
                 continue;
             }
+            // RN-NOT-07: correo marcado como inválido por rebotes: no se envía.
+            if ($n->email_invalid_at) {
+                $this->record($db, $company, $n->id, 'email', 'suppressed', null, 'email_invalid', 'El correo de la persona está marcado como inválido.');
+
+                continue;
+            }
             if ($this->optedOut($db, $company, $n->recipient_user_id, 'email', $n->event_code)) {
                 $this->record($db, $company, $n->id, 'email', 'suppressed', null, 'preference_off', 'La persona desactivó estos avisos por correo.');
 
@@ -159,14 +172,52 @@ final class AlertDelivery
             try {
                 Mail::to($n->email)->send(new AlertMail(explode(' ', (string) $n->full_name)[0], $companyName, $n->title, (string) $n->body,
                     $front.($n->link ?: '/inicio'), $n->priority));
-                $this->record($db, $company, $n->id, 'email', 'sent', null);
+                $this->record($db, $company, $n->id, 'email', 'sent', null, null, null, (int) $n->failures + 1);
                 $sent++;
             } catch (Throwable $e) {
-                $this->record($db, $company, $n->id, 'email', 'failed', null, 'send_error', mb_substr($e->getMessage(), 0, 300));
+                $this->record($db, $company, $n->id, 'email', 'failed', null, 'send_error', mb_substr($e->getMessage(), 0, 300), (int) $n->failures + 1);
             }
         }
 
         return $sent;
+    }
+
+    /**
+     * RN-NOT-07: rebote de un correo informado por el proveedor (una fila nueva «bounced», la tabla es inalterable). Al llegar a
+     * max_bounces rebotes, el correo del usuario se marca como inválido y se avisa al administrador de la cuenta.
+     */
+    public static function bounced(string $email, ?string $providerMessageId = null, ?string $reason = null): int
+    {
+        $p = DB::connection('platform');
+        $u = $p->selectOne('select id, full_name, email_invalid_at from users where lower(email) = lower(?) and deleted_at is null', [$email]);
+        if (! $u) {
+            return 0;
+        }
+        $n = 0;
+        foreach ($p->select('select id from companies where deleted_at is null') as $c) {
+            $n += app(AccountsService::class)->withCompany($c->id, function (ConnectionInterface $db) use ($c, $u, $providerMessageId, $reason) {
+                $last = $db->selectOne("select d.notification_id from notification_deliveries d join notifications x on x.id = d.notification_id
+                                         where x.recipient_user_id = ? and d.channel = 'email' and d.status = 'sent' and (?::text is null or d.provider_message_id = ?::text)
+                                         order by d.attempted_at desc limit 1", [$u->id, $providerMessageId, $providerMessageId]);
+                if (! $last) {
+                    return 0;
+                }
+                $db->insert("insert into notification_deliveries (company_id, notification_id, channel, provider, provider_message_id, status, attempt, error_code, error_message, attempted_at)
+                             values (?, ?, 'email', ?, ?, 'bounced', 1, 'bounce', ?, now())", [$c->id, $last->notification_id, (string) config('mail.default'), $providerMessageId, mb_substr((string) $reason, 0, 300)]);
+                $bounces = (int) $db->selectOne("select count(*) as n from notification_deliveries d join notifications x on x.id = d.notification_id
+                                                  where x.recipient_user_id = ? and d.channel = 'email' and d.status = 'bounced'", [$u->id])->n;
+                if (! $u->email_invalid_at && $bounces >= (int) \App\Core\Support\LegalParams::number('max_bounces', 3)) {
+                    DB::connection('platform')->update('update users set email_invalid_at = now() where id = ? and email_invalid_at is null', [$u->id]);
+                    Notify::users(Notify::roles(['account_admin']), 'not.email_invalid', 'NOT', $u->id, 'Correo inválido de un usuario',
+                        "El correo de {$u->full_name} rebotó {$bounces} veces y quedó marcado como inválido: actualízalo en Usuarios.", '/configuracion/usuarios', 'normal',
+                        'not.email_invalid:'.$u->id, $c->id);
+                }
+
+                return 1;
+            });
+        }
+
+        return $n;
     }
 
     // ---------------------------------------------------------------- WhatsApp
@@ -343,13 +394,13 @@ final class AlertDelivery
     }
 
     private function record(ConnectionInterface $db, string $company, string $notification, string $channel, string $status, ?string $messageId,
-        ?string $errorCode = null, ?string $error = null): void
+        ?string $errorCode = null, ?string $error = null, int $attempt = 1): void
     {
         $provider = $channel === 'email' ? (string) config('mail.default') : 'meta';
         $db->insert(
             'insert into notification_deliveries (company_id, notification_id, channel, provider, provider_message_id, status, attempt, error_code, error_message, attempted_at)
-             values (?, ?, ?, ?, ?, ?, 1, ?, ?, now())',
-            [$company, $notification, $channel, $provider, $messageId, $status, $errorCode, $error !== null ? mb_substr($error, 0, 300) : null]
+             values (?, ?, ?, ?, ?, ?, ?, ?, ?, now())',
+            [$company, $notification, $channel, $provider, $messageId, $status, $attempt, $errorCode, $error !== null ? mb_substr($error, 0, 300) : null]
         );
         if ($status === 'failed') {
             $this->providerFailure($db, $channel, $provider, (string) $error);

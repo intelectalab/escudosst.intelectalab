@@ -151,3 +151,26 @@ it('con WhatsApp en vivo, el enlace personal para votar llega por WhatsApp a qui
         && $r['template']['components'][0]['parameters'][0]['text'] === 'Elección 2026'
         && str_contains($r['template']['components'][0]['parameters'][1]['text'], '/votar/'.AGRO_ID.'/'));
 });
+
+it('reintenta el correo que falló con espera creciente y marca inválido el correo que rebota', function () {
+    $n = deliveryNotify($this->uid, 'acc.event_registered', 'critical');
+    app(AccountsService::class)->withCompany(ANDINAS_ID, fn ($db) => $db->insert("insert into notification_deliveries (company_id, notification_id, channel, provider, status, attempt, error_code, attempted_at)
+        values (?, ?, 'email', 'smtp', 'failed', 1, 'send_error', now() - interval '10 minutes')", [ANDINAS_ID, $n]));
+    deliveryRun();
+    $email = collect(deliveryRows($n))->where('channel', 'email')->pluck('status')->all();
+    expect($email)->toContain('failed')->toContain('sent');
+
+    // Rebotes: al llegar a max_bounces el correo queda inválido y ya no se le envía.
+    DB::connection('platform')->update('update users set email_invalid_at = null where id = ?', [$this->uid]);
+    foreach (range(1, (int) \App\Core\Support\LegalParams::number('max_bounces', 3)) as $i) {
+        AlertDelivery::bounced(PROFESIONAL_EMAIL, null, 'Buzón inexistente');
+    }
+    expect(DB::connection('platform')->selectOne('select email_invalid_at from users where id = ?', [$this->uid])->email_invalid_at)->not->toBeNull();
+    $m = deliveryNotify($this->uid, 'acc.event_registered', 'critical');
+    deliveryRun();
+    expect(collect(deliveryRows($m))->firstWhere('channel', 'email')->error_code)->toBe('email_invalid');
+    DB::connection('platform')->update('update users set email_invalid_at = null where id = ?', [$this->uid]);
+
+    $h = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
+    $this->get('/api/v1/not/report.xlsx', $h)->assertOk();
+});

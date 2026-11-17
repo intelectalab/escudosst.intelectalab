@@ -48,6 +48,9 @@ return [
 
     // Datos clínicos (EMO) en la base médica (docs/10 §5): llave de aplicación propia, distinta de APP_KEY y de las de respaldo
     // («base64:...» de 32 bytes). Los archivos médicos van a su propio disco (bucket médico separado en producción).
+    // M-NOT RN-NOT-07: secreto compartido con el proveedor de correo para informar rebotes (vacío = no se aceptan).
+    'mail_webhook_secret' => env('MAIL_WEBHOOK_SECRET', ''),
+
     'medical' => [
         'field_key' => env('MEDICAL_FIELD_KEY'),
         'files_disk' => env('MEDICAL_FILES_DISK', 'local'),
