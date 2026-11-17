@@ -48,7 +48,7 @@ it('el cambio temporal pide fecha de fin y sus condiciones se vuelven acciones q
         ->assertStatus(422)->assertJsonValidationErrors('temporary_until');
     $id = $this->postJson('/api/v1/records/MOC/change_requests', ['title' => 'Nueva prensa', 'change_type' => 'equipment', 'description' => 'Se cambia la prensa',
         'introduces_new_hazards' => true], $this->h)->assertCreated()->json('data.id');
-    $this->patchJson("/api/v1/records/MOC/change_requests/{$id}", ['status' => 'submitted'], $this->h)->assertOk();
+    $this->patchJson("/api/v1/records/MOC/change_requests/{$id}", ['status' => 'submitted', 'impact_level' => 'medium'], $this->h)->assertOk();
     $this->patchJson("/api/v1/records/MOC/change_requests/{$id}", ['status' => 'under_review'], $this->h)->assertOk();
     $this->postJson('/api/v1/records/MOC/change_reviews', ['change_request_id' => $id, 'reviewer_user_id' => $this->me, 'decision' => 'approve_with_conditions',
         'conditions' => 'Instalar guarda en la prensa'], $this->h)->assertCreated();

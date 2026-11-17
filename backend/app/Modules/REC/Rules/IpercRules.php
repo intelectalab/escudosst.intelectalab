@@ -24,8 +24,64 @@ class IpercRules extends RecordRules
             'iperc_versions' => $this->version($op, $current),
             'iperc_rows' => $this->row($values, $current, $extra),
             'iperc_controls' => $this->control($values, $current),
+            'risk_criteria' => $this->criteria($values, $current),
             default => null,
         };
+    }
+
+    /**
+     * SCR-IPC-02 / RN-IPC-01/02: las bandas de nivel no se cruzan ni dejan huecos, cada una tiene nombre y color (verde, ámbar o rojo),
+     * la escala de severidad tiene valores distintos y el nivel desde el que un riesgo es significativo es una de las bandas.
+     */
+    private function criteria(array &$values, ?object $current): void
+    {
+        $dec = function ($v) {
+            for ($i = 0; $i < 2 && is_string($v); $i++) {
+                $v = json_decode($v, true);
+            }
+
+            return is_array($v) ? $v : [];
+        };
+        if (array_key_exists('level_bands', $values)) {
+            $bands = $dec($values['level_bands']);
+            if ($bands === []) {
+                $this->fail('level_bands', 'Define al menos una banda de nivel de riesgo.');
+            }
+            usort($bands, fn ($a, $b) => (float) ($a['min'] ?? 0) <=> (float) ($b['min'] ?? 0));
+            $prev = null;
+            foreach ($bands as $i => $b) {
+                if (! trim((string) ($b['label'] ?? '')) || ! isset($b['min'], $b['max']) || ! is_numeric($b['min']) || ! is_numeric($b['max'])) {
+                    $this->fail('level_bands', 'Cada banda necesita su nombre y su rango (desde y hasta).');
+                }
+                if ((float) $b['min'] > (float) $b['max']) {
+                    $this->fail('level_bands', "En la banda «{$b['label']}» el «desde» es mayor que el «hasta».");
+                }
+                if (! in_array($b['color'] ?? null, ['green', 'amber', 'red'], true)) {
+                    $this->fail('level_bands', "Elige el color de la banda «{$b['label']}» (verde, ámbar o rojo).");
+                }
+                if ($prev !== null && (float) $b['min'] <= (float) $prev['max']) {
+                    $this->fail('level_bands', "Las bandas «{$prev['label']}» y «{$b['label']}» se cruzan.");
+                }
+                $bands[$i]['code'] = trim((string) ($b['code'] ?? '')) ?: \Illuminate\Support\Str::slug($b['label'], '_');
+                $prev = $b;
+            }
+            if (count(array_unique(array_column($bands, 'code'))) !== count($bands)) {
+                $this->fail('level_bands', 'Dos bandas tienen el mismo nombre.');
+            }
+            $values['level_bands'] = array_values($bands);
+        }
+        if (array_key_exists('severity_scale', $values)) {
+            $scale = $dec($values['severity_scale']);
+            $vals = array_map(fn ($x) => $x['value'] ?? null, $scale);
+            if ($scale === [] || in_array(null, $vals, true) || count(array_unique($vals)) !== count($vals)) {
+                $this->fail('severity_scale', 'La escala de severidad necesita valores distintos, cada uno con su descripción.');
+            }
+        }
+        $bands = $dec($this->value($values, $current, 'level_bands'));
+        $sig = $this->value($values, $current, 'significant_from_level');
+        if ($sig && $bands && ! in_array($sig, array_column($bands, 'code'), true)) {
+            $this->fail('significant_from_level', 'El nivel significativo debe ser una de las bandas definidas.');
+        }
     }
 
     public function after(string $op, array $res, string $id, array $values, ?object $current): void

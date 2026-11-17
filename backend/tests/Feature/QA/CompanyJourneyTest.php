@@ -250,6 +250,7 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
         'responsible_user_id' => $bId, 'due_on' => now()->addDays(45)->toDateString()], $a)->qaStatus(201);
     $this->postJson("/api/v1/ipc/versions/{$version}/submit", ['participants' => ['Rosa Quispe', 'Jorge Huamán']], $a)->assertNoContent();
     $this->postJson("/api/v1/ipc/versions/{$version}/approve", [], $a)->assertStatus(409);   // aprueba otra persona
+    supervisorSignsForTests($cid, 'iperc_versions', $version);   // RN-IPC-07: sin comité, firma del supervisor
     $approved = $this->postJson("/api/v1/ipc/versions/{$version}/approve", [], $b)->qaStatus(200);
     expect($approved->json('data.corrective_actions'))->toBeGreaterThanOrEqual(1);
     expect(collect($this->getJson("/api/v1/ipc/matrices/{$matrix}/workspace", $a)->json('data.versions'))->firstWhere('id', $version)['status'])->toBe('current');

@@ -194,7 +194,7 @@ function MatrixEditor({ id, schema, readOnly, onBack }: { id: string; schema: Mo
   const [version, setVersion] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
   const [row, setRow] = useState<IpercRow | "new" | null>(null);
-  const [dialog, setDialog] = useState<"submit" | "return" | "new" | "edit" | null>(null);
+  const [dialog, setDialog] = useState<"submit" | "return" | "new" | "edit" | "approve" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<"matrix" | "history" | "heat">("matrix");
@@ -346,7 +346,7 @@ function MatrixEditor({ id, schema, readOnly, onBack }: { id: string; schema: Mo
                   <Button variant="danger-ghost" onClick={() => setDialog("return")}>
                     Observar
                   </Button>
-                  <Button variant="primary" loading={busy} onClick={() => run(() => ipc.approve(v.id), "Versión aprobada: ahora es la vigente.")}>
+                  <Button variant="primary" loading={busy} onClick={() => (ws.approval?.sst_model === "committee" ? setDialog("approve") : run(() => ipc.approve(v.id), "Versión aprobada: ahora es la vigente y su PDF quedó en la gestión documental."))}>
                     Aprobar versión {v.version_number}
                   </Button>
                 </>
@@ -423,6 +423,10 @@ function MatrixEditor({ id, schema, readOnly, onBack }: { id: string; schema: Mo
           onClose={() => setDialog(null)}
           onSubmit={(p) => run(() => ipc.submit(v.id, p), "Enviada a aprobación.").then(() => setDialog(null))}
         />
+      )}
+      {dialog === "approve" && (
+        <MeetingDialog meetings={ws.approval?.meetings ?? []} onClose={() => setDialog(null)}
+          onSubmit={(m) => run(() => ipc.approve(v.id, m), "Versión aprobada con el acta del comité: ahora es la vigente y su PDF quedó en la gestión documental.").then(() => setDialog(null))} />
       )}
       {dialog === "return" && (
         <TextDialog
@@ -1225,6 +1229,22 @@ function SubmitDialog({ initial, onClose, onSubmit }: { initial: { name: string;
         </Button>
         <p className="text-xs text-muted">Al enviar, la versión queda congelada. La aprueba otra persona (comité o supervisor SST); si la observan, vuelve a borrador.</p>
       </div>
+    </Modal>
+  );
+}
+
+/** RN-IPC-07: con Comité SST, la versión se aprueba con el acuerdo de una sesión realizada. */
+function MeetingDialog({ meetings, onClose, onSubmit }: { meetings: { id: string; number: number | null; held_at: string }[]; onClose: () => void; onSubmit: (id: string) => void }) {
+  const [m, setM] = useState("");
+  return (
+    <Modal title="Aprobar con el acta del comité" icon="check" size="sm" onClose={onClose}
+      footer={<div className="flex w-full justify-end gap-2"><Button onClick={onClose}>Cancelar</Button><Button variant="primary" disabled={!m} onClick={() => onSubmit(m)}>Aprobar</Button></div>}>
+      <FormField label="Sesión del comité en la que se aprobó" hint={meetings.length ? undefined : "No hay sesiones realizadas: registra primero la sesión en el módulo del Comité."}>
+        <select className="input" value={m} onChange={(e) => setM(e.target.value)}>
+          <option value="">Elige la sesión…</option>
+          {meetings.map((x) => <option key={x.id} value={x.id}>Sesión N.º {x.number ?? "—"} · {x.held_at.slice(0, 10).split("-").reverse().join("/")}</option>)}
+        </select>
+      </FormField>
     </Modal>
   );
 }

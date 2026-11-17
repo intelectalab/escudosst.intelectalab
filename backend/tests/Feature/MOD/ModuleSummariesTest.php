@@ -26,7 +26,7 @@ function modEvent($test, string $description, string $at): string
 
 it('calcula el autodiagnóstico SUNAFIL por áreas con semáforo y enlace al módulo', function () {
     $d = $this->getJson('/api/v1/sun/diagnosis', mods())->assertOk()->json('data');
-    expect($d['areas'])->toHaveCount(7)
+    expect($d['areas'])->toHaveCount(8)
         ->and(collect($d['areas'])->pluck('name')->all())->toContain('Comité SST', 'IPERC', 'Registros obligatorios', 'Capacitación', 'EMO', 'Política y RISST', 'EPP');
     foreach ($d['areas'] as $a) {
         expect($a)->toHaveKeys(['pct', 'tone', 'detail', 'module', 'enabled']);

@@ -6416,7 +6416,6 @@
      "name": "severity_scale",
      "label": "Escala de severidad",
      "type": "json",
-     "readonly": true,
      "required": true
     },
     {
@@ -6429,7 +6428,6 @@
      "name": "level_bands",
      "label": "Niveles de riesgo",
      "type": "json",
-     "readonly": true,
      "required": true
     },
     {
@@ -6598,6 +6596,13 @@
      "label": "Marcada para revisión el",
      "readonly": true,
      "type": "datetime"
+    },
+    {
+     "name": "document_id",
+     "label": "Documento",
+     "readonly": true,
+     "type": "ref",
+     "ref": "documents"
     }
    ]
   },
@@ -6743,6 +6748,12 @@
      "name": "file_id",
      "label": "Archivo",
      "type": "file"
+    },
+    {
+     "name": "committee_meeting_id",
+     "label": "Reunión del comité",
+     "type": "ref",
+     "ref": "committee_meetings"
     }
    ]
   },
@@ -7202,6 +7213,12 @@
      "label": "Motivo de la revisión",
      "readonly": true,
      "type": "longtext"
+    },
+    {
+     "name": "unmarked_justifications",
+     "label": "Justificación de riesgos sin marcador",
+     "readonly": true,
+     "type": "json"
     }
    ]
   },
@@ -7784,6 +7801,43 @@
      "name": "ratio_to_limit",
      "label": "Razón medición / límite",
      "type": "number"
+    },
+    {
+     "name": "status",
+     "label": "Estado",
+     "type": "enum",
+     "options": [
+      {
+       "value": "draft",
+       "label": "Borrador"
+      },
+      {
+       "value": "approved",
+       "label": "Aprobada"
+      },
+      {
+       "value": "voided",
+       "label": "Anulada"
+      }
+     ]
+    },
+    {
+     "name": "void_reason",
+     "label": "Motivo de anulación",
+     "type": "longtext"
+    },
+    {
+     "name": "approved_by",
+     "label": "Aprobado por",
+     "readonly": true,
+     "type": "ref",
+     "ref": "users"
+    },
+    {
+     "name": "approved_at",
+     "label": "Aprobado el",
+     "readonly": true,
+     "type": "datetime"
     }
    ]
   },
@@ -8564,8 +8618,7 @@
     {
      "name": "risk_assessment",
      "label": "Evaluación de riesgos",
-     "type": "json",
-     "readonly": true
+     "type": "json"
     },
     {
      "name": "iperc_version_id",
@@ -8601,6 +8654,10 @@
       {
        "value": "implemented",
        "label": "Implementado"
+      },
+      {
+       "value": "verified",
+       "label": "Verificado"
       },
       {
        "value": "closed",
@@ -8640,6 +8697,56 @@
      "name": "temporary_until",
      "label": "Cambio temporal hasta",
      "type": "date"
+    },
+    {
+     "name": "impact_level",
+     "label": "Nivel de impacto",
+     "type": "enum",
+     "options": [
+      {
+       "value": "low",
+       "label": "Bajo"
+      },
+      {
+       "value": "medium",
+       "label": "Medio"
+      },
+      {
+       "value": "high",
+       "label": "Alto"
+      }
+     ]
+    },
+    {
+     "name": "management_approved_by",
+     "label": "Aprobado por gerencia",
+     "readonly": true,
+     "type": "ref",
+     "ref": "users"
+    },
+    {
+     "name": "management_approved_at",
+     "label": "Aprobado por gerencia el",
+     "readonly": true,
+     "type": "datetime"
+    },
+    {
+     "name": "verified_by",
+     "label": "Verificado por",
+     "readonly": true,
+     "type": "ref",
+     "ref": "users"
+    },
+    {
+     "name": "verified_at",
+     "label": "Verificado el",
+     "readonly": true,
+     "type": "datetime"
+    },
+    {
+     "name": "verification_notes",
+     "label": "Notas de verificación",
+     "type": "longtext"
     }
    ]
   },
@@ -8708,7 +8815,6 @@
        "label": "Solicitar información"
       }
      ],
-     "required": true,
      "list": true
     },
     {
@@ -8726,6 +8832,11 @@
      "label": "Revisado el",
      "type": "datetime",
      "list": true
+    },
+    {
+     "name": "is_required",
+     "label": "Requerido",
+     "type": "bool"
     }
    ]
   },

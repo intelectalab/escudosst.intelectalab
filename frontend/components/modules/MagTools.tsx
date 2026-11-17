@@ -136,3 +136,46 @@ export function MagTools({ readOnly, onSaved }: { readOnly: boolean; onSaved: ()
     </div>
   );
 }
+
+// RN-MAG-06: trabajadores expuestos sobre el límite (para la vigilancia médica) y RN-MAG-07: puntos nunca medidos o vencidos.
+type Exposed = { worker_id: string; full_name: string; position: string | null; area: string | null; agent: string | null; point: string; measured_at: string; value: string; unit: string | null; ratio_to_limit: string | null; personal: boolean };
+type Gap = { id: string; code: string | null; name: string; site: string | null; agent: string | null; last_at: string | null };
+
+export function MagFollowUp() {
+  const [ex, setEx] = useState<{ months: number; workers: Exposed[] } | null>(null);
+  const [gaps, setGaps] = useState<{ months: number; never: Gap[]; overdue: Gap[] } | null>(null);
+  useEffect(() => {
+    api<{ data: { months: number; workers: Exposed[] } }>("/mag/exposed", { withCompany: true }).then((r) => setEx(r.data)).catch(() => setEx(null));
+    api<{ data: { months: number; never: Gap[]; overdue: Gap[] } }>("/mag/gaps", { withCompany: true }).then((r) => setGaps(r.data)).catch(() => setGaps(null));
+  }, []);
+  const d = (s: string) => s.slice(0, 10).split("-").reverse().join("/");
+  return (
+    <>
+      {ex && (
+        <Card title="Trabajadores expuestos sobre el límite (para vigilancia médica)">
+          {ex.workers.length === 0 ? <p className="text-sm text-muted">Ninguna medición aprobada sobre el límite en los últimos {ex.months} meses.</p> : (
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-line text-xs text-muted"><tr><th className="py-1">Trabajador</th><th>Puesto / área</th><th>Agente</th><th>Punto</th><th>Medición</th></tr></thead>
+              <tbody>{ex.workers.map((w, k) => (
+                <tr key={k} className="border-b border-line last:border-0"><td className="py-1.5">{w.full_name}{w.personal && <span className="text-xs text-muted"> (medición personal)</span>}</td>
+                  <td>{w.position ?? w.area ?? "—"}</td><td>{w.agent ?? "—"}</td><td>{w.point}</td>
+                  <td>{d(w.measured_at)} · {w.value} {w.unit ?? ""}{w.ratio_to_limit ? ` (${Math.round(Number(w.ratio_to_limit) * 100)} % del límite)` : ""}</td></tr>
+              ))}</tbody>
+            </table>
+          )}
+          <p className="mt-2 text-xs text-muted">Solo la marca de exposición: los datos médicos se ven en el módulo de exámenes médicos.</p>
+        </Card>
+      )}
+      {gaps && (gaps.never.length > 0 || gaps.overdue.length > 0) && (
+        <Card title="Puntos sin monitoreo al día">
+          <div className="grid gap-4 sm:grid-cols-2 text-sm">
+            <div><p className="mb-1 text-xs font-semibold uppercase text-muted">Nunca medidos ({gaps.never.length})</p>
+              <ul>{gaps.never.map((g) => <li key={g.id}>{g.code ? `${g.code} · ` : ""}{g.name}{g.site ? ` · ${g.site}` : ""}{g.agent ? ` · ${g.agent}` : ""}</li>)}</ul></div>
+            <div><p className="mb-1 text-xs font-semibold uppercase text-muted">Sin medición en {gaps.months} meses ({gaps.overdue.length})</p>
+              <ul>{gaps.overdue.map((g) => <li key={g.id}>{g.code ? `${g.code} · ` : ""}{g.name} · última {g.last_at ? d(g.last_at) : "—"}</li>)}</ul></div>
+          </div>
+        </Card>
+      )}
+    </>
+  );
+}

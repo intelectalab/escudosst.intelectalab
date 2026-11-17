@@ -80,6 +80,37 @@ class DocsFieldRules extends RecordRules
         if (! in_array($map->status, ['draft', 'in_review'], true)) {
             $this->conflict('El mapa ya está aprobado o vigente: para cambiar pictogramas crea una nueva versión del mapa.');
         }
+        // RN-MAP-01: un marcador de peligro va ligado a una fila del IPERC vigente de la misma sede.
+        $type = $this->value($values, $current, 'marker_type');
+        $row = $this->value($values, $current, 'iperc_row_id');
+        if ($type === 'hazard' && (! $current || array_intersect(['marker_type', 'iperc_row_id'], array_keys($values)) !== [])) {
+            if (! $row) {
+                $this->fail('iperc_row_id', 'Un pictograma de peligro se liga a una fila del IPERC vigente de la sede: elige la fila.');
+            }
+            $ok = DB::selectOne(
+                "select 1 as ok from iperc_rows r join iperc_versions v on v.id = r.iperc_version_id and v.status = 'current' join iperc_matrices m on m.id = v.iperc_matrix_id
+                   join risk_maps mp on mp.id = ? where r.id = ? and r.deleted_at is null and (mp.site_id is null or m.site_id is null or m.site_id = mp.site_id)", [$mapId, $row]);
+            if (! $ok) {
+                $this->fail('iperc_row_id', 'Esa fila no es de un IPERC vigente de esta sede.');
+            }
+        }
+        // RN-MAP-08: el equipo de emergencia ubicado debe existir en el módulo de equipos.
+        if (($eq = $this->value($values, $current, 'emergency_equipment_id')) && ! DB::selectOne('select 1 as ok from emergency_equipment where id = ? and deleted_at is null', [$eq])) {
+            $this->fail('emergency_equipment_id', 'Ese equipo de emergencia no existe.');
+        }
+    }
+
+    /** RN-MAP-02: riesgos significativos del IPERC vigente de la sede del mapa que no tienen marcador ni justificación. */
+    public static function unmarkedSignificant(string $mapId): array
+    {
+        return DB::select(
+            "select r.id, r.row_number, coalesce(r.task, r.activity, '') as task, r.hazard, r.risk, m.code as matrix
+               from risk_maps mp join iperc_matrices m on m.deleted_at is null and (mp.site_id is null or m.site_id is null or m.site_id = mp.site_id)
+               join iperc_versions v on v.id = m.current_version_id and v.status = 'current'
+               join iperc_rows r on r.iperc_version_id = v.id and r.deleted_at is null and r.is_significant
+              where mp.id = ? and not exists (select 1 from risk_map_markers k where k.risk_map_id = mp.id and k.iperc_row_id = r.id and k.deleted_at is null)
+                and coalesce(mp.unmarked_justifications ->> r.id::text, '') = ''
+              order by m.code, r.row_number", [$mapId]);
     }
 
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
@@ -199,6 +230,10 @@ class DocsFieldRules extends RecordRules
         if (in_array($to, ['in_review', 'approved', 'current'], true) && $t !== 'risk_maps' && ! $hasSteps
             && trim(strip_tags((string) $this->value($values, $current, 'content_html'))) === '' && ! $this->value($values, $current, 'file_id')) {
             $this->fail('status', 'La versión está vacía: escribe su contenido o adjunta el documento antes de enviarla o aprobarla.');
+        }
+        if ($t === 'risk_maps' && in_array($to, ['in_review', 'approved', 'current'], true) && ($miss = self::unmarkedSignificant($current->id))) {
+            $this->fail('status', count($miss).' riesgo(s) significativo(s) del IPERC de la sede no tienen pictograma en el mapa (por ejemplo «'
+                .mb_substr(trim($miss[0]->hazard.' – '.$miss[0]->risk, ' –'), 0, 80).'»): ubícalos o justifica por qué no van.');
         }
         // M-PET RN-PET-04: un paso con riesgo significativo debe tener su control antes de revisarse o aprobarse.
         if ($t === 'procedure_versions' && in_array($to, ['in_review', 'approved'], true) && ($msg = \App\Modules\PET\PetStepsController::missingControl($current->id))) {

@@ -98,12 +98,12 @@ it('aprueba solo otra persona, congela la versión, programa la revisión y abre
         'responsible_user_id' => $user, 'due_on' => '2026-12-15'], ipc())->assertCreated();
     $this->postJson("/api/v1/ipc/versions/{$version}/submit", ['participants' => ['Ana Quispe']], ipc())->assertNoContent();
 
-    $this->postJson("/api/v1/ipc/versions/{$version}/approve", [], ipc())
+    $this->postJson("/api/v1/ipc/versions/{$version}/approve", ["committee_meeting_id" => heldMeetingForTests(ANDINAS_ID)], ipc())
         ->assertStatus(409)->assertJsonPath('title', 'Aprueba otra persona');
 
     // Simula que la elaboró otra persona del equipo.
     DB::update('update iperc_versions set prepared_by = ? where id = ?', ['01900000-0000-7000-8000-000000000301', $version]);
-    $res = $this->postJson("/api/v1/ipc/versions/{$version}/approve", [], ipc())->assertOk();
+    $res = $this->postJson("/api/v1/ipc/versions/{$version}/approve", ["committee_meeting_id" => heldMeetingForTests(ANDINAS_ID)], ipc())->assertOk();
     expect($res->json('data.corrective_actions'))->toBe(1)
         ->and($res->json('data.next_review_on'))->toBe(now('America/Lima')->addMonthsNoOverflow(12)->toDateString());
 
@@ -160,7 +160,7 @@ it('un accidente ligado a una fila marca la matriz «requiere revisión» y la n
         'responsible_user_id' => $user, 'due_on' => '2026-12-15'], ipc())->assertCreated();
     $this->postJson("/api/v1/ipc/versions/{$version}/submit", ['participants' => ['Ana Quispe']], ipc())->assertNoContent();
     DB::update('update iperc_versions set prepared_by = ? where id = ?', ['01900000-0000-7000-8000-000000000301', $version]);
-    $this->postJson("/api/v1/ipc/versions/{$version}/approve", [], ipc())->assertOk();
+    $this->postJson("/api/v1/ipc/versions/{$version}/approve", ["committee_meeting_id" => heldMeetingForTests(ANDINAS_ID)], ipc())->assertOk();
 
     // La fila vigente se ofrece en el selector del evento.
     expect(collect($this->getJson('/api/v1/records/ACC/sst_events/options/iperc_row_id', ipc())->json('data'))->pluck('id'))->toContain($row);
@@ -174,7 +174,7 @@ it('un accidente ligado a una fila marca la matriz «requiere revisión» y la n
     $new = $this->postJson("/api/v1/ipc/matrices/{$matrix}/versions", ['change_reason' => 'Revisión por accidente'], ipc())->assertCreated()->json('data.id');
     $this->postJson("/api/v1/ipc/versions/{$new}/submit", ['participants' => ['Ana Quispe']], ipc())->assertNoContent();
     DB::update('update iperc_versions set prepared_by = ? where id = ?', ['01900000-0000-7000-8000-000000000301', $new]);
-    $this->postJson("/api/v1/ipc/versions/{$new}/approve", [], ipc())->assertOk();
+    $this->postJson("/api/v1/ipc/versions/{$new}/approve", ["committee_meeting_id" => heldMeetingForTests(ANDINAS_ID)], ipc())->assertOk();
     expect($this->getJson("/api/v1/records/IPC/iperc_matrices/{$matrix}", ipc())->json('data.status'))->toBe('active');
 
     // Pasada la fecha de revisión, la revisión periódica la marca «revisión vencida» (RN-IPC-08).

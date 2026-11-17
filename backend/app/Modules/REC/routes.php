@@ -84,6 +84,8 @@ Route::middleware(['auth:sanctum', 'company', 'module:MAG'])->prefix('mag')->con
     Route::get('import/template', 'template');
     Route::post('import', 'import')->middleware('throttle:20,1');
     Route::get('trend', 'trend');
+    Route::get('exposed', 'exposed');
+    Route::get('gaps', 'gaps');
 });
 
 // Observación de conducta segura (M-OBS SCR-OBS-01/02/03): lista de comportamientos con versiones, captura rápida y tendencias.
@@ -140,3 +142,9 @@ Route::middleware(['auth:sanctum', 'company', 'module:RIS'])->prefix('ris')->gro
 
 // Registros del sistema como evidencia de un requisito legal (M-MRL SCR-MRL-04, RN-MRL-08).
 Route::middleware(['auth:sanctum', 'company', 'module:MRL'])->get('mrl/evidence-options', \App\Modules\REC\MrlEvidenceController::class);
+
+// Mapa de riesgos: filas del IPERC de la sede, equipos con su estado, versión más reciente y justificación de riesgos sin pictograma (M-MAP RN-MAP-01/02/06/08).
+Route::middleware(['auth:sanctum', 'company', 'module:MAP'])->prefix('map/maps/{id}')->whereUuid('id')->group(function () {
+    Route::get('context', [\App\Modules\REC\RiskMapContextController::class, 'context']);
+    Route::post('justify', [\App\Modules\REC\RiskMapContextController::class, 'justify']);
+});

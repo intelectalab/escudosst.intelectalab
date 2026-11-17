@@ -150,12 +150,24 @@ final class IpercWorkflow
      * Aprobar (RN-IPC-06, 07, 08, 10): la versión queda vigente y congelada con sus criterios; la anterior pasa a obsoleta;
      * próxima revisión = hoy + iperc_review_months; cada control propuesto con responsable y fecha abre una acción correctiva.
      */
-    public function approve(string $versionId): array
+    public function approve(string $versionId, ?string $meetingId = null): array
     {
         $v = $this->version($versionId, 'in_review', 'Solo se aprueba una versión en revisión.');
         if ($v->prepared_by === (string) auth()->id()) {
             throw new ApiProblem(409, 'conflict', 'Aprueba otra persona',
                 'Quien elaboró y envió la matriz no puede aprobarla. Debe aprobarla el comité o el supervisor SST (otra persona).'.\App\Core\Support\Approvers::hint('ipc.iperc_versions.update'));
+        }
+        // RN-IPC-07: con comité, la aprobación lleva el acuerdo de una sesión realizada; sin comité, la firma del supervisor SST.
+        $model = DB::selectOne('select sst_model from companies where id = ?', [$v->company_id])?->sst_model;
+        if ($model === 'committee') {
+            $m = $meetingId && Str::isUuid($meetingId) ? DB::selectOne('select id, held_at from committee_meetings where id = ? and deleted_at is null', [$meetingId]) : null;
+            if (! $m || ! $m->held_at) {
+                throw new ApiProblem(422, 'validation_failed', 'Falta el acta', 'La empresa tiene Comité SST: elige la sesión realizada en la que se aprobó el IPERC.',
+                    ['errors' => ['committee_meeting_id' => ['Elige la sesión del comité que aprobó el IPERC.']]]);
+            }
+        } elseif (! $this->supervisorSigned($versionId)) {
+            throw new ApiProblem(422, 'validation_failed', 'Falta la firma del supervisor', 'Sin Comité SST, el IPERC se aprueba con la firma del Supervisor SST: pídele que lo firme o que lo apruebe él.',
+                ['errors' => ['status' => ['Falta la firma del Supervisor SST.']]]);
         }
         $criteria = $this->eval->criteria($v->risk_criteria_id);
         $issues = $this->issues($versionId, $criteria, $this->rows($versionId), json_decode((string) $v->participants, true) ?? []);
@@ -169,18 +181,88 @@ final class IpercWorkflow
                      where iperc_matrix_id = ? and status = 'current' and deleted_at is null", [$user, $v->iperc_matrix_id]);
         DB::update(
             "update iperc_versions set status = 'current', approved_by = ?, approved_at = now(), effective_on = (now() at time zone 'America/Lima')::date,
-                    criteria_snapshot = ?::jsonb, updated_by = ? where id = ?",
-            [$user, json_encode($criteria, JSON_UNESCAPED_UNICODE), $user, $versionId]
+                    criteria_snapshot = ?::jsonb, committee_meeting_id = ?, updated_by = ? where id = ?",
+            [$user, json_encode($criteria, JSON_UNESCAPED_UNICODE), $model === 'committee' ? $meetingId : null, $user, $versionId]
         );
         $next = DB::selectOne("select ((now() at time zone 'America/Lima')::date + make_interval(months => ?))::date as d", [$months])->d;
         DB::update("update iperc_matrices set current_version_id = ?, next_review_on = ?, status = case when status = 'archived' then status else 'active' end, review_reason = null, review_flagged_at = null, updated_by = ? where id = ?",
             [$versionId, $next, $user, $v->iperc_matrix_id]);
 
         \App\Modules\NOT\FichaEvents::ipercApproved($versionId);
+        $this->archivePdf($versionId);
         $actions = $this->openActions($v);
         $this->audit('approve', $versionId, ['next_review_on' => $next, 'corrective_actions' => $actions]);
 
         return ['next_review_on' => $next, 'corrective_actions' => $actions];
+    }
+
+    /** Sin comité: aprueba el supervisor SST o la versión tiene su firma. */
+    private function supervisorSigned(string $versionId): bool
+    {
+        $ctx = app(CompanyContext::class);
+        $base = DB::selectOne('select coalesce(base_role_code, code) as c from roles where code = ? limit 1', [$ctx->roleCode])?->c ?? $ctx->roleCode;
+        if ($base === 'sst_supervisor') {
+            return true;
+        }
+
+        return (bool) DB::selectOne(
+            "select 1 as ok from signatures s join memberships m on m.user_id = s.signer_user_id and m.company_id = s.company_id and m.status = 'active' and m.deleted_at is null
+               join roles r on r.id = m.role_id where s.subject_type = 'iperc_versions' and s.subject_id = ? and coalesce(r.base_role_code, r.code) = 'sst_supervisor'", [$versionId]);
+    }
+
+    /**
+     * M-IPC flujo «Versión congelada vigente; PDF en DOC»: guarda el PDF de la versión aprobada como archivo de la versión y como nueva
+     * versión vigente del documento de la matriz en la gestión documental. Si falla, la aprobación sigue válida (se puede descargar).
+     */
+    private function archivePdf(string $versionId): void
+    {
+        try {
+            // Dentro de su propio punto de guardado: si algo falla, no arrastra la aprobación.
+            DB::transaction(fn () => $this->storePdf($versionId));
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function storePdf(string $versionId): void
+    {
+        {
+            [$name, $bytes] = app(IpercExport::class)->pdf($versionId);
+            $v = DB::selectOne('select v.company_id, v.version_number, v.approved_by, v.approved_at, v.prepared_by, m.id as matrix_id, m.code, m.title, m.document_id, m.site_id, m.area_id
+                                  from iperc_versions v join iperc_matrices m on m.id = v.iperc_matrix_id where v.id = ?', [$versionId]);
+            $fid = (string) Str::uuid7();
+            $disk = config('escudo.files_disk', 'local');
+            $path = "company/{$v->company_id}/".date('Y/m')."/{$fid}.pdf";
+            \Illuminate\Support\Facades\Storage::disk($disk)->put($path, $bytes);
+            DB::insert("insert into files (id, company_id, bucket, object_key, original_name, mime_type, size_bytes, sha256, module_code, entity_type, entity_id, status, exif_stripped, uploaded_by)
+                        values (?, ?, ?, ?, ?, 'application/pdf', ?, decode(?, 'hex'), 'IPC', 'iperc_versions', ?, 'available', false, ?)",
+                [$fid, $v->company_id, $disk, $path, $name, strlen($bytes), hash('sha256', $bytes), $versionId, $v->approved_by]);
+            DB::update('update iperc_versions set file_id = ? where id = ?', [$fid, $versionId]);
+            $doc = $v->document_id;
+            if (! $doc) {
+                $code = mb_substr('IPERC-'.$v->code, 0, 60);
+                $doc = DB::selectOne('select id from documents where code = ? and deleted_at is null', [$code])?->id
+                    ?? DB::selectOne("insert into documents (company_id, category_id, code, title, description, owner_user_id, scope_type, site_id, area_id, status, created_by, updated_by)
+                                      values (?, ?, ?, ?, 'Matriz IPERC aprobada (se actualiza sola con cada versión aprobada).', ?, ?, ?, ?, 'active', ?, ?) returning id",
+                        [$v->company_id, $this->ipercCategory($v->company_id), $code, mb_substr('Matriz IPERC · '.$v->title, 0, 250), $v->approved_by, $v->area_id ? 'area' : ($v->site_id ? 'site' : 'company'),
+                            $v->site_id, $v->area_id, $v->approved_by, $v->approved_by])->id;
+                DB::update('update iperc_matrices set document_id = ? where id = ?', [$doc, $v->matrix_id]);
+            }
+            DB::update("update document_versions set status = 'obsolete', obsoleted_at = now() where document_id = ? and status = 'current' and deleted_at is null", [$doc]);
+            $n = (int) DB::selectOne('select coalesce(max(version_number), 0) + 1 as n from document_versions where document_id = ?', [$doc])->n;
+            $dv = DB::selectOne("insert into document_versions (company_id, document_id, version_number, version_label, file_id, sha256, change_summary, status, submitted_by, approved_by, approved_at, effective_on, created_by, updated_by)
+                                 values (?, ?, ?, ?, ?, ?, ?, 'current', ?, ?, ?, (now() at time zone 'America/Lima')::date, ?, ?) returning id",
+                [$v->company_id, $doc, $n, 'IPERC v'.$v->version_number, $fid, hash('sha256', $bytes), "Versión {$v->version_number} de la matriz IPERC aprobada.",
+                    $v->prepared_by !== $v->approved_by ? $v->prepared_by : null, $v->approved_by, $v->approved_at, $v->approved_by, $v->approved_by])->id;
+            DB::update("update documents set current_version_id = ?, status = 'active', updated_at = now() where id = ?", [$dv, $doc]);
+        }
+    }
+
+    /** Categoría documental para la matriz: la que ya trate del IPERC; si no hay, se crea «Matriz IPERC». */
+    private function ipercCategory(string $company): string
+    {
+        return DB::selectOne("select id from document_categories where deleted_at is null and (code ilike '%iperc%' or name ilike '%iperc%') order by sort_order nulls last limit 1")?->id
+            ?? DB::selectOne("insert into document_categories (company_id, code, name, requires_approval_by, sort_order) values (?, 'IPERC', 'Matriz IPERC', 'sst', 90) returning id", [$company])->id;
     }
 
     /** Filas con sus controles, ordenadas. */

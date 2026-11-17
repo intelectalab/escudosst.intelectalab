@@ -26,6 +26,7 @@ class DiagnosisController extends Controller
         $areas = [
             $this->committee($today),
             $this->iperc($today),
+            $this->pets(),
             $this->registers($year),
             $this->training($year),
             $this->emo($today),
@@ -87,6 +88,24 @@ class DiagnosisController extends Controller
 
         return $this->area('IPERC', 'IPC', 'iperc_matrices', $r->ok * 100 / $r->n,
             $parts ? "{$r->ok} de {$r->n} matrices al día · ".implode(' · ', $parts).'.' : "Las {$r->n} matrices están aprobadas y con revisión al día.");
+    }
+
+    /** M-PET: cada puesto crítico tiene su PETS vigente; el que no lo tiene es una brecha (como el aviso pet.critical_without_pets). */
+    private function pets(): array
+    {
+        $rows = DB::select(
+            "select p.name, exists (select 1 from procedures r join procedure_versions v on v.id = r.current_version_id and v.status in ('approved', 'current')
+                                     where r.position_id = p.id and r.deleted_at is null and r.status = 'active') as ok
+               from positions p where p.deleted_at is null and p.status = 'active' and p.is_critical order by p.name");
+        if (! $rows) {
+            return $this->area('PETS de tareas críticas', 'PET', 'procedures', null, 'No hay puestos marcados como críticos.');
+        }
+        $missing = array_column(array_filter($rows, fn ($r) => ! $r->ok), 'name');
+        $ok = count($rows) - count($missing);
+
+        return $this->area('PETS de tareas críticas', 'PET', 'procedures', $ok * 100 / count($rows),
+            $missing ? "{$ok} de ".count($rows).' puestos críticos con PETS vigente · sin PETS: '.implode(', ', array_slice($missing, 0, 5)).(count($missing) > 5 ? '…' : '').'.'
+                : 'Todos los puestos críticos tienen su PETS vigente.');
     }
 
     /** Registros obligatorios (R.M. 050-2013-TR) generados en el año. */

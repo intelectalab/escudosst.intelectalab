@@ -20,6 +20,7 @@ abstract class RecordRules
         'worker_assignments' => WorkerRules::class,
         'iperc_matrices' => IpercRules::class,
         'iperc_versions' => IpercRules::class,
+        'risk_criteria' => IpercRules::class,
         'iperc_rows' => IpercRules::class,
         'iperc_controls' => IpercRules::class,
         'corrective_actions' => AcrRules::class,

@@ -28,7 +28,7 @@ import { Ch5Talks } from "@/components/modules/Ch5Talks";
 import { EmoProtocols } from "@/components/modules/EmoProtocols";
 import { SimRun } from "@/components/modules/SimRun";
 import { AtsCopy } from "@/components/modules/AtsCopy";
-import { MagTools } from "@/components/modules/MagTools";
+import { MagFollowUp, MagTools } from "@/components/modules/MagTools";
 import { ObsModule } from "@/components/modules/ObsModule";
 import { RebaForm } from "@/components/modules/RebaForm";
 import { PolOverview } from "@/components/modules/PolOverview";
@@ -303,6 +303,7 @@ function MagPage({ readOnly }: { readOnly: boolean }) {
   return (
     <div className="space-y-6">
       <MagTools readOnly={readOnly} onSaved={() => setV((x) => x + 1)} />
+      <MagFollowUp />
       <ModuleRecords key={v} code="MAG" readOnly={readOnly} />
     </div>
   );

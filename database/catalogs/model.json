@@ -18677,6 +18677,17 @@
     "comment": null
    },
    {
+    "name": "document_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "documents.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -18936,6 +18947,17 @@
     "default": null,
     "values": null,
     "ref": "signature_requests.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "committee_meeting_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "committee_meetings.id",
     "encrypted": false,
     "generated": null,
     "comment": null
@@ -19839,6 +19861,17 @@
    {
     "name": "review_reason",
     "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "unmarked_justifications",
+    "type": "jsonb",
     "not_null": false,
     "default": null,
     "values": null,
@@ -21121,6 +21154,54 @@
    {
     "name": "ratio_to_limit",
     "type": "numeric",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "status",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": [
+     "draft",
+     "approved",
+     "voided"
+    ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "void_reason",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "approved_by",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "users.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "approved_at",
+    "type": "timestamptz",
     "not_null": false,
     "default": null,
     "values": null,
@@ -22609,6 +22690,7 @@
      "approved",
      "rejected",
      "implemented",
+     "verified",
      "closed",
      "cancelled"
     ],
@@ -22664,6 +22746,76 @@
    {
     "name": "temporary_until",
     "type": "date",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "impact_level",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": [
+     "low",
+     "medium",
+     "high"
+    ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "management_approved_by",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "users.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "management_approved_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "verified_by",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "users.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "verified_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "verification_notes",
+    "type": "text",
     "not_null": false,
     "default": null,
     "values": null,
@@ -22800,7 +22952,7 @@
    {
     "name": "decision",
     "type": "text",
-    "not_null": true,
+    "not_null": false,
     "default": null,
     "values": [
      "approve",
@@ -22838,8 +22990,19 @@
    {
     "name": "reviewed_at",
     "type": "timestamptz",
-    "not_null": true,
+    "not_null": false,
     "default": "now()",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "is_required",
+    "type": "boolean",
+    "not_null": false,
+    "default": null,
     "values": null,
     "ref": null,
     "encrypted": false,

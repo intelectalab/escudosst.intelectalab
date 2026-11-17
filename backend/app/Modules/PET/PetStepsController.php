@@ -38,6 +38,54 @@ class PetStepsController extends Controller
         ]]);
     }
 
+    /** M-PET §11: PDF de una versión del PETS (pasos, riesgos y controles, EPP, capacitaciones, firmas). */
+    public function report(string $id): JsonResponse
+    {
+        $this->can('pet.procedure_versions.read');
+        $this->version($id);
+
+        return response()->json(['data' => $this->payload($id)]);
+    }
+
+    /** SCR-PET-04: el QR del PETS abre siempre la versión vigente del procedimiento (vista para el celular en campo). */
+    public function current(string $procedureId): JsonResponse
+    {
+        $this->can('pet.procedure_versions.read');
+        $p = \Illuminate\Support\Str::isUuid($procedureId) ? DB::selectOne('select current_version_id from procedures where id = ? and deleted_at is null', [$procedureId]) : null;
+        if (! $p) {
+            throw ApiProblem::notFound('El procedimiento no existe o es de otra empresa.');
+        }
+        if (! $p->current_version_id) {
+            throw new ApiProblem(409, 'conflict', 'Sin versión vigente', 'Este procedimiento aún no tiene una versión vigente.');
+        }
+
+        return response()->json(['data' => $this->payload($p->current_version_id)]);
+    }
+
+    private function payload(string $versionId): array
+    {
+        $v = DB::selectOne(
+            "select v.*, p.id as procedure_id, p.code, p.title, p.procedure_type, p.is_critical_task, p.next_review_on, p.current_version_id, s.name as site, a.name as area, ps.name as position,
+                    up.full_name as prepared_by_name, ur.full_name as reviewed_by_name, ua.full_name as approved_by_name
+               from procedure_versions v join procedures p on p.id = v.procedure_id left join sites s on s.id = p.site_id left join areas a on a.id = p.area_id left join positions ps on ps.id = p.position_id
+               left join users up on up.id = v.prepared_by left join users ur on ur.id = v.reviewed_by left join users ua on ua.id = v.approved_by
+              where v.id = ?", [$versionId]);
+        $c = DB::selectOne('select legal_name, trade_name, ruc from companies where id = ?', [$v->company_id]);
+        $trainings = $this->ids($v->required_training_ids);
+
+        return [
+            'company' => ['name' => $c->trade_name ?: $c->legal_name, 'legal_name' => $c->legal_name, 'ruc' => trim((string) $c->ruc)],
+            'procedure' => ['id' => $v->procedure_id, 'code' => $v->code, 'title' => $v->title, 'type' => $v->procedure_type, 'critical' => (bool) $v->is_critical_task,
+                'site' => $v->site, 'area' => $v->area, 'position' => $v->position, 'next_review_on' => $v->next_review_on],
+            'version' => ['id' => $v->id, 'number' => (int) $v->version_number, 'status' => $v->status, 'is_current' => $v->current_version_id === $v->id, 'effective_on' => $v->effective_on,
+                'approved_at' => $v->approved_at, 'prepared_by' => $v->prepared_by_name, 'reviewed_by' => $v->reviewed_by_name, 'approved_by' => $v->approved_by_name,
+                'content_html' => $v->content_html, 'required_ppe' => json_decode((string) $v->required_ppe, true) ?: [], 'change_summary' => $v->change_summary],
+            'steps' => json_decode((string) $v->steps, true) ?: [],
+            'trainings' => $trainings ? array_column(DB::select('select title from trainings where id = any(?::uuid[]) order by title', ['{'.implode(',', $trainings).'}']), 'title') : [],
+            'signatures' => DB::select("select signer_name, signed_at, method from signatures where subject_type = 'procedure_versions' and subject_id = ? order by signed_at", [$v->id]),
+        ];
+    }
+
     public function update(Request $request, string $id): JsonResponse
     {
         $this->can('pet.procedure_versions.update');

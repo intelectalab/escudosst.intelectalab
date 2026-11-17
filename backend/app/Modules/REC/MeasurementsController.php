@@ -21,6 +21,9 @@ use Illuminate\Support\Str;
  *                                       registros (límite vigente, cociente y nivel de acción por RN-MAG-01/02/04; acción correctiva si
  *                                       supera el límite, RN-MAG-03)
  *  GET  /mag/trend?point_id=&agent_type_id=  SCR-MAG-05: mediciones del punto en el tiempo con el límite y el nivel de acción
+ *  GET  /mag/exposed                     RN-MAG-06: trabajadores expuestos sobre el límite (mediciones aprobadas del periodo) para la vigilancia
+ *                                        médica: la medición personal o los trabajadores activos del puesto (o del área) del punto
+ *  GET  /mag/gaps                        RN-MAG-07: puntos activos nunca medidos o sin medición aprobada en monitoring_frequency_months
  */
 class MeasurementsController extends Controller
 {
@@ -143,7 +146,7 @@ class MeasurementsController extends Controller
         $rows = DB::select(
             "select m.measured_at, m.value, m.unit, m.ratio_to_limit, m.result, a.name as agent, l.limit_value, l.unit as limit_unit
                from measurements m left join agent_types a on a.id = m.agent_type_id left join exposure_limits l on l.id = m.exposure_limit_id
-              where m.monitoring_point_id = ? and m.deleted_at is null".(Str::isUuid((string) $agent) ? ' and m.agent_type_id = ?' : '').' order by m.measured_at',
+              where m.monitoring_point_id = ? and m.deleted_at is null and m.status <> 'voided'".(Str::isUuid((string) $agent) ? ' and m.agent_type_id = ?' : '').' order by m.measured_at',
             Str::isUuid((string) $agent) ? [$point, $agent] : [$point]);
 
         return response()->json(['data' => [
@@ -163,5 +166,42 @@ class MeasurementsController extends Controller
     private function fail(string $field, string $msg): never
     {
         throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', $msg, ['errors' => [$field => [$msg]]]);
+    }
+
+    public function exposed(): \Illuminate\Http\JsonResponse
+    {
+        if (! in_array('mag.measurements.read', \App\Core\Auth\Permissions::effective(), true)) {
+            throw \App\Core\Http\ApiProblem::forbidden('Tu rol no ve el monitoreo de agentes.');
+        }
+        $months = (int) LegalParams::number('monitoring_frequency_months', 12);
+        $rows = DB::select(
+            "select distinct on (w.id, m.agent_type_id) w.id as worker_id, w.full_name, ps.name as position, ar.name as area, a.name as agent, p.name as point,
+                    m.measured_at, m.value, m.unit, m.ratio_to_limit, m.worker_id is not null as personal
+               from measurements m join monitoring_points p on p.id = m.monitoring_point_id left join agent_types a on a.id = m.agent_type_id
+               join workers w on w.deleted_at is null and w.status = 'active'
+                    and (w.id = m.worker_id or (m.worker_id is null and ((p.position_id is not null and w.current_position_id = p.position_id)
+                         or (p.position_id is null and p.area_id is not null and w.current_area_id = p.area_id))))
+               left join positions ps on ps.id = w.current_position_id left join areas ar on ar.id = w.current_area_id
+              where m.deleted_at is null and m.status = 'approved' and m.result = 'exceeds_limit' and m.measured_at > now() - make_interval(months => ?::int)
+              order by w.id, m.agent_type_id, m.measured_at desc", [$months]);
+
+        return response()->json(['data' => ['months' => $months, 'workers' => $rows]]);
+    }
+
+    public function gaps(): \Illuminate\Http\JsonResponse
+    {
+        if (! in_array('mag.measurements.read', \App\Core\Auth\Permissions::effective(), true)) {
+            throw \App\Core\Http\ApiProblem::forbidden('Tu rol no ve el monitoreo de agentes.');
+        }
+        $months = (int) LegalParams::number('monitoring_frequency_months', 12);
+        $rows = DB::select(
+            "select p.id, p.code, p.name, s.name as site, a.name as agent, x.last_at
+               from monitoring_points p left join sites s on s.id = p.site_id left join agent_types a on a.id = p.agent_type_id
+               left join lateral (select max(m.measured_at) as last_at from measurements m where m.monitoring_point_id = p.id and m.deleted_at is null and m.status = 'approved') x on true
+              where p.deleted_at is null and p.status = 'active' and (x.last_at is null or x.last_at < now() - make_interval(months => ?::int))
+              order by x.last_at nulls first, p.name", [$months]);
+
+        return response()->json(['data' => ['months' => $months, 'never' => array_values(array_filter($rows, fn ($r) => $r->last_at === null)),
+            'overdue' => array_values(array_filter($rows, fn ($r) => $r->last_at !== null))]]);
     }
 }

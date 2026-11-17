@@ -36,6 +36,10 @@ class IpercController extends Controller
             'approve' => $can('iperc_versions.approve'),
             'new_version' => $can('iperc_versions.create'),
             'export' => $can('iperc_matrices.export'),
+        ], 'approval' => [
+            // RN-IPC-07: con comité se elige la sesión que aprobó; sin comité, firma o aprueba el supervisor.
+            'sst_model' => \Illuminate\Support\Facades\DB::selectOne('select sst_model from companies where id = ?', [app(\App\Core\Tenancy\CompanyContext::class)->companyId])?->sst_model,
+            'meetings' => \Illuminate\Support\Facades\DB::select("select id, number, meeting_type, held_at from committee_meetings where deleted_at is null and held_at is not null order by held_at desc limit 20"),
         ]]]);
     }
 
@@ -59,9 +63,9 @@ class IpercController extends Controller
         return response()->noContent();
     }
 
-    public function approve(string $version): JsonResponse
+    public function approve(Request $request, string $version): JsonResponse
     {
-        return response()->json(['data' => $this->flow->approve($version)]);
+        return response()->json(['data' => $this->flow->approve($version, $request->input('committee_meeting_id'))]);
     }
 
     public function pdf(string $version): Response

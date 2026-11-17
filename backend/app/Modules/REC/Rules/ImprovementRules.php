@@ -19,7 +19,7 @@ class ImprovementRules extends RecordRules
 
     private const MOC_FLOW = [
         'draft' => ['submitted', 'cancelled'], 'submitted' => ['under_review', 'cancelled'], 'under_review' => ['approved', 'rejected'],
-        'approved' => ['implemented', 'cancelled'], 'implemented' => ['closed'], 'rejected' => [], 'closed' => [], 'cancelled' => [],
+        'approved' => ['implemented', 'cancelled'], 'implemented' => ['verified'], 'verified' => ['closed'], 'rejected' => [], 'closed' => [], 'cancelled' => [],
     ];
 
     public function prepare(string $op, array $res, array &$values, ?object $current, array &$extra): void
@@ -35,7 +35,7 @@ class ImprovementRules extends RecordRules
             'change_requests' => $this->change($op, $values, $current),
             'monitoring_campaigns' => $this->campaign($values, $current),
             'ergonomic_assessments' => $this->ergonomic($values, $current),
-            'change_reviews' => $values['reviewed_at'] ??= now()->toIso8601String(),
+            'change_reviews' => $this->changeReview($op, $values, $current),
             default => null,
         };
     }
@@ -292,6 +292,37 @@ class ImprovementRules extends RecordRules
 
     private function measurement(array &$values, ?object $current): void
     {
+        // RN-MAG-08: aprobada no cambia (solo se anula con motivo); anulada no cambia.
+        if ($current && $current->status === 'voided' && $values !== []) {
+            $this->conflict('La medición está anulada.');
+        }
+        if ($current && $current->status === 'approved' && array_diff(array_keys($values), ['status', 'void_reason']) !== []) {
+            $this->conflict('La medición ya está aprobada: no se modifica. Si hay un error, anúlala con el motivo y registra una nueva.');
+        }
+        $to = $values['status'] ?? null;
+        if ($current && $to && $to !== $current->status) {
+            $flow = ['draft' => ['approved', 'voided'], 'approved' => ['voided']];
+            if (! in_array($to, $flow[$current->status] ?? [], true)) {
+                $this->fail('status', 'Ese cambio de estado no está permitido: borrador → aprobada → anulada.');
+            }
+        }
+        if ($to === 'voided' && ! trim((string) $this->value($values, $current, 'void_reason'))) {
+            $this->fail('void_reason', 'Indica por qué se anula la medición.');
+        }
+        if ($to === 'approved' && $current?->status !== 'approved') {
+            $values['approved_by'] = (string) auth()->id();
+            $values['approved_at'] = now()->toIso8601String();
+        }
+        if (! $current) {
+            $values['status'] = in_array($to, ['draft', 'approved'], true) ? $to : 'draft';
+            if ($values['status'] === 'approved') {
+                $values['approved_by'] = (string) auth()->id();
+                $values['approved_at'] = now()->toIso8601String();
+            }
+        }
+        if ($to === 'voided' || ($current && array_diff(array_keys($values), ['status', 'void_reason', 'approved_by', 'approved_at']) === [])) {
+            return;
+        }
         if ($current && $current->corrective_action_id && array_intersect(array_keys($values), ['value', 'unit', 'exposure_limit_id', 'measured_at']) !== []) {
             $this->conflict('La medición ya originó su acción correctiva: no se cambia su valor. Registra una nueva medición.');
         }
@@ -340,8 +371,12 @@ class ImprovementRules extends RecordRules
         if (! $this->value($values, $current, 'report_file_id')) {
             $this->fail('report_file_id', 'Adjunta el informe del laboratorio o proveedor del monitoreo.');
         }
-        if (($values['status'] ?? null) === 'closed' && ! DB::selectOne('select 1 as ok from measurements where campaign_id = ? and deleted_at is null', [$current->id])) {
+        if (($values['status'] ?? null) === 'closed' && ! DB::selectOne("select 1 as ok from measurements where campaign_id = ? and deleted_at is null and status <> 'voided'", [$current->id])) {
             $this->fail('status', 'La campaña no tiene mediciones registradas.');
+        }
+        // RN-MAG-05: no se cierra con mediciones en borrador.
+        if (($values['status'] ?? null) === 'closed' && ($n = (int) DB::selectOne("select count(*) as n from measurements where campaign_id = ? and deleted_at is null and status = 'draft'", [$current->id])->n) > 0) {
+            $this->fail('status', "Hay {$n} medición(es) en borrador: apruébalas o anúlalas antes de cerrar la campaña.");
         }
     }
 
@@ -373,6 +408,11 @@ class ImprovementRules extends RecordRules
             $m = DB::selectOne('select m.*, c.responsible_user_id, p.site_id, p.area_id, p.name as point, a.name as agent from measurements m
                                   left join monitoring_campaigns c on c.id = m.campaign_id left join monitoring_points p on p.id = m.monitoring_point_id
                                   left join agent_types a on a.id = m.agent_type_id where m.id = ?', [$id]);
+            // RN-MAG-06: aprobada sobre el límite, se avisa al médico ocupacional para la vigilancia de los expuestos (solo la marca).
+            if ($m && $m->result === 'exceeds_limit' && $m->status === 'approved' && ($values['status'] ?? null) === 'approved') {
+                \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['occupational_doctor']), 'mag.exposed', 'MAG', $id, 'Trabajadores expuestos sobre el límite',
+                    'Medición de '.($m->agent ?? 'agente').' en '.($m->point ?? 'un punto').' sobre el límite: revisa la lista de expuestos para la vigilancia médica.', '/m/mag', 'high', 'mag.exposed:'.$id);
+            }
             if ($m && $m->result === 'exceeds_limit' && ! $m->corrective_action_id) {
                 $action = \App\Modules\ACR\AutoAction::create($m->company_id, 'monitoring', $id,
                     'Controlar la exposición sobre el límite: '.trim(($m->agent ?? 'agente').' en '.($m->point ?? 'el punto medido')),
@@ -405,6 +445,27 @@ class ImprovementRules extends RecordRules
         }
     }
 
+    /**
+     * RN-MOC-01: el Jefe SST asigna revisores por especialidad (la revisión queda pendiente, sin decisión); la decisión la registra el
+     * revisor asignado (o quien aprueba revisiones). Una revisión resuelta no cambia.
+     */
+    private function changeReview(string $op, array &$values, ?object $current): void
+    {
+        if ($current && $current->decision !== null && $values !== []) {
+            $this->conflict('La revisión ya fue registrada: no se modifica.');
+        }
+        if (array_key_exists('decision', $values) && $values['decision'] !== null) {
+            $reviewer = $this->value($values, $current, 'reviewer_user_id');
+            if ($reviewer && (string) $reviewer !== (string) auth()->id() && ! in_array('moc.change_reviews.approve', \App\Core\Auth\Permissions::effective(), true)) {
+                $this->fail('decision', 'Esta revisión la registra el revisor asignado.');
+            }
+            if ($values['decision'] === 'approve_with_conditions' && ! trim((string) $this->value($values, $current, 'conditions'))) {
+                $this->fail('conditions', 'Escribe las condiciones de la aprobación.');
+            }
+            $values['reviewed_at'] = now()->toIso8601String();
+        }
+    }
+
     private function change(string $op, array &$values, ?object $current): void
     {
         if ($op === 'create') {
@@ -431,9 +492,38 @@ class ImprovementRules extends RecordRules
         if (! in_array($to, self::MOC_FLOW[$current->status] ?? [], true)) {
             $this->fail('status', 'Ese cambio de estado no está permitido.');
         }
-        if ($to === 'approved'
-            && ! DB::selectOne("select 1 as ok from change_reviews where change_request_id = ? and deleted_at is null and decision in ('approve','approve_with_conditions')", [$current->id])) {
-            $this->fail('status', 'Registra la revisión que aprueba el cambio (en «Revisiones») antes de aprobarlo.');
+        if (in_array($to, ['submitted', 'under_review'], true) && ! $this->value($values, $current, 'impact_level')) {
+            $this->fail('impact_level', 'Indica el nivel de impacto del cambio (bajo, medio o alto).');
+        }
+        if ($to === 'approved') {
+            // RN-MOC-01: no se aprueba sin todas las revisiones obligatorias resueltas a favor.
+            $pending = DB::select("select coalesce(review_area, 'sin especialidad') as area, decision from change_reviews where change_request_id = ? and deleted_at is null and is_required
+                                      and (decision is null or decision in ('reject', 'request_info'))", [$current->id]);
+            if ($pending) {
+                $this->fail('status', 'Faltan revisiones obligatorias resueltas a favor: '.implode(', ', array_unique(array_column($pending, 'area'))).'.');
+            }
+            if (! DB::selectOne("select 1 as ok from change_reviews where change_request_id = ? and deleted_at is null and decision in ('approve','approve_with_conditions')", [$current->id])) {
+                $this->fail('status', 'Registra la revisión que aprueba el cambio (en «Revisiones») antes de aprobarlo.');
+            }
+            // RN-MOC-03: un cambio de impacto alto lo aprueba gerencia.
+            if ($this->value($values, $current, 'impact_level') === 'high') {
+                $ctx = app(\App\Core\Tenancy\CompanyContext::class);
+                $base = DB::selectOne('select coalesce(base_role_code, code) as c from roles where code = ? and (account_id is null or account_id = (select account_id from companies where id = ?)) limit 1',
+                    [$ctx->roleCode, $current->company_id])?->c ?? $ctx->roleCode;
+                if ($base !== 'management') {
+                    $this->fail('status', 'Es un cambio de impacto alto: queda pendiente de la aprobación de gerencia.');
+                }
+                $values['management_approved_by'] = (string) auth()->id();
+                $values['management_approved_at'] = now()->toIso8601String();
+            }
+        }
+        // M-MOC §9: después de implementarlo se verifica su eficacia antes de cerrarlo.
+        if ($to === 'verified') {
+            if (! trim((string) $this->value($values, $current, 'verification_notes'))) {
+                $this->fail('verification_notes', 'Describe cómo se verificó que el cambio funciona y que los riesgos quedaron controlados.');
+            }
+            $values['verified_by'] = (string) auth()->id();
+            $values['verified_at'] = now()->toIso8601String();
         }
         // RN-MOC-02: si el cambio introduce peligros nuevos, se implementa con la versión del IPERC actualizada y aprobada.
         if ($to === 'implemented' && $this->value($values, $current, 'introduces_new_hazards')) {

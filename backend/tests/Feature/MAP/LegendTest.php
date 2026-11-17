@@ -23,6 +23,10 @@ it('devuelve la leyenda con la ubicación y el IPERC vinculado de cada pictogram
     $row = $this->postJson('/api/v1/records/IPC/iperc_rows', ['iperc_version_id' => $version, 'activity' => 'Troquelado', 'task' => 'Alimentar prensa',
         'hazard' => 'Partes móviles', 'risk' => 'Atrapamiento', 'probability_detail' => ['exposed_people' => 2, 'procedures' => 2, 'training' => 2, 'exposure' => 3],
         'severity_value' => 2], $h)->assertCreated()->json('data.id');
+    // RN-MAP-01: el peligro se liga a una fila del IPERC vigente.
+    \Illuminate\Support\Facades\DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    \Illuminate\Support\Facades\DB::update("update iperc_versions set status = 'current', approved_at = now() where id = ?", [$version]);
+    \Illuminate\Support\Facades\DB::update('update iperc_matrices set current_version_id = ? where id = ?', [$version, $matrix]);
 
     $this->postJson('/api/v1/records/MAP/risk_map_markers', ['risk_map_id' => $map, 'marker_type' => 'hazard', 'x_pct' => 20, 'y_pct' => 30, 'label' => 'Riesgo mecánico',
         'iperc_row_id' => $row], $h)->assertCreated();

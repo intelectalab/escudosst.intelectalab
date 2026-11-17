@@ -413,7 +413,7 @@ final class SstAlerts
             // M-MAG RN-MAG-07: punto sin medición en monitoring_frequency_months → Jefe SST (semanal mientras siga así).
             ['MAG', "select p.id, p.name as ref, '' as name, null as owner, current_date as due, 'point' as kind from monitoring_points p
                       where p.deleted_at is null and p.status = 'active'
-                        and not exists (select 1 from measurements m where m.monitoring_point_id = p.id and m.deleted_at is null
+                        and not exists (select 1 from measurements m where m.monitoring_point_id = p.id and m.deleted_at is null and m.status <> 'voided'
                                           and m.measured_at > now() - make_interval(months => ".self::days('monitoring_frequency_months', 12).'))
                         and p.created_at < now() - make_interval(months => '.self::days('monitoring_frequency_months', 12).')',
                 'mag.point_unmonitored', 'normal', 'Punto sin monitoreo', fn ($r) => "El punto «{$r->ref}» no tiene medición en el periodo que corresponde.", '/m/mag?t=monitoring_points&open=', ['sst_manager'], true],

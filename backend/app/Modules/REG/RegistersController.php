@@ -420,7 +420,7 @@ class RegistersController extends Controller
                     "select m.measured_at, t.name as agent, pt.name as point, m.value, m.unit, l.limit_value, l.unit as limit_unit, m.result, m.equipment, m.equipment_calibration_on
                        from measurements m left join agent_types t on t.id = m.agent_type_id left join monitoring_points pt on pt.id = m.monitoring_point_id
                        left join exposure_limits l on l.id = m.exposure_limit_id
-                      where m.deleted_at is null and (m.measured_at at time zone 'America/Lima')::date between ? and ?".$sf('pt.site_id').' order by m.measured_at', $range);
+                      where m.deleted_at is null and m.status <> 'voided' and (m.measured_at at time zone 'America/Lima')::date between ? and ?".$sf('pt.site_id').' order by m.measured_at', $range);
 
                 return [['Fecha', 'Agente', 'Punto', 'Valor', 'Unidad', 'Límite', 'Unidad del límite', 'Resultado', 'Equipo', 'Calibración'],
                     array_map(fn ($r) => [$dt($r->measured_at), $r->agent, $r->point, $r->value === null ? null : (float) $r->value, $r->unit,

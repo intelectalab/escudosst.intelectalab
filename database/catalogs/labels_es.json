@@ -1255,7 +1255,11 @@
   "previous_program_id": "Versión anterior",
   "previous_activity_id": "Actividad de la versión anterior",
   "evidence_record_type": "Registro del sistema (tipo)",
-  "evidence_record_id": "Registro del sistema"
+  "evidence_record_id": "Registro del sistema",
+  "impact_level": "Nivel de impacto",
+  "management_approved_by": "Aprobado por gerencia",
+  "management_approved_at": "Aprobado por gerencia el",
+  "unmarked_justifications": "Justificación de riesgos sin marcador"
  },
  "values": {
   "A": "Tipo A",
@@ -1954,7 +1958,13 @@
   "review_required": "Requiere revisión",
   "review_overdue": "Revisión vencida",
   "generated": "Generado",
-  "pending_signature": "Pendiente de firma"
+  "pending_signature": "Pendiente de firma",
+  "change_requests.impact_level.low": "Bajo",
+  "change_requests.impact_level.medium": "Medio",
+  "change_requests.impact_level.high": "Alto",
+  "measurements.status.approved": "Aprobada",
+  "measurements.status.voided": "Anulada",
+  "measurements.status.draft": "Borrador"
  },
  "tables": {
   "absences": "Ausencias",

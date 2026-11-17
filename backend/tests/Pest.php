@@ -178,3 +178,16 @@ function supervisorSignsForTests(string $companyId, string $table, string $id): 
                 values (?, ?, ?, ?, 'Supervisor SST', 'pin', 'x', 'x', now())", [$companyId, $table, $id, $uid]);
     DB::select("select set_config('app.company_id', '', false)");
 }
+
+/** M-IPC RN-IPC-07: sesión realizada del comité (para aprobar el IPERC con su acta en empresas con comité). */
+function heldMeetingForTests(string $companyId): string
+{
+    $prev = (string) DB::selectOne("select current_setting('app.company_id', true) as c")->c;
+    DB::select("select set_config('app.company_id', ?, false)", [$companyId]);
+    $c = DB::selectOne("select id from committees where deleted_at is null order by created_at limit 1")?->id
+        ?? DB::selectOne("insert into committees (company_id, committee_type, name, period_start_on, period_end_on, status) values (?, 'committee', 'Comité de prueba', current_date - 30, current_date + 700, 'active') returning id", [$companyId])->id;
+    $m = DB::selectOne("insert into committee_meetings (company_id, committee_id, meeting_type, scheduled_at, held_at, status) values (?, ?, 'ordinary', now(), now(), 'held') returning id", [$companyId, $c])->id;
+    DB::select("select set_config('app.company_id', ?, false)", [$prev]);
+
+    return $m;
+}

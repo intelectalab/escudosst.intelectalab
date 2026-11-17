@@ -3,6 +3,7 @@
 // Editores de los datos estructurados que la empresa configura en formularios del motor común:
 //  - permit_types.checklist: preguntas de verificación del PETAR (antes de iniciar / al cerrar).
 //  - permit_types.approval_chain: cadena de aprobación por rol, en orden (M-PTR: «Configura tipos y cadena de aprobación»).
+//  - risk_criteria.level_bands / severity_scale: bandas de nivel con su rango y color y escala de severidad (M-IPC SCR-IPC-02).
 
 import { Icon } from "@/components/ui/Icon";
 
@@ -20,6 +21,8 @@ const ROLES: [string, string][] = [
 export const JSON_EDITORS: Record<string, (p: { value: unknown; onChange: (v: unknown) => void; disabled: boolean }) => React.ReactElement> = {
   "permit_types.checklist": ChecklistEditor,
   "permit_types.approval_chain": ChainEditor,
+  "risk_criteria.level_bands": BandsEditor,
+  "risk_criteria.severity_scale": ScaleEditor,
 };
 
 const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : typeof v === "string" && v.trim().startsWith("[") ? (JSON.parse(v) as T[]) : []);
@@ -87,6 +90,55 @@ function ChainEditor({ value, onChange, disabled }: { value: unknown; onChange: 
           <Icon name="plus" size={15} /> Agregar paso
         </button>
       )}
+    </div>
+  );
+}
+
+type Band = { code?: string; label: string; min: number | ""; max: number | ""; color: "green" | "amber" | "red" };
+const BAND_COLORS: [Band["color"], string, string][] = [["green", "Verde", "bg-ok-soft text-ok"], ["amber", "Ámbar", "bg-amber-soft text-amber-ink"], ["red", "Rojo", "bg-bad-soft text-bad"]];
+
+function BandsEditor({ value, onChange, disabled }: { value: unknown; onChange: (v: unknown) => void; disabled: boolean }) {
+  const rows = arr<Band>(value);
+  const set = (i: number, patch: Partial<Band>) => onChange(rows.map((x, k) => (k === i ? { ...x, ...patch } : x)));
+  const num = (v: string): number | "" => (v === "" ? "" : Number(v));
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted">Cada banda va desde un puntaje hasta otro, sin cruzarse. Su color se usa en la matriz y en el mapa de calor.</p>
+      {rows.map((r, i) => {
+        const cls = BAND_COLORS.find((c) => c[0] === r.color)?.[2] ?? "bg-bg text-muted";
+        return (
+          <div key={i} className="flex flex-wrap items-center gap-2">
+            <input className="input !w-40" disabled={disabled} placeholder="Nombre (p. ej. Moderado)" aria-label="Nombre de la banda" value={r.label} onChange={(e) => set(i, { label: e.target.value })} />
+            <input type="number" className="input !w-20" disabled={disabled} aria-label="Desde" placeholder="Desde" value={r.min} onChange={(e) => set(i, { min: num(e.target.value) })} />
+            <input type="number" className="input !w-20" disabled={disabled} aria-label="Hasta" placeholder="Hasta" value={r.max} onChange={(e) => set(i, { max: num(e.target.value) })} />
+            <select className="input !w-auto" disabled={disabled} aria-label="Color" value={r.color} onChange={(e) => set(i, { color: e.target.value as Band["color"] })}>
+              {BAND_COLORS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}>{r.label || "Vista previa"}</span>
+            {!disabled && <button type="button" className="text-muted hover:text-bad" aria-label="Quitar banda" onClick={() => onChange(rows.filter((_, k) => k !== i))}><Icon name="trash" size={16} /></button>}
+          </div>
+        );
+      })}
+      {!disabled && <button type="button" className="text-sm font-semibold text-brand-strong" onClick={() => onChange([...rows, { label: "", min: "", max: "", color: "green" }])}>+ Agregar banda</button>}
+    </div>
+  );
+}
+
+type Scale = { value: number | ""; label: string };
+
+function ScaleEditor({ value, onChange, disabled }: { value: unknown; onChange: (v: unknown) => void; disabled: boolean }) {
+  const rows = arr<Scale>(value);
+  const set = (i: number, patch: Partial<Scale>) => onChange(rows.map((x, k) => (k === i ? { ...x, ...patch } : x)));
+  return (
+    <div className="space-y-2">
+      {rows.map((r, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-2">
+          <input type="number" className="input !w-20" disabled={disabled} aria-label="Valor" value={r.value} onChange={(e) => set(i, { value: e.target.value === "" ? "" : Number(e.target.value) })} />
+          <input className="input min-w-0 flex-1" disabled={disabled} aria-label="Descripción" placeholder="Descripción del nivel de severidad" value={r.label} onChange={(e) => set(i, { label: e.target.value })} />
+          {!disabled && <button type="button" className="text-muted hover:text-bad" aria-label="Quitar nivel" onClick={() => onChange(rows.filter((_, k) => k !== i))}><Icon name="trash" size={16} /></button>}
+        </div>
+      ))}
+      {!disabled && <button type="button" className="text-sm font-semibold text-brand-strong" onClick={() => onChange([...rows, { value: "", label: "" }])}>+ Agregar nivel</button>}
     </div>
   );
 }

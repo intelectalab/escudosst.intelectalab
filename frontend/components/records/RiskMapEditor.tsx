@@ -3,13 +3,20 @@
 // Mapa de riesgos: el plano de la sede con sus pictogramas (formas y colores de la NTP 399.010-1).
 // En borrador o revisión: toca el plano para poner un pictograma; tócalo para verlo o quitarlo.
 // La leyenda cuenta cada tipo y, al tocarla, resalta solo ese tipo. «Imprimir» saca el mapa para publicarlo.
+// M-MAP: el peligro se liga a una fila del IPERC vigente de la sede (RN-MAP-01) y el equipo de emergencia a su registro, que muestra
+// su estado (vencido en rojo, RN-MAP-08); los pictogramas se arrastran y el plano tiene zoom (SCR-MAP-02); se listan los riesgos
+// significativos sin pictograma con su justificación (RN-MAP-02) y se avisa si existe una versión vigente más reciente (RN-MAP-06).
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { API_URL, ApiError } from "@/lib/api";
+import { API_URL, ApiError, api } from "@/lib/api";
 import { records, type RecordRow } from "@/lib/records";
 import { session } from "@/lib/session";
 
-type Marker = { id: string; marker_type: string; label: string | null; x_pct: number; y_pct: number; notes: string | null };
+type Marker = { id: string; marker_type: string; label: string | null; x_pct: number; y_pct: number; notes: string | null; iperc_row_id: string | null; emergency_equipment_id: string | null };
+type CtxRow = { id: string; row_number: number; task: string; hazard: string | null; risk: string | null; is_significant: boolean; matrix: string; marked: boolean; justification: string | null };
+type CtxEq = { id: string; code: string; equipment_type: string; location_text: string | null; status: string; expired: boolean };
+type Ctx = { rows: CtxRow[]; unmarked: number; equipment: CtxEq[]; newer: { id: string; version_number: number; title: string } | null };
+const EQUIP_TYPES = new Set(["fire", "emergency_equipment", "first_aid"]);
 
 export const MARKER_TYPES: Record<string, string> = {
   hazard: "Peligro / riesgo",
@@ -71,7 +78,11 @@ export function RiskMapEditor({ row, canEdit, onSelect, focusId, onChange }: { r
   const [img, setImg] = useState<string | null>(null);
   const [markers, setMarkers] = useState<Marker[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<{ x: number; y: number; type: string; label: string } | null>(null);
+  const [draft, setDraft] = useState<{ x: number; y: number; type: string; label: string; row: string; eq: string } | null>(null);
+  const [ctx, setCtx] = useState<Ctx | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [drag, setDrag] = useState<{ id: string; moved: boolean } | null>(null);
+  const [just, setJust] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<Marker | null>(null);
   const [only, setOnly] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -83,6 +94,7 @@ export function RiskMapEditor({ row, canEdit, onSelect, focusId, onChange }: { r
       .list("MAP", "risk_map_markers", { filters: { risk_map_id: String(row.id) }, page: 1 })
       .then((r) => setMarkers(r.data.map((m) => ({ ...(m as unknown as Marker), x_pct: Number(m.x_pct), y_pct: Number(m.y_pct) }))))
       .catch((e: ApiError) => setError(e.detail ?? e.title));
+    api<{ data: Ctx }>(`/map/maps/${row.id}/context`, { withCompany: true }).then((r) => setCtx(r.data)).catch(() => setCtx(null));
   }, [row.id]);
 
   useEffect(() => {
@@ -107,13 +119,38 @@ export function RiskMapEditor({ row, canEdit, onSelect, focusId, onChange }: { r
     const x = Math.round(((e.clientX - r.left) / r.width) * 1000) / 10;
     const y = Math.round(((e.clientY - r.top) / r.height) * 1000) / 10;
     setSelected(null);
-    setDraft({ x, y, type: draft?.type ?? "hazard", label: "" });
+    setDraft({ x, y, type: draft?.type ?? "hazard", label: "", row: "", eq: "" });
+  }
+
+  function pos(e: React.PointerEvent) {
+    const r = box.current!.getBoundingClientRect();
+    return { x: Math.min(100, Math.max(0, Math.round(((e.clientX - r.left) / r.width) * 1000) / 10)), y: Math.min(100, Math.max(0, Math.round(((e.clientY - r.top) / r.height) * 1000) / 10)) };
+  }
+  function onMove(e: React.PointerEvent) {
+    if (!drag || !box.current) return;
+    const p = pos(e);
+    setMarkers((ms) => ms.map((m) => (m.id === drag.id ? { ...m, x_pct: p.x, y_pct: p.y } : m)));
+    if (!drag.moved) setDrag({ ...drag, moved: true });
+  }
+  async function onUp() {
+    if (!drag) return;
+    const m = markers.find((x) => x.id === drag.id);
+    setDrag(null);
+    if (!drag.moved || !m) return;
+    try { await records.update("MAP", "risk_map_markers", m.id, { x_pct: m.x_pct, y_pct: m.y_pct }); } catch (e) { setError(e instanceof ApiError ? (e.detail ?? e.title) : "No se pudo mover."); load(); }
+  }
+  async function saveJust(rowId: string) {
+    try {
+      await api(`/map/maps/${row.id}/justify`, { method: "POST", withCompany: true, body: { row_id: rowId, reason: just[rowId] ?? "" } });
+      load();
+    } catch (e) { setError(e instanceof ApiError ? (e.detail ?? e.title) : "No se pudo guardar."); }
   }
 
   async function saveDraft() {
     if (!draft) return;
     try {
-      await records.create("MAP", "risk_map_markers", { risk_map_id: row.id, marker_type: draft.type, x_pct: draft.x, y_pct: draft.y, label: draft.label || null });
+      await records.create("MAP", "risk_map_markers", { risk_map_id: row.id, marker_type: draft.type, x_pct: draft.x, y_pct: draft.y, label: draft.label || null,
+        iperc_row_id: draft.type === "hazard" ? draft.row || null : null, emergency_equipment_id: EQUIP_TYPES.has(draft.type) ? draft.eq || null : null });
       setDraft(null);
       load();
       onChange?.();
@@ -137,6 +174,10 @@ export function RiskMapEditor({ row, canEdit, onSelect, focusId, onChange }: { r
   if (!row.status) return null; // el registro aún se está cargando
 
   const counts = Object.keys(MARKER_TYPES).map((t) => [t, markers.filter((m) => m.marker_type === t).length] as const).filter(([, n]) => n > 0);
+  const eqOf = (m: Marker) => (m.emergency_equipment_id ? ctx?.equipment.find((x) => x.id === m.emergency_equipment_id) : undefined);
+  const expiredCount = markers.filter((m) => eqOf(m)?.expired).length;
+  const rowOf = (m: Marker) => (m.iperc_row_id ? ctx?.rows.find((x) => x.id === m.iperc_row_id) : undefined);
+  const pending = (ctx?.rows ?? []).filter((r) => r.is_significant && !r.marked);
 
   return (
     <section className="risk-map-print space-y-3 rounded-xl border border-line px-4 py-3 text-sm">
@@ -151,26 +192,42 @@ export function RiskMapEditor({ row, canEdit, onSelect, focusId, onChange }: { r
         <button onClick={() => window.print()} className="no-print rounded-lg border border-line px-3 py-1.5 font-semibold text-brand hover:border-brand">Imprimir mapa</button>
       </div>
       {error && <p className="no-print text-bad">{error}</p>}
+      {ctx?.newer && (
+        <p className="rounded-lg bg-amber-soft px-3 py-2 text-amber-ink">Este mapa no es la versión vigente. Hay una más reciente: <a className="font-semibold underline" href={`/m/map?mapa=${ctx.newer.id}`}>versión {ctx.newer.version_number}</a>.</p>
+      )}
+      {img && (
+        <div className="no-print flex items-center gap-2 text-xs">
+          <span className="text-muted">Zoom</span>
+          <button type="button" className="rounded border border-line px-2 font-bold" aria-label="Alejar" onClick={() => setZoom((z) => Math.max(1, z - 0.5))}>−</button>
+          <span>{Math.round(zoom * 100)} %</span>
+          <button type="button" className="rounded border border-line px-2 font-bold" aria-label="Acercar" onClick={() => setZoom((z) => Math.min(3, z + 0.5))}>+</button>
+          {editable && <span className="text-muted">· Arrastra un pictograma para moverlo.</span>}
+        </div>
+      )}
       {!row.plan_file_id && <p className="text-muted">Sube primero el plano (imagen PNG o JPG) en «Plano» y guarda.</p>}
 
       {img && (
-        <div ref={box} onClick={place} className={`relative w-full select-none overflow-hidden rounded-lg border border-line ${editable ? "cursor-crosshair" : ""}`}>
+        <div className="overflow-auto rounded-lg border border-line">
+        <div ref={box} onClick={(e) => { if (!drag) place(e); }} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
+          style={{ width: `${zoom * 100}%` }} className={`relative select-none overflow-hidden ${editable ? "cursor-crosshair" : ""}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={img} alt={`Plano de ${String(row.title ?? "la sede")}`} className="block w-full" draggable={false} />
           {markers.map((m) => (
             <button
               key={m.id}
               type="button"
+              onPointerDown={(e) => { if (editable) { e.stopPropagation(); setDrag({ id: m.id, moved: false }); } }}
               onClick={(e) => {
                 e.stopPropagation();
+                if (drag?.moved) return;
                 setDraft(null);
                 setConfirmDelete(false);
                 setSelected(m);
                 onSelect?.(m.id);
               }}
-              title={`${MARKER_TYPES[m.marker_type]}${m.label ? `: ${m.label}` : ""}`}
-              aria-label={`${MARKER_TYPES[m.marker_type]}${m.label ? `: ${m.label}` : ""}`}
-              className={`absolute -translate-x-1/2 -translate-y-1/2 rounded drop-shadow transition ${only && only !== m.marker_type ? "opacity-20" : ""} ${selected?.id === m.id || focusId === m.id ? "ring-2 ring-brand" : ""}`}
+              title={`${MARKER_TYPES[m.marker_type]}${m.label ? `: ${m.label}` : ""}${eqOf(m)?.expired ? " (vencido o fuera de servicio)" : ""}`}
+              aria-label={`${MARKER_TYPES[m.marker_type]}${m.label ? `: ${m.label}` : ""}${eqOf(m)?.expired ? " (vencido o fuera de servicio)" : ""}`}
+              className={`absolute -translate-x-1/2 -translate-y-1/2 touch-none rounded drop-shadow transition ${only && only !== m.marker_type ? "opacity-20" : ""} ${selected?.id === m.id || focusId === m.id ? "ring-2 ring-brand" : eqOf(m)?.expired ? "ring-4 ring-bad" : ""}`}
               style={{ left: `${m.x_pct}%`, top: `${m.y_pct}%` }}
             >
               <Pictogram type={m.marker_type} />
@@ -181,6 +238,7 @@ export function RiskMapEditor({ row, canEdit, onSelect, focusId, onChange }: { r
               <Pictogram type={draft.type} />
             </span>
           )}
+        </div>
         </div>
       )}
 
@@ -196,7 +254,25 @@ export function RiskMapEditor({ row, canEdit, onSelect, focusId, onChange }: { r
             Qué indica (opcional)
             <input className="filter-control" value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} placeholder="Ej.: Riesgo eléctrico – tablero" />
           </label>
-          <button onClick={saveDraft} className="rounded-lg bg-brand px-4 py-2 font-semibold text-white">Poner pictograma</button>
+          {draft.type === "hazard" && (
+            <label className="flex min-w-[16rem] flex-1 flex-col gap-1 text-xs font-semibold text-muted">
+              Fila del IPERC vigente *
+              <select className="filter-control" value={draft.row} onChange={(e) => setDraft({ ...draft, row: e.target.value })}>
+                <option value="">Elige el peligro del IPERC…</option>
+                {(ctx?.rows ?? []).map((r) => <option key={r.id} value={r.id}>{r.matrix} · {r.row_number}. {r.hazard ?? r.task}{r.is_significant ? " (significativo)" : ""}</option>)}
+              </select>
+            </label>
+          )}
+          {EQUIP_TYPES.has(draft.type) && (ctx?.equipment.length ?? 0) > 0 && (
+            <label className="flex min-w-[12rem] flex-col gap-1 text-xs font-semibold text-muted">
+              Equipo
+              <select className="filter-control" value={draft.eq} onChange={(e) => setDraft({ ...draft, eq: e.target.value })}>
+                <option value="">Sin vincular</option>
+                {ctx!.equipment.map((x) => <option key={x.id} value={x.id}>{x.code}{x.location_text ? ` · ${x.location_text}` : ""}{x.expired ? " (vencido)" : ""}</option>)}
+              </select>
+            </label>
+          )}
+          <button onClick={saveDraft} disabled={draft.type === "hazard" && !draft.row} className="rounded-lg bg-brand px-4 py-2 font-semibold text-white disabled:opacity-50">Poner pictograma</button>
           <button onClick={() => setDraft(null)} className="rounded-lg border border-line px-4 py-2 font-semibold">Cancelar</button>
         </div>
       )}
@@ -207,6 +283,8 @@ export function RiskMapEditor({ row, canEdit, onSelect, focusId, onChange }: { r
           <div className="flex-1">
             <p className="font-semibold">{MARKER_TYPES[selected.marker_type]}</p>
             <p className="text-muted">{selected.label || "Sin descripción"}</p>
+            {rowOf(selected) && <p className="text-xs">IPERC {rowOf(selected)!.matrix} · fila {rowOf(selected)!.row_number}: {rowOf(selected)!.hazard} → {rowOf(selected)!.risk}</p>}
+            {eqOf(selected) && <p className={`text-xs ${eqOf(selected)!.expired ? "font-semibold text-bad" : "text-ok"}`}>Equipo {eqOf(selected)!.code}: {eqOf(selected)!.expired ? "vencido o fuera de servicio" : "vigente"}</p>}
           </div>
           {editable && !confirmDelete && <button onClick={() => setConfirmDelete(true)} className="rounded-lg border border-line px-3 py-1.5 font-semibold text-bad">Quitar</button>}
           {editable && confirmDelete && (
@@ -229,6 +307,23 @@ export function RiskMapEditor({ row, canEdit, onSelect, focusId, onChange }: { r
             </button>
           ))}
           {only && <button onClick={() => setOnly(null)} className="no-print text-xs font-semibold text-brand hover:underline">Ver todos</button>}
+          {expiredCount > 0 && <span className="flex items-center gap-2 rounded-lg border border-bad px-2 py-1 text-bad"><span className="inline-block h-3 w-3 rounded-full ring-4 ring-bad" /> Equipos vencidos o fuera de servicio <b>{expiredCount}</b></span>}
+        </div>
+      )}
+
+      {editable && pending.length > 0 && (
+        <div className="no-print rounded-lg border border-amber-ink/30 bg-amber-soft/40 p-3">
+          <p className="font-semibold text-amber-ink">Riesgos significativos del IPERC sin pictograma ({pending.filter((r) => !r.justification).length} sin justificar)</p>
+          <p className="mb-2 text-xs text-muted">Para aprobar el mapa, ubica cada uno o escribe por qué no va en el plano.</p>
+          <ul className="space-y-1">
+            {pending.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 flex-1">{r.matrix} · {r.row_number}. {r.hazard} → {r.risk}</span>
+                <input className="filter-control !w-64" placeholder="Justificación" value={just[r.id] ?? r.justification ?? ""} onChange={(e) => setJust({ ...just, [r.id]: e.target.value })} />
+                <button type="button" className="rounded-lg border border-line px-2 py-1 text-xs font-semibold" onClick={() => saveJust(r.id)}>Guardar</button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </section>

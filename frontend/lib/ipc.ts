@@ -100,6 +100,7 @@ export type Workspace = {
   /** Trabajadores activos del puesto de la matriz (o el mayor «expuestos» de las filas). */
   exposed_workers?: number | null;
   can: { edit: boolean; controls: boolean; submit: boolean; approve: boolean; new_version: boolean; export: boolean };
+  approval?: { sst_model: string | null; meetings: { id: string; number: number | null; held_at: string }[] };
 };
 
 export const VERSION_STATUS: Record<string, string> = {
@@ -136,8 +137,8 @@ export const ipc = {
   submit: (version: string, participants: { name: string; role: string }[]) =>
     api<void>(`/ipc/versions/${version}/submit`, { method: "POST", body: { participants }, withCompany: true }),
   sendBack: (version: string, comment: string) => api<void>(`/ipc/versions/${version}/return`, { method: "POST", body: { comment }, withCompany: true }),
-  approve: (version: string) =>
-    api<{ data: { next_review_on: string; corrective_actions: number } }>(`/ipc/versions/${version}/approve`, { method: "POST", withCompany: true }),
+  approve: (version: string, committee_meeting_id?: string) =>
+    api<{ data: { next_review_on: string; corrective_actions: number } }>(`/ipc/versions/${version}/approve`, { method: "POST", body: committee_meeting_id ? { committee_meeting_id } : {}, withCompany: true }),
 };
 
 /** Descarga la matriz (PDF o Excel) con la sesión y la empresa activas. */
