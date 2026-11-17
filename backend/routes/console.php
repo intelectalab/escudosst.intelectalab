@@ -311,3 +311,14 @@ Artisan::command('escudo:kpi-snapshots', function (\App\Modules\DSH\Services\Kpi
 })->purpose('Guarda el valor diario de los indicadores para su historia');
 
 Schedule::command('escudo:kpi-snapshots')->dailyAt('01:30')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:kpi-snapshots');
+
+/*
+| M-USR: accesos con fecha de vencimiento que ya vencieron: la membresía pasa a «vencida» (queda en la bitácora) y,
+| si la persona no tiene otra empresa activa, se cierran sus sesiones abiertas.
+| Uso: php artisan escudo:access-expiry
+*/
+Artisan::command('escudo:access-expiry', function (\App\Modules\USR\Services\AccessExpiry $expiry) {
+    $this->info('Accesos vencidos cerrados: '.$expiry->run());
+})->purpose('Cierra los accesos vencidos y sus sesiones');
+
+Schedule::command('escudo:access-expiry')->hourlyAt(5)->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:access-expiry');

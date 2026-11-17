@@ -137,6 +137,35 @@ class CompanyUsersController extends Controller
         return response()->json(['data' => ['id' => $membership, 'status' => $active ? 'active' : 'invited']], 201);
     }
 
+    /**
+     * POST /company/users/bulk {worker_ids[], role_code} — invita a varios trabajadores a la vez como usuarios, con el correo de su
+     * ficha y el mismo rol. Devuelve por trabajador si se invitó o por qué no (sin correo, ya tiene acceso…).
+     */
+    public function bulk(Request $request): JsonResponse
+    {
+        $this->can('usr.memberships.create');
+        $d = $request->validate(['worker_ids' => ['required', 'array', 'min:1', 'max:200'], 'worker_ids.*' => ['uuid'], 'role_code' => ['required', 'string', 'max:60']],
+            ['worker_ids.required' => 'Elige a los trabajadores.']);
+        $out = [];
+        foreach (DB::select('select id, full_name, personal_email from workers where id = any(?::uuid[]) and deleted_at is null', ['{'.implode(',', array_unique($d['worker_ids'])).'}']) as $w) {
+            $email = $w->personal_email ? \App\Modules\TRB\WorkerAppAccess::decrypt($w->personal_email) : null;
+            if (! $email || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $out[] = ['worker_id' => $w->id, 'name' => $w->full_name, 'ok' => false, 'reason' => 'Sin correo en su ficha'];
+                continue;
+            }
+            try {
+                $sub = Request::create('/', 'POST', ['email' => $email, 'full_name' => $w->full_name, 'role_code' => $d['role_code'], 'worker_id' => $w->id]);
+                $r = $this->store($sub)->getData(true)['data'];
+                $out[] = ['worker_id' => $w->id, 'name' => $w->full_name, 'ok' => true, 'status' => $r['status']];
+            } catch (ApiProblem $e) {
+                $errs = $e->extra['errors'] ?? null;
+                $out[] = ['worker_id' => $w->id, 'name' => $w->full_name, 'ok' => false, 'reason' => $errs ? collect($errs)->flatten()->first() : $e->detail];
+            }
+        }
+
+        return response()->json(['data' => $out, 'invited' => count(array_filter($out, fn ($o) => $o['ok']))], 201);
+    }
+
     public function update(Request $request, string $membership): JsonResponse
     {
         $this->can('usr.memberships.update');

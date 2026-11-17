@@ -150,6 +150,10 @@ final class KpiService
 
     private function compute(string $key): array
     {
+        if ($this->areas && ! in_array($key, self::AREA_KPIS, true)) {
+            return ['value' => null, 'numerator' => null, 'denominator' => null, 'label' => 'No aplica', 'basis' => 'Este indicador es de toda la empresa: no se calcula por área.'];
+        }
+
         return match ($key) {
             'passt_progress_pct' => $this->ratio(
                 "select count(*) filter (where a.status = 'done') as num, count(*) as den from program_activities a join annual_programs p on p.id = a.program_id
@@ -161,15 +165,15 @@ final class KpiService
                 'capacitaciones del programa realizadas'),
             'inspection_compliance_pct' => $this->ratio(
                 "select count(*) filter (where status in ('completed','closed')) as num, count(*) as den from inspections
-                  where deleted_at is null and status <> 'cancelled' and scheduled_on between ? and ?".$this->siteSql('site_id'), [$this->from, $this->to],
+                  where deleted_at is null and status <> 'cancelled' and scheduled_on between ? and ?".$this->siteSql('site_id').$this->areaSql('area_id'), [$this->from, $this->to],
                 'inspecciones ejecutadas de las programadas a la fecha'),
             'corrective_actions_overdue_count' => $this->count(
                 "select count(*) filter (where due_on < ?) as num, count(*) as den from corrective_actions
-                  where deleted_at is null and status in ('open','in_progress','overdue')".$this->siteSql('site_id'), [$this->today],
+                  where deleted_at is null and status in ('open','in_progress','overdue')".$this->siteSql('site_id').$this->areaSql('area_id'), [$this->today],
                 'acciones abiertas con la fecha límite pasada'),
             'corrective_actions_on_time_pct' => $this->ratio(
                 "select count(*) filter (where status in ('pending_verification','verified') and completed_at::date <= due_on) as num, count(*) as den
-                   from corrective_actions where deleted_at is null and status <> 'cancelled' and due_on between ? and ?".$this->siteSql('site_id'), [$this->from, $this->to],
+                   from corrective_actions where deleted_at is null and status <> 'cancelled' and due_on between ? and ?".$this->siteSql('site_id').$this->areaSql('area_id'), [$this->from, $this->to],
                 'acciones cerradas dentro de su plazo'),
             'legal_compliance_pct' => $this->ratio(
                 // RN-MRL-05: un requisito «requiere revisión» por cambio normativo no cuenta como cumplido hasta revisarse.
@@ -184,7 +188,7 @@ final class KpiService
                 'ítems cumplidos en la última línea base'),
             'ppe_compliance_pct' => $this->ratio(
                 "with req as (select w.id as worker_id, r.ppe_item_id from workers w join ppe_position_requirements r on r.position_id = w.current_position_id and r.deleted_at is null and r.is_mandatory
-                               where w.deleted_at is null and w.status = 'active'".$this->siteSql('w.current_site_id').")
+                               where w.deleted_at is null and w.status = 'active'".$this->siteSql('w.current_site_id').$this->areaSql('w.current_area_id').")
                  select count(*) filter (where ok) as num, count(*) as den from (
                    select q.worker_id, bool_and(exists (select 1 from ppe_deliveries d where d.worker_id = q.worker_id and d.ppe_item_id = q.ppe_item_id
                             and d.deleted_at is null and d.status = 'delivered' and (d.expires_on is null or d.expires_on >= ?))) as ok
@@ -193,16 +197,16 @@ final class KpiService
             'emo_valid_pct' => $this->health($this->ratio(
                 "select count(*) filter (where f.status in ('fit','fit_with_restrictions') and (f.valid_until is null or f.valid_until >= ?)) as num, count(*) as den
                    from workers w left join fitness_status f on f.worker_id = w.id and f.is_current and f.deleted_at is null
-                  where w.deleted_at is null and w.status = 'active'".$this->siteSql('w.current_site_id'), [$this->today],
+                  where w.deleted_at is null and w.status = 'active'".$this->siteSql('w.current_site_id').$this->areaSql('w.current_area_id'), [$this->today],
                 'trabajadores activos con aptitud médica vigente')),
             'events_notified_on_time_pct' => $this->ratio(
                 "select count(*) filter (where n.status in ('sent','acknowledged') and n.notified_at <= n.deadline_at) as num, count(*) as den
                    from event_notifications n join sst_events e on e.id = n.event_id
-                  where n.deleted_at is null and n.status <> 'not_required' and n.deadline_at::date between ? and ?".$this->siteSql('e.site_id'), [$this->from, $this->to],
+                  where n.deleted_at is null and n.status <> 'not_required' and n.deadline_at::date between ? and ?".$this->siteSql('e.site_id').$this->areaSql('e.area_id'), [$this->from, $this->to],
                 'notificaciones obligatorias hechas dentro del plazo'),
             'frequency_index', 'severity_index', 'accident_rate' => $this->index($key),
             'substandard_reports_count' => $this->count(
-                "select count(*) as num, null as den from substandard_reports where deleted_at is null and reported_at::date between ? and ?".$this->siteSql('site_id'), [$this->from, $this->to],
+                "select count(*) as num, null as den from substandard_reports where deleted_at is null and reported_at::date between ? and ?".$this->siteSql('site_id').$this->areaSql('area_id'), [$this->from, $this->to],
                 'reportes de actos y condiciones subestándar en el año'),
             'credentials_enabled_pct' => $this->ratio(
                 "select count(*) filter (where status = 'active' and (expires_on is null or expires_on >= ?)) as num, count(*) as den from credentials
@@ -297,6 +301,30 @@ final class KpiService
         return $d->direction === 'higher_better'
             ? ($v >= $green ? 'green' : ($v >= $amber ? 'amber' : 'red'))
             : ($v <= $green ? 'green' : ($v <= $amber ? 'amber' : 'red'));
+    }
+
+    /** Áreas del jefe de área (con sus subáreas): sus indicadores se calculan solo con los registros de esas áreas. @var list<string> */
+    private array $areas = [];
+
+    /** Indicadores que se pueden acotar a un área (tienen el área en sus registros); los demás no aplican para el área. */
+    private const AREA_KPIS = ['inspection_compliance_pct', 'corrective_actions_overdue_count', 'corrective_actions_on_time_pct', 'ppe_compliance_pct', 'emo_valid_pct',
+        'events_notified_on_time_pct', 'substandard_reports_count'];
+
+    /** @param list<string> $areas */
+    public function forAreas(array $areas): self
+    {
+        $this->areas = array_values(array_filter($areas, fn ($a) => \Illuminate\Support\Str::isUuid($a)));
+
+        return $this;
+    }
+
+    private function areaSql(string $col): string
+    {
+        if (! $this->areas) {
+            return '';
+        }
+
+        return " and {$col} = any('{".implode(',', $this->areas)."}'::uuid[])";
     }
 
     private function siteSql(string $col, bool $orNull = false): string

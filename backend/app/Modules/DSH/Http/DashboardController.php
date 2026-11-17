@@ -42,16 +42,39 @@ class DashboardController extends Controller
             $site = null;
         }
 
-        $kpis = $this->kpis->overview($year, $site);
+        // M-DSH: el jefe de área ve solo los indicadores de su área (y subáreas) según el alcance de su acceso.
+        $areas = $this->leadAreas();
+        $kpis = $this->kpis->forAreas($areas)->overview($year, $site);
 
         return response()->json(['data' => [
             'year' => $year,
             'site_id' => $site,
+            'areas' => $areas ? DB::select('select id, name from areas where id = any(?::uuid[]) order by name', ['{'.implode(',', $areas).'}']) : null,
             'kpis' => $kpis,
             'alerts' => $year === $current ? $this->kpis->alerts() : [],
             'counts' => $this->kpis->counts(),
             'sites' => DB::select("select id, name from sites where deleted_at is null and status = 'active' order by is_main desc, name"),
         ]]);
+    }
+
+    /** Áreas del alcance del jefe de área, con sus subáreas; vacío para los demás roles. @return list<string> */
+    private function leadAreas(): array
+    {
+        $ctx = app(\App\Core\Tenancy\CompanyContext::class);
+        $base = DB::selectOne('select coalesce(r.base_role_code, r.code) as base from memberships m join roles r on r.id = m.role_id where m.id = ?', [$ctx->membershipId])?->base;
+        if ($base !== 'area_lead') {
+            return [];
+        }
+        $roots = array_column(DB::select("select area_id from membership_scopes where membership_id = ? and scope_type = 'area' and area_id is not null and deleted_at is null", [$ctx->membershipId]), 'area_id');
+        if (! $roots) {
+            $roots = array_column(DB::select('select a.id from areas a join workers w on w.id = a.manager_worker_id join memberships m on m.worker_id = w.id where m.id = ? and a.deleted_at is null', [$ctx->membershipId]), 'id');
+        }
+        if (! $roots) {
+            return ['00000000-0000-0000-0000-000000000000'];   // sin área asignada: no ve datos de otras áreas
+        }
+
+        return array_column(DB::select('with recursive t as (select id from areas where id = any(?::uuid[]) and deleted_at is null
+                                          union select a.id from areas a join t on a.parent_area_id = t.id where a.deleted_at is null) select id from t', ['{'.implode(',', $roots).'}']), 'id');
     }
 
     public function group(Request $request): JsonResponse

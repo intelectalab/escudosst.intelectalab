@@ -65,6 +65,7 @@ Route::middleware(['auth:sanctum', 'company', 'module:USR'])->prefix('company')-
     Route::delete('roles/{role}', [CustomRolesController::class, 'destroy'])->whereUuid('role');
     Route::get('scope-options', [RolesMatrixController::class, 'scopeOptions']);
     Route::post('users', [CompanyUsersController::class, 'store'])->middleware('throttle:login');
+    Route::post('users/bulk', [CompanyUsersController::class, 'bulk'])->middleware('throttle:10,1');
     Route::patch('users/{membership}', [CompanyUsersController::class, 'update'])->whereUuid('membership');
     Route::post('users/{membership}/resend', [CompanyUsersController::class, 'resend'])->whereUuid('membership')->middleware('throttle:login');
 });

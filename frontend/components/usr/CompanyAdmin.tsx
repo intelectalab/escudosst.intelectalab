@@ -67,6 +67,7 @@ export function CompanyUsers({ readOnly }: { readOnly: boolean }) {
   const [roleFilter, setRoleFilter] = useState("");
   const [tab, setTab] = useState<"users" | "roles" | "matrix">("users");
   const [inviting, setInviting] = useState(false);
+  const [bulk, setBulk] = useState(false);
   const [editing, setEditing] = useState<{ m: Member; role?: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -101,9 +102,12 @@ export function CompanyUsers({ readOnly }: { readOnly: boolean }) {
           <p className="text-sm text-muted">Invita a las personas con su rol. Cada rol ve y hace solo lo que le corresponde.</p>
         </div>
         {!readOnly && tab === "users" && (
-          <Button variant="primary" icon="plus" onClick={() => setInviting(true)}>
-            Invitar usuario
-          </Button>
+          <span className="flex flex-wrap gap-2">
+            <Button icon="people" onClick={() => setBulk(true)}>Invitar trabajadores</Button>
+            <Button variant="primary" icon="plus" onClick={() => setInviting(true)}>
+              Invitar usuario
+            </Button>
+          </span>
         )}
       </div>
       <div role="tablist" aria-label="Usuarios y roles" className="flex gap-1 border-b border-line">
@@ -210,6 +214,7 @@ export function CompanyUsers({ readOnly }: { readOnly: boolean }) {
         <EditAccessModal member={editing.m} roleCode={editing.role} roleBase={roles.find((r) => r.code === editing.role)?.base_role_code} onClose={() => setEditing(null)} onDone={(msg) => { setEditing(null); setToast(msg); load(); }} />
       )}
       {inviting && <InviteModal roles={roles} onClose={() => setInviting(false)} onDone={(msg) => { setInviting(false); setToast(msg); load(); }} />}
+      {bulk && <BulkInviteModal roles={roles} onClose={() => setBulk(false)} onDone={(msg) => { setBulk(false); setToast(msg); load(); }} />}
       {toast && <Toast message={toast.replace(/^⚠ /, "")} tone={toast.startsWith("⚠") ? "bad" : "ok"} onClose={() => setToast(null)} />}
     </section>
   );
@@ -616,5 +621,41 @@ function SensitiveAudit({ filters }: { filters: AuditFilters }) {
       )}
       <Pager meta={meta} page={page} setPage={setPage} />
     </div>
+  );
+}
+
+/** M-USR: invitar a varios trabajadores a la vez con el correo de su ficha y un mismo rol. */
+function BulkInviteModal({ roles, onClose, onDone }: { roles: Role[]; onClose: () => void; onDone: (msg: string) => void }) {
+  const [workers, setWorkers] = useState<{ id: string; full_name: string }[]>([]);
+  const [q, setQ] = useState("");
+  const [picked, setPicked] = useState<string[]>([]);
+  const [role, setRole] = useState("worker");
+  const [result, setResult] = useState<{ name: string; ok: boolean; reason?: string }[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api<{ data: { id: string; full_name: string }[] }>(`/records/TRB/workers?per_page=200${q ? `&q=${encodeURIComponent(q)}` : ""}`, { withCompany: true }).then((r) => setWorkers(r.data)).catch(() => setWorkers([]));
+  }, [q]);
+  const send = async () => {
+    setBusy(true);
+    try {
+      const r = await api<{ data: { name: string; ok: boolean; reason?: string }[]; invited: number }>("/company/users/bulk", { method: "POST", withCompany: true, body: { worker_ids: picked, role_code: role } });
+      setResult(r.data);
+      if (r.data.every((x) => x.ok)) onDone(`${r.invited} trabajador(es) invitado(s).`);
+    } catch (e) { setResult([{ name: "", ok: false, reason: (e as ApiError).detail ?? (e as ApiError).title }]); } finally { setBusy(false); }
+  };
+  return (
+    <Modal title="Invitar trabajadores" subtitle="Les llega un correo al correo de su ficha para crear su contraseña." icon="people" size="sm" onClose={onClose}
+      footer={<><Button onClick={onClose}>Cerrar</Button><Button variant="primary" loading={busy} disabled={!picked.length} onClick={send}>Invitar {picked.length || ""}</Button></>}>
+      <div className="space-y-3 text-sm">
+        <label className="block text-xs font-semibold">Rol
+          <select className="input mt-1" value={role} onChange={(e) => setRole(e.target.value)}>{roles.map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}</select>
+        </label>
+        <input className="input" placeholder="Buscar trabajador" value={q} onChange={(e) => setQ(e.target.value)} />
+        <ul className="max-h-60 space-y-1 overflow-auto">{workers.map((w) => (
+          <li key={w.id}><label className="flex items-center gap-2"><input type="checkbox" checked={picked.includes(w.id)} onChange={() => setPicked(picked.includes(w.id) ? picked.filter((x) => x !== w.id) : [...picked, w.id])} />{w.full_name}</label></li>
+        ))}</ul>
+        {result && <ul className="space-y-0.5">{result.map((r, i) => <li key={i} className={r.ok ? "text-ok" : "text-bad"}>{r.name}{r.name ? ": " : ""}{r.ok ? "invitado" : r.reason}</li>)}</ul>}
+      </div>
+    </Modal>
   );
 }

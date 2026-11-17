@@ -47,6 +47,7 @@ type Overview = {
   alerts: { module: string; tone: "bad" | "amber"; count: number; text: string; link: Link_ }[];
   counts: { workers: number; sites: number; positions: number };
   sites: { id: string; name: string }[];
+  areas?: { id: string; name: string }[] | null;
 };
 
 const COLORS = {
@@ -104,6 +105,9 @@ export function Dashboard() {
   return (
     <div className="space-y-4">
       <Onboarding />
+      {data?.areas && data.areas.length > 0 && (
+        <p role="status" className="rounded-xl bg-brand-soft px-4 py-2 text-sm">Indicadores de tu área: <b>{data.areas.map((x) => x.name).join(", ")}</b>. Los de toda la empresa no se muestran por área.</p>
+      )}
       {/* Tarjeta «Elección del comité» del inicio del trabajador (docs/07 §5.2): solo con votación abierta. */}
       {modules.some((m) => m.code === "COM" && m.role_can_use) && <ElectionHomeCard />}
       {/* Cabecera plana (prototipo m-inicio.js) */}
