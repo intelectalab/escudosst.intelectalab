@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api, type ApiError } from "@/lib/api";
-import { uploadFile } from "@/lib/records";
+import { downloadFile, uploadFile } from "@/lib/records";
 import { Button } from "@/components/ui/Button";
 import { Card } from "./Summary";
 
@@ -89,6 +89,47 @@ export function HomSelfAssessment() {
           </li>
         ))}
       </ul>
+    </Card>
+  );
+}
+
+// RISST en el portal del contratista (M-RIS RN-RIS-08): descarga del reglamento vigente y registro del cargo firmado de cada trabajador.
+type RisW = { id: string; name: string; document_number: string; status: string | null; delivered_on: string | null };
+type RisData = { current: { id: string; version_number: number; title: string; effective_on: string | null; has_file: boolean } | null; workers: RisW[]; can_register: boolean };
+
+export function CtrRisstCard() {
+  const [d, setD] = useState<RisData | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const load = useCallback(() => api<{ data: RisData }>("/ctr/portal/risst", { withCompany: true }).then((r) => setD(r.data)).catch(() => setD(null)), []);
+  useEffect(() => { void load(); }, [load]);
+  if (!d?.current) return null;
+  const register = async (w: RisW, f: File) => {
+    setMsg(null);
+    try {
+      const up = await uploadFile(f, "RIS");
+      await api("/ctr/portal/risst/deliveries", { method: "POST", withCompany: true, body: { contractor_worker_id: w.id, acknowledgement_file_id: up.id } });
+      setMsg({ ok: true, text: `Cargo de ${w.name} registrado.` });
+      void load();
+    } catch (e) { const x = e as ApiError; setMsg({ ok: false, text: x.errors ? Object.values(x.errors).flat()[0] : (x.detail ?? x.title) }); }
+  };
+  return (
+    <Card title="Reglamento Interno de SST (RISST)" action={d.current.has_file ? <Button size="sm" icon="download" onClick={() => downloadFile("/ctr/portal/risst/file", `RISST-v${d.current?.version_number}.pdf`)}>Descargar</Button> : undefined}>
+      {msg && <p role={msg.ok ? "status" : "alert"} className={`mb-2 text-sm ${msg.ok ? "text-ok" : "text-bad"}`}>{msg.text}</p>}
+      <p className="mb-2 text-sm">{d.current.title} · versión {d.current.version_number} · vigente desde {fmt(d.current.effective_on)}. Entrégalo a tu personal y sube el cargo firmado de cada uno.</p>
+      {d.workers.length === 0 ? <p className="text-sm text-muted">No tienes trabajadores activos registrados.</p> : (
+        <table className="w-full text-left text-sm">
+          <thead className="border-b border-line text-xs text-muted"><tr><th className="py-1">Trabajador</th><th>Documento</th><th>Cargo</th></tr></thead>
+          <tbody>{d.workers.map((w) => (
+            <tr key={w.id} className="border-b border-line last:border-0">
+              <td className="py-1.5">{w.name}</td><td>{w.document_number}</td>
+              <td>{w.status && w.status !== "pending" ? <span className="text-ok">Entregado {fmt(w.delivered_on)}</span> : d.can_register ? (
+                <label className="cursor-pointer text-xs font-semibold text-brand-strong underline">Subir cargo firmado
+                  <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void register(w, f); }} /></label>
+              ) : <span className="text-muted">Pendiente</span>}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      )}
     </Card>
   );
 }

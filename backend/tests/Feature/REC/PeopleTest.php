@@ -93,7 +93,7 @@ it('suma las ejecuciones del presupuesto aprobado', function () {
     $l = $this->postJson('/api/v1/records/PRE/budget_lines', ['budget_id' => $b, 'category' => 'ppe', 'description' => 'Cascos y lentes', 'planned_amount' => 5000], $h)
         ->assertCreated()->json('data.id');
     $this->postJson('/api/v1/records/PRE/budget_executions', ['budget_line_id' => $l, 'amount' => 1200, 'description' => 'Compra de cascos'], $h)->assertStatus(409);
-    $this->patchJson("/api/v1/records/PRE/budgets/{$b}", ['status' => 'approved'], $h)->assertOk();
+    approveBudgetForTests($this, $b, $h);
     $this->postJson('/api/v1/records/PRE/budget_executions', ['budget_line_id' => $l, 'amount' => 1200, 'description' => 'Compra de cascos'], $h)->assertCreated();
     $this->getJson("/api/v1/records/PRE/budgets/{$b}", $h)->assertJsonPath('data.total_planned', 5000)->assertJsonPath('data.total_executed', 1200)
         ->assertJsonPath('data.status', 'in_execution');

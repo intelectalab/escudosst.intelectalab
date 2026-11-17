@@ -4918,6 +4918,11 @@
      "label": "Obsoleto desde",
      "readonly": true,
      "type": "datetime"
+    },
+    {
+     "name": "content_outline",
+     "label": "Secciones mínimas del art. 74",
+     "type": "json"
     }
    ]
   },
@@ -4960,7 +4965,6 @@
      "label": "Trabajador",
      "type": "ref",
      "ref": "workers",
-     "required": true,
      "list": true
     },
     {
@@ -5034,6 +5038,12 @@
      "name": "void_reason",
      "label": "Motivo de anulación",
      "type": "longtext"
+    },
+    {
+     "name": "contractor_worker_id",
+     "label": "Trabajador contratista",
+     "type": "ref",
+     "ref": "contractor_workers"
     }
    ]
   },
@@ -5942,6 +5952,11 @@
      "name": "approved_at",
      "label": "Aprobado el",
      "type": "datetime"
+    },
+    {
+     "name": "total_approved",
+     "label": "Total aprobado",
+     "type": "number"
     }
    ]
   },

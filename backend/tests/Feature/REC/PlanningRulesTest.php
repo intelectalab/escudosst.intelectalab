@@ -53,7 +53,7 @@ it('la entrega física del RISST pide el cargo y una firmada solo se anula con m
 it('un gasto que pasa el monto de la línea pide motivo y queda como sobreejecución', function () {
     $b = $this->postJson('/api/v1/records/PRE/budgets', ['year' => 2027, 'title' => 'Presupuesto SST 2027'], $this->h)->assertCreated()->json('data.id');
     $l = $this->postJson('/api/v1/records/PRE/budget_lines', ['budget_id' => $b, 'category' => 'ppe', 'description' => 'Cascos', 'planned_amount' => 1000], $this->h)->json('data.id');
-    $this->patchJson("/api/v1/records/PRE/budgets/{$b}", ['status' => 'approved'], $this->h)->assertOk();
+    approveBudgetForTests($this, $b, $this->h);
     $this->postJson('/api/v1/records/PRE/budget_executions', ['budget_line_id' => $l, 'amount' => 800, 'description' => 'Compra 1'], $this->h)->assertCreated()->assertJsonPath('data.is_overrun', false);
     $this->postJson('/api/v1/records/PRE/budget_executions', ['budget_line_id' => $l, 'amount' => 300, 'description' => 'Compra 2'], $this->h)->assertStatus(422)->assertJsonValidationErrors('overrun_reason');
     $this->postJson('/api/v1/records/PRE/budget_executions', ['budget_line_id' => $l, 'amount' => 300, 'description' => 'Compra 2', 'overrun_reason' => 'Subió el precio'], $this->h)

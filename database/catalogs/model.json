@@ -15490,6 +15490,17 @@
     "comment": null
    },
    {
+    "name": "content_outline",
+    "type": "jsonb",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -15598,7 +15609,7 @@
    {
     "name": "worker_id",
     "type": "uuid",
-    "not_null": true,
+    "not_null": false,
     "default": null,
     "values": null,
     "ref": "workers.id",
@@ -15689,6 +15700,17 @@
     "default": null,
     "values": null,
     "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "contractor_worker_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "contractor_workers.id",
     "encrypted": false,
     "generated": null,
     "comment": null
@@ -17485,6 +17507,17 @@
    {
     "name": "approved_at",
     "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "total_approved",
+    "type": "numeric(14,2)",
     "not_null": false,
     "default": null,
     "values": null,

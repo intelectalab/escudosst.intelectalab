@@ -217,6 +217,18 @@ class DocsFieldRules extends RecordRules
                 $this->fail('principles_checklist', 'Marca todos los principios del art. 23 que la política incluye. Falta: «'.implode('», «', $missing).'».');
             }
         }
+        if ($t === 'risst_versions' && in_array($to, ['in_review', 'approved'], true)) {
+            // RN-RIS-02: no se envía ni se aprueba sin todas las secciones mínimas del art. 74 marcadas.
+            $need = \App\Core\Support\LegalParams::list('ris_risst_sections');
+            $raw = $this->value($values, $current, 'content_outline');
+            for ($i = 0; $i < 2 && is_string($raw); $i++) {
+                $raw = json_decode($raw, true);
+            }
+            $missing = array_values(array_diff($need, is_array($raw) ? $raw : []));
+            if ($need && $missing) {
+                $this->fail('content_outline', 'Marca todas las secciones mínimas del art. 74 que el reglamento incluye. Falta: «'.implode('», «', $missing).'».');
+            }
+        }
         if ($t === 'sst_policies' && $to === 'approved' && ! in_array('pol.sst_policies.approve', \App\Core\Auth\Permissions::effective(), true)) {
             // RN-POL-02: solo gerencia aprueba la política.
             $this->fail('status', 'La política la aprueba la gerencia (su rol tiene el permiso de aprobar la política).');
@@ -479,6 +491,9 @@ class DocsFieldRules extends RecordRules
         $version = $this->value($values, $current, 'risst_version_id');
         if (DB::selectOne('select status from risst_versions where id = ?', [$version])?->status !== 'current') {
             $this->fail('risst_version_id', 'Solo se entrega la versión vigente del RISST.');
+        }
+        if (! $current && ! $this->value($values, $current, 'worker_id') && ! $this->value($values, $current, 'contractor_worker_id')) {
+            $this->fail('worker_id', 'Indica el trabajador que recibe el RISST.');
         }
         // RN-RIS-04: al publicar el RISST cada trabajador queda con una entrega pendiente; registrar la entrega la reemplaza.
         if (! $current && ($worker = $this->value($values, $current, 'worker_id'))) {

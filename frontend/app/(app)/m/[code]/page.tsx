@@ -32,6 +32,8 @@ import { MagTools } from "@/components/modules/MagTools";
 import { ObsModule } from "@/components/modules/ObsModule";
 import { RebaForm } from "@/components/modules/RebaForm";
 import { PolOverview } from "@/components/modules/PolOverview";
+import { PreExecution } from "@/components/modules/PreExecution";
+import { RisOverview } from "@/components/modules/RisOverview";
 import { PlaWizard } from "@/components/modules/PlaWizard";
 import { AuiTools } from "@/components/modules/AuiTools";
 import { RvdSummary } from "@/components/modules/RvdSummary";
@@ -194,6 +196,11 @@ export default function ModulePage() {
       ) : m.code === "POL" ? (
         <div className="space-y-6">
           <PolOverview readOnly={m.mode === "read_only"} />
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
+      ) : m.code === "PRE" || m.code === "RIS" ? (
+        <div className="space-y-6">
+          {m.code === "PRE" ? <PreExecution readOnly={m.mode === "read_only"} /> : <RisOverview readOnly={m.mode === "read_only"} />}
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
       ) : m.code === "PLA" ? (

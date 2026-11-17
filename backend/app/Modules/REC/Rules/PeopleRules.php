@@ -50,6 +50,10 @@ class PeopleRules extends RecordRules
     private function budget(string $op, array &$values, ?object $current, array &$extra): void
     {
         unset($values['approved_by'], $values['approved_at']);   // los pone la aprobación
+        // RN-PRE-05: aprobado, el presupuesto solo cambia por reasignación entre líneas (o al pasar a ejecución o cierre).
+        if ($current && in_array($current->status, ['approved', 'in_execution', 'closed'], true) && array_diff(array_keys($values), ['status']) !== []) {
+            $this->conflict('El presupuesto ya está aprobado: no se edita. Para mover dinero entre líneas pide una reasignación a gerencia.');
+        }
         if ($op === 'create') {
             $values['status'] = 'draft';
 
@@ -57,15 +61,31 @@ class PeopleRules extends RecordRules
         }
         $to = $values['status'] ?? null;
         if ($to && $to !== $current->status) {
-            $flow = ['draft' => ['in_review', 'approved'], 'in_review' => ['approved', 'draft'], 'approved' => ['in_execution', 'closed'], 'in_execution' => ['closed'], 'closed' => []];
+            // M-PRE §9: borrador → enviado a gerencia → aprobado → en ejecución → cerrado.
+            $flow = ['draft' => ['in_review'], 'in_review' => ['approved', 'draft'], 'approved' => ['in_execution', 'closed'], 'in_execution' => ['closed'], 'closed' => []];
             if (! in_array($to, $flow[$current->status] ?? [], true)) {
                 $this->fail('status', in_array($current->status, ['approved', 'in_execution', 'closed'], true)
                     ? 'El presupuesto ya fue aprobado: no vuelve a borrador. Si cambia, registra un presupuesto nuevo o una línea adicional aprobada.'
                     : 'Ese cambio de estado no está permitido.');
             }
-            if ($to === 'approved') {
+            if (in_array($to, ['in_review', 'approved'], true)) {
                 if (! DB::selectOne('select 1 as ok from budget_lines where budget_id = ? and deleted_at is null and planned_amount > 0', [$current->id])) {
-                    $this->fail('status', 'Agrega al menos una línea con monto antes de aprobar el presupuesto.');
+                    $this->fail('status', 'Agrega al menos una línea con monto antes de enviar el presupuesto.');
+                }
+                // RN-PRE-02: la suma de las líneas debe igualar el total aprobado.
+                $total = $this->value($values, $current, 'total_approved');
+                if ($total === null || $total === '') {
+                    $this->fail('total_approved', 'Indica el total del presupuesto: la suma de las líneas debe ser igual a ese monto.');
+                }
+                $sum = (float) DB::selectOne('select coalesce(sum(planned_amount), 0) as s from budget_lines where budget_id = ? and deleted_at is null', [$current->id])->s;
+                if (abs($sum - (float) $total) > 0.005) {
+                    $this->fail('total_approved', 'La suma de las líneas ('.number_format($sum, 2).') no es igual al total del presupuesto ('.number_format((float) $total, 2).').');
+                }
+            }
+            if ($to === 'approved') {
+                // M-PRE §4 y flujo 2: solo gerencia aprueba.
+                if (! in_array('pre.budgets.approve', \App\Core\Auth\Permissions::effective(), true)) {
+                    $this->fail('status', 'El presupuesto lo aprueba la gerencia.');
                 }
                 $extra['approved_by'] = ['?', [(string) auth()->id()]];
                 $extra['approved_at'] = ['now()', []];

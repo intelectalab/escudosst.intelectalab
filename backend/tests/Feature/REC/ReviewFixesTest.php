@@ -21,14 +21,14 @@ it('un documento admite una segunda versión (el único «una vigente» lo valid
     expect($this->getJson("/api/v1/records/DOC/document_versions?f[document_id]={$doc}", $h)->json('meta.total'))->toBe(2);
 });
 
-it('el presupuesto se aprueba con líneas, no vuelve a borrador y sus líneas quedan fijas', function () {
+it('el presupuesto se envía con líneas, no vuelve a borrador y sus líneas quedan fijas', function () {
     $h = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
     $b = $this->postJson('/api/v1/records/PRE/budgets', ['year' => 2027, 'title' => 'RF Presupuesto 2027', 'status' => 'approved'], $h)->assertCreated();
     expect($b->json('data.status'))->toBe('draft');
     $id = $b->json('data.id');
     $this->patchJson("/api/v1/records/PRE/budgets/{$id}", ['status' => 'approved'], $h)->assertStatus(422)->assertJsonValidationErrors('status');
     $line = $this->postJson('/api/v1/records/PRE/budget_lines', ['budget_id' => $id, 'category' => 'ppe', 'description' => 'Cascos', 'planned_amount' => 1500], $h)->assertCreated()->json('data.id');
-    $this->patchJson("/api/v1/records/PRE/budgets/{$id}", ['status' => 'approved'], $h)->assertOk()->assertJsonPath('data.approved_by', fn ($v) => $v !== null);
+    approveBudgetForTests($this, $id, $h);
     $this->patchJson("/api/v1/records/PRE/budgets/{$id}", ['status' => 'draft'], $h)->assertStatus(422);
     $this->patchJson("/api/v1/records/PRE/budget_lines/{$line}", ['planned_amount' => 9000], $h)->assertStatus(409);
 });

@@ -148,3 +148,16 @@ function approveShareLink(string $linkId, string $companyId): void
     DB::update("update dossier_share_links set status = 'active', approved_at = now(), expires_at = now() + make_interval(days => greatest(coalesce(valid_days, 1), 1))
                  where id = ? and status = 'pending_approval'", [$linkId]);
 }
+
+/**
+ * M-PRE: el Jefe SST envía el presupuesto (total = suma de líneas) y la gerencia lo aprueba. Para las pruebas que solo necesitan un
+ * presupuesto aprobado, se envía por la API y la aprobación de gerencia se simula en la base.
+ */
+function approveBudgetForTests(\Tests\TestCase $t, string $id, array $h, string $companyId = HUAYLAS_ID): void
+{
+    DB::select("select set_config('app.company_id', ?, false)", [$companyId]);
+    $sum = (float) DB::selectOne('select coalesce(sum(planned_amount), 0) as s from budget_lines where budget_id = ? and deleted_at is null', [$id])->s;
+    $t->patchJson("/api/v1/records/PRE/budgets/{$id}", ['total_approved' => $sum, 'status' => 'in_review'], $h)->assertOk();
+    DB::select("select set_config('app.company_id', ?, false)", [$companyId]);
+    DB::update("update budgets set status = 'approved', approved_at = now() where id = ?", [$id]);
+}

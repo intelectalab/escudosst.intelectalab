@@ -72,7 +72,7 @@ class DossierBuilder extends Controller
         $risstMin = (int) LegalParams::number('risst_threshold_workers', 20);
         $r = $one("select id from risst_versions where status = 'current' and deleted_at is null limit 1");
         if ($workers >= $risstMin) {
-            $deliv = $r ? (int) $one('select count(*) as n from risst_deliveries where risst_version_id = ? and deleted_at is null', [$r->id])->n : 0;
+            $deliv = $r ? (int) $one("select count(*) as n from risst_deliveries where risst_version_id = ? and status in ('delivered', 'signed') and deleted_at is null", [$r->id])->n : 0;
             $add('02', "Reglamento Interno de SST vigente y entregado ({$deliv} de {$workers} trabajadores)", 'RIS', 'risst_versions', $r?->id,
                 ! $r ? 'missing' : ($deliv < $workers ? 'missing' : 'included'), ! $r ? 'No hay RISST vigente.' : ($deliv < $workers ? 'Falta entregar el RISST a '.($workers - $deliv).' trabajador(es).' : null));
         } else {
@@ -153,7 +153,7 @@ class DossierBuilder extends Controller
                 ! $fit ? 'No tiene aptitud médica registrada.' : ($fit->valid_until && $fit->valid_until < date('Y-m-d') ? 'La aptitud médica venció.' : null), $w);
             $ppe = (int) $one("select count(*) as n from ppe_deliveries where worker_id = ? and deleted_at is null and (delivered_at at time zone 'America/Lima')::date <= ?", [$w, $to])->n;
             $add('W4', "{$n}: entregas de EPP ({$ppe})", 'EPP', 'ppe_deliveries', null, $ppe > 0 ? 'included' : 'missing', $ppe > 0 ? null : 'No registra entregas de EPP.', $w);
-            $ris = $one("select id from risst_deliveries where worker_id = ? and deleted_at is null limit 1", [$w]);
+            $ris = $one("select id from risst_deliveries where worker_id = ? and status in ('delivered', 'signed') and deleted_at is null limit 1", [$w]);
             $add('W5', "{$n}: entrega del RISST", 'RIS', 'risst_deliveries', $ris?->id, $ris ? 'included' : ($workers >= $risstMin ? 'missing' : 'not_applicable'),
                 $ris || $workers < $risstMin ? null : 'No consta la entrega del RISST.', $w);
             $ip = $one("select id from iperc_matrices where status in ('active', 'review_required', 'review_overdue') and current_version_id is not null and deleted_at is null and (position_id = ? or (position_id is null and area_id = ?)) limit 1",

@@ -120,3 +120,18 @@ Route::middleware(['auth:sanctum', 'company', 'module:RVD'])->get('rvd/summary',
 
 // Calendario de mantenimiento de equipos de emergencia y mínimo de extintores por sede (M-EQE SCR-EQE-04, RN-EQE-08).
 Route::middleware(['auth:sanctum', 'company', 'module:EQE'])->get('eqe/calendar', \App\Modules\REC\EquipmentCalendarController::class);
+
+// Presupuesto SST: tablero de ejecución, Excel y reasignaciones entre líneas aprobadas por gerencia (M-PRE SCR-PRE-01, §11, RN-PRE-05).
+Route::middleware(['auth:sanctum', 'company', 'module:PRE'])->prefix('pre')->group(function () {
+    Route::get('execution', [\App\Modules\REC\BudgetToolsController::class, 'execution']);
+    Route::get('execution.xlsx', [\App\Modules\REC\BudgetToolsController::class, 'executionXlsx']);
+    Route::post('transfers', [\App\Modules\REC\BudgetToolsController::class, 'requestTransfer']);
+    Route::post('transfers/{id}/decide', [\App\Modules\REC\BudgetToolsController::class, 'decide'])->whereUuid('id');
+});
+
+// RISST: resumen con secciones del art. 74, tabla de entregas, entrega masiva y relación de cargos (M-RIS SCR-RIS-01/02/03, §11).
+Route::middleware(['auth:sanctum', 'company', 'module:RIS'])->prefix('ris')->group(function () {
+    Route::get('overview', [\App\Modules\REC\RisstToolsController::class, 'overview']);
+    Route::post('deliver-all', [\App\Modules\REC\RisstToolsController::class, 'deliverAll']);
+    Route::get('deliveries.xlsx', [\App\Modules\REC\RisstToolsController::class, 'deliveriesXlsx']);
+});

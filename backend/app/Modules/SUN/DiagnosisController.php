@@ -154,9 +154,22 @@ class DiagnosisController extends Controller
                 ($p ? 'Política vigente.' : 'No hay una política de SST vigente.')." El RISST es obligatorio desde {$min} trabajadores.");
         }
         $r = DB::selectOne("select id from risst_versions where status = 'current' and deleted_at is null limit 1");
-        $deliv = $r ? (int) DB::selectOne('select count(distinct worker_id) as n from risst_deliveries where risst_version_id = ? and deleted_at is null', [$r->id])->n : 0;
-        $pct = ($p ? 50 : 0) + ($r ? 50 * min(1, $workers ? $deliv / $workers : 1) : 0);
-        $parts = [$p ? 'Política vigente' : 'Falta la política vigente', $r ? "RISST entregado a {$deliv} de {$workers} trabajadores" : 'Falta el RISST vigente'];
+        // RN-RIS-06: solo cuenta la entrega hecha (entregada o firmada); quien ingresó hace menos de risst_delivery_grace_days aún está en plazo
+        // y no se cuenta como brecha. Las pendientes fuera de plazo sí.
+        $grace = (int) LegalParams::number('risst_delivery_grace_days', 30);
+        $d = $r ? DB::selectOne(
+            "select count(*) filter (where x.done) as done, count(*) filter (where not x.done and (w.hire_on is null or w.hire_on + ?::int < current_date)) as late
+               from workers w
+               left join lateral (select bool_or(d.status in ('delivered', 'signed')) as done from risst_deliveries d
+                                   where d.risst_version_id = ? and d.worker_id = w.id and d.deleted_at is null) x0 on true
+               cross join lateral (select coalesce(x0.done, false) as done) x
+              where w.deleted_at is null and w.status = 'active'", [$grace, $r->id]) : null;
+        $deliv = (int) ($d->done ?? 0);
+        $late = (int) ($d->late ?? 0);
+        $due = $deliv + $late;
+        $pct = ($p ? 50 : 0) + ($r ? 50 * ($due ? $deliv / $due : 1) : 0);
+        $parts = [$p ? 'Política vigente' : 'Falta la política vigente',
+            $r ? "RISST entregado a {$deliv} de {$workers} trabajadores".($late ? " ({$late} sin cargo pasado el plazo de {$grace} días)" : '') : 'Falta el RISST vigente'];
 
         return $this->area('Política y RISST', $p ? 'RIS' : 'POL', $p ? 'risst_deliveries' : 'sst_policies', $pct, implode(' · ', $parts).'.');
     }

@@ -63,6 +63,8 @@ final class SstAlerts
         if ($retention > 0) {
             $db->delete('delete from access_events where occurred_at < now() - make_interval(days => ?::int)', [$retention]);
         }
+        // M-COM RN-COM-07: el comité o supervisor cuyo mandato pasó su fecha de fin queda «terminado» (vencido).
+        $db->update("update committees set status = 'ended', updated_at = now() where deleted_at is null and status = 'active' and period_end_on < (now() at time zone 'America/Lima')::date");
         // M-HOM RN-HOM-05: la homologación aprobada que pasó su vigencia queda «vencida».
         $db->update("update vendor_evaluations set status = 'expired', updated_at = now() where deleted_at is null and status = 'approved' and valid_until < current_date");
         // M-EQE RN-EQE-07: el extintor que superó su vida útil desde la fabricación queda fuera de servicio aunque tenga recarga vigente.

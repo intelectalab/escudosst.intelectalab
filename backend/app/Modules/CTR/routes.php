@@ -28,6 +28,9 @@ Route::middleware(['auth:sanctum', 'company', 'module:CTR'])->prefix('ctr')->gro
     Route::get('portal/sctr', [PortalSctr::class, 'show']);
     Route::get('portal/homologations', [\App\Modules\CTR\VendorSelfController::class, 'index']);
     Route::post('portal/homologations/{id}', [\App\Modules\CTR\VendorSelfController::class, 'answer'])->whereUuid('id');
+    Route::get('portal/risst', [\App\Modules\REC\RisstToolsController::class, 'portal']);
+    Route::get('portal/risst/file', [\App\Modules\REC\RisstToolsController::class, 'portalFile']);
+    Route::post('portal/risst/deliveries', [\App\Modules\REC\RisstToolsController::class, 'portalDeliver']);
     Route::post('portal/sctr/policies', [PortalSctr::class, 'storePolicy']);
     Route::post('portal/sctr/coverages', [PortalSctr::class, 'storeCoverages']);
 });

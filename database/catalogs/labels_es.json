@@ -1249,7 +1249,9 @@
   "next_hydrostatic_test_on": "Próxima prueba hidrostática",
   "manufacture_date": "Fecha de fabricación",
   "next_inspection_on": "Próxima inspección",
-  "min_extinguishers": "Mínimo de extintores"
+  "min_extinguishers": "Mínimo de extintores",
+  "total_approved": "Total aprobado",
+  "content_outline": "Secciones mínimas del art. 74"
  },
  "values": {
   "A": "Tipo A",
