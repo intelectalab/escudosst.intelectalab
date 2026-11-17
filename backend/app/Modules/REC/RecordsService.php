@@ -201,7 +201,9 @@ final class RecordsService
         $extra = [];
         $rules?->prepare('update', $res, $values, $current, $extra);
         // M-FIR RN-FIR-03: con todas sus firmas completas el registro queda bloqueado (solo puede seguir su flujo de estados).
-        if (array_diff(array_keys($values), ['status']) !== [] || $extra !== []) {
+        // Los datos que pone el propio flujo de estados (quién aprobó, cuándo se publicó o cerró) no cuentan como edición.
+        $stamps = ['approved_by', 'approved_at', 'published_at', 'closed_by', 'closed_at', 'obsoleted_at', 'effective_on'];
+        if (array_diff(array_keys($values), ['status', 'effective_on']) !== [] || array_diff(array_keys($extra), $stamps) !== []) {
             $this->assertNotFullySigned($res['table'], $id);
         }
         $this->checkUniques($res, $values, $current);

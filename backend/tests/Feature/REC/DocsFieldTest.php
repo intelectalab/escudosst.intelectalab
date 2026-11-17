@@ -20,16 +20,18 @@ it('versiona la política: una sola vigente, la anterior queda obsoleta y no se 
     $n1 = $v1->json('data.version_number');
     $id1 = $v1->json('data.id');
     $this->patchJson("/api/v1/records/POL/sst_policies/{$id1}", ['status' => 'current'], $h)->assertStatus(422);
-    $this->patchJson("/api/v1/records/POL/sst_policies/{$id1}", ['status' => 'approved'], $h)
-        ->assertStatus(422)->assertJsonPath('errors.status.0', fn ($m) => str_starts_with($m, 'Quien elaboró la versión no puede aprobarla: la aprueba otra persona (gerencia, comité o supervisor).'));
-    DB::update('update sst_policies set prepared_by = ? where id = ?', ['01900000-0000-7000-8000-000000000301', $id1]);
-    $this->patchJson("/api/v1/records/POL/sst_policies/{$id1}", ['status' => 'approved'], $h)->assertOk();
+    // RN-POL-01: sin los principios del art. 23 no se aprueba; RN-POL-02: la aprueba gerencia (el Jefe SST no).
+    $this->patchJson("/api/v1/records/POL/sst_policies/{$id1}", ['status' => 'approved'], $h)->assertStatus(422)->assertJsonValidationErrors('principles_checklist');
+    DB::update("update sst_policies set principles_checklist = (select coalesce(value::jsonb, '[]'::jsonb) from legal_parameters where key = 'pol_policy_principles' and company_id is null and deleted_at is null limit 1) where id = ?", [$id1]);
+    $this->patchJson("/api/v1/records/POL/sst_policies/{$id1}", ['status' => 'approved'], $h)->assertStatus(422)->assertJsonValidationErrors('status');
+    DB::update("update sst_policies set prepared_by = ?, status = 'approved', approved_at = now() where id = ?",
+        ['01900000-0000-7000-8000-000000000301', $id1]);
     $this->patchJson("/api/v1/records/POL/sst_policies/{$id1}", ['status' => 'current'], $h)->assertOk()->assertJsonPath('data.status', 'current');
 
     $id2 = $this->postJson('/api/v1/records/POL/sst_policies', ['title' => 'Política SST', 'content_html' => '<p>Compromiso 2</p>'], $h)
         ->assertJsonPath('data.version_number', $n1 + 1)->json('data.id');
-    DB::update('update sst_policies set prepared_by = ? where id = ?', ['01900000-0000-7000-8000-000000000301', $id2]);
-    $this->patchJson("/api/v1/records/POL/sst_policies/{$id2}", ['status' => 'approved'], $h)->assertOk();
+    DB::update("update sst_policies set prepared_by = ?, principles_checklist = (select coalesce(value::jsonb, '[]'::jsonb) from legal_parameters where key = 'pol_policy_principles' and company_id is null and deleted_at is null limit 1), status = 'approved', approved_at = now() where id = ?",
+        ['01900000-0000-7000-8000-000000000301', $id2]);
     $this->patchJson("/api/v1/records/POL/sst_policies/{$id2}", ['status' => 'current'], $h)->assertOk();
     $this->getJson("/api/v1/records/POL/sst_policies/{$id1}", $h)->assertJsonPath('data.status', 'obsolete');
     $this->patchJson("/api/v1/records/POL/sst_policies/{$id2}", ['title' => 'Otro'], $h)->assertStatus(409);

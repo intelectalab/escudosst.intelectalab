@@ -115,8 +115,9 @@ it('al publicar la política pide el cargo a todos los trabajadores activos (RN-
     $h = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
     $pol = $this->postJson('/api/v1/records/POL/sst_policies', ['title' => 'Política SST con cargo', 'content_html' => '<p>Cuidamos la vida.</p>'], $h)->assertCreated()->json('data.id');
     DB::select("select set_config('app.company_id', ?, false)", [ANDINAS_ID]);
-    DB::update('update sst_policies set prepared_by = ? where id = ?', ['01900000-0000-7000-8000-000000000301', $pol]);
-    $this->patchJson("/api/v1/records/POL/sst_policies/{$pol}", ['status' => 'approved'], $h)->assertOk();
+    // RN-POL-01/02: la política lleva los principios del art. 23 y la aprueba gerencia (aquí se registra la aprobación directamente).
+    DB::update("update sst_policies set prepared_by = ?, principles_checklist = (select coalesce(value::jsonb, '[]'::jsonb) from legal_parameters where key = 'pol_policy_principles' and company_id is null and deleted_at is null limit 1), status = 'approved', approved_at = now() where id = ?",
+        ['01900000-0000-7000-8000-000000000301', $pol]);
     $this->patchJson("/api/v1/records/POL/sst_policies/{$pol}", ['status' => 'current'], $h)->assertOk();
 
     DB::select("select set_config('app.company_id', ?, false)", [ANDINAS_ID]);

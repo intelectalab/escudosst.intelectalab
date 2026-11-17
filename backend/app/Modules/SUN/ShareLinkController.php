@@ -110,7 +110,7 @@ class ShareLinkController extends Controller
                     "insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, dedupe_key)
                      values (?, 'sun.share_link_pending', 'SUN', ?, ?, 'Enlace del inspector por aprobar', ?, ?, 'high', ?)",
                     [$company, $id, $u, mb_substr("Se pidió compartir «{$d->title}» con el inspector. Revísalo y apruébalo para activarlo.", 0, 500),
-                        '/m/sun?t=inspection_dossiers&open='.$dossier, 'sun.share_link_pending:'.$id]
+                        '/m/sun?t=inspection_dossiers&open='.$dossier, 'sun.share_link_pending:'.$id.':'.$u]
                 );
             }
         }

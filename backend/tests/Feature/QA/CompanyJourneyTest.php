@@ -230,9 +230,12 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
     // ------------------------------------------------------------ 7. Política: la elabora uno y la aprueba otro
     $pol = $this->postJson('/api/v1/records/POL/sst_policies', ['title' => 'Política SST 2026', 'content_html' => '<p>Nos comprometemos a proteger la vida y la salud.</p>'], $a)
         ->qaStatus(201)->json('data.id');
-    $this->patchJson("/api/v1/records/POL/sst_policies/{$pol}", ['status' => 'approved'], $a)->assertStatus(422)
-        ->assertJsonPath('errors.status.0', fn ($m) => str_starts_with($m, 'Quien elaboró la versión no puede aprobarla'));
-    $this->patchJson("/api/v1/records/POL/sst_policies/{$pol}", ['status' => 'approved'], $b)->qaStatus(200);
+    // RN-POL-01: la política marca los principios del art. 23; RN-POL-02: la aprueba gerencia, no quien la elaboró ni el Jefe SST.
+    $principles = $this->getJson('/api/v1/pol/overview', $a)->qaStatus(200)->json('data.principles');
+    $this->patchJson("/api/v1/records/POL/sst_policies/{$pol}", ['principles_checklist' => $principles], $a)->qaStatus(200);
+    $this->patchJson("/api/v1/records/POL/sst_policies/{$pol}", ['status' => 'approved'], $b)->assertStatus(422)->assertJsonValidationErrors('status');
+    [$g] = qajInvite($admin, $cid, 'gerencia', 'management', 'Gerardo Gerencia Ríos');
+    $this->patchJson("/api/v1/records/POL/sst_policies/{$pol}", ['status' => 'approved'], $g)->qaStatus(200);
     $this->patchJson("/api/v1/records/POL/sst_policies/{$pol}", ['status' => 'current'], $b)->qaStatus(200)->assertJsonPath('data.status', 'current');
 
     // ------------------------------------------------------------ 8. Matriz IPERC con filas, controles y aprobación
@@ -253,9 +256,11 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
     $this->get("/api/v1/ipc/versions/{$version}/export.xlsx", $a)->qaStatus(200);
 
     // ------------------------------------------------------------ 9. Plan anual, programa anual y programa de capacitación
-    $plan = $this->postJson('/api/v1/records/PLA/annual_plans', ['year' => $year, 'title' => "Plan anual SST {$year}"], $a)->qaStatus(201)->json('data.id');
+    // RN-PLA-02: el plan liga la línea base aprobada y la política vigente; se aprueba cuando ya hay objetivo y PASST del año.
+    $plan = $this->postJson('/api/v1/records/PLA/annual_plans', ['year' => $year, 'title' => "Plan anual SST {$year}", 'baseline_assessment_id' => $lba, 'policy_id' => $pol], $a)
+        ->qaStatus(201)->json('data.id');
     $this->postJson('/api/v1/records/PLA/annual_plan_items', ['annual_plan_id' => $plan, 'code' => 'P-1', 'description' => 'Reducir accidentes'], $a)->qaStatus(201);
-    $this->patchJson("/api/v1/records/PLA/annual_plans/{$plan}", ['status' => 'approved'], $a)->qaStatus(200);
+    $this->patchJson("/api/v1/records/PLA/annual_plans/{$plan}", ['status' => 'approved'], $a)->assertStatus(422);   // aún sin objetivo ni PASST del año
     $prog = $this->postJson('/api/v1/records/PAS/annual_programs', ['year' => $year, 'title' => "PASST {$year}"], $a)->qaStatus(201)->json('data.id');
     $act = $this->postJson('/api/v1/records/PAS/program_activities', ['program_id' => $prog, 'code' => 'A-1', 'title' => 'Inspecciones de orden y limpieza',
         'activity_type' => 'inspection', 'goal_quantity' => 4, 'planned_months' => [1, 4, 7, 10]], $a)->qaStatus(201)->json('data.id');
@@ -265,6 +270,21 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
         ->assertJsonPath('data.policy_id', $pol)->json('data.id');
     $this->patchJson("/api/v1/records/PAS/program_activities/{$act}", ['objective_id' => $obj], $a)->qaStatus(200);
     $this->patchJson("/api/v1/records/PAS/annual_programs/{$prog}", ['status' => 'approved'], $a)->qaStatus(200);
+    // RN-PLA-03: con Supervisor SST el plan lleva su firma; con Comité, la sesión con quórum.
+    DB::select("select set_config('app.company_id', ?, false)", [$cid]);
+    $model = DB::selectOne('select sst_model from companies where id = ?', [$cid])->sst_model;
+    $planPatch = ['status' => 'approved'];
+    if ($model === 'committee') {
+        $com = DB::selectOne("insert into committees (company_id, committee_type, name, status, period_start_on, period_end_on) values (?, 'committee', 'Comité', 'active', current_date, current_date + 730) returning id", [$cid])->id;
+        $planPatch['committee_meeting_id'] = DB::selectOne("insert into committee_meetings (company_id, committee_id, meeting_type, number, scheduled_at, status, quorum_reached) values (?, ?, 'ordinary', 1, now(), 'held', true) returning id", [$cid, $com])->id;
+    } else {
+        $req = DB::selectOne("insert into signature_requests (company_id, subject_type, subject_id, subject_module, document_hash, signer_user_id, role_in_document, sequence_order, status, signed_at)
+            values (?, 'annual_plans', ?, 'PLA', decode(repeat('ab', 32), 'hex'), ?, 'approver', 1, 'signed', now()) returning id", [$cid, $plan, $bId])->id;
+        DB::insert("insert into signatures (company_id, signature_request_id, subject_type, subject_id, signer_user_id, signer_name, method, document_hash, evidence_hash, evidence, signed_at)
+            values (?, ?, 'annual_plans', ?, ?, 'Supervisor', 'pin', decode(repeat('ab', 32), 'hex'), decode(repeat('cd', 32), 'hex'), '{}'::jsonb, now())", [$cid, $req, $plan, $bId]);
+    }
+    DB::select("select set_config('app.company_id', '', false)");
+    $this->patchJson("/api/v1/records/PLA/annual_plans/{$plan}", $planPatch, $a)->qaStatus(200);
     // La ejecución lleva su evidencia (RN-PAS-04).
     $acta = $this->post('/api/v1/files', ['file' => \Illuminate\Http\UploadedFile::fake()->create('acta.pdf', 20, 'application/pdf'), 'module' => 'PAS'], $a + ['Accept' => 'application/json'])->qaStatus(201)->json('data.id');
     $this->postJson('/api/v1/records/PAS/activity_executions', ['activity_id' => $act, 'executed_on' => $today, 'quantity' => 1, 'description' => 'Primera inspección',
@@ -402,7 +422,8 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
     $hoursBySite[$site] = [$site, 9, 1800];
     $hoursBySite[$site2] = [$site2, 3, 600];
     foreach ($hoursBySite as [$s, $n, $hours]) {
-        $this->postJson('/api/v1/records/EST/man_hours', ['period_year' => $year, 'period_month' => $month, 'site_id' => $s, 'worker_count' => $n, 'hours_worked' => $hours], $a)->qaStatus(201);
+        $mh = $this->postJson('/api/v1/records/EST/man_hours', ['period_year' => $year, 'period_month' => $month, 'site_id' => $s, 'worker_count' => $n, 'hours_worked' => $hours], $a)->qaStatus(201)->json('data.id');
+        $this->postJson("/api/v1/est/man-hours/{$mh}/validate", [], $a)->qaStatus(200);   // RN-EST-03: horas-hombre validadas
     }
     $stats = collect($this->postJson('/api/v1/est/months', ['year' => $year, 'month' => $month], $a)->qaStatus(200)->json('data'))->keyBy('site_id');
     expect((float) $stats[$site]['frequency_index'])->toBe(round(1 * 1000000 / 1800, 2))

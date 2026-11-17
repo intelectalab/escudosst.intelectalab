@@ -17,10 +17,23 @@ it('aprueba el plan anual con ítems y lo deja con estructura congelada', functi
     $h = imp();
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
     DB::update("update companies set sst_model = 'supervisor' where id = ?", [HUAYLAS_ID]);
-    $plan = $this->postJson('/api/v1/records/PLA/annual_plans', ['year' => (int) now()->year + 3, 'title' => 'Plan anual'], $h)->assertCreated()->json('data.id');
+    $year = (int) now()->year + 3;
+    $base = DB::selectOne("insert into baseline_assessments (company_id, title, assessment_on, status) values (?, 'LB', current_date, 'approved') returning id", [HUAYLAS_ID])->id;
+    $pol = DB::selectOne("select id from sst_policies where status in ('current', 'review_required') and deleted_at is null limit 1")?->id
+        ?? DB::selectOne("insert into sst_policies (company_id, title, version_number, content_html, status, effective_on) values (?, 'Política', 901, '<p>x</p>', 'current', current_date) returning id", [HUAYLAS_ID])->id;
+    DB::insert("insert into sst_objectives (company_id, policy_id, year, code, title, status) values (?, ?, ?, ?, 'Objetivo', 'active')", [HUAYLAS_ID, $pol, $year, 'O-'.random_int(1000, 999999)]);
+    DB::insert("insert into annual_programs (company_id, title, year) values (?, 'PASST', ?)", [HUAYLAS_ID, $year]);
+    $plan = $this->postJson('/api/v1/records/PLA/annual_plans', ['year' => $year, 'title' => 'Plan anual', 'baseline_assessment_id' => $base, 'policy_id' => $pol], $h)->assertCreated()->json('data.id');
     $this->patchJson("/api/v1/records/PLA/annual_plans/{$plan}", ['status' => 'approved'], $h)
         ->assertStatus(422)->assertJsonPath('errors.status.0', 'El plan no tiene ítems (objetivos, metas y recursos).');
     $this->postJson('/api/v1/records/PLA/annual_plan_items', ['annual_plan_id' => $plan, 'code' => 'P1', 'description' => 'Reducir accidentes 20 %'], $h)->assertCreated();
+    // RN-PLA-03: con Supervisor SST la aprobación lleva su firma.
+    $this->patchJson("/api/v1/records/PLA/annual_plans/{$plan}", ['status' => 'approved'], $h)->assertStatus(422)->assertJsonValidationErrors('status');
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $req = DB::selectOne("insert into signature_requests (company_id, subject_type, subject_id, subject_module, document_hash, signer_user_id, role_in_document, sequence_order, status, signed_at)
+        values (?, 'annual_plans', ?, 'PLA', decode(repeat('ab', 32), 'hex'), '01900000-0000-7000-8000-000000000303', 'approver', 1, 'signed', now()) returning id", [HUAYLAS_ID, $plan])->id;
+    DB::insert("insert into signatures (company_id, signature_request_id, subject_type, subject_id, signer_user_id, signer_name, method, document_hash, evidence_hash, evidence, signed_at)
+        values (?, ?, 'annual_plans', ?, '01900000-0000-7000-8000-000000000303', 'Supervisor', 'pin', decode(repeat('ab', 32), 'hex'), decode(repeat('cd', 32), 'hex'), '{}'::jsonb, now())", [HUAYLAS_ID, $req, $plan]);
     $this->patchJson("/api/v1/records/PLA/annual_plans/{$plan}", ['status' => 'approved'], $h)->assertOk();
     $this->postJson('/api/v1/records/PLA/annual_plan_items', ['annual_plan_id' => $plan, 'code' => 'P2', 'description' => 'Otro'], $h)->assertStatus(409);
 });
