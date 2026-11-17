@@ -61,6 +61,8 @@ Route::middleware(['auth:sanctum', 'company', 'module:CH5'])->prefix('ch5')->con
     Route::get('area-workers', 'areaWorkers');
     Route::post('quick', 'quick')->middleware('throttle:30,1');
     Route::get('coverage', 'coverage');
+    Route::get('topics', 'topics');
+    Route::post('topics', 'saveTopic');
 });
 
 // Ejecutar simulacro (M-SIM SCR-SIM-02): cronómetro de alarma a evacuación completa y asistencia de la sede.

@@ -11,6 +11,7 @@ import { errorText, fmtDate, workerApi } from "@/lib/workerApp";
 
 type Data = {
   attendances: { id: string; title: string; starts_at: string; hours: number | null; attended: boolean; status: string }[];
+  talks?: { id: string; topic: string; talk_on: string; duration_minutes: number | null; signed: boolean }[];
   upcoming: { id: string; title: string; starts_at: string; location: string | null; virtual_url: string | null }[];
   certificates: { id: string; course_title: string; certificate_code: string; issued_on: string; expires_on: string | null; hours: number | null; status: string }[];
   aul_enabled: boolean;
@@ -133,6 +134,22 @@ export default function MyTrainingsPage() {
           </ul>
         )}
       </Panel>
+
+      {d.talks && d.talks.length > 0 && (
+        <Panel title="Mis charlas de 5 minutos">
+          <ul className="divide-y divide-line">
+            {d.talks.map((t) => (
+              <li key={t.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+                <span className="min-w-0">
+                  <b className="block leading-tight">{t.topic}</b>
+                  <span className="text-xs text-muted">{fmtDate(t.talk_on)}{t.duration_minutes ? ` · ${t.duration_minutes} min` : ""}</span>
+                </span>
+                <Pill tone={t.signed ? "ok" : "amber"}>{t.signed ? "Firmada" : "Falta firmar"}</Pill>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
     </>
   );
 }

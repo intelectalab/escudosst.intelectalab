@@ -466,11 +466,19 @@ class RegistersController extends Controller
                       where a.deleted_at is null and (s.starts_at at time zone 'America/Lima')::date between ? and ?".$sf('s.site_id')."
                      union all
                      select d.code, d.title, 'drill', d.executed_at, d.external_entity, null, null, null, true from drills d
-                      where d.deleted_at is null and d.status in ('executed','evaluated') and (d.executed_at at time zone 'America/Lima')::date between ? and ?".$sf('d.site_id')."
-                     order by 4", [...$range, ...$range]);
+                      where d.deleted_at is null and d.status in ('executed','evaluated') and (d.executed_at at time zone 'America/Lima')::date between ? and ?".$sf('d.site_id')
+                    // M-CH5 RN-CH5-07: si la empresa lo configura, las charlas realizadas entran como sensibilización con su duración.
+                    .(\App\Core\Support\LegalParams::flag('talks_count_as_training', false) ? "
+                     union all
+                     select null, k.topic, 'talk', coalesce(k.started_at, k.talk_on::timestamptz), coalesce(su.full_name, sw.full_name), w.full_name, w.document_last4,
+                            round(coalesce(k.duration_minutes, 0) / 60.0, 2), true
+                       from talk_attendances t join safety_talks k on k.id = t.safety_talk_id and k.status = 'held' and k.deleted_at is null
+                       left join workers w on w.id = t.worker_id left join users su on su.id = k.speaker_user_id left join workers sw on sw.id = k.speaker_worker_id
+                      where t.deleted_at is null and (t.signature_id is not null or t.method <> 'signature') and k.talk_on between ? and ?".$sf('k.site_id') : '')."
+                     order by 4", \App\Core\Support\LegalParams::flag('talks_count_as_training', false) ? [...$range, ...$range, ...$range] : [...$range, ...$range]);
 
                 return [['Código', 'Tema', 'Tipo', 'Fecha', 'Capacitador / entidad', 'Participante', 'Documento (últimos 4)', 'Horas', 'Asistió'],
-                    array_map(fn ($r) => [$r->code, $r->title, $r->training_type === 'drill' ? 'Simulacro' : $this->label('trainings', 'training_type', $r->training_type), $dt($r->starts_at), $r->instructor, $r->full_name, $r->document_last4,
+                    array_map(fn ($r) => [$r->code, $r->title, ($r->training_type === 'drill' ? 'Simulacro' : ($r->training_type === 'talk' ? 'Sensibilización (charla de 5 minutos)' : $this->label('trainings', 'training_type', $r->training_type))), $dt($r->starts_at), $r->instructor, $r->full_name, $r->document_last4,
                         $r->hours === null ? null : (float) $r->hours, $r->attended ? 'Sí' : 'No'], $rows)];
             case 'audits':
                 $rows = DB::select(

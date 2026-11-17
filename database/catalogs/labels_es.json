@@ -1235,7 +1235,8 @@
   "superseded_by": "Reemplazado por",
   "alarm_time": "Hora de la alarma",
   "evacuation_complete_time": "Hora de evacuación completa",
-  "evacuation_target_seconds": "Meta de evacuación (segundos)"
+  "evacuation_target_seconds": "Meta de evacuación (segundos)",
+  "topic_bank_id": "Tema del banco"
  },
  "values": {
   "A": "Tipo A",

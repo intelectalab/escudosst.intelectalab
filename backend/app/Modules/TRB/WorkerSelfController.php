@@ -299,6 +299,11 @@ class WorkerSelfController extends Controller
         $aul = WorkerSelf::usable('AUL');
 
         return response()->json(['data' => [
+            // M-CH5 SCR-CH5-04 «Mis charlas»: charlas a las que asistí, con su firma.
+            'talks' => WorkerSelf::usable('CH5') ? DB::select(
+                "select t.id, k.topic, k.talk_on, k.duration_minutes, t.signature_id is not null as signed from talk_attendances t join safety_talks k on k.id = t.safety_talk_id
+                  where t.worker_id = ? and t.deleted_at is null and k.deleted_at is null and k.status <> 'cancelled' order by k.talk_on desc limit 100", [$w->id]) : [],
+
             'attendances' => $cap ? DB::select(
                 'select a.id, t.title, s.starts_at, coalesce(a.hours, t.duration_minutes / 60.0) as hours, a.attended, s.status
                    from training_attendances a join training_sessions s on s.id = a.session_id join trainings t on t.id = s.training_id
