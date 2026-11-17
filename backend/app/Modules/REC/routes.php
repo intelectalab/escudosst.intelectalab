@@ -74,3 +74,10 @@ Route::middleware(['auth:sanctum', 'company', 'module:ATS'])->prefix('ats/forms/
     Route::get('sources', 'sources');
     Route::post('copy', 'copy')->middleware('throttle:30,1');
 });
+
+// Monitoreo de agentes (M-MAG SCR-MAG-03/05): carga masiva de mediciones desde Excel y tendencia por punto.
+Route::middleware(['auth:sanctum', 'company', 'module:MAG'])->prefix('mag')->controller(\App\Modules\REC\MeasurementsController::class)->group(function () {
+    Route::get('import/template', 'template');
+    Route::post('import', 'import')->middleware('throttle:20,1');
+    Route::get('trend', 'trend');
+});
