@@ -22,6 +22,10 @@ class SignatureService
         'register_exports' => ['id', 'company_id', 'register_type', 'period_from', 'period_to', 'site_id', 'format_version', 'data_hash', 'rows_count'],
         // Programa de capacitación: lo que firma el supervisor (su contenido, no su estado, que pasa a aprobado).
         'training_programs' => ['id', 'company_id', 'year', 'title', 'annual_program_id', 'notes'],
+        // Inspección: lo firmado es su resultado (no su estado, que pasa a firmada y luego a cerrada).
+        'inspections' => ['id', 'company_id', 'code', 'template_id', 'site_id', 'area_id', 'scheduled_on', 'completed_at', 'score_pct', 'inspector_user_id'],
+        // PETAR: lo firmado al cerrar es el trabajo y su cierre (no su estado, que pasa a cerrado).
+        'work_permits' => ['id', 'company_id', 'code', 'permit_type_id', 'work_description', 'valid_from', 'valid_until', 'closure_notes', 'area_left_safe'],
         'investigations' => ['id', 'company_id', 'event_id', 'code', 'method', 'started_on', 'summary', 'immediate_causes', 'basic_causes', 'conclusions', 'lessons_learned'],
     ];
 

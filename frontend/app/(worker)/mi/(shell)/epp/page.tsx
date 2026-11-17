@@ -1,16 +1,17 @@
 "use client";
 
-// Mi EPP (M-EPP SCR-EPP-06): lo que te entregaron, hasta cuándo sirve y si falta firmar la recepción.
+// Mi EPP (M-EPP SCR-EPP-06): lo que te entregaron, hasta cuándo sirve, si falta firmar la recepción y el pedido de reposición.
 
 import { useCallback, useEffect, useState } from "react";
 import { Alert, BigButton, Empty, Loading, Pill, SignSheet, Title, type Tone } from "@/components/worker/WorkerUi";
 import { useWorker } from "@/components/worker/WorkerContext";
 import { errorText, fmtDate, workerApi } from "@/lib/workerApp";
 
-type Delivery = { id: string; item: string; quantity: number; size: string | null; delivered_at: string; expires_on: string | null; status: string; signed: boolean; expiry: "none" | "ok" | "soon" | "expired" };
+type Delivery = { id: string; item: string; quantity: number; size: string | null; delivered_at: string; expires_on: string | null; status: string; signed: boolean; expiry: "none" | "ok" | "soon" | "expired"; replacement_requested: boolean };
 
 const EXPIRY: Record<Delivery["expiry"], [string, Tone] | null> = { none: null, ok: ["Vigente", "ok"], soon: ["Vence pronto", "amber"], expired: ["Vencido: pide el cambio", "bad"] };
-const STATUS: Record<string, string> = { returned: "Devuelto", replaced: "Reemplazado", lost: "Perdido" };
+const STATUS: Record<string, string> = { returned: "Devuelto", replaced: "Reemplazado", lost: "Perdido", due_for_replacement: "Para reponer" };
+const REASONS: [string, string][] = [["worn", "Está gastado"], ["damaged", "Se dañó"], ["lost", "Se perdió"], ["size", "No es mi talla"], ["other", "Otro motivo"]];
 
 export default function MyPpePage() {
   const { reload } = useWorker();
@@ -18,6 +19,14 @@ export default function MyPpePage() {
   const [error, setError] = useState<string | null>(null);
   const [sign, setSign] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [ask, setAsk] = useState<{ id: string; reason: string; notes: string } | null>(null);
+  const [asked, setAsked] = useState(false);
+  const request = async () => {
+    if (!ask) return;
+    setError(null);
+    try { await workerApi(`/ppe/${ask.id}/replacement`, { method: "POST", body: { reason: ask.reason, notes: ask.notes || null } }); setAsk(null); setAsked(true); void load(); }
+    catch (e) { setError(errorText(e)); }
+  };
   const load = useCallback(() => workerApi<Delivery[]>("/ppe").then(setRows).catch((e) => setError(errorText(e))), []);
   useEffect(() => {
     void load();
@@ -27,6 +36,7 @@ export default function MyPpePage() {
     <>
       <Title sub="Tu equipo de protección personal.">Mi EPP</Title>
       {done && <Alert tone="ok">Recepción firmada. ¡Gracias!</Alert>}
+      {asked && <Alert tone="ok">Pedido enviado al área de SST. Te avisarán cuando esté listo.</Alert>}
       {error && <Alert>{error}</Alert>}
       {!rows && !error && <Loading />}
       {rows && rows.length === 0 && <Empty text="Aún no hay entregas de EPP registradas a tu nombre." />}
@@ -47,6 +57,15 @@ export default function MyPpePage() {
                 </div>
                 {d.status === "delivered" && !d.signed && <BigButton onClick={() => setSign(d.id)}>Firmar la recepción</BigButton>}
                 {d.signed && <p className="text-xs text-ok">Recepción firmada</p>}
+                {["delivered", "due_for_replacement"].includes(d.status) && (d.replacement_requested ? <p className="text-xs text-muted">Reposición pedida: el área de SST la está atendiendo.</p>
+                  : ask?.id === d.id ? (
+                    <div className="space-y-2">
+                      <select className="input" value={ask.reason} onChange={(ev) => setAsk({ ...ask, reason: ev.target.value })} aria-label="Motivo">{REASONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+                      <input className="input" placeholder="Comentario (opcional)" value={ask.notes} onChange={(ev) => setAsk({ ...ask, notes: ev.target.value })} />
+                      <BigButton onClick={request}>Enviar pedido</BigButton>
+                      <BigButton variant="secondary" onClick={() => setAsk(null)}>Cancelar</BigButton>
+                    </div>
+                  ) : <BigButton variant="secondary" onClick={() => setAsk({ id: d.id, reason: "worn", notes: "" })}>Solicitar reposición</BigButton>)}
               </li>
             );
           })}

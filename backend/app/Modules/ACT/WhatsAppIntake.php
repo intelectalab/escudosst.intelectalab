@@ -222,7 +222,7 @@ final class WhatsAppIntake
             DbContext::setCompany($company);
             $p = DB::selectOne("select p.*, (select coalesce(trade_name, legal_name) from companies where id = p.company_id) as company_name
                                   from report_points p where p.token_hash = decode(?, 'hex') and p.deleted_at is null", [hash('sha256', $token)]);
-            if (! $p || ! hash_equals(ReportPointController::token($company, $p->id), $token) || ! $p->is_active || $p->revoked_at) {
+            if (! $p || ! hash_equals(ReportPointController::token($company, $p->id, (int) ($p->token_rotation ?? 0)), $token) || ! $p->is_active || $p->revoked_at) {
                 return null;
             }
 

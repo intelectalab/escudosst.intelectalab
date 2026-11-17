@@ -63,6 +63,13 @@ final class SstAlerts
         if ($retention > 0) {
             $db->delete('delete from access_events where occurred_at < now() - make_interval(days => ?::int)', [$retention]);
         }
+        // M-INS RN-INS-07: la inspección firmada pasa a «cerrada» cuando todas las acciones de sus hallazgos están cerradas.
+        $db->update("update inspections i set status = 'closed', updated_at = now() where i.status = 'signed' and i.deleted_at is null
+                      and not exists (select 1 from findings f left join corrective_actions c on c.id = f.corrective_action_id
+                                       where f.inspection_id = i.id and f.deleted_at is null and f.status <> 'dismissed'
+                                         and (c.id is null or c.status not in ('verified', 'closed', 'cancelled')))");
+        // M-EPP §9 / RN-EPP-01: la entrega cuya fecha de reposición pasó queda «para reponer».
+        $db->update("update ppe_deliveries set status = 'due_for_replacement', updated_at = now() where status = 'delivered' and deleted_at is null and expires_on < (now() at time zone 'America/Lima')::date");
         // M-COM RN-COM-07: el comité o supervisor cuyo mandato pasó su fecha de fin queda «terminado» (vencido).
         $db->update("update committees set status = 'ended', updated_at = now() where deleted_at is null and status = 'active' and period_end_on < (now() at time zone 'America/Lima')::date");
         // M-HOM RN-HOM-05: la homologación aprobada que pasó su vigencia queda «vencida».
@@ -637,8 +644,8 @@ final class SstAlerts
                 'fot.blocked', 'normal', 'Fotocheck no habilitado', fn ($r) => "El fotocheck {$r->ref} quedó no habilitado: revisa sus requisitos.", '/m/fot?t=credentials&open=', ['sst_manager'], false,
                 fn ($r) => 'Tu fotocheck quedó no habilitado: acércate a SST para ver qué requisito falta.'],
             ['ACT', "select id, code as ref, description as name, null as owner, reported_at as due, 'act' as kind from substandard_reports
-                      where deleted_at is null and status = 'received' and reported_at < now() - interval '2 days'",
-                'act.untriaged', 'normal', 'Reporte sin revisar', fn ($r) => "El reporte {$r->ref} lleva más de 2 días sin revisar.", '/m/act?t=substandard_reports&open=', self::SST_ROLES, true],
+                      where deleted_at is null and status = 'received' and reported_at < now() - make_interval(hours => ".self::days('report_triage_hours', 24).')',
+                'act.untriaged', 'normal', 'Reporte sin clasificar', fn ($r) => "El reporte {$r->ref} pasó el plazo para clasificarlo (".self::days('report_triage_hours', 24).' horas).', '/m/act?t=substandard_reports&open=', self::SST_ROLES, true],
             // M-AMB §10: residuo peligroso sin manifiesto pasados «waste_manifest_days» desde que se generó.
             ['AMB', "select id, coalesce(description, 'Residuo peligroso') as ref, '' as name, null as owner, generated_on as due, 'manifest' as kind from waste_records
                       where deleted_at is null and waste_type in ('hazardous', 'biocontaminated') and coalesce(manifest_number, '') = '' and status <> 'disposed'

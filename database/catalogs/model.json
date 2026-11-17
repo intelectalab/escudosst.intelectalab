@@ -23251,6 +23251,17 @@
     "comment": null
    },
    {
+    "name": "previous_template_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "inspection_templates.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -23793,10 +23804,22 @@
      "scheduled",
      "in_progress",
      "completed",
+     "signed",
      "closed",
      "overdue",
      "cancelled"
     ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "signed_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
     "ref": null,
     "encrypted": false,
     "generated": null,
@@ -24678,6 +24701,17 @@
     "comment": null
    },
    {
+    "name": "token_rotation",
+    "type": "integer",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -25039,6 +25073,7 @@
      "triaged",
      "rejected",
      "action_assigned",
+     "escalated",
      "closed"
     ],
     "ref": null,
@@ -25108,6 +25143,17 @@
     "default": null,
     "values": null,
     "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "escalated_event_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "sst_events.id",
     "encrypted": false,
     "generated": null,
     "comment": null
@@ -28516,6 +28562,17 @@
     "comment": null
    },
    {
+    "name": "training_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "trainings.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -29191,6 +29248,7 @@
     "default": "'delivered'",
     "values": [
      "delivered",
+     "due_for_replacement",
      "returned",
      "replaced",
      "lost"

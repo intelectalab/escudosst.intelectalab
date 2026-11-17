@@ -34,6 +34,7 @@ import { ObsModule } from "@/components/modules/ObsModule";
 import { RebaForm } from "@/components/modules/RebaForm";
 import { PolOverview } from "@/components/modules/PolOverview";
 import { PreExecution } from "@/components/modules/PreExecution";
+import { EppPanel, InsDashboard } from "@/components/modules/FieldPanels";
 import { RisOverview } from "@/components/modules/RisOverview";
 import { PlaWizard } from "@/components/modules/PlaWizard";
 import { AuiTools } from "@/components/modules/AuiTools";
@@ -198,6 +199,11 @@ export default function ModulePage() {
       ) : m.code === "POL" ? (
         <div className="space-y-6">
           <PolOverview readOnly={m.mode === "read_only"} />
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
+      ) : m.code === "EPP" || m.code === "INS" ? (
+        <div className="space-y-6">
+          {m.code === "EPP" ? <EppPanel readOnly={m.mode === "read_only"} /> : <InsDashboard />}
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
       ) : m.code === "PRE" || m.code === "RIS" ? (

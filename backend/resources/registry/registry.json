@@ -9005,6 +9005,13 @@
      ],
      "default": "active",
      "list": true
+    },
+    {
+     "name": "previous_template_id",
+     "label": "Versión anterior",
+     "readonly": true,
+     "type": "ref",
+     "ref": "inspection_templates"
     }
    ]
   },
@@ -9320,6 +9327,10 @@
        "label": "Completado"
       },
       {
+       "value": "signed",
+       "label": "Firmada"
+      },
+      {
        "value": "closed",
        "label": "Cerrado"
       },
@@ -9334,6 +9345,12 @@
      ],
      "default": "scheduled",
      "list": true
+    },
+    {
+     "name": "signed_at",
+     "label": "Firmado el",
+     "readonly": true,
+     "type": "datetime"
     }
    ]
   },
@@ -9711,6 +9728,12 @@
      "name": "revoked_at",
      "label": "Revocado el",
      "type": "datetime"
+    },
+    {
+     "name": "token_rotation",
+     "label": "Cambios de QR",
+     "readonly": true,
+     "type": "int"
     }
    ]
   },
@@ -9935,6 +9958,10 @@
        "label": "Acción asignada"
       },
       {
+       "value": "escalated",
+       "label": "Escalado a evento"
+      },
+      {
        "value": "closed",
        "label": "Cerrado"
       }
@@ -9977,6 +10004,13 @@
      "label": "Cerrado el",
      "readonly": true,
      "type": "datetime"
+    },
+    {
+     "name": "escalated_event_id",
+     "label": "Evento al que se escaló",
+     "readonly": true,
+     "type": "ref",
+     "ref": "sst_events"
     }
    ]
   },
@@ -11416,6 +11450,12 @@
      "type": "bool",
      "default": true,
      "list": true
+    },
+    {
+     "name": "training_id",
+     "label": "Capacitación",
+     "type": "ref",
+     "ref": "trainings"
     }
    ]
   },
@@ -11726,6 +11766,10 @@
       {
        "value": "delivered",
        "label": "Entregado"
+      },
+      {
+       "value": "due_for_replacement",
+       "label": "Para reponer"
       },
       {
        "value": "returned",

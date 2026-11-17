@@ -5,7 +5,7 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { api, ApiError } from "@/lib/api";
+import { API_URL, api, ApiError } from "@/lib/api";
 
 type Point = { company: string | null; point: string; site: string | null; location: string | null; allow_anonymous: boolean; whatsapp_url?: string | null };
 
@@ -29,6 +29,8 @@ export default function ReportarPage() {
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  const [track, setTrack] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<File | null>(null);
 
   useEffect(() => {
     api<{ data: Point }>(`/public/report/${company}/${token}`)
@@ -41,11 +43,19 @@ export default function ReportarPage() {
     setBusy(true);
     setErrors({});
     try {
-      const r = await api<{ data: { code: string } }>(`/public/report/${company}/${token}`, {
-        method: "POST",
-        body: { report_type: type, description, location_text: location || null, is_anonymous: anonymous, reporter_name: anonymous ? null : name, reporter_phone: anonymous ? null : phone || null },
-      });
-      setDone(r.data.code);
+      // Con foto se envía como formulario con archivo; el servidor la vuelve a guardar sin los datos ocultos del celular (EXIF).
+      const fd = new FormData();
+      fd.append("report_type", type);
+      fd.append("description", description);
+      if (location) fd.append("location_text", location);
+      fd.append("is_anonymous", anonymous ? "1" : "0");
+      if (!anonymous) { fd.append("reporter_name", name); if (phone) fd.append("reporter_phone", phone); }
+      if (photo) fd.append("photo", photo);
+      const res = await fetch(`${API_URL}/api/v1/public/report/${company}/${token}`, { method: "POST", body: fd, headers: { Accept: "application/json" } });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new ApiError(res.status, j.type ?? "error", j.title ?? "Error", j.detail, j.errors);
+      setDone(j.data.code);
+      setTrack(j.data.track_url ?? null);
     } catch (err) {
       const ae = err as ApiError;
       setErrors(ae.errors ?? { form: [ae.detail ?? "No se pudo enviar. Inténtalo de nuevo."] });
@@ -73,6 +83,7 @@ export default function ReportarPage() {
         <p className="text-4xl" aria-hidden="true">✅</p>
         <h1 className="text-xl font-bold">¡Gracias por reportar!</h1>
         <p>Tu reporte <b>{done}</b> llegó al área de Seguridad. Lo revisarán y tomarán acción.</p>
+        {track && <p className="text-sm">Guarda este enlace para ver cómo avanza: <a href={track} className="break-all font-semibold text-[#1b6fb7] underline">seguir mi reporte</a>.</p>}
         <button type="button" className="font-semibold text-[#1b6fb7] underline" onClick={() => { setDone(null); setType(""); setDescription(""); setLocation(""); }}>
           Hacer otro reporte
         </button>
@@ -119,6 +130,13 @@ export default function ReportarPage() {
       <label className="block">
         <span className="mb-1 block font-semibold">¿Dónde exactamente? <span className="font-normal text-[#5b6b7c]">(opcional)</span></span>
         <input className="w-full rounded-xl border border-[#c9d5e2] p-3" maxLength={200} value={location} onChange={(e) => setLocation(e.target.value)} placeholder={point.location ?? "Ej.: pasillo 2, junto a la puerta"} />
+      </label>
+
+      <label className="block">
+        <span className="mb-1 block font-semibold">Foto <span className="font-normal text-[#5b6b7c]">(opcional)</span></span>
+        <input type="file" accept="image/*" capture="environment" onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} className="block w-full text-sm" />
+        <span className="text-xs text-[#5b6b7c]">Se guarda sin la ubicación ni los datos ocultos del celular.</span>
+        {err("photo") && <span className="block text-sm font-medium text-[#b42318]">{err("photo")}</span>}
       </label>
 
       {point.allow_anonymous && (

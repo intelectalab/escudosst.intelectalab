@@ -27,6 +27,8 @@ abstract class RecordRules
         'action_evidences' => AcrRules::class,
         'inspections' => InsRules::class,
         'findings' => InsRules::class,
+        'inspection_templates' => InsRules::class,
+        'inspection_template_items' => InsRules::class,
         'annual_programs' => ProgramRules::class,
         'program_activities' => ProgramRules::class,
         'activity_executions' => ProgramRules::class,

@@ -15,6 +15,13 @@ function psiAs(callable $fn): mixed
     }
 }
 
+afterEach(function () {
+    // Algunas pruebas cambian el rol del usuario: los permisos guardados en memoria no deben pasar a la siguiente.
+    app('auth')->forgetGuards();
+    \App\Core\Auth\Permissions::flush();
+    $GLOBALS['sus_tokens'] = [];
+});
+
 beforeEach(function () {
     $GLOBALS['sus_tokens'] = [];
     psiAs(fn () => DB::update("update feature_flags set mode = 'enabled' where company_id = ? and module_code in ('PSI', 'TRB') and deleted_at is null", [HUAYLAS_ID]));

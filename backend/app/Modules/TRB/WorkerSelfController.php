@@ -197,6 +197,11 @@ class WorkerSelfController extends Controller
         if ($meta['signed'] ?? false) {
             throw new ApiProblem(409, 'conflict', 'Ya firmaste', 'Este pendiente ya está firmado.');
         }
+        // M-ATS RN-ATS-03: con ats_block_untrained activo, quien no tiene la capacitación exigida no firma el ATS.
+        if ($kind === 'ats' && \App\Core\Support\LegalParams::flag('ats_block_untrained', false)
+            && ($miss = \App\Modules\REC\AtsTrainingController::missing((string) $row->ats_form_id, $w->id))) {
+            throw new ApiProblem(409, 'conflict', 'Falta capacitación', 'No puedes firmar este ATS: te falta la capacitación «'.implode('», «', $miss).'». Consulta con el área de SST.');
+        }
         WorkerAppAccess::requirePin($w->id, $request->input('pin'));
         $ctx = app(CompanyContext::class);
         $uid = (string) auth()->id();
@@ -332,15 +337,38 @@ class WorkerSelfController extends Controller
         $w = WorkerSelf::row();
         $today = WorkerSelf::today();
         $rows = DB::select(
-            'select d.id, i.name as item, d.quantity, d.size, d.delivered_at, d.expires_on, d.status, d.signature_id is not null as signed
+            "select d.id, i.name as item, d.quantity, d.size, d.delivered_at, d.expires_on, d.status, d.signature_id is not null as signed,
+                    exists (select 1 from ppe_replacement_requests q where q.worker_id = d.worker_id and q.ppe_item_id = d.ppe_item_id and q.status = 'pending' and q.deleted_at is null) as replacement_requested
                from ppe_deliveries d join ppe_items i on i.id = d.ppe_item_id
-              where d.worker_id = ? and d.deleted_at is null order by d.delivered_at desc limit 200', [$w->id]);
+              where d.worker_id = ? and d.deleted_at is null order by d.delivered_at desc limit 200", [$w->id]);
         foreach ($rows as $r) {
             $r->signed = (bool) $r->signed;
             $r->expiry = ! $r->expires_on ? 'none' : ($r->expires_on < $today ? 'expired' : ($r->expires_on <= date('Y-m-d', strtotime($today.' +30 days')) ? 'soon' : 'ok'));
         }
 
         return response()->json(['data' => $rows]);
+    }
+
+    /** M-EPP: el trabajador pide la reposición de un EPP que recibió (gastado, dañado, perdido o de otra talla). */
+    public function ppeReplacement(Request $request, string $id): JsonResponse
+    {
+        $this->module('EPP');
+        $w = WorkerSelf::row();
+        $d = Str::isUuid($id) ? DB::selectOne("select d.id, d.ppe_item_id, i.name from ppe_deliveries d join ppe_items i on i.id = d.ppe_item_id where d.id = ? and d.worker_id = ? and d.deleted_at is null", [$id, $w->id]) : null;
+        if (! $d) {
+            throw ApiProblem::notFound('No encontramos esa entrega de EPP.');
+        }
+        $in = $request->validate(['reason' => ['required', 'in:worn,damaged,lost,size,other'], 'notes' => ['nullable', 'string', 'max:500']], ['reason.required' => 'Elige el motivo.']);
+        if (DB::selectOne("select 1 as ok from ppe_replacement_requests where worker_id = ? and ppe_item_id = ? and status = 'pending' and deleted_at is null", [$w->id, $d->ppe_item_id])) {
+            throw new ApiProblem(409, 'conflict', 'Ya lo pediste', 'Ya tienes una solicitud de reposición pendiente de este EPP.');
+        }
+        $uid = (string) auth()->id();
+        $rid = DB::selectOne('insert into ppe_replacement_requests (company_id, worker_id, ppe_delivery_id, ppe_item_id, reason, notes, created_by, updated_by) values (?, ?, ?, ?, ?, ?, ?, ?) returning id',
+            [app(CompanyContext::class)->companyId, $w->id, $d->id, $d->ppe_item_id, $in['reason'], $in['notes'] ?? null, $uid, $uid])->id;
+        \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['sst_manager', 'sst_supervisor']), 'epp.replacement_requested', 'EPP', $rid, 'Solicitud de reposición de EPP',
+            "{$w->full_name} pide reponer «{$d->name}».", '/m/epp', 'normal', 'epp.replacement:'.$rid);
+
+        return response()->json(['data' => ['id' => $rid]], 201);
     }
 
     public function reports(): JsonResponse

@@ -29,6 +29,13 @@ function brRole(string $role): array
     return authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
 }
 
+afterEach(function () {
+    // Algunas pruebas cambian el rol del usuario: los permisos guardados en memoria no deben pasar a la siguiente.
+    app('auth')->forgetGuards();
+    \App\Core\Auth\Permissions::flush();
+    $GLOBALS['sus_tokens'] = [];
+});
+
 beforeEach(function () {
     $GLOBALS['sus_tokens'] = [];
     brAs(fn () => DB::update("update feature_flags set mode = 'enabled' where company_id = ? and module_code in ('PRE', 'RIS', 'COM', 'CTR') and deleted_at is null", [HUAYLAS_ID]));

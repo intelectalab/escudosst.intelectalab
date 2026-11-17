@@ -1260,7 +1260,10 @@
   "management_approved_by": "Aprobado por gerencia",
   "management_approved_at": "Aprobado por gerencia el",
   "unmarked_justifications": "Justificación de riesgos sin marcador",
-  "instrument_id": "Versión del cuestionario"
+  "instrument_id": "Versión del cuestionario",
+  "previous_template_id": "Versión anterior",
+  "escalated_event_id": "Evento al que se escaló",
+  "token_rotation": "Cambios de QR"
  },
  "values": {
   "A": "Tipo A",
@@ -1965,7 +1968,12 @@
   "change_requests.impact_level.high": "Alto",
   "measurements.status.approved": "Aprobada",
   "measurements.status.voided": "Anulada",
-  "measurements.status.draft": "Borrador"
+  "measurements.status.draft": "Borrador",
+  "escalated": "Escalado",
+  "due_for_replacement": "Para reponer",
+  "inspections.status.signed": "Firmada",
+  "substandard_reports.status.escalated": "Escalado a evento",
+  "ppe_deliveries.status.due_for_replacement": "Para reponer"
  },
  "tables": {
   "absences": "Ausencias",

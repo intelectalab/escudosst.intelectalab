@@ -11,3 +11,9 @@ Route::middleware(['auth:sanctum', 'company', 'module:INS'])->prefix('ins')->gro
     Route::post('findings/{finding}/action', [InspectionController::class, 'action'])->whereUuid('finding')
         ->middleware(['permission:ins.findings.update', 'module:ACR', 'permission:acr.corrective_actions.create']);
 });
+
+// Versiones de las plantillas y tablero por área (M-INS RN-INS-04).
+Route::middleware(['auth:sanctum', 'company', 'module:INS'])->prefix('ins')->group(function () {
+    Route::post('templates/{id}/new-version', [\App\Modules\INS\Http\InsToolsController::class, 'newVersion'])->whereUuid('id');
+    Route::get('dashboard', [\App\Modules\INS\Http\InsToolsController::class, 'dashboard']);
+});

@@ -27,6 +27,7 @@ class DiagnosisController extends Controller
             $this->committee($today),
             $this->iperc($today),
             $this->pets(),
+            $this->drills($year),
             $this->registers($year),
             $this->training($year),
             $this->emo($today),
@@ -106,6 +107,26 @@ class DiagnosisController extends Controller
         return $this->area('PETS de tareas críticas', 'PET', 'procedures', $ok * 100 / count($rows),
             $missing ? "{$ok} de ".count($rows).' puestos críticos con PETS vigente · sin PETS: '.implode(', ', array_slice($missing, 0, 5)).(count($missing) > 5 ? '…' : '').'.'
                 : 'Todos los puestos críticos tienen su PETS vigente.');
+    }
+
+    /** M-SIM RN-SIM-02: cada sede con trabajadores tiene al menos drills_per_year simulacros ejecutados en el año. */
+    private function drills(int $year): array
+    {
+        $min = (int) LegalParams::number('drills_per_year', 1);
+        $rows = DB::select(
+            "select s.name, (select count(*) from drills d where d.site_id = s.id and d.deleted_at is null and d.status in ('executed', 'evaluated')
+                                and extract(year from coalesce(d.executed_at, d.scheduled_at)) = ?) as n
+               from sites s where s.deleted_at is null and exists (select 1 from workers w where w.current_site_id = s.id and w.status = 'active' and w.deleted_at is null)
+              order by s.name", [$year]);
+        if (! $rows) {
+            return $this->area('Simulacros', 'SIM', 'drills', null, 'No hay sedes con trabajadores activos.');
+        }
+        $late = array_values(array_filter($rows, fn ($r) => (int) $r->n < $min));
+        $ok = count($rows) - count($late);
+
+        return $this->area('Simulacros', 'SIM', 'drills', $ok * 100 / count($rows),
+            $late ? "{$ok} de ".count($rows)." sedes con {$min} o más simulacros en {$year} · faltan: ".implode(', ', array_map(fn ($r) => "{$r->name} ({$r->n})", array_slice($late, 0, 5))).'.'
+                : "Todas las sedes tienen {$min} o más simulacros ejecutados en {$year}.");
     }
 
     /** Registros obligatorios (R.M. 050-2013-TR) generados en el año. */

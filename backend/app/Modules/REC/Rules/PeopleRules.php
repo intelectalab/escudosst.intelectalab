@@ -649,6 +649,18 @@ class PeopleRules extends RecordRules
             if ($missing) {
                 $this->fail('status', 'Faltan verificaciones de cierre: '.implode('; ', $missing).'.');
             }
+            // RN-PTR-08: el cierre lleva la firma del solicitante y la del supervisor SST (dos personas distintas).
+            $signers = array_column(DB::select(
+                "select s.signer_user_id, coalesce(r.base_role_code, r.code) as role from signatures s
+                   left join memberships m on m.user_id = s.signer_user_id and m.company_id = s.company_id and m.status = 'active' and m.deleted_at is null
+                   left join roles r on r.id = m.role_id where s.subject_type = 'work_permits' and s.subject_id = ?", [$current->id]), 'role', 'signer_user_id');
+            if ($current->requested_by && ! array_key_exists((string) $current->requested_by, $signers)) {
+                $this->fail('status', 'Para cerrar el permiso falta la firma de quien lo solicitó (pestaña «Firmas»).');
+            }
+            $sst = array_filter($signers, fn ($role, $u) => in_array($role, ['sst_supervisor', 'sst_manager'], true) && (string) $u !== (string) $current->requested_by, ARRAY_FILTER_USE_BOTH);
+            if (! $sst) {
+                $this->fail('status', 'Para cerrar el permiso falta la firma del supervisor SST (pestaña «Firmas»).');
+            }
             $values['closed_at'] = now()->toIso8601String();
             $extra['closed_by'] = ['?', [(string) auth()->id()]];
         }

@@ -15,6 +15,13 @@ function rgAs(callable $fn): mixed
     }
 }
 
+afterEach(function () {
+    // Algunas pruebas cambian el rol del usuario: los permisos guardados en memoria no deben pasar a la siguiente.
+    app('auth')->forgetGuards();
+    \App\Core\Auth\Permissions::flush();
+    $GLOBALS['sus_tokens'] = [];
+});
+
 beforeEach(function () {
     $GLOBALS['sus_tokens'] = [];
     $this->h = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);

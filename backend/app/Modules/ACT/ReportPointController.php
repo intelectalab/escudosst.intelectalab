@@ -23,14 +23,46 @@ use Illuminate\Support\Str;
  */
 class ReportPointController extends Controller
 {
-    public static function token(string $companyId, string $pointId): string
+    /** Token del QR; cada cambio de QR (rotation) genera otro y el anterior deja de funcionar. */
+    public static function token(string $companyId, string $pointId, int $rotation = 0): string
     {
-        return strtoupper(substr(hash_hmac('sha256', 'report|'.$companyId.'|'.$pointId, (string) config('app.key')), 0, 32));
+        return strtoupper(substr(hash_hmac('sha256', 'report|'.$companyId.'|'.$pointId.($rotation > 0 ? '|'.$rotation : ''), (string) config('app.key')), 0, 32));
     }
 
-    public static function url(string $companyId, string $pointId): string
+    public static function url(string $companyId, string $pointId, int $rotation = 0): string
     {
-        return rtrim((string) config('escudo.frontend_url'), '/').'/reportar/'.$companyId.'/'.self::token($companyId, $pointId);
+        return rtrim((string) config('escudo.frontend_url'), '/').'/reportar/'.$companyId.'/'.self::token($companyId, $pointId, $rotation);
+    }
+
+    /** RN-ACT-09: firma del enlace de seguimiento (solo muestra el estado del reporte). */
+    public static function trackSig(string $companyId, string $code): string
+    {
+        return substr(hash_hmac('sha256', 'track|'.$companyId.'|'.$code, (string) config('app.key')), 0, 16);
+    }
+
+    public static function trackUrl(string $companyId, string $code): string
+    {
+        return rtrim((string) config('escudo.frontend_url'), '/').'/seguimiento/'.$companyId.'/'.$code.'/'.self::trackSig($companyId, $code);
+    }
+
+    /** GET /public/report-status/{company}/{code}/{sig}: estado del reporte (sin su contenido). */
+    public function track(string $company, string $code, string $sig): JsonResponse
+    {
+        if (! Str::isUuid($company) || ! preg_match('/^[A-Z]{3}-\d{4}-\d{4,}$/', $code) || ! hash_equals(self::trackSig($company, $code), $sig)) {
+            throw ApiProblem::notFound('El código de seguimiento no es válido.');
+        }
+
+        return DB::transaction(function () use ($company, $code) {
+            DbContext::setCompany($company);
+            $r = DB::selectOne('select status, reported_at, triaged_at, closed_at from substandard_reports where code = ? and deleted_at is null', [$code]);
+            if (! $r) {
+                throw ApiProblem::notFound('El código de seguimiento no es válido.');
+            }
+            $label = ['received' => 'Recibido', 'triaged' => 'En revisión', 'action_assigned' => 'Con acción asignada', 'escalated' => 'Derivado a investigación',
+                'rejected' => 'Descartado', 'closed' => 'Atendido y cerrado'][$r->status] ?? $r->status;
+
+            return response()->json(['data' => ['code' => $code, 'status' => $r->status, 'label' => $label, 'reported_at' => $r->reported_at, 'triaged_at' => $r->triaged_at, 'closed_at' => $r->closed_at]]);
+        });
     }
 
     public function link(string $id): JsonResponse
@@ -38,12 +70,13 @@ class ReportPointController extends Controller
         if (! in_array('act.report_points.read', Permissions::effective(), true)) {
             throw ApiProblem::forbidden();
         }
-        $p = Str::isUuid($id) ? DB::selectOne('select id, name, is_active, revoked_at from report_points where id = ? and deleted_at is null', [$id]) : null;
+        $p = Str::isUuid($id) ? DB::selectOne('select id, name, is_active, revoked_at, token_rotation from report_points where id = ? and deleted_at is null', [$id]) : null;
         if (! $p) {
             throw ApiProblem::notFound('El punto de reporte no existe o es de otra empresa.');
         }
 
-        return response()->json(['data' => ['url' => self::url(app(CompanyContext::class)->companyId, $p->id), 'active' => $p->is_active && ! $p->revoked_at]]);
+        return response()->json(['data' => ['url' => self::url(app(CompanyContext::class)->companyId, $p->id, (int) $p->token_rotation), 'active' => $p->is_active && ! $p->revoked_at,
+            'rotations' => (int) $p->token_rotation]]);
     }
 
     public function show(string $company, string $token): JsonResponse
@@ -54,7 +87,7 @@ class ReportPointController extends Controller
             return response()->json(['data' => [
                 'company' => $c?->name, 'point' => $p->name, 'site' => $p->site_name, 'location' => $p->location_description, 'allow_anonymous' => (bool) $p->allow_anonymous,
                 // Enlace «Reportar por WhatsApp» (solo con WhatsApp en vivo): abre el chat con el código del punto ya escrito.
-                'whatsapp_url' => WhatsAppIntake::link($p->company_id, self::token($p->company_id, $p->id)),
+                'whatsapp_url' => WhatsAppIntake::link($p->company_id, self::token($p->company_id, $p->id, (int) $p->token_rotation)),
             ]]);
         });
     }
@@ -69,6 +102,7 @@ class ReportPointController extends Controller
             'reporter_name' => ['nullable', 'string', 'max:120'],
             'reporter_phone' => ['nullable', 'string', 'max:30'],
             'website' => ['prohibited'],   // trampa para robots
+            'photo' => ['nullable', 'image', 'mimes:jpeg,png,webp', 'max:8192'],
         ], [
             'report_type.required' => 'Elige qué quieres reportar.',
             'description.required' => 'Cuéntanos qué pasó.',
@@ -76,6 +110,11 @@ class ReportPointController extends Controller
         ]);
 
         return $this->inPoint($company, $token, function (object $p) use ($d, $request) {
+            // RN-ACT-01: límite de reportes por QR (public_report_rate_limit por hora).
+            $limit = (int) \App\Core\Support\LegalParams::number('public_report_rate_limit', 10);
+            if ($limit > 0 && (int) DB::selectOne("select count(*) as n from substandard_reports where report_point_id = ? and reported_at > now() - interval '1 hour'", [$p->id])->n >= $limit) {
+                throw new ApiProblem(429, 'too_many_requests', 'Demasiados reportes', 'Este código QR recibió muchos reportes en la última hora. Inténtalo más tarde o avisa al área de SST.');
+            }
             $anonymous = (bool) ($d['is_anonymous'] ?? false);
             if ($anonymous && ! $p->allow_anonymous) {
                 throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'En este punto los reportes llevan nombre.', ['errors' => ['is_anonymous' => ['En este punto los reportes llevan nombre.']]]);
@@ -96,10 +135,44 @@ class ReportPointController extends Controller
                     $anonymous ? 'true' : 'false', $contact, hash_hmac('sha256', (string) $request->ip(), (string) config('app.key'))]
             );
             DB::update('update report_points set report_count = report_count + 1, last_used_at = now() where id = ?', [$p->id]);
+            if ($request->hasFile('photo') && ($fid = self::cleanPhoto($p->company_id, $request->file('photo')))) {
+                DB::update('update substandard_reports set photo_file_id = ? where code = ? and company_id = ?', [$fid, $code, $p->company_id]);
+            }
             \App\Modules\NOT\Notify::newReport($p->company_id, $code);
 
-            return response()->json(['data' => ['code' => $code]], 201);
+            return response()->json(['data' => ['code' => $code, 'track_url' => self::trackUrl($p->company_id, $code)]], 201);
         });
+    }
+
+    /**
+     * RN-ACT-04: la foto se vuelve a guardar desde sus píxeles (JPEG), sin los metadatos EXIF del celular (ubicación, equipo, fecha).
+     */
+    public static function cleanPhoto(string $companyId, \Illuminate\Http\UploadedFile $file): ?string
+    {
+        $img = @imagecreatefromstring((string) file_get_contents($file->getRealPath()));
+        if (! $img) {
+            return null;
+        }
+        $w = imagesx($img);
+        $h = imagesy($img);
+        $max = 1600;
+        if (max($w, $h) > $max) {
+            $r = $max / max($w, $h);
+            $img = imagescale($img, (int) round($w * $r), (int) round($h * $r)) ?: $img;
+        }
+        ob_start();
+        imagejpeg($img, null, 82);
+        $bytes = (string) ob_get_clean();
+        imagedestroy($img);
+        $id = (string) Str::uuid7();
+        $disk = config('escudo.files_disk', 'local');
+        $path = "company/{$companyId}/".date('Y/m')."/{$id}.jpg";
+        \Illuminate\Support\Facades\Storage::disk($disk)->put($path, $bytes);
+        DB::insert("insert into files (id, company_id, bucket, object_key, original_name, mime_type, size_bytes, sha256, module_code, entity_type, status, exif_stripped)
+                    values (?, ?, ?, ?, 'foto-reporte.jpg', 'image/jpeg', ?, decode(?, 'hex'), 'ACT', 'substandard_reports', 'available', true)",
+            [$id, $companyId, $disk, $path, strlen($bytes), hash('sha256', $bytes)]);
+
+        return $id;
     }
 
     /** Valida el token del punto y ejecuta con el contexto RLS de esa empresa. */
@@ -113,7 +186,7 @@ class ReportPointController extends Controller
             DbContext::setCompany($company);
             $p = DB::selectOne("select p.*, s.name as site_name from report_points p left join sites s on s.id = p.site_id
                                  where p.token_hash = decode(?, 'hex') and p.deleted_at is null", [hash('sha256', strtoupper($token))]);
-            if (! $p || ! hash_equals(self::token($company, $p->id), strtoupper($token))) {
+            if (! $p || ! hash_equals(self::token($company, $p->id, (int) $p->token_rotation), strtoupper($token))) {
                 throw ApiProblem::notFound('Este código QR no es válido.');
             }
             if (! $p->is_active || $p->revoked_at) {

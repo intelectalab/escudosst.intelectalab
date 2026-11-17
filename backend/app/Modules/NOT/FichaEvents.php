@@ -105,6 +105,10 @@ final class FichaEvents
             if ($r->subject_type === 'register_exports') {
                 DB::update("update register_exports set status = 'signed', updated_at = now() where id = ? and status = 'pending_signature'", [$r->subject_id]);
             }
+            // M-INS §9: la inspección finalizada con todas sus firmas queda «firmada».
+            if ($r->subject_type === 'inspections') {
+                DB::update("update inspections set status = 'signed', signed_at = now(), updated_at = now() where id = ? and status = 'completed'", [$r->subject_id]);
+            }
             $who = array_column(DB::select("select distinct requested_by from signature_requests where subject_type = ? and subject_id = ? and deleted_at is null and status = 'signed' and requested_by is not null",
                 [$r->subject_type, $r->subject_id]), 'requested_by');
             $what = \App\Modules\REC\Registry::data()['resources'][$r->subject_type]['title'] ?? 'El registro';

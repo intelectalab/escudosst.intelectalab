@@ -37,6 +37,11 @@ class PpeCommitteeRules extends RecordRules
         }
         $d = DB::selectOne('select * from ppe_deliveries where id = ?', [$id]);
         if ($op === 'create') {
+            // La entrega nueva repone las anteriores del mismo EPP que estaban «para reponer».
+            DB::update("update ppe_deliveries set status = 'replaced', updated_at = now() where worker_id = ? and ppe_item_id = ? and id <> ? and status = 'due_for_replacement' and deleted_at is null",
+                [$d->worker_id, $d->ppe_item_id, $id]);
+            DB::update("update ppe_replacement_requests set status = 'attended', resolved_at = now(), resolved_by = ?, new_delivery_id = ? where worker_id = ? and ppe_item_id = ? and status = 'pending'",
+                [(string) auth()->id(), $id, $d->worker_id, $d->ppe_item_id]);
             DB::insert(
                 "insert into ppe_stock_movements (company_id, ppe_item_id, site_id, movement_type, quantity, size, moved_at, reference, ppe_delivery_id, created_by, updated_by)
                  values (?, ?, ?, 'out', ?, ?, coalesce(?, now()), 'Entrega al trabajador', ?, ?, ?)",
@@ -74,7 +79,7 @@ class PpeCommitteeRules extends RecordRules
 
             return;
         }
-        $item = DB::selectOne('select name, useful_life_days, is_active from ppe_items where id = ?', [$values['ppe_item_id']]);
+        $item = DB::selectOne('select name, useful_life_days, is_active, requires_training, training_id from ppe_items where id = ?', [$values['ppe_item_id']]);
         if (! $item->is_active) {
             $this->fail('ppe_item_id', 'El EPP elegido está inactivo.');
         }
@@ -90,9 +95,21 @@ class PpeCommitteeRules extends RecordRules
         }
         $values['status'] = 'delivered';
         $extra['delivered_by'] = ['?', [(string) auth()->id()]];
+        // RN-EPP-06: el EPP que exige capacitación de uso se entrega a quien la tiene vigente.
+        if ($item->requires_training && $item->training_id && ! DB::selectOne(
+            "select 1 as ok from training_certificates where worker_id = ? and training_id = ? and status = 'validated' and deleted_at is null and (expires_on is null or expires_on >= current_date)",
+            [$values['worker_id'], $item->training_id])) {
+            $t = DB::selectOne('select title from trainings where id = ?', [$item->training_id])?->title ?? 'de uso';
+            $this->fail('worker_id', "«{$item->name}» exige la capacitación «{$t}» vigente y el trabajador no la tiene.");
+        }
+        // RN-EPP-03: no hay stock negativo salvo que allow_negative_stock esté activo (entonces se alerta).
         $stock = self::stock($values['ppe_item_id'], $values['site_id']);
         if ($stock < (float) $values['quantity']) {
-            $this->fail('quantity', "No hay stock suficiente de «{$item->name}» en la sede (quedan {$stock}). Registra primero el ingreso en «Movimientos de stock».");
+            if (! \App\Core\Support\LegalParams::flag('allow_negative_stock', false)) {
+                $this->fail('quantity', "No hay stock suficiente de «{$item->name}» en la sede (quedan {$stock}). Registra primero el ingreso en «Movimientos de stock».");
+            }
+            \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['sst_manager', 'sst_supervisor']), 'epp.negative_stock', 'EPP', $values['ppe_item_id'], 'Stock de EPP en negativo',
+                "Se entregó «{$item->name}» sin stock suficiente en la sede (quedaban {$stock}).", '/m/epp?t=ppe_stock_movements', 'high', 'epp.negative:'.$values['ppe_item_id'].':'.date('Y-m-d'));
         }
     }
 

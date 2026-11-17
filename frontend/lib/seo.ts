@@ -30,6 +30,7 @@ export const PRIVATE_PATHS = [
   "/cotizacion/",
   "/verificar/",
   "/reportar/",
+  "/seguimiento/",
   "/expediente/",
   "/encuesta/",
   "/votar/",

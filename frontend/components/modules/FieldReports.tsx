@@ -6,6 +6,7 @@
 //  - M-ATS: ATS con pasos, peligros y controles, participantes y sus firmas.
 // Se guardan como PDF desde el diálogo de impresión del navegador.
 
+import { QrCode } from "@/components/mfa/QrCode";
 import { useEffect, useState } from "react";
 import { api, type ApiError } from "@/lib/api";
 
@@ -170,6 +171,7 @@ export function PermitReport({ id }: { id: string }) {
     <Sheet company={data.company} title={`Permiso de trabajo de alto riesgo${p.type ? ` · ${p.type.name}` : ""}`} sub={`${p.code} · Estado: ${PTR_STATUS[p.status] ?? p.status}`}
       draft={["draft", "pending_approval"].includes(p.status) ? "BORRADOR · el permiso aún no está aprobado" : null}>
       <Section n={1} title="Datos del permiso">
+        {typeof window !== "undefined" && <div className="float-right ml-3 text-center text-[10px] text-gray-600"><QrCode value={`${window.location.origin}/m/ptr/ver/${id}`} size={80} /><p>Estado en línea</p></div>}
         <Facts rows={[["Trabajo", p.work_description], ["Lugar", [p.site, p.area, p.location_text].filter(Boolean).join(" · ") || "—"], ["Contratista", p.contractor ?? "Personal propio"],
           ["Responsable de la ejecución", p.leader], ["Solicitado por", p.requested_by], ["Vigencia", `${fmtDT(p.valid_from)} a ${fmtDT(p.valid_until)}`], ["Inicio del trabajo", fmtDT(p.activated_at)],
           ["Ampliaciones", String(p.extension_count)], ["ATS / PETS", [p.ats, p.procedure].filter(Boolean).join(" · ") || "—"], ["Base legal", p.type?.legal_reference ?? "—"]]} />

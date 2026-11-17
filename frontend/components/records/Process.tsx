@@ -4,6 +4,7 @@
 // - TraceStrip: «Viene de» → este registro → «Generó», con enlaces a cada registro o lista filtrada (cualquier módulo).
 // - RecordActions: los pasos propios del proceso según la tabla (acción correctiva, inspección, hallazgo).
 
+import { AtsTrainingCheck, EscalateReport, PermitQr, RotateQr, TemplateVersion } from "./FieldExtras";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
@@ -64,7 +65,7 @@ export function describeFilter(res: RecordResource, key: string, value: string):
 /** Registros que ya cerraron su ciclo: se consultan, no se editan (sus pasos siguen en la trazabilidad). */
 export function lockedReason(table: string, row: RecordRow): string | null {
   const st = String(row.status ?? "");
-  if (table === "inspections" && ["completed", "closed"].includes(st))
+  if (table === "inspections" && ["completed", "signed", "closed"].includes(st))
     return "Inspección finalizada: no se edita. Sus hallazgos y acciones siguen en la trazabilidad.";
   if (table === "corrective_actions" && ["verified", "cancelled"].includes(st))
     return st === "verified" ? "Acción verificada: queda como registro cerrado." : "Acción anulada: queda como registro cerrado.";
@@ -246,6 +247,22 @@ function RecordActionsInner({
         <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />
       </div>
     );
+  if (res.table === "substandard_reports")
+    return (
+      <div className="space-y-3">
+        <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />
+        {res.can.update && !readOnly && <EscalateReport row={row} onChanged={onChanged} />}
+      </div>
+    );
+  if (res.table === "ats_forms")
+    return (
+      <div className="space-y-3">
+        <AtsTrainingCheck row={row} />
+        <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />
+      </div>
+    );
+  if (res.table === "inspection_templates" && res.can.create && !readOnly && row.status !== "draft") return <TemplateVersion row={row} onChanged={onChanged} />;
+  if (res.table === "work_permits" && !STEPS[res.table]) return <PermitQr row={row} />;
   if (STEPS[res.table]) return <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "event_notifications") return <NotifyNow row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "committee_meetings") return <MeetingFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
@@ -283,6 +300,7 @@ function ReportPointQr({ row }: { row: RecordRow }) {
         <div className="flex flex-wrap gap-2">
           <a href={`/imprimir/punto-reporte/${row.id}`} target="_blank" rel="noreferrer" className="rounded-lg bg-brand px-3 py-1.5 font-semibold text-white">Imprimir cartel con QR</a>
           <a href={link.url} target="_blank" rel="noreferrer" className="rounded-lg border border-line px-3 py-1.5 font-semibold text-brand hover:border-brand">Probar el formulario</a>
+          <RotateQr id={String(row.id)} onRotated={(url) => setLink({ ...link, url })} />
         </div>
       </div>
     </section>
