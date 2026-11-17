@@ -72,6 +72,7 @@ final class AulAlerts
             }
         }
         if (in_array('VTA', $enabled, true)) {
+            VtaSales::expire($db);   // RN-VTA-12: el pedido sin pago vence y libera el aforo
             $n += $this->ordersExpiring($db, $company);
             $n += $this->paidWithoutEnrollment($db, $company);
         }
@@ -418,6 +419,12 @@ final class AulAlerts
     }
 
     /** Correo a quien no tiene cuenta (participante externo o comprador); una sola vez por clave. */
+    /** Correo a un participante desde la empresa activa (campañas de VTA), con la misma marca de no repetir. */
+    public static function learnerMail(string $email, string $name, string $title, string $body, string $dedupe): int
+    {
+        return self::mail(DB::connection(), (string) app(CompanyContext::class)->companyId, $email, $name, $title, $body, $dedupe);
+    }
+
     private static function mail(ConnectionInterface $db, string $company, string $email, string $name, string $title, string $body, string $dedupe): int
     {
         $mark = 'aulvta-mail:'.$company.':'.$dedupe.':'.hash('sha256', mb_strtolower($email));

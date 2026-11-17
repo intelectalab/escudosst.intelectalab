@@ -89,6 +89,7 @@ class VtaCatalogController extends Controller
             'privacy_consent' => ['accepted'],
             'marketing_consent' => ['boolean'],
             'idempotency_key' => ['nullable', 'uuid'],
+            'coupon_code' => ['nullable', 'string', 'max:40'],
             'website' => ['prohibited'],   // trampa para robots
         ], [
             '*.required_if' => 'Completa este dato.',
@@ -120,9 +121,9 @@ class VtaCatalogController extends Controller
             }
 
             $unit = (float) ($o->sale_price ?? $o->list_price);
-            $total = round($unit * $qty, 2);
-            $sub = $o->price_includes_igv && $o->igv_affectation === 'taxed' ? round($total / 1.18, 2) : $total;
-            $igv = round($total - $sub, 2);
+            $gross = round($unit * $qty, 2);
+            $cp = VtaSales::coupon($d['coupon_code'] ?? null, $o, $gross, $d['email'], $company ? $d['ruc'] : strtoupper((string) $d['document_number']));
+            ['total' => $total, 'subtotal' => $sub, 'igv' => $igv] = VtaSales::amounts($o, $gross - $cp['discount']);
             $n = (int) DB::selectOne('select count(*) + 1 as n from orders')->n;
             do {
                 $number = sprintf('PED-%s-%05d', date('Y'), $n++);
@@ -132,19 +133,19 @@ class VtaCatalogController extends Controller
 
             $id = DB::selectOne(
                 "insert into orders (company_id, order_number, external_learner_id, buyer_type, buyer_document_type, buyer_document_number, buyer_name, buyer_email, buyer_phone,
-                    buyer_ruc, buyer_legal_name, billing_document_type, subtotal, igv_rate, igv_total, total, idempotency_key, source, status, expires_at, customer_ip_hash)
-                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.18, ?, ?, ?, 'public_catalog', 'pending', now() + interval '3 days', decode(?, 'hex')) returning id",
+                    buyer_ruc, buyer_legal_name, billing_document_type, coupon_id, discount_total, subtotal, igv_rate, igv_total, total, idempotency_key, source, status, expires_at, customer_ip_hash)
+                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.18, ?, ?, ?, 'public_catalog', 'pending', now() + make_interval(mins => ?), decode(?, 'hex')) returning id",
                 [$c->company_id, $number, $learner, $d['buyer_type'], $company ? 'RUC' : $d['document_type'], $company ? $d['ruc'] : $d['document_number'], $name,
                     mb_strtolower($d['email']), $d['phone'] ?? null, $company ? $d['ruc'] : null, $company ? $d['legal_name'] : null, $company ? 'invoice' : 'receipt',
-                    $sub, $igv, $total, $key, hash_hmac('sha256', (string) $request->ip(), (string) config('app.key'))]
+                    $cp['coupon_id'], $cp['discount'], $sub, $igv, $total, $key, VtaSales::ttlMinutes(), hash_hmac('sha256', (string) $request->ip(), (string) config('app.key'))]
             )->id;
             DB::insert(
-                'insert into order_items (company_id, order_id, course_offer_id, course_id, description, item_type, quantity, unit_price, subtotal, igv_amount, total)
-                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [$c->company_id, $id, $o->id, $o->course_id, mb_substr($o->title, 0, 300), $company ? 'license' : 'individual', $qty, $unit, $sub, $igv, $total]
+                'insert into order_items (company_id, order_id, course_offer_id, course_id, description, item_type, quantity, unit_price, discount_amount, subtotal, igv_amount, total)
+                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [$c->company_id, $id, $o->id, $o->course_id, mb_substr($o->title, 0, 300), $company ? 'license' : 'individual', $qty, $unit, $cp['discount'], $sub, $igv, $total]
             );
 
-            return $this->orderResponse($c, DB::selectOne('select order_number, total, expires_at from orders where id = ?', [$id]), 201);
+            return $this->orderResponse($c, DB::selectOne('select order_number, total, discount_total, expires_at from orders where id = ?', [$id]), 201);
         });
     }
 
@@ -263,7 +264,7 @@ class VtaCatalogController extends Controller
     private function orderResponse(object $c, object $order, int $status): JsonResponse
     {
         return response()->json(['data' => [
-            'order_number' => $order->order_number, 'total' => (float) $order->total, 'status' => 'pending', 'expires_at' => $order->expires_at,
+            'order_number' => $order->order_number, 'total' => (float) $order->total, 'discount' => (float) ($order->discount_total ?? 0), 'status' => 'pending', 'expires_at' => $order->expires_at,
             'company' => $c->name, 'payment_instructions' => null,
         ]], $status);
     }

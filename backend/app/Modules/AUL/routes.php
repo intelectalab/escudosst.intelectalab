@@ -7,12 +7,23 @@ use App\Modules\AUL\MoodleController;
 use App\Modules\AUL\QuestionImport;
 use App\Modules\AUL\VtaCatalogController;
 use App\Modules\AUL\VtaController;
+use App\Modules\AUL\VtaPortalController;
+use App\Modules\AUL\VtaSalesController;
 use Illuminate\Support\Facades\Route;
 
 // Venta de cursos (VTA): pedido y cobro (simulado en modo de prueba hasta configurar la pasarela).
 Route::middleware(['auth:sanctum', 'company', 'module:VTA'])->prefix('vta')->group(function () {
     Route::post('sell', [VtaController::class, 'sell']);
     Route::post('orders/{id}/pay', [VtaController::class, 'pay'])->whereUuid('id');
+    Route::post('orders/{id}/refund', [VtaSalesController::class, 'refund'])->whereUuid('id');
+    Route::get('licenses/{id}/assignments', [VtaSalesController::class, 'assignments'])->whereUuid('id');
+    Route::post('licenses/{id}/assignments', [VtaSalesController::class, 'assign'])->whereUuid('id')->middleware('throttle:60,1');
+    Route::post('license-assignments/{id}/release', [VtaSalesController::class, 'release'])->whereUuid('id');
+    Route::get('dashboard', [VtaSalesController::class, 'dashboard']);
+    Route::get('reports.xlsx', [VtaSalesController::class, 'report']);
+    Route::post('campaigns', [VtaSalesController::class, 'campaign'])->middleware('throttle:10,1');
+    Route::get('portal', [VtaPortalController::class, 'show']);
+    Route::put('portal/consents', [VtaPortalController::class, 'consents'])->middleware('throttle:20,1');
     Route::get('catalog', [VtaCatalogController::class, 'link']);
     Route::put('catalog', [VtaCatalogController::class, 'setSlug']);
 });

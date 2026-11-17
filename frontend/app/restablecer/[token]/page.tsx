@@ -12,7 +12,7 @@ import { FormField } from "@/components/ui/Form";
 import { Icon } from "@/components/ui/Icon";
 import { api, ApiError } from "@/lib/api";
 
-type Link = { purpose: "reset" | "team"; email: string; full_name: string; role: string | null };
+type Link = { purpose: "reset" | "team" | "learner"; email: string; full_name: string; role: string | null };
 
 export default function RestablecerPage() {
   const { token } = useParams<{ token: string }>();

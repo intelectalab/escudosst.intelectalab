@@ -191,3 +191,13 @@ function heldMeetingForTests(string $companyId): string
 
     return $m;
 }
+
+/** RN-AUL-04/09: la lección se da por vista con permanencia registrada; en las pruebas se registra una sesión de 10 minutos. */
+function seenLessonForTests(string $companyId, string $enrollmentId, string $lessonId): void
+{
+    DB::transaction(function () use ($companyId, $enrollmentId, $lessonId) {
+        DB::select("select set_config('app.company_id', ?, true)", [$companyId]);
+        DB::insert("insert into learning_activity_sessions (company_id, enrollment_id, lesson_id, client_session_id, started_at, last_heartbeat_at, active_seconds, video_max_position_seconds)
+                    values (?, ?, ?, ?, now() - interval '1 hour', now(), 600, 3000)", [$companyId, $enrollmentId, $lessonId, 'seen-'.substr($lessonId, -8)]);
+    });
+}

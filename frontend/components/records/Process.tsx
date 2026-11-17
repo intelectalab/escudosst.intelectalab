@@ -18,7 +18,7 @@ import { RefSelect } from "./ModuleRecords";
 import { PsiPanel } from "./PsiPanel";
 import { CriteriaEditor, ScoreForm } from "@/components/addons/HomPanels";
 import { IsoAssess, PseApply } from "@/components/addons/IsoPsePanels";
-import { PayOrder, SellOffer } from "@/components/addons/VtaPanels";
+import { LicenseSeats, PayOrder, RefundOrder, SellOffer } from "@/components/addons/VtaPanels";
 import { QuestionOptions } from "@/components/addons/AulLearner";
 import { RiskMapEditor } from "./RiskMapEditor";
 import { InvTreeWithGuide } from "@/components/addons/IaaGuided";
@@ -223,6 +223,8 @@ function RecordActionsInner({
   if (res.table === "questions") return <QuestionOptions row={row} canEdit={res.can.update} onChanged={onChanged} />;
   if (res.table === "course_enrollments") return <Link href={`/aula/${row.id}`} className="inline-block rounded-lg border border-line px-3 py-1.5 text-sm font-semibold text-brand hover:border-brand">Abrir el curso de esta matrícula</Link>;
   if (res.table === "orders" && row.status === "pending") return <PayOrder id={row.id} label={`Pedido ${String(row.order_number ?? "")}`} onChanged={onChanged} />;
+  if (res.table === "orders" && ["paid", "partially_refunded"].includes(String(row.status))) return <RefundOrder row={row} onChanged={onChanged} />;
+  if (res.table === "course_licenses") return <LicenseSeats row={row} />;
   if (res.table === "dossier_share_links") return <ShareLinkRevoke row={row} onChanged={onChanged} />;
   if (res.table === "training_certificates")
     return (

@@ -1263,7 +1263,15 @@
   "instrument_id": "Versión del cuestionario",
   "previous_template_id": "Versión anterior",
   "escalated_event_id": "Evento al que se escaló",
-  "token_rotation": "Cambios de QR"
+  "token_rotation": "Cambios de QR",
+  "manual_payment_method": "Medio del pago manual",
+  "manual_payment_reference": "N.° de operación",
+  "manual_payment_evidence_file_id": "Constancia del pago",
+  "refunded_total": "Total reembolsado",
+  "refund_reason": "Motivo del reembolso",
+  "refunded_quantity": "Cantidad reembolsada",
+  "previous_course_id": "Versión anterior",
+  "allow_self_enrollment": "Permite matricularse por cuenta propia"
  },
  "values": {
   "A": "Tipo A",
@@ -1974,7 +1982,8 @@
   "inspections.status.signed": "Firmada",
   "substandard_reports.status.escalated": "Escalado a evento",
   "ppe_deliveries.status.due_for_replacement": "Para reponer",
-  "ppe_deliveries.status.pending_signature": "Pendiente de firma"
+  "ppe_deliveries.status.pending_signature": "Pendiente de firma",
+  "partially_refunded": "Reembolso parcial"
  },
  "tables": {
   "absences": "Ausencias",

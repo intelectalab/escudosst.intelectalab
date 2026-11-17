@@ -99,7 +99,7 @@ it('la solicitud de compra deja un pedido pendiente que la empresa paga con «Re
         return DB::selectOne('select o.id, o.source, o.status, l.marketing_consent from orders o join external_learners l on l.id = o.external_learner_id where o.order_number = ?', [$o['order_number']]);
     });
     expect($row->source)->toBe('public_catalog')->and($row->status)->toBe('pending')->and($row->marketing_consent)->toBeTrue();
-    $this->postJson("/api/v1/vta/orders/{$row->id}/pay", ['method' => 'yape', 'reference' => 'PC-0099887'], $h)->assertOk()->assertJsonPath('data.delivered.0.type', 'enrollment');
+    $this->postJson("/api/v1/vta/orders/{$row->id}/pay", ['method' => 'yape', 'reference' => 'PC-0099887', 'evidence_file_id' => evidenceFile($h, 'VTA')], $h)->assertOk()->assertJsonPath('data.delivered.0.type', 'enrollment');
 });
 
 it('cupos para empresa: mínimo de la oferta y aforo que cuenta los pedidos pendientes', function () {

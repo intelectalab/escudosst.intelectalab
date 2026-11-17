@@ -388,7 +388,7 @@ final class RecordsService
         if ($q !== '') {
             $or = [];
             foreach ($res['fields'] as $f) {
-                if (in_array($f['type'], ['text', 'longtext'], true) && empty($f['encrypted'])) {
+                if (in_array($f['type'], ['text', 'longtext'], true) && empty($f['encrypted']) && empty($f['nosearch'])) {
                     $or[] = "t.\"{$f['name']}\" ilike ?";
                     $bind[] = '%'.addcslashes($q, '%_\\').'%';
                 }

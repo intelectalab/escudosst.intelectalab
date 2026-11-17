@@ -106,13 +106,13 @@ it('venta de cursos con pago manual: pedido, pago con número de operación, mat
         'first_name' => 'Rosa', 'last_name' => 'Vargas', 'email' => 'rosa.rf@example.com'], $h)->assertCreated()->json('data');
     expect((float) $o['total'])->toBe(118.0)->and((float) $o['igv'])->toBe(18.0);
     $this->postJson("/api/v1/vta/orders/{$o['id']}/pay", ['method' => 'yape'], $h)->assertStatus(422)->assertJsonValidationErrors('reference');
-    $this->postJson("/api/v1/vta/orders/{$o['id']}/pay", ['method' => 'yape', 'reference' => '0012345'], $h)->assertOk()->assertJsonPath('data.manual', true)->assertJsonPath('data.delivered.0.type', 'enrollment');
-    $this->postJson("/api/v1/vta/orders/{$o['id']}/pay", ['method' => 'yape', 'reference' => '0012345'], $h)->assertStatus(409);
+    $this->postJson("/api/v1/vta/orders/{$o['id']}/pay", ['method' => 'yape', 'reference' => '0012345', 'evidence_file_id' => evidenceFile($h, 'VTA')], $h)->assertOk()->assertJsonPath('data.manual', true)->assertJsonPath('data.delivered.0.type', 'enrollment');
+    $this->postJson("/api/v1/vta/orders/{$o['id']}/pay", ['method' => 'yape', 'reference' => '0012345', 'evidence_file_id' => evidenceFile($h, 'VTA')], $h)->assertStatus(409);
 
     $c = $this->postJson('/api/v1/vta/sell', ['course_offer_id' => $offer, 'buyer_type' => 'company', 'document_type' => 'RUC', 'document_number' => '20512345678',
         'legal_name' => 'Constructora Cliente SAC', 'ruc' => '20512345678', 'email' => 'compras@example.com', 'seats' => 5], $h)->assertCreated()->json('data');
     $this->postJson("/api/v1/vta/orders/{$c['id']}/pay", ['method' => 'yape', 'reference' => '0012345'], $h)->assertStatus(422);
-    $this->postJson("/api/v1/vta/orders/{$c['id']}/pay", ['method' => 'transfer', 'reference' => 'BCP-778899'], $h)->assertOk()->assertJsonPath('data.delivered.0.type', 'license')->assertJsonPath('data.delivered.0.seats', 5);
+    $this->postJson("/api/v1/vta/orders/{$c['id']}/pay", ['method' => 'transfer', 'reference' => 'BCP-778899', 'evidence_file_id' => evidenceFile($h, 'VTA')], $h)->assertOk()->assertJsonPath('data.delivered.0.type', 'license')->assertJsonPath('data.delivered.0.seats', 5);
 });
 
 it('API: lectura con clave, secreto y empresa; webhook encolado al registrar un evento', function () {
@@ -151,6 +151,7 @@ it('aula virtual: lección vista, examen con nota y curso completado', function 
 
     $view = $this->getJson("/api/v1/aul/enrollments/{$e}", $h)->assertOk()->json('data');
     expect($view['lessons'])->toHaveCount(2)->and(json_encode($view))->not->toContain('"correct"');
+    seenLessonForTests(HUAYLAS_ID, $e, $l1);
     $this->postJson("/api/v1/aul/enrollments/{$e}/lessons/{$l1}/done", [], $h)->assertOk()->assertJsonPath('data.progress_pct', 50);
     $this->postJson("/api/v1/aul/enrollments/{$e}/lessons/{$l2}/exam", ['answers' => [$q => '0']], $h)->assertOk()->assertJsonPath('data.passed', false);
     $this->postJson("/api/v1/aul/enrollments/{$e}/lessons/{$l2}/exam", ['answers' => [$q => '1']], $h)->assertOk()

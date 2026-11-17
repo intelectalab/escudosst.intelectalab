@@ -104,6 +104,7 @@ it('avisa la matrícula, el curso por vencer, al rezagado y el curso completado'
     expect($body)->toContain('Rosa')->toContain('10 días');
 
     // Completa la única lección → participante y capacitador.
+    seenLessonForTests(HUAYLAS_ID, $enr, $lesson);
     $this->postJson("/api/v1/aul/enrollments/{$enr}/lessons/{$lesson}/done", [], $h)->assertOk()->assertJsonPath('data.status', 'completed');
     expect(aulvtaCount('aul.course_completed', $enr, null, $worker))->toBe(1)->and(aulvtaCount('aul.course_completed', $enr, $trainer))->toBe(1);
     aulvtaRun();
@@ -147,8 +148,8 @@ it('avisa por correo el pedido por vencer, el pedido pagado, los cupos y el pago
     expect(Mail::sent(LearnerMail::class, fn ($m) => $m->title === 'Tu pedido vence pronto')->count())->toBe(1);
 
     // Pago registrado: persona → pedido pagado con acceso; empresa → cupos disponibles. Sin correo aparte de «matrícula».
-    $this->postJson("/api/v1/vta/orders/{$pid}/pay", ['method' => 'yape', 'reference' => 'AV-0001'], $this->h)->assertOk();
-    $this->postJson("/api/v1/vta/orders/{$cid}/pay", ['method' => 'transfer', 'reference' => 'AV-0002'], $this->h)->assertOk();
+    $this->postJson("/api/v1/vta/orders/{$pid}/pay", ['method' => 'yape', 'reference' => 'AV-0001', 'evidence_file_id' => evidenceFile($this->h, 'VTA')], $this->h)->assertOk();
+    $this->postJson("/api/v1/vta/orders/{$cid}/pay", ['method' => 'transfer', 'reference' => 'AV-0002', 'evidence_file_id' => evidenceFile($this->h, 'VTA')], $this->h)->assertOk();
     Mail::assertSent(LearnerMail::class, fn ($m) => $m->hasTo('luz.av@example.com') && $m->title === 'Pedido pagado: ya tienes acceso al curso' && str_contains($m->body, 'Primeros auxilios AV'));
     Mail::assertSent(LearnerMail::class, fn ($m) => $m->hasTo('compras.av@example.com') && $m->title === 'Cupos disponibles para tu empresa' && str_contains($m->body, '3 cupo(s)'));
     Mail::assertNotSent(LearnerMail::class, fn ($m) => $m->title === 'Te matricularon en un curso');

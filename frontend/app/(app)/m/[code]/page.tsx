@@ -15,6 +15,7 @@ import { Dashboard } from "@/components/dsh/Dashboard";
 import { VmdModule } from "@/components/vmd/VmdModule";
 import { IaaModule } from "@/components/addons/IaaModule";
 import { MyCourses } from "@/components/addons/AulLearner";
+import { VtaCampaign, VtaDashboard, VtaPortal } from "@/components/addons/VtaPanels";
 import { AulLanding } from "@/components/modules/AulAdmin";
 import { LbaSummary } from "@/components/modules/LbaSummary";
 import { SunSummary } from "@/components/modules/SunSummary";
@@ -246,6 +247,14 @@ export default function ModulePage() {
         </div>
       ) : hasModuleWizard(m.code) ? (
         <ModuleWizards code={m.code} readOnly={m.mode === "read_only"} />
+      ) : m.code === "VTA" && company.role.code === "external_learner" ? (
+        <VtaPortal />
+      ) : m.code === "VTA" ? (
+        <div className="space-y-5">
+          <VtaDashboard />
+          {m.mode !== "read_only" && <VtaCampaign />}
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
       ) : m.code === "AUL" ? (
         ["worker", "external_learner"].includes(company.role.code) ? (
           <div className="space-y-5">

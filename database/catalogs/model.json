@@ -33947,6 +33947,39 @@
     "comment": null
    },
    {
+    "name": "version_number",
+    "type": "integer",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "previous_course_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "courses.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "allow_self_enrollment",
+    "type": "boolean",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -40827,6 +40860,68 @@
     "comment": null
    },
    {
+    "name": "manual_payment_method",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": [
+     "yape",
+     "plin",
+     "transfer",
+     "deposit",
+     "cash",
+     "other"
+    ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "manual_payment_reference",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "manual_payment_evidence_file_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "files.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "refunded_total",
+    "type": "numeric",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "refund_reason",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "idempotency_key",
     "type": "text",
     "not_null": true,
@@ -40862,6 +40957,8 @@
      "paid",
      "failed",
      "voided",
+     "expired",
+     "partially_refunded",
      "refunded"
     ],
     "ref": null,
@@ -41183,6 +41280,17 @@
     "encrypted": false,
     "generated": null,
     "comment": "cupos generados al pagarse (item_type = license)"
+   },
+   {
+    "name": "refunded_quantity",
+    "type": "integer",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
    },
    {
     "name": "created_at",

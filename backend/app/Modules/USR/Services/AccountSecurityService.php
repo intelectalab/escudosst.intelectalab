@@ -27,7 +27,7 @@ class AccountSecurityService
 {
     private const PREFIX = 'acctlink:';
 
-    private const TTL_MINUTES = ['reset' => 60, 'team' => 72 * 60, 'email' => 24 * 60];
+    private const TTL_MINUTES = ['reset' => 60, 'team' => 72 * 60, 'email' => 24 * 60, 'learner' => 72 * 60];
 
     public const ROLES = ['owner' => 'Dueño de la plataforma', 'support' => 'Soporte de la plataforma'];
 
@@ -145,7 +145,7 @@ class AccountSecurityService
     public function setPassword(string $token, string $password): string
     {
         $data = $this->find($token);
-        if (! in_array($data['purpose'], ['reset', 'team'], true)) {
+        if (! in_array($data['purpose'], ['reset', 'team', 'learner'], true)) {
             throw $this->invalid();
         }
         $this->consume($token, $data['purpose']);
@@ -163,6 +163,27 @@ class AccountSecurityService
         $this->audit($row->id, $data['purpose'] === 'team' ? 'team_invitation_accepted' : 'password_reset', $row->id, [], 'public');
 
         return $row->email;
+    }
+
+    /**
+     * M-VTA SCR-VTA-18: invita a un participante externo (o al representante de una empresa compradora) a su portal:
+     * enlace de 72 horas para crear su contraseña. Nunca interrumpe la venta: si el correo no sale, queda en el registro.
+     */
+    public function inviteLearner(string $userId, string $companyName): void
+    {
+        $row = $this->user($userId);
+        if ($row->password_hash) {
+            return;
+        }
+        $token = $this->issue('learner', $row->id, []);
+        try {
+            Mail::to($row->email)->send(new SiteRequestMail($row->full_name ?: 'Hola', 'Tu acceso a los cursos de '.$companyName,
+                "{$companyName} te dio acceso a su portal de cursos: ahí ves tus cursos, certificados, pedidos y tus datos. Crea tu contraseña con el botón (el enlace vence en 72 horas).",
+                [], null, 'Crear mi contraseña', $this->url("/restablecer/{$token}")));
+        } catch (\Throwable $e) {
+            Log::warning('No se pudo enviar el acceso al portal de cursos', ['error' => $e->getMessage()]);
+        }
+        $this->audit(null, 'learner_invited', $row->id, [], 'system');
     }
 
     // ------------------------------------------------------------ Equipo de la plataforma
