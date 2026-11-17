@@ -21,6 +21,7 @@ import { CapMatrix } from "@/components/modules/CapMatrix";
 import { PcaOverview } from "@/components/modules/PcaOverview";
 import { FotIssue } from "@/components/modules/FotIssue";
 import { RegRegisters } from "@/components/modules/RegRegisters";
+import { hasModuleReports, ModuleReports } from "@/components/modules/ModuleReports";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
 import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
@@ -104,6 +105,7 @@ export default function ModulePage() {
         </div>
       )}
       {m.code !== "DSH" && header}
+      {hasModuleReports(m.code) && <ModuleReports code={m.code} />}
       {m.code === "IAA" ? (
         <IaaModule />
       ) : m.code === "IPC" ? (

@@ -44,3 +44,14 @@ Route::middleware(['auth:sanctum', 'company'])->prefix('reports')->controller(\A
     Route::get('ppe_deliveries/worker/{id}', 'ppeWorker')->whereUuid('id')->middleware('module:EPP');
     Route::get('documents/{id}', 'document')->whereUuid('id')->middleware('module:DOC');
 });
+
+// Reportes de listas (§11 de las fichas): padrón, usuarios × roles × alcances, lista maestra, acciones, Pareto de causas y firmas pendientes.
+Route::middleware(['auth:sanctum', 'company'])->prefix('reports')->controller(\App\Modules\REC\ListReportsController::class)->group(function () {
+    Route::get('workers.xlsx', 'workers')->middleware('module:TRB');
+    Route::get('users.xlsx', 'users')->middleware('module:USR');
+    Route::get('documents.xlsx', 'documents')->middleware('module:DOC');
+    Route::get('corrective_actions', 'actions')->middleware('module:ACR');
+    Route::get('corrective_actions.xlsx', 'actions')->middleware('module:ACR');
+    Route::get('investigation_causes', 'causes')->middleware('module:INV');
+    Route::get('signature_requests.xlsx', 'pendingSignatures')->middleware('module:FIR');
+});
