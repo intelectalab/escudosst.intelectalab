@@ -26,6 +26,7 @@ import { hasModuleReports, ModuleReports } from "@/components/modules/ModuleRepo
 import { SctReconcile } from "@/components/modules/SctReconcile";
 import { Ch5Talks } from "@/components/modules/Ch5Talks";
 import { EmoProtocols } from "@/components/modules/EmoProtocols";
+import { SimRun } from "@/components/modules/SimRun";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
 import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
@@ -160,6 +161,8 @@ export default function ModulePage() {
           </details>
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
+      ) : m.code === "SIM" ? (
+        <SimPage readOnly={m.mode === "read_only"} />
       ) : m.code === "CH5" ? (
         <Ch5Page readOnly={m.mode === "read_only"} />
       ) : m.code === "MRL" ? (
@@ -218,6 +221,17 @@ function Ch5Page({ readOnly }: { readOnly: boolean }) {
     <div className="space-y-6">
       <Ch5Talks readOnly={readOnly} onSaved={() => setV((x) => x + 1)} />
       <ModuleRecords key={v} code="CH5" readOnly={readOnly} />
+    </div>
+  );
+}
+
+/** M-SIM: ejecutar simulacro (cronómetro y asistencia) encima de la lista; la lista se recarga al guardar. */
+function SimPage({ readOnly }: { readOnly: boolean }) {
+  const [v, setV] = useState(0);
+  return (
+    <div className="space-y-6">
+      <SimRun readOnly={readOnly} onSaved={() => setV((x) => x + 1)} />
+      <ModuleRecords key={v} code="SIM" readOnly={readOnly} />
     </div>
   );
 }

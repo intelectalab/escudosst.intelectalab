@@ -470,6 +470,11 @@
      "name": "requires_sctr",
      "label": "Requiere SCTR (actividad de riesgo)",
      "type": "bool"
+    },
+    {
+     "name": "evacuation_target_seconds",
+     "label": "Meta de evacuación (segundos)",
+     "type": "int"
     }
    ]
   },
@@ -12190,6 +12195,16 @@
      ],
      "default": "planned",
      "list": true
+    },
+    {
+     "name": "alarm_time",
+     "label": "Hora de la alarma",
+     "type": "datetime"
+    },
+    {
+     "name": "evacuation_complete_time",
+     "label": "Hora de evacuación completa",
+     "type": "datetime"
     }
    ]
   },

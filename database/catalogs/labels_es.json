@@ -1232,7 +1232,10 @@
   "snapshot": "Datos congelados",
   "data_hash": "Huella de los datos (SHA-256)",
   "format_version": "Versión del formato",
-  "superseded_by": "Reemplazado por"
+  "superseded_by": "Reemplazado por",
+  "alarm_time": "Hora de la alarma",
+  "evacuation_complete_time": "Hora de evacuación completa",
+  "evacuation_target_seconds": "Meta de evacuación (segundos)"
  },
  "values": {
   "A": "Tipo A",

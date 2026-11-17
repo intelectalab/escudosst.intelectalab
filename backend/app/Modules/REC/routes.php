@@ -62,3 +62,9 @@ Route::middleware(['auth:sanctum', 'company', 'module:CH5'])->prefix('ch5')->con
     Route::post('quick', 'quick')->middleware('throttle:30,1');
     Route::get('coverage', 'coverage');
 });
+
+// Ejecutar simulacro (M-SIM SCR-SIM-02): cronómetro de alarma a evacuación completa y asistencia de la sede.
+Route::middleware(['auth:sanctum', 'company', 'module:SIM'])->prefix('sim/drills/{id}')->whereUuid('id')->controller(\App\Modules\REC\DrillRunController::class)->group(function () {
+    Route::get('run', 'show');
+    Route::post('run', 'save')->middleware('throttle:30,1');
+});

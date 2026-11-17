@@ -900,6 +900,17 @@
     "comment": null
    },
    {
+    "name": "evacuation_target_seconds",
+    "type": "integer",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -30050,6 +30061,28 @@
      "evaluated",
      "cancelled"
     ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "alarm_time",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "evacuation_complete_time",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
     "ref": null,
     "encrypted": false,
     "generated": null,
