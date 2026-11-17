@@ -22,6 +22,7 @@ import { PcaOverview } from "@/components/modules/PcaOverview";
 import { FotIssue } from "@/components/modules/FotIssue";
 import { RegRegisters } from "@/components/modules/RegRegisters";
 import { hasModuleReports, ModuleReports } from "@/components/modules/ModuleReports";
+import { SctReconcile } from "@/components/modules/SctReconcile";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
 import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
@@ -141,6 +142,11 @@ export default function ModulePage() {
       ) : m.code === "MAP" ? (
         <div className="space-y-6">
           <MapModule readOnly={m.mode === "read_only"} />
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
+      ) : m.code === "SCT" ? (
+        <div className="space-y-6">
+          <SctReconcile readOnly={m.mode === "read_only"} />
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
       ) : m.code === "MRL" ? (
