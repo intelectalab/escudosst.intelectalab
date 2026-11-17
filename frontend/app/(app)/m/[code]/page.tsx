@@ -27,6 +27,7 @@ import { SctReconcile } from "@/components/modules/SctReconcile";
 import { Ch5Talks } from "@/components/modules/Ch5Talks";
 import { EmoProtocols } from "@/components/modules/EmoProtocols";
 import { SimRun } from "@/components/modules/SimRun";
+import { AtsCopy } from "@/components/modules/AtsCopy";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
 import { ModuleWizards, hasModuleWizard } from "@/components/modules/ModuleWizards";
@@ -163,6 +164,8 @@ export default function ModulePage() {
         </div>
       ) : m.code === "SIM" ? (
         <SimPage readOnly={m.mode === "read_only"} />
+      ) : m.code === "ATS" ? (
+        <AtsPage readOnly={m.mode === "read_only"} />
       ) : m.code === "CH5" ? (
         <Ch5Page readOnly={m.mode === "read_only"} />
       ) : m.code === "MRL" ? (
@@ -232,6 +235,17 @@ function SimPage({ readOnly }: { readOnly: boolean }) {
     <div className="space-y-6">
       <SimRun readOnly={readOnly} onSaved={() => setV((x) => x + 1)} />
       <ModuleRecords key={v} code="SIM" readOnly={readOnly} />
+    </div>
+  );
+}
+
+/** M-ATS: copiar pasos a un ATS en borrador encima de la lista. */
+function AtsPage({ readOnly }: { readOnly: boolean }) {
+  const [v, setV] = useState(0);
+  return (
+    <div className="space-y-6">
+      {!readOnly && <AtsCopy onSaved={() => setV((x) => x + 1)} />}
+      <ModuleRecords key={v} code="ATS" readOnly={readOnly} />
     </div>
   );
 }

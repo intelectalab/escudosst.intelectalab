@@ -68,3 +68,9 @@ Route::middleware(['auth:sanctum', 'company', 'module:SIM'])->prefix('sim/drills
     Route::get('run', 'show');
     Route::post('run', 'save')->middleware('throttle:30,1');
 });
+
+// Nuevo ATS (M-ATS SCR-ATS-02): copiar pasos desde un PETS, un ATS anterior o filas del IPERC vigente.
+Route::middleware(['auth:sanctum', 'company', 'module:ATS'])->prefix('ats/forms/{id}')->whereUuid('id')->controller(\App\Modules\REC\AtsCopyController::class)->group(function () {
+    Route::get('sources', 'sources');
+    Route::post('copy', 'copy')->middleware('throttle:30,1');
+});
