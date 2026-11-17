@@ -169,6 +169,14 @@ export default function ModulePage() {
         <AtsPage readOnly={m.mode === "read_only"} />
       ) : m.code === "MAG" ? (
         <MagPage readOnly={m.mode === "read_only"} />
+      ) : m.code === "EQE" ? (
+        <div className="space-y-6">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface p-4 text-sm">
+            <span className="flex-1">Imprime el QR de cada equipo y pégalo en él: al escanearlo (con la sesión iniciada) se abre su inspección con el checklist.</span>
+            <a href="/imprimir/qr-equipos" target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-lg border border-line px-3 font-semibold hover:border-brand hover:text-brand-strong">Imprimir QR de los equipos</a>
+          </div>
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
       ) : m.code === "CH5" ? (
         <Ch5Page readOnly={m.mode === "read_only"} />
       ) : m.code === "MRL" ? (
