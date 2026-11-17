@@ -1,7 +1,7 @@
 "use client";
 
 // Marca en el sistema (login, panel de la plataforma y panel de las empresas): el logo que subió el dueño en
-// Sitio web › Logo y menú; si no hay, el de EscudoSST. Se lee una sola vez por pestaña.
+// Sitio web › Logo y menú; si no hay, el de EscudoSST. Se guarda 5 minutos por pestaña.
 // `light` = sobre fondo oscuro: usa el «logo para fondo oscuro» y, si no hay, el normal sobre una placa blanca.
 
 import { useEffect, useState } from "react";
@@ -16,13 +16,17 @@ let pending: Promise<Marca> | null = null;
 
 function load(): Promise<Marca> {
   const cached = typeof window !== "undefined" ? window.sessionStorage.getItem(KEY) : null;
-  if (cached) return Promise.resolve(JSON.parse(cached) as Marca);
+  // Se guarda 5 minutos: si el dueño cambia o quita el logo, las pestañas abiertas lo ven sin cerrar sesión.
+  if (cached) {
+    const c = JSON.parse(cached) as Marca & { at?: number };
+    if (c.at && Date.now() - c.at < 5 * 60 * 1000) return Promise.resolve(c);
+  }
   pending ??= fetch(`${API}/api/v1/public/site`, { headers: { Accept: "application/json" } })
     .then((r) => r.json())
     .then((j) => {
       const s = j.data?.settings ?? {};
       const m: Marca = { logo: s.logo_file_id ?? null, logoDark: s.logo_dark_file_id ?? null, name: s.trade_name || "EscudoSST" };
-      window.sessionStorage.setItem(KEY, JSON.stringify(m));
+      window.sessionStorage.setItem(KEY, JSON.stringify({ ...m, at: Date.now() }));
       return m;
     })
     .catch(() => ({ logo: null, logoDark: null, name: "EscudoSST" }));
