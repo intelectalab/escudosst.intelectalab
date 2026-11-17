@@ -17,6 +17,7 @@ type Data = {
   views_left: number | null;
   allow_download?: boolean;
   downloads_left?: number | null;
+  watermark?: string;
 };
 
 const ST: Record<string, [string, string]> = {
@@ -43,7 +44,15 @@ export default function ExpedienteCompartido() {
   }, [company, token]);
 
   return (
-    <main className="min-h-screen bg-[#EEF4FB] px-4 py-8 text-[#0b2440]">
+    <main className="relative min-h-screen bg-[#EEF4FB] px-4 py-8 text-[#0b2440]">
+      {/* RN-SUN-10: marca de agua con la empresa, el expediente y la fecha de la consulta, en toda la vista. */}
+      {data?.watermark && (
+        <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-10 select-none overflow-hidden opacity-[0.07] print:opacity-10">
+          <div className="flex h-full w-full -rotate-[24deg] flex-col items-center justify-center gap-16 text-2xl font-bold">
+            {Array.from({ length: 8 }).map((_, i) => <span key={i} className="whitespace-nowrap">{data.watermark} · {data.watermark}</span>)}
+          </div>
+        </div>
+      )}
       <div className="mx-auto max-w-3xl space-y-4">
         <p className="text-sm font-bold uppercase tracking-wider text-[#1b6fb7]">Expediente para inspección · SUNAFIL</p>
         {error && <div className="rounded-2xl bg-white p-6 shadow">{error}</div>}

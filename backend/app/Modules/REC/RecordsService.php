@@ -196,6 +196,7 @@ final class RecordsService
         if ($res['hybrid'] && $current->company_id === null) {
             throw ApiProblem::forbidden('Este registro es del catálogo general de EscudoSST: no se puede editar. Crea uno propio.');
         }
+        \App\Modules\PSE\SectorPacks::assertEditable($res['table'], $id);
         $rules = RecordRules::for($res['table']);
         $values = $this->validate($res, $input, creating: false);
         $extra = [];
@@ -251,6 +252,7 @@ final class RecordsService
         if ($res['hybrid'] && $current->company_id === null) {
             throw ApiProblem::forbidden('Este registro es del catálogo general de EscudoSST: no se puede archivar.');
         }
+        \App\Modules\PSE\SectorPacks::assertEditable($res['table'], $id);
         RecordRules::for($res['table'])?->prepareDelete($res, $current);
         $this->assertNotFullySigned($res['table'], $id);
 

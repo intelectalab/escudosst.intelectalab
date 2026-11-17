@@ -94,15 +94,50 @@ class SignatureController extends Controller
             $name = DB::selectOne('select full_name from users where id = ?', [$uid])->full_name;
             $doc = null;
         } else {
-            // Trabajador sin usuario: firma asistida en persona por quien registra (con permiso), que declara su presencia.
+            // RN-FIR-05: firma asistida: el trabajador se identifica él mismo (DNI + PIN, o su trazo en la pantalla) y quien asiste
+            // queda como testigo.
             $this->can('fir.signature_requests.create');
             if (! $request->boolean('assisted')) {
                 $this->fail('assisted', 'Confirma que el trabajador está presente y está de acuerdo con firmar.');
             }
             $method = 'assisted_in_person';
-            $w = DB::selectOne('select full_name, document_last4 from workers where id = ?', [$r->signer_worker_id]);
+            $w = DB::selectOne('select id, full_name, document_last4, document_number_hash, pin_hash from workers where id = ?', [$r->signer_worker_id]);
             $name = $w->full_name;
             $doc = $w->document_last4 ? '****'.$w->document_last4 : null;
+            if ($request->filled('pin')) {
+                $dni = preg_replace('/\D/', '', (string) $request->input('dni'));
+                if (! $dni || ! hash_equals(bin2hex(self::bytes($w->document_number_hash)), \App\Modules\REC\Rules\WorkerRules::documentHash('DNI', $dni))) {
+                    $this->fail('dni', 'El DNI no corresponde al trabajador que firma.');
+                }
+                if (! \App\Modules\TRB\WorkerAppAccess::checkPin($w->id, $w->pin_hash, (string) $request->input('pin'))) {
+                    \App\Modules\TRB\WorkerAppAccess::assertNotLocked($w->id);
+                    $this->fail('pin', 'El PIN no es correcto.');
+                }
+                $identity = 'dni_pin';
+            } elseif ($request->filled('image')) {
+                $identity = 'stroke';
+            } else {
+                $this->fail('pin', 'El trabajador debe identificarse con su DNI y PIN o firmar con su trazo en la pantalla.');
+            }
+        }
+        // RN-FIR-08: método mínimo por tipo de registro (configurable).
+        $rank = ['stroke' => 1, 'assisted_in_person' => 2, 'pin' => 3, 'otp' => 4];
+        $min = (json_decode(\App\Core\Support\LegalParams::text('fir_min_method_by_type', '{}'), true) ?: [])[$r->subject_type] ?? null;
+        if ($min && ($rank[$method] ?? 0) < ($rank[$min] ?? 0)) {
+            $labels = ['stroke' => 'trazo', 'assisted_in_person' => 'firma asistida', 'pin' => 'contraseña', 'otp' => 'código OTP'];
+            throw new ApiProblem(422, 'validation_failed', 'Método de firma insuficiente', 'Este registro exige firmar con '.($labels[$min] ?? $min).'.', ['errors' => ['method' => ['Método de firma insuficiente.']]]);
+        }
+        // RN-FIR-07: firma capturada sin conexión: vale si al sincronizar no excede offline_signature_max_age.
+        $offline = $request->input('offline_captured_at');
+        if ($offline) {
+            $ts = strtotime((string) $offline);
+            $maxH = (int) \App\Core\Support\LegalParams::number('offline_signature_max_age', 72);
+            if (! $ts || $ts > time() + 300) {
+                $this->fail('offline_captured_at', 'La hora de captura de la firma no es válida.');
+            }
+            if ($ts < time() - $maxH * 3600) {
+                throw new ApiProblem(409, 'conflict', 'Firma sin conexión vencida', "La firma se capturó hace más de {$maxH} horas sin sincronizar: vuelve a firmar.");
+            }
         }
         [, $row] = $this->subjectRow($r->subject_type, $r->subject_id);
         $current = SignatureService::hash($r->subject_type, $row);
@@ -110,13 +145,16 @@ class SignatureController extends Controller
             throw new ApiProblem(409, 'conflict', 'El registro cambió', 'El registro cambió después de pedir la firma: vuelve a pedirla para firmar la versión actual.');
         }
         $evidence = ['request_id' => $r->id, 'method' => $method, 'signed_by_user_id' => $uid, 'signer' => $name, 'subject' => "{$r->subject_type}/{$r->subject_id}",
-            'document_hash' => $current, 'hash_scope' => SignatureService::scope($r->subject_type), 'ip' => $request->ip(), 'user_agent' => mb_substr((string) $request->userAgent(), 0, 300), 'at' => now()->toIso8601String()];
+            'document_hash' => $current, 'hash_scope' => SignatureService::scope($r->subject_type), 'ip' => $request->ip(), 'user_agent' => mb_substr((string) $request->userAgent(), 0, 300), 'at' => now()->toIso8601String()]
+            + ($method === 'assisted_in_person' ? ['identity' => $identity ?? null, 'witness_user_id' => $uid] : [])
+            + ($offline ? ['offline_captured_at' => date(DATE_ATOM, strtotime((string) $offline))] : []);
         $sigId = DB::selectOne(
             "insert into signatures (company_id, signature_request_id, subject_type, subject_id, signer_user_id, signer_worker_id, signer_name, signer_document_masked, method,
-                document_hash, evidence_hash, evidence, ip, user_agent, signed_at, created_by)
-             values (?, ?, ?, ?, ?, ?, ?, ?, ?, decode(?, 'hex'), decode(?, 'hex'), ?::jsonb, ?::inet, ?, now(), ?) returning id",
+                document_hash, evidence_hash, evidence, ip, user_agent, signed_at, client_created_at, created_by)
+             values (?, ?, ?, ?, ?, ?, ?, ?, ?, decode(?, 'hex'), decode(?, 'hex'), ?::jsonb, ?::inet, ?, now(), ?, ?) returning id",
             [$r->company_id, $r->id, $r->subject_type, $r->subject_id, $r->signer_user_id, $r->signer_worker_id, $name, $doc, $method, $current,
-                hash('sha256', json_encode($evidence)), json_encode($evidence, JSON_UNESCAPED_UNICODE), $request->ip(), mb_substr((string) $request->userAgent(), 0, 300), $uid]
+                hash('sha256', json_encode($evidence)), json_encode($evidence, JSON_UNESCAPED_UNICODE), $request->ip(), mb_substr((string) $request->userAgent(), 0, 300),
+                $offline ? date(DATE_ATOM, strtotime((string) $offline)) : null, $uid]
         )->id;
         // Imagen de la firma en el documento: la guardada del usuario, o la que el trabajador dibujó en la pantalla.
         SignatureImages::stamp($sigId, $r->company_id, $r->signer_user_id ? $uid : null, $request->input('image') ?: null);

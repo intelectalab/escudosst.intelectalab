@@ -35,6 +35,36 @@ class ApiCredentialsController extends Controller
         return response()->json(['data' => ['secret' => $secret]]);
     }
 
+    /** M-API §11: uso de la API por cliente (consultas por recurso y rechazadas) entre dos fechas, en Excel. */
+    public function usage(\Illuminate\Http\Request $request): \Illuminate\Http\Response
+    {
+        $this->can('api.api_clients.read');
+        $from = (string) ($request->query('from') ?: now('America/Lima')->startOfMonth()->toDateString());
+        $to = (string) ($request->query('to') ?: now('America/Lima')->toDateString());
+        if (! strtotime($from) || ! strtotime($to)) {
+            throw ApiProblem::badRequest('Las fechas no son válidas.');
+        }
+        $rows = DB::select('select c.name, c.client_key, u.resource, sum(u.calls) as calls, sum(u.denied) as denied, max(u.updated_at) as last_at
+                              from api_usage u join api_clients c on c.id = u.api_client_id where u.day between ? and ?
+                             group by 1, 2, 3 order by 1, 3', [$from, $to]);
+        $failed = DB::select("select w.name, count(*) as n from webhook_deliveries d join webhooks w on w.id = d.webhook_id
+                               where d.status = 'failed' and (d.created_at at time zone 'America/Lima')::date between ? and ? group by 1 order by 2 desc", [$from, $to]);
+        $out = [['Uso de la API por cliente'], ["Del {$from} al {$to}."], [], ['Cliente', 'Clave', 'Recurso', 'Consultas', 'Rechazadas por permiso', 'Última consulta']];
+        foreach ($rows as $r) {
+            $out[] = [$r->name, $r->client_key, $r->resource, (int) $r->calls, (int) $r->denied, date('d/m/Y H:i', strtotime($r->last_at))];
+        }
+        $out[] = [];
+        $out[] = ['Entregas de webhooks fallidas'];
+        foreach ($failed ?: [] as $f) {
+            $out[] = [$f->name, '', '', (int) $f->n];
+        }
+
+        return response(\App\Core\Support\Xlsx::build('Uso API', $out, 4), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"uso-api-{$from}-{$to}.xlsx\"",
+        ]);
+    }
+
     public function rotateWebhook(string $id): JsonResponse
     {
         $this->can('api.webhooks.update');

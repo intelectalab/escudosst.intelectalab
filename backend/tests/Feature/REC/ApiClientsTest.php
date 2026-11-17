@@ -88,3 +88,23 @@ it('el webhook muestra su secreto de firma solo al crearlo o rotarlo y envía un
 
     $this->postJson("/api/v1/webhooks/{$id}/test", [], $h)->assertOk()->assertJsonPath('data.status', 'failed');
 });
+
+it('limita cada cliente a los recursos de sus permisos, nunca entrega datos de salud y cuenta el uso', function () {
+    $h = asAccountAdmin();
+    $this->postJson('/api/v1/records/API/api_clients', ['name' => 'Permiso inventado', 'scopes' => ['fitness.read']], $h)->assertStatus(422)->assertJsonValidationErrors('scopes');
+    $c = $this->postJson('/api/v1/records/API/api_clients', ['name' => 'Control de acceso', 'scopes' => ['credentials.read', 'access_events.read']], $h)->assertCreated();
+    $ext = ['X-Company-Id' => HUAYLAS_ID, 'X-Api-Key' => $c->json('data.client_key'), 'X-Api-Secret' => $c->json('data.secret')];
+
+    $this->getJson('/api/v1/ext/v1/credentials', $ext)->assertOk()->assertJsonStructure(['data', 'meta' => ['page', 'has_more']]);
+    $this->getJson('/api/v1/ext/v1/access_events', $ext)->assertOk();
+    $this->getJson('/api/v1/ext/v1/workers', $ext)->assertForbidden();
+    $this->getJson('/api/v1/ext/v1/fitness_status', $ext)->assertForbidden();
+    expect(json_encode($this->getJson('/api/v1/ext/v1/credentials', $ext)->json('data')))->not->toContain('token_hash');
+
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $u = collect(DB::select('select resource, calls, denied from api_usage where api_client_id = ?', [$c->json('data.id')]))->keyBy('resource');
+    expect($u['credentials']->calls)->toBe(2)->and($u['workers']->denied)->toBe(1)->and($u['access_events']->calls)->toBe(1);
+
+    $x = $this->get('/api/v1/api-clients/usage.xlsx', $h)->assertOk();
+    expect($x->headers->get('content-type'))->toContain('spreadsheetml');
+});

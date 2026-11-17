@@ -201,3 +201,14 @@ function seenLessonForTests(string $companyId, string $enrollmentId, string $les
                     values (?, ?, ?, ?, now() - interval '1 hour', now(), 600, 3000)", [$companyId, $enrollmentId, $lessonId, 'seen-'.substr($lessonId, -8)]);
     });
 }
+
+/** Parámetro propio de la empresa para una prueba (vigente desde hoy); se borra con deleted_at en el afterEach de la prueba. */
+function companyParamForTests(string $companyId, string $key, string $value, string $type = 'text'): void
+{
+    $p = DB::connection();
+    $p->select("select set_config('app.company_id', ?, false)", [$companyId]);
+    $p->update('update legal_parameters set deleted_at = now() where company_id = ? and key = ? and deleted_at is null', [$companyId, $key]);
+    $p->insert("insert into legal_parameters (company_id, key, value, value_type, description, source, valid_from, to_confirm) values (?, ?, ?, ?, ?, 'Prueba', current_date - 1, false)",
+        [$companyId, $key, $value, $type, $key]);
+    \Illuminate\Support\Facades\Cache::flush();
+}

@@ -51,6 +51,16 @@ class DossierZip extends Controller
         foreach ($items as $it) {
             $attached = [];
             $cols = self::FILE_COLUMNS[$it->source_type] ?? [];
+            // Evidencia manual: el archivo va en el propio ítem.
+            if ($it->source_type === 'manual' && $it->file_id) {
+                $f = DB::selectOne('select bucket, object_key, original_name from files where id = ? and deleted_at is null and not is_medical', [$it->file_id]);
+                if ($f && Storage::disk($f->bucket)->exists($f->object_key)) {
+                    $name = $it->section_code.'/'.preg_replace('/[^\w.\- ]+/u', '_', (string) $f->original_name);
+                    $zip->addFromString($name, Storage::disk($f->bucket)->get($f->object_key));
+                    $attached[] = $name;
+                    $files++;
+                }
+            }
             if ($it->source_id && $cols) {
                 $src = DB::selectOne('select '.implode(', ', array_map(fn ($c) => "\"{$c}\"", $cols))." from \"{$it->source_type}\" where id = ?", [$it->source_id]);
                 foreach ($cols as $c) {

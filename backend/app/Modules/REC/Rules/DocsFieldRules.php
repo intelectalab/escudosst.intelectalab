@@ -67,6 +67,23 @@ class DocsFieldRules extends RecordRules
         if ($res['table'] === 'risk_map_markers') {
             $this->marker([], $current);
         }
+        // RN-DOC-08: un documento que llegó a publicarse se conserva durante el plazo de su categoría (retention_param_key);
+        // antes de eso no se borra: se deja obsoleto. Los borradores sí se pueden borrar.
+        if (in_array($res['table'], ['documents', 'document_versions'], true)) {
+            $docId = $res['table'] === 'documents' ? $current->id : $current->document_id;
+            $where = $res['table'] === 'documents' ? 'document_id = ?' : 'id = ?';
+            $v = DB::selectOne("select max(coalesce(obsoleted_at, effective_until::timestamptz, now())) as last_valid from document_versions
+                                 where {$where} and deleted_at is null and status not in ('draft', 'in_review', 'rejected')", [$res['table'] === 'documents' ? $docId : $current->id]);
+            if ($v?->last_valid) {
+                $key = DB::selectOne('select c.retention_param_key from documents d left join document_categories c on c.id = d.category_id where d.id = ?', [$docId])?->retention_param_key
+                    ?: 'records_retention_other_years';
+                $years = (int) \App\Core\Support\LegalParams::number($key, 5);
+                $until = date('Y-m-d', strtotime($v->last_valid.' +'.$years.' years'));
+                if ($until > date('Y-m-d')) {
+                    $this->conflict("Este documento se publicó: se conserva hasta el ".date('d/m/Y', strtotime($until))." ({$years} años). Mientras tanto, déjalo obsoleto en lugar de borrarlo.");
+                }
+            }
+        }
     }
 
     /** Pictogramas del mapa: solo se mueven o cambian mientras el mapa está en borrador o revisión (lo aprobado no cambia). */

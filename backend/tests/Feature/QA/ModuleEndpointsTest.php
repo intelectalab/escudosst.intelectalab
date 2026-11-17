@@ -134,6 +134,10 @@ it('responde sin error 500 a un usuario autorizado', function (string $uri) {
     }
 
     $r = $this->get('/api/v1/'.$url, $h + ['Accept' => 'application/json']);
-    expect($r->status())->toBeLessThan(500, "GET {$url} → {$r->status()}: ".mb_substr((string) $r->getContent(), 0, 600))
-        ->and($r->status())->not->toBe(401);
+    // Las descargas en flujo (CSV de la bitácora) llegan como StreamedResponse: se mira solo su código.
+    $base = $r instanceof \Illuminate\Testing\TestResponse ? $r->baseResponse : $r;
+    $code = $base->getStatusCode();
+    $body = $base instanceof \Symfony\Component\HttpFoundation\StreamedResponse ? '' : (string) $base->getContent();
+    expect($code)->toBeLessThan(500, "GET {$url} → {$code}: ".mb_substr($body, 0, 600))
+        ->and($code)->not->toBe(401);
 })->with(qaEndpointRoutes());

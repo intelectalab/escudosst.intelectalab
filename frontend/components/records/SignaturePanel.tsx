@@ -38,7 +38,7 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
   const [asking, setAsking] = useState(false);
   const [who, setWho] = useState<{ kind: "user" | "worker"; id: string; role: string }>({ kind: "user", id: "", role: "responsible" });
   const [pwd, setPwd] = useState<Record<string, string>>({});
-  const [assist, setAssist] = useState<{ id: string; image: string | null } | null>(null);
+  const [assist, setAssist] = useState<{ id: string; image: string | null; dni?: string; pin?: string } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [checks, setChecks] = useState<Verification[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -86,7 +86,7 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
   async function sign(r: Req) {
     setMsg(null);
     try {
-      await api(`/fir/requests/${r.id}/sign`, { method: "POST", withCompany: true, body: r.signer_user_id ? { password: pwd[r.id] ?? "" } : { assisted: true, image: assist?.image ?? null } });
+      await api(`/fir/requests/${r.id}/sign`, { method: "POST", withCompany: true, body: r.signer_user_id ? { password: pwd[r.id] ?? "" } : { assisted: true, image: assist?.image ?? null, dni: assist?.dni || undefined, pin: assist?.pin || undefined } });
       setAssist(null);
       load();
     } catch (e) {
@@ -133,10 +133,14 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
             </span>
             {assist?.id === r.id && (
               <div className="w-full space-y-2 rounded-lg bg-white p-2">
-                <p className="text-xs text-muted">El trabajador firma aquí, en tu pantalla (o en la tablet). Queda como «firma asistida en persona».</p>
-                <SignaturePad height={150} onChange={(image) => setAssist({ id: r.id, image })} />
+                <p className="text-xs text-muted">El trabajador se identifica con su DNI y PIN, o firma con su trazo aquí, en tu pantalla. Tú quedas como testigo de la «firma asistida en persona».</p>
+                <div className="flex flex-wrap gap-2">
+                  <input className="input !w-36" inputMode="numeric" placeholder="DNI" value={assist.dni ?? ""} onChange={(e) => setAssist({ ...assist, dni: e.target.value })} />
+                  <input className="input !w-28" type="password" inputMode="numeric" placeholder="PIN" value={assist.pin ?? ""} onChange={(e) => setAssist({ ...assist, pin: e.target.value })} />
+                </div>
+                <SignaturePad height={150} onChange={(image) => setAssist({ ...assist, id: r.id, image })} />
                 <div className="flex gap-2">
-                  <Button size="sm" variant="primary" disabled={!assist.image} onClick={() => sign(r)}>Confirmar firma</Button>
+                  <Button size="sm" variant="primary" disabled={!assist.image && !(assist.dni && assist.pin)} onClick={() => sign(r)}>Confirmar firma</Button>
                   <Button size="sm" variant="ghost" onClick={() => setAssist(null)}>Cancelar</Button>
                 </div>
               </div>

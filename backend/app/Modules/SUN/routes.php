@@ -11,6 +11,10 @@ Route::middleware(['auth:sanctum', 'company', 'module:SUN', 'permission:sun.insp
     Route::get('dossiers/{dossier}/zip', \App\Modules\SUN\DossierZip::class)->whereUuid('dossier');
     Route::get('dossiers/{dossier}/print', \App\Modules\SUN\DossierPrint::class)->whereUuid('dossier');
     Route::get('dossiers/{dossier}/share-links', [ShareLinkController::class, 'index'])->whereUuid('dossier');
+    Route::get('dossiers/{dossier}/items', [\App\Modules\SUN\DossierItemsController::class, 'index'])->whereUuid('dossier');
+    Route::patch('dossiers/{dossier}/items/{id}', [\App\Modules\SUN\DossierItemsController::class, 'update'])->whereUuid(['dossier', 'id']);
+    Route::post('dossiers/{dossier}/evidence', [\App\Modules\SUN\DossierItemsController::class, 'evidence'])->whereUuid('dossier');
+    Route::put('dossiers/{dossier}/order', [\App\Modules\SUN\DossierItemsController::class, 'order'])->whereUuid('dossier');
     Route::post('dossiers/{dossier}/share', [ShareLinkController::class, 'store'])->whereUuid('dossier');
     Route::post('share-links/{id}/approve', [ShareLinkController::class, 'approve'])->whereUuid('id');
     Route::post('share-links/{id}/reject', [ShareLinkController::class, 'reject'])->whereUuid('id');
@@ -18,3 +22,8 @@ Route::middleware(['auth:sanctum', 'company', 'module:SUN', 'permission:sun.insp
 });
 Route::middleware('throttle:30,1')->get('public/sun/{company}/{token}', [ShareLinkController::class, 'show']);
 Route::middleware('throttle:10,1')->get('public/sun/{company}/{token}/download', [ShareLinkController::class, 'download']);
+Route::middleware(['auth:sanctum', 'company', 'module:SUN', 'permission:sun.self_diagnostics.read'])->prefix('sun/self-diagnostics')->group(function () {
+    Route::post('', [\App\Modules\SUN\SelfDiagnosisController::class, 'store']);
+    Route::get('monthly', [\App\Modules\SUN\SelfDiagnosisController::class, 'monthly']);
+    Route::get('{id}', [\App\Modules\SUN\SelfDiagnosisController::class, 'show'])->whereUuid('id');
+});

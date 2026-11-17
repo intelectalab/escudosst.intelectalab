@@ -106,6 +106,37 @@ class TenToolsController extends Controller
         ]);
     }
 
+    /** M-TEN SCR-TEN-03: ficha del puesto con su IPERC vigente (peligros y niveles), EPP obligatorio y capacitaciones exigidas. */
+    public function positionSheet(string $id): JsonResponse
+    {
+        $this->can('ten.companies.read');
+        $p = \Illuminate\Support\Str::isUuid($id) ? DB::selectOne('select p.*, a.name as area, s.name as site from positions p left join areas a on a.id = p.area_id
+                                                                         left join sites s on s.id = a.site_id where p.id = ? and p.deleted_at is null', [$id]) : null;
+        if (! $p) {
+            throw \App\Core\Http\ApiProblem::notFound('El puesto no existe.');
+        }
+        $ctx = app(CompanyContext::class);
+        $matrices = DB::select("select m.id, m.code, m.title, m.status, m.next_review_on, v.version_number, v.approved_at from iperc_matrices m
+                                 left join iperc_versions v on v.id = m.current_version_id where m.position_id = ? and m.deleted_at is null order by m.code", [$id]);
+        $rows = DB::select("select r.task, r.hazard, r.risk, r.risk_level, r.residual_level, r.is_significant from iperc_rows r
+                              join iperc_matrices m on m.current_version_id = r.iperc_version_id
+                             where r.deleted_at is null and (m.position_id = ? or r.position_id = ?) and m.deleted_at is null
+                             order by r.is_significant desc, r.risk_score desc nulls last limit 60", [$id, $id]);
+
+        return response()->json(['data' => [
+            'company' => DB::selectOne('select legal_name, ruc from companies where id = ?', [$ctx->companyId]),
+            'position' => ['name' => $p->name, 'code' => $p->code, 'area' => $p->area, 'site' => $p->site, 'description' => $p->description, 'functions' => $p->functions,
+                'is_critical' => (bool) $p->is_critical, 'requires_emo' => (bool) $p->requires_emo, 'requires_sctr' => (bool) $p->requires_sctr,
+                'workers' => (int) DB::selectOne("select count(*) as n from workers where current_position_id = ? and status = 'active' and deleted_at is null", [$id])->n],
+            'iperc' => $matrices, 'hazards' => $rows,
+            'ppe' => DB::select('select i.name, i.category, r.quantity, r.replacement_days, r.is_mandatory, r.conditions from ppe_position_requirements r join ppe_items i on i.id = r.ppe_item_id
+                                  where r.position_id = ? and r.deleted_at is null order by r.is_mandatory desc, i.name', [$id]),
+            'trainings' => DB::select("select coalesce(t.title, c.title) as title, r.requirement_level, r.renewal_months, r.due_within_days from position_training_requirements r
+                                        left join trainings t on t.id = r.training_id left join courses c on c.id = r.course_id
+                                        where r.position_id = ? and r.deleted_at is null and r.is_active order by 1", [$id]),
+        ]]);
+    }
+
     public function sstOrg(): JsonResponse
     {
         $this->can('ten.companies.read');

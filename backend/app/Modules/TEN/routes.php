@@ -14,4 +14,5 @@ Route::middleware(['auth:sanctum', 'company'])->prefix('ten')->group(function ()
     Route::match(['get', 'post'], 'account-companies', [\App\Modules\TEN\TenToolsController::class, 'accountCompanies']);
     Route::get('structure.xlsx', [\App\Modules\TEN\TenToolsController::class, 'structure']);
     Route::get('sst-org', [\App\Modules\TEN\TenToolsController::class, 'sstOrg']);
+    Route::get('positions/{id}/sheet', [\App\Modules\TEN\TenToolsController::class, 'positionSheet'])->whereUuid('id');
 });

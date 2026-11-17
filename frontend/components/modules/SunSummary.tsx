@@ -13,8 +13,10 @@ import { Icon } from "@/components/ui/Icon";
 import { Bar, Card, Chip, Dot, Ring, type Tone } from "./Summary";
 import { SunWizard } from "./SunWizard";
 
-type Area = { name: string; module: string; table: string | null; pct: number | null; tone: Tone; detail: string; enabled: boolean };
-type Diagnosis = { score: number | null; evaluated_at: string; areas: Area[] };
+type Area = { workers?: string[]; workers_total?: number; code: string; name: string; module: string; table: string | null; pct: number | null; tone: Tone; detail: string; enabled: boolean; severity: string; severity_label: string };
+type Diagnosis = { score: number | null; risk_weighted_score: number | null; very_serious_gaps: number; evaluated_at: string; areas: Area[] };
+type Month = { month: string; id: string; score: number | null; weighted: number | null; very_serious_gaps: number };
+const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic"];
 
 const STATUS: Record<string, [string, Tone]> = {
   queued: ["En cola", "na"],
@@ -38,10 +40,30 @@ export function SunSummary({ readOnly }: { readOnly: boolean }) {
       .then((r) => setDiag(r.data))
       .catch((e: ApiError) => setError(e.detail ?? e.title));
   }, []);
+  // M-SUN §11: posición por mes (último autodiagnóstico guardado de cada mes).
+  const [months, setMonths] = useState<Month[] | null>(null);
+  const loadMonths = useCallback(() => {
+    api<{ data: Month[] }>("/sun/self-diagnostics/monthly", { withCompany: true }).then((r) => setMonths(r.data)).catch(() => setMonths([]));
+  }, []);
   useEffect(() => {
     load();
+    loadMonths();
     records.list("SUN", "inspection_dossiers", { page: 1 }).then((r) => setRecent(r.data.slice(0, 3))).catch(() => setRecent([]));
-  }, [load]);
+  }, [load, loadMonths]);
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    setSaving(true);
+    try {
+      const r = await api<{ data: Diagnosis & { id: string } }>("/sun/self-diagnostics", { method: "POST", withCompany: true });
+      setDiag(r.data);
+      loadMonths();
+      window.open(`/imprimir/autodiagnostico/${r.data.id}`, "_blank");
+    } catch (e) {
+      setError((e as ApiError).detail ?? (e as ApiError).title);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // «Generar expediente» abre el asistente (SCR-SUN-03): crea el expediente y lo arma.
   const [wizard, setWizard] = useState(false);
@@ -50,7 +72,11 @@ export function SunSummary({ readOnly }: { readOnly: boolean }) {
   const score = diag?.score ?? null;
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-      <Card title="Autodiagnóstico frente a una inspección" action={<Button size="sm" icon="refresh" onClick={load}>Volver a evaluar</Button>}>
+      <Card title="Autodiagnóstico frente a una inspección" action={
+        <span className="flex gap-2">
+          <Button size="sm" icon="refresh" onClick={load}>Volver a evaluar</Button>
+          {!readOnly && <Button size="sm" variant="primary" icon="file" onClick={() => void save()} disabled={saving}>{saving ? "Guardando…" : "Guardar e informe PDF"}</Button>}
+        </span>}>
         {error ? (
           <p className="text-sm text-muted">{error}</p>
         ) : !diag ? (
@@ -63,6 +89,10 @@ export function SunSummary({ readOnly }: { readOnly: boolean }) {
                 <p>
                   <b>Puntaje {score ?? "—"} de 100.</b> Si SUNAFIL llegara hoy, estas son las brechas a cerrar primero.
                 </p>
+                {diag.risk_weighted_score !== null && (
+                  <p className="mt-1">Puntaje ponderado por gravedad: <b>{diag.risk_weighted_score}</b>.{" "}
+                    {diag.very_serious_gaps > 0 && <span className="font-semibold text-bad">{diag.very_serious_gaps} brecha(s) de infracción muy grave.</span>}</p>
+                )}
                 <p className="mt-1 text-xs text-muted">Evaluado el {dt(diag.evaluated_at)} con los datos del sistema. Toca un área para ir a resolverla.</p>
               </div>
             </div>
@@ -79,7 +109,13 @@ export function SunSummary({ readOnly }: { readOnly: boolean }) {
                       <span className="min-w-0 flex-1">
                         <b className="block text-sm">{a.name}</b>
                         <span className="block text-xs text-muted">{a.detail}</span>
+                        {a.workers && a.workers.length > 0 && (
+                          <span className="block text-xs text-muted" title={a.workers.join(", ")}>
+                            Faltan: {a.workers.slice(0, 4).join(", ")}{(a.workers_total ?? 0) > 4 ? ` y ${(a.workers_total ?? 0) - 4} más` : ""}
+                          </span>
+                        )}
                       </span>
+                      <span className="hidden text-xs text-muted md:block">{a.severity_label}</span>
                       <span className="hidden w-28 sm:block">{a.pct !== null && <Bar pct={a.pct} tone={a.tone} />}</span>
                       <b className="w-10 text-right font-display tabular-nums">{a.pct ?? "—"}</b>
                     </Link>
@@ -98,6 +134,25 @@ export function SunSummary({ readOnly }: { readOnly: boolean }) {
             </Button>
           )}
           {wizard && <SunWizard onClose={() => setWizard(false)} onDone={reloadRecent} />}
+        </Card>
+        <Card title="Posición por mes">
+          {months === null ? (
+            <p className="text-sm text-muted">Cargando…</p>
+          ) : months.length === 0 ? (
+            <p className="text-sm text-muted">Guarda un autodiagnóstico para ver su evolución mes a mes.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {months.map((m) => (
+                <li key={m.month}>
+                  <a href={`/imprimir/autodiagnostico/${m.id}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm hover:text-brand">
+                    <span className="w-16 text-xs text-muted">{MONTHS[Number(m.month.slice(5, 7)) - 1]} {m.month.slice(0, 4)}</span>
+                    <span className="flex-1">{m.score !== null && <Bar pct={m.score} tone={m.score >= 90 ? "ok" : m.score >= 70 ? "warn" : "bad"} />}</span>
+                    <b className="w-8 text-right tabular-nums">{m.score ?? "—"}</b>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
         </Card>
         <Card title="Expedientes recientes">
           {recent === null ? (

@@ -1415,12 +1415,43 @@ function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => voi
   const savedWorker = scope?.worker_id ?? "";
   const [worker, setWorker] = useState<string>(savedWorker);
   const canShare = ["ready", "ready_with_gaps"].includes(String(row.status)) || items !== null;
+  // SCR-SUN-04: ítems guardados (con su id) para excluir con motivo y reordenar; se conservan al volver a armar.
+  const loadItems = () => api<{ data: (DossierItem & { id: string; item_id?: string; source_id: string | null })[] }>(`/sun/dossiers/${row.id}/items`, { withCompany: true })
+    .then((r) => setItems(r.data.map((x) => ({ ...x, item_id: x.id, id: x.source_id ?? "" })) as DossierItem[])).catch(() => undefined);
+  useEffect(() => { if (["ready", "ready_with_gaps"].includes(String(row.status))) void loadItems(); }, [row.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const exclude = async (it: DossierItem & { item_id?: string }) => {
+    const excluded = it.status !== "excluded";
+    const reason = excluded ? window.prompt("Motivo para excluir este ítem del expediente") : null;
+    if (excluded && !reason) return;
+    try { await api(`/sun/dossiers/${row.id}/items/${it.item_id}`, { method: "PATCH", withCompany: true, body: { excluded, reason } }); await loadItems(); }
+    catch (e) { setMsg((e as ApiError).errors ? Object.values((e as ApiError).errors ?? {})[0]?.[0] ?? "" : (e as ApiError).detail ?? (e as ApiError).title); }
+  };
+  // Evidencia manual: un archivo que se sube y queda como ítem del expediente (se conserva al volver a armar).
+  const addEvidence = async (file: File | undefined) => {
+    if (!file) return;
+    const title = window.prompt("¿Qué evidencia es? (por ejemplo: Constancia de entrega de EPP firmada en papel)");
+    if (!title) return;
+    try {
+      const f = await uploadFile(file, "SUN");
+      await api(`/sun/dossiers/${row.id}/evidence`, { method: "POST", withCompany: true, body: { title, file_id: f.id } });
+      await loadItems();
+    } catch (e) { setMsg((e as ApiError).errors ? Object.values((e as ApiError).errors ?? {})[0]?.[0] ?? "" : (e as ApiError).detail ?? (e as ApiError).title); }
+  };
+  const move = async (i: number, dir: -1 | 1) => {
+    if (!items) return;
+    const list = [...items] as (DossierItem & { item_id?: string })[];
+    const j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    setItems(list);
+    await api(`/sun/dossiers/${row.id}/order`, { method: "PUT", withCompany: true, body: { item_ids: list.map((x) => x.item_id) } }).catch(() => void loadItems());
+  };
   const build = async () => {
     setBusy(true);
     setMsg(null);
     try {
       const r = await api<{ data: { items: DossierItem[]; gaps: number; total: number } }>(`/sun/dossiers/${row.id}/build`, { method: "POST", withCompany: true, body: several ? {} : { worker_id: worker || null } });
-      setItems(r.data.items);
+      await loadItems();
       setMsg(r.data.gaps === 0 ? "Expediente completo: todos los puntos están incluidos." : `${r.data.gaps} de ${r.data.total} puntos con brechas. Toca cada uno para resolverlo.`);
       onChanged();
     } catch (e) {
@@ -1447,19 +1478,34 @@ function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => voi
       </div>
       {msg && <p className="font-semibold text-brand-strong">{msg}</p>}
       {items && (
+        <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-brand underline">
+          Agregar evidencia manual (archivo)
+          <input type="file" className="hidden" accept=".pdf,image/*,.doc,.docx,.xls,.xlsx" onChange={(e) => { void addEvidence(e.target.files?.[0]); e.target.value = ""; }} />
+        </label>
+      )}
+      {items && (
         <ul className="space-y-1">
-          {items.map((it) => {
-            const [label, cls] = DOSSIER_STATUS[it.status] ?? [it.status, "bg-bg"];
+          {items.map((it, i) => {
+            const [label, cls] = it.status === "excluded" ? ["Excluido", "bg-bg text-muted"] : DOSSIER_STATUS[it.status] ?? [it.status, "bg-bg"];
             const href = it.table ? recordsHref(it.module, it.table, it.id ? { open: it.id } : {}) : `/m/${it.module.toLowerCase()}`;
+            const withId = it as DossierItem & { item_id?: string };
             return (
-              <li key={it.code}>
-                <Link href={href} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line px-3 py-2 hover:border-brand">
+              <li key={withId.item_id ?? `${it.code}-${i}`} className="flex items-stretch gap-1">
+                {withId.item_id && (
+                  <span className="flex flex-col justify-center">
+                    <button type="button" aria-label="Subir" className="px-1 text-xs text-muted hover:text-fg" onClick={() => void move(i, -1)}>▲</button>
+                    <button type="button" aria-label="Bajar" className="px-1 text-xs text-muted hover:text-fg" onClick={() => void move(i, 1)}>▼</button>
+                  </span>
+                )}
+                <Link href={href} className="flex flex-1 flex-wrap items-center justify-between gap-2 rounded-lg border border-line px-3 py-2 hover:border-brand">
                   <span>
                     <b>{it.code}.</b> {it.title}
-                    {it.gap && <span className="block text-xs text-muted">{it.gap}</span>}
+                    {it.gap && <span className="block text-xs text-muted">{it.status === "excluded" ? `Excluido: ${it.gap}` : it.gap}</span>}
+                    {(it as DossierItem & { source_changed?: boolean }).source_changed && <span className="block text-xs text-amber-ink">El registro cambió después de armar: el expediente conserva la copia congelada.</span>}
                   </span>
                   <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${cls}`}>{label}</span>
                 </Link>
+                {withId.item_id && <button type="button" className="shrink-0 px-2 text-xs font-semibold text-brand underline" onClick={() => void exclude(withId)}>{it.status === "excluded" ? "Incluir" : "Excluir"}</button>}
               </li>
             );
           })}

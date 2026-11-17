@@ -19,6 +19,10 @@ import { VtaCampaign, VtaDashboard, VtaPortal } from "@/components/addons/VtaPan
 import { BaselineCompare } from "@/components/modules/LbaExtras";
 import { AmbPanel } from "@/components/modules/AmbExtras";
 import { TenPanel } from "@/components/modules/TenExtras";
+import { TenTree } from "@/components/modules/TenTree";
+import { NotRules } from "@/components/modules/NotRules";
+import { OffDevices } from "@/components/modules/OffDevices";
+import { ReportButton } from "@/components/modules/CtrExtras";
 import { AulLanding } from "@/components/modules/AulAdmin";
 import { LbaSummary } from "@/components/modules/LbaSummary";
 import { SunSummary } from "@/components/modules/SunSummary";
@@ -254,6 +258,28 @@ export default function ModulePage() {
       ) : m.code === "TEN" ? (
         <div className="space-y-5">
           <TenPanel readOnly={m.mode === "read_only"} isAccountAdmin={company.role.code === "account_admin"} />
+          <TenTree readOnly={m.mode === "read_only"} />
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
+      ) : m.code === "API" ? (
+        <div className="space-y-5">
+          <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface p-4 text-sm">
+            <span>
+              <b className="block">Uso de la API</b>
+              <span className="text-xs text-muted">Consultas por cliente y recurso del mes, rechazadas por permiso y webhooks fallidos. Permisos válidos: read, workers.read, credentials.read, access_events.read…</span>
+            </span>
+            <ReportButton path="/api-clients/usage.xlsx" file="uso-api.xlsx" label="Uso de la API en Excel" />
+          </section>
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
+      ) : m.code === "OFF" ? (
+        <div className="space-y-5">
+          <OffDevices readOnly={m.mode === "read_only"} />
+          <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
+        </div>
+      ) : m.code === "NOT" ? (
+        <div className="space-y-5">
+          <NotRules readOnly={m.mode === "read_only"} />
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
       ) : m.code === "AMB" ? (

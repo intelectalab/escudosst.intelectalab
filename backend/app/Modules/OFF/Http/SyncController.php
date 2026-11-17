@@ -28,7 +28,9 @@ class SyncController extends Controller
     {
         $device = $this->sync->device($request->all(), in_array('off.devices.create', Permissions::effective(), true));
 
-        return response()->json(['data' => $this->sync->status($device) + ['offline_warning_days' => max(1, (int) \App\Core\Support\LegalParams::number('offline_warning_days', 3))]]);
+        return response()->json(['data' => $this->sync->status($device) + ['offline_warning_days' => max(1, (int) \App\Core\Support\LegalParams::number('offline_warning_days', 3)),
+            // RN-OFF-06: tamaño máximo de las fotos tomadas sin conexión (se comprimen en el equipo).
+            'offline_photo_max_kb' => max(100, (int) \App\Core\Support\LegalParams::number('offline_photo_max_kb', 800))]]);
     }
 
     public function batch(Request $request): JsonResponse

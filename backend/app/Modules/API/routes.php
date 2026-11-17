@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 
 // API e integraciones (M-API RN-API-03): los secretos se muestran una sola vez (al crear o al rotar).
 Route::middleware(['auth:sanctum', 'company', 'module:API'])->group(function () {
+    Route::get('api-clients/usage.xlsx', [ApiCredentialsController::class, 'usage']);
     Route::post('api-clients/{id}/rotate-secret', [ApiCredentialsController::class, 'rotateClient'])->whereUuid('id');
     Route::post('webhooks/{id}/rotate-secret', [ApiCredentialsController::class, 'rotateWebhook'])->whereUuid('id');
     Route::post('webhooks/{id}/test', [ApiCredentialsController::class, 'testWebhook'])->whereUuid('id')->middleware('throttle:10,1');

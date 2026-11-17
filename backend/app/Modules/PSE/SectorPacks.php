@@ -16,8 +16,10 @@ use Illuminate\Support\Facades\DB;
  *  - RN-PSE-06: desinstalar no borra contenido: solo lo deja «no vinculado» al paquete.
  *
  * Tipos que se instalan: capacitaciones (training_topic), plantillas de inspección con sus ítems, tipos de permiso,
- * peligros del catálogo por familia y EPP. Los demás tipos de la ficha se muestran como «sin contenido instalable» hasta
- * que el paquete traiga sus datos.
+ * peligros del catálogo por familia, EPP, requisitos legales, indicadores, requisitos de fotocheck, criterios IPERC del
+ * sector (como alternativos, no reemplazan el criterio por defecto) y valores legales del sector (como parámetros de la
+ * empresa «por confirmar»). Los formatos de documento se muestran como «sin contenido instalable».
+ *  - RN-PSE-07: con el complemento PSE apagado, el contenido instalado queda en solo lectura (assertEditable).
  */
 final class SectorPacks
 {
@@ -25,9 +27,10 @@ final class SectorPacks
         'training_topic' => 'Capacitación', 'inspection_template' => 'Plantilla de inspección', 'permit_type' => 'Tipo de permiso',
         'hazard' => 'Peligros del catálogo', 'ppe_item' => 'EPP', 'legal_requirement' => 'Requisito legal', 'kpi' => 'Indicador',
         'document_template' => 'Formato de documento', 'credential_requirement' => 'Requisito de fotocheck',
+        'risk_criteria' => 'Criterios IPERC del sector', 'legal_parameter' => 'Valor legal del sector',
     ];
 
-    private const SUPPORTED = ['training_topic', 'inspection_template', 'permit_type', 'hazard', 'ppe_item'];
+    private const SUPPORTED = ['training_topic', 'inspection_template', 'permit_type', 'hazard', 'ppe_item', 'legal_requirement', 'kpi', 'credential_requirement', 'risk_criteria', 'legal_parameter'];
 
     private function company(): string
     {
@@ -241,6 +244,36 @@ final class SectorPacks
         return $rows;
     }
 
+    /** Tabla local de cada tipo instalable (para saber si un registro vino de un paquete). */
+    public const TYPE_TABLE = [
+        'training_topic' => 'trainings', 'inspection_template' => 'inspection_templates', 'permit_type' => 'permit_types', 'ppe_item' => 'ppe_items',
+        'kpi' => 'kpi_definitions', 'risk_criteria' => 'risk_criteria', 'legal_requirement' => 'legal_requirements', 'credential_requirement' => 'credential_requirements',
+    ];
+
+    /**
+     * RN-PSE-07: si el complemento PSE no está activo (vencido o apagado), el contenido que vino de un paquete instalado se
+     * puede consultar pero no editar ni archivar.
+     */
+    public static function assertEditable(string $table, string $id): void
+    {
+        $types = array_keys(self::TYPE_TABLE, $table, true);
+        if ($types === []) {
+            return;
+        }
+        $mode = DB::selectOne("select mode, company_enabled from feature_flags where module_code = 'PSE' and deleted_at is null");
+        if (! $mode || ($mode->mode === 'enabled' && $mode->company_enabled)) {
+            return;
+        }
+        foreach (DB::select("select item_map from company_sector_packs where status not in ('uninstalled', 'removed') and deleted_at is null") as $r) {
+            foreach (json_decode($r->item_map ?? '{}', true) ?: [] as $m) {
+                if (in_array($m['type'] ?? '', $types, true) && in_array($id, $m['ids'] ?? [], true)) {
+                    throw new ApiProblem(409, 'conflict', 'Contenido en solo lectura',
+                        'Este contenido vino de un paquete sectorial y el complemento de paquetes sectoriales no está activo: puedes consultarlo, pero no cambiarlo.');
+                }
+            }
+        }
+    }
+
     // ── Apoyo ───────────────────────────────────────────────────────────────
 
     private function label(object $it, array $pl): string
@@ -262,6 +295,10 @@ final class SectorPacks
             'inspection_template' => DB::selectOne('select id from inspection_templates where company_id = ? and code = ? and deleted_at is null order by version_number desc limit 1', [$this->company(), (string) ($pl['inspection_template_code'] ?? $it->code)])?->id,
             'permit_type' => DB::selectOne('select id from permit_types where company_id = ? and code = ? and deleted_at is null limit 1', [$this->company(), (string) ($pl['permit_type_code'] ?? $it->code)])?->id,
             'ppe_item' => DB::selectOne('select id from ppe_items where company_id = ? and code = ? and deleted_at is null limit 1', [$this->company(), (string) ($pl['code'] ?? $it->code)])?->id,
+            'kpi' => DB::selectOne('select id from kpi_definitions where company_id = ? and code = ? and deleted_at is null limit 1', [$this->company(), (string) ($pl['code'] ?? $it->code)])?->id,
+            'risk_criteria' => DB::selectOne('select id from risk_criteria where company_id = ? and code = ? and deleted_at is null limit 1', [$this->company(), (string) ($pl['code'] ?? $it->code)])?->id,
+            'legal_requirement' => DB::selectOne('select r.id from legal_requirements r join legal_norms n on n.id = r.legal_norm_id where r.company_id = ? and n.number = ? and r.article is not distinct from ? and r.deleted_at is null limit 1',
+                [$this->company(), (string) ($pl['norm_number'] ?? ''), $pl['article'] ?? null])?->id,
             default => null,
         };
     }
@@ -313,6 +350,68 @@ final class SectorPacks
                 }
 
                 return [$ids, false];
+            case 'risk_criteria':
+                // Criterios IPERC del sector: se copian como alternativos (la empresa sigue con su criterio por defecto).
+                $g = DB::selectOne('select * from risk_criteria where company_id is null and code = ? and deleted_at is null order by version_number desc limit 1', [(string) ($pl['code'] ?? $it->code)]);
+                if (! $g) {
+                    return [[], false];
+                }
+                $id = DB::selectOne("insert into risk_criteria (company_id, code, name, version_number, method, probability_scale, severity_scale, probability_index_factors, level_bands,
+                                        significant_from_level, is_default, status, created_by, updated_by)
+                                     values (?, ?, ?, 1, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb, ?, false, 'active', ?, ?) returning id",
+                    [$c, $g->code, $g->name, $g->method, $g->probability_scale, $g->severity_scale, $g->probability_index_factors, $g->level_bands, $g->significant_from_level, $u, $u])->id;
+
+                return [[$id], false];
+            case 'legal_parameter':
+                // Valor legal del sector: parámetro de la empresa marcado «por confirmar» (no reemplaza uno que la empresa ya fijó).
+                if (empty($pl['key']) || ! array_key_exists('value', $pl)) {
+                    return [[], false];
+                }
+                $p = DB::connection(); // la política RLS de legal_parameters exige el company_id del contexto
+                $mine = $p->selectOne('select id from legal_parameters where company_id = ? and key = ? and deleted_at is null order by valid_from desc limit 1', [$c, $pl['key']]);
+                if ($mine) {
+                    return [[$mine->id], true];
+                }
+                $g = $p->selectOne('select value_type, unit, description, legal_reference from legal_parameters where company_id is null and key = ? order by valid_from desc limit 1', [$pl['key']]);
+                $value = is_scalar($pl['value']) ? (string) (is_bool($pl['value']) ? ($pl['value'] ? 'true' : 'false') : $pl['value']) : json_encode($pl['value'], JSON_UNESCAPED_UNICODE);
+                $id = $p->selectOne("insert into legal_parameters (company_id, key, value, value_type, unit, description, legal_reference, source, sector, valid_from, to_confirm)
+                                     values (?, ?, ?, ?, ?, ?, ?, 'M-PSE', ?, current_date, true) returning id",
+                    [$c, $pl['key'], $value, $pl['value_type'] ?? $g?->value_type ?? 'text', $pl['unit'] ?? $g?->unit, $pl['description'] ?? $g?->description ?? $it->name,
+                        $pl['legal_reference'] ?? $g?->legal_reference, $pl['sector'] ?? null])->id;
+
+                return [[$id], false];
+            case 'kpi':
+                $g = DB::selectOne('select * from kpi_definitions where company_id is null and code = ? and deleted_at is null limit 1', [(string) ($pl['code'] ?? $it->code)]);
+                if (! $g) {
+                    return [[], false];
+                }
+                $id = DB::selectOne("insert into kpi_definitions (company_id, code, name, description, module_code, formula_key, unit, direction, green_threshold, amber_threshold, granularity,
+                                        required_feature, legal_parameter_key, is_active, created_by, updated_by)
+                                     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?, ?) returning id",
+                    [$c, $g->code, $g->name, $g->description, $g->module_code, $g->formula_key, $g->unit, $g->direction, $pl['green_threshold'] ?? $g->green_threshold, $pl['amber_threshold'] ?? $g->amber_threshold,
+                        $g->granularity, $g->required_feature, $g->legal_parameter_key, $u, $u])->id;
+
+                return [[$id], false];
+            case 'legal_requirement':
+                $norm = DB::selectOne('select id from legal_norms where number = ? and deleted_at is null limit 1', [(string) ($pl['norm_number'] ?? '')]);
+                if (! $norm || empty($pl['requirement'])) {
+                    return [[], false];
+                }
+                $id = DB::selectOne("insert into legal_requirements (company_id, legal_norm_id, article, requirement, applies, frequency, evidence_expected, status, created_by, updated_by)
+                                     values (?, ?, ?, ?, true, ?, ?, 'active', ?, ?) returning id",
+                    [$c, $norm->id, $pl['article'] ?? null, (string) $pl['requirement'], $pl['frequency'] ?? null, $pl['evidence_expected'] ?? null, $u, $u])->id;
+
+                return [[$id], false];
+            case 'credential_requirement':
+                $type = DB::selectOne('select id from credential_types where company_id = ? and code = ? and deleted_at is null limit 1', [$c, (string) ($pl['credential_type_code'] ?? '')]);
+                if (! $type || empty($pl['requirement_type'])) {
+                    return [[], false];
+                }
+                $id = DB::selectOne('insert into credential_requirements (company_id, credential_type_id, requirement_type, worker_document_kind, description, is_blocking, grace_days, created_by, updated_by)
+                                     values (?, ?, ?, ?, ?, ?, ?, ?, ?) returning id',
+                    [$c, $type->id, (string) $pl['requirement_type'], $pl['worker_document_kind'] ?? null, $pl['description'] ?? $it->name, ($pl['is_blocking'] ?? true) ? 'true' : 'false', $pl['grace_days'] ?? null, $u, $u])->id;
+
+                return [[$id], false];
             case 'ppe_item':
                 if (empty($pl['name'])) {
                     return [[], false];
@@ -376,6 +475,11 @@ final class SectorPacks
             'training_topic' => DB::selectOne("select string_agg(coalesce(title, '') || '|' || coalesce(description, ''), '#') as v from trainings where id = any(?::uuid[])", [$in]),
             'permit_type' => DB::selectOne("select string_agg(coalesce(name, '') || '|' || coalesce(checklist::text, ''), '#') as v from permit_types where id = any(?::uuid[])", [$in]),
             'ppe_item' => DB::selectOne("select string_agg(coalesce(name, ''), '#') as v from ppe_items where id = any(?::uuid[])", [$in]),
+            'kpi' => DB::selectOne("select string_agg(coalesce(name, '') || '|' || coalesce(green_threshold::text, '') || '|' || coalesce(amber_threshold::text, ''), '#') as v from kpi_definitions where id = any(?::uuid[])", [$in]),
+            'risk_criteria' => DB::selectOne("select string_agg(coalesce(name, '') || '|' || probability_scale::text || '|' || severity_scale::text || '|' || level_bands::text, '#') as v from risk_criteria where id = any(?::uuid[])", [$in]),
+            'legal_requirement' => DB::selectOne("select string_agg(coalesce(requirement, '') || '|' || coalesce(frequency, ''), '#') as v from legal_requirements where id = any(?::uuid[])", [$in]),
+            'credential_requirement' => DB::selectOne("select string_agg(coalesce(description, '') || '|' || is_blocking::text || '|' || coalesce(grace_days::text, ''), '#') as v from credential_requirements where id = any(?::uuid[])", [$in]),
+            'legal_parameter' => DB::selectOne("select string_agg(coalesce(value, ''), '#') as v from legal_parameters where id = any(?::uuid[])", [$in]),
             default => null,
         };
 

@@ -167,12 +167,14 @@ class ShareLinkController extends Controller
         return $this->publicLink($request, $company, $token, function (object $l, int $views) use ($company) {
             $d = DB::selectOne('select title, request_type, inspection_order_number, period_from, period_to, built_at, status from inspection_dossiers where id = ?', [$l->dossier_id]);
             $c = DB::selectOne('select legal_name, ruc from companies where id = ?', [$company]);
-            $items = DB::select('select section_code as code, title, status, gap_description as gap, worker_id is not null as per_worker from dossier_items
+            $items = DB::select('select section_code as code, title, status, coalesce(exclusion_reason, gap_description) as gap, worker_id is not null as per_worker from dossier_items
                                   where dossier_id = ? and deleted_at is null order by sort_order', [$l->dossier_id]);
             $downloads = (bool) $l->allow_download && ($l->max_downloads === null || (int) $l->download_count < (int) $l->max_downloads);
 
             return response()->json(['data' => [
                 'company' => ['name' => $c->legal_name, 'ruc' => trim($c->ruc)], 'dossier' => $d, 'items' => $items,
+                // RN-SUN-10 / SCR-SUN-07: marca de agua con el nombre de la empresa, el expediente y la fecha de la consulta.
+                'watermark' => $c->legal_name.' · '.($d->inspection_order_number ?: $d->title).' · '.now('America/Lima')->format('d/m/Y H:i'),
                 'expires_at' => $l->expires_at, 'views_left' => $l->max_views === null ? null : max(0, (int) $l->max_views - $views),
                 'allow_download' => $downloads,
                 'downloads_left' => $downloads && $l->max_downloads !== null ? max(0, (int) $l->max_downloads - (int) $l->download_count) : null,

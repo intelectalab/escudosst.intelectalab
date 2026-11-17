@@ -174,8 +174,39 @@ async function open(row: { iv: Uint8Array; data: ArrayBuffer }): Promise<OutboxO
 
 const LOCAL_FILE = "local-file:";
 
+/**
+ * RN-OFF-06: la foto tomada sin conexión se reduce hasta offline_photo_max_kb (el valor llega del servidor al registrar
+ * el equipo) bajando primero la calidad y luego el tamaño. Si no es imagen o ya pesa menos, se guarda tal cual.
+ */
+export async function compressPhoto(file: File, maxKb?: number): Promise<File> {
+  let limit = maxKb ?? 0;
+  if (!limit) {
+    try { limit = Number(localStorage.getItem("escudo.offline_photo_max_kb") ?? "800") || 800; } catch { limit = 800; }
+  }
+  if (!file.type.startsWith("image/") || file.type === "image/gif" || file.size <= limit * 1024 || typeof createImageBitmap === "undefined") return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    let scale = Math.min(1, 2048 / Math.max(bmp.width, bmp.height));
+    for (let i = 0; i < 8; i++) {
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bmp.width * scale));
+      canvas.height = Math.max(1, Math.round(bmp.height * scale));
+      canvas.getContext("2d")?.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+      for (const q of [0.82, 0.7, 0.58]) {
+        const blob = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, "image/jpeg", q));
+        if (blob && blob.size <= limit * 1024) return new File([blob], (file.name || "foto").replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+      }
+      scale *= 0.75;
+    }
+  } catch {
+    /* el navegador no pudo leer la imagen: se guarda la original */
+  }
+  return file;
+}
+
 /** Guarda una foto o archivo para subirlo después. Devuelve la referencia que va en el campo del registro. */
-export async function queueFile(file: File, module?: string): Promise<string> {
+export async function queueFile(input: File, module?: string): Promise<string> {
+  const file = await compressPhoto(input);
   const id = uuidv7();
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await key(), await file.arrayBuffer());
@@ -425,9 +456,10 @@ export async function discardOp(k: string) {
 export async function registerDevice(): Promise<void> {
   if (!ctx?.enabled || !navigator.onLine) return;
   try {
-    const r = await api<{ data: { offline_warning_days?: number } }>("/sync/devices", { method: "POST", withCompany: true, body: { device_uid: deviceUid(), platform: "web_pwa", model: navigator.userAgent.slice(0, 120) } });
+    const r = await api<{ data: { offline_warning_days?: number; offline_photo_max_kb?: number } }>("/sync/devices", { method: "POST", withCompany: true, body: { device_uid: deviceUid(), platform: "web_pwa", model: navigator.userAgent.slice(0, 120) } });
     try {
       if (r.data?.offline_warning_days) localStorage.setItem("escudo.offline_warning_days", String(r.data.offline_warning_days));
+      if (r.data?.offline_photo_max_kb) localStorage.setItem("escudo.offline_photo_max_kb", String(r.data.offline_photo_max_kb));
     } catch {
       /* sin almacenamiento local */
     }
@@ -453,6 +485,38 @@ export function unsyncedDays(pending: number): number | null {
     if (!last) return null;
     const days = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
     return days >= limit ? days : null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Paquete de datos de referencia (SCR-OFF-02) ──────────────────────────────
+
+export type OfflinePackageInfo = { prepared_at: string; size_bytes: number; counts: Record<string, number>; scoped: boolean };
+
+/** Descarga el paquete para trabajar sin conexión y lo guarda cifrado en el equipo. Sin datos médicos (RN-OFF-05). */
+export async function preparePackage(): Promise<OfflinePackageInfo> {
+  const r = await api<{ data: Record<string, unknown>; meta: { size_bytes: number; counts: Record<string, number>; scoped: boolean } }>("/sync/package", { withCompany: true });
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await key(), new TextEncoder().encode(JSON.stringify(r.data)));
+  const info: OfflinePackageInfo = { prepared_at: new Date().toISOString(), size_bytes: r.meta.size_bytes, counts: r.meta.counts, scoped: r.meta.scoped };
+  await tx("catalogs", "readwrite", (s) => s.put({ id: "package", iv, data, info }));
+  return info;
+}
+
+export async function packageInfo(): Promise<OfflinePackageInfo | null> {
+  if (!ctx) return null;
+  const row = await tx<{ info: OfflinePackageInfo } | undefined>("catalogs", "readonly", (s) => s.get("package")).catch(() => undefined);
+  return row?.info ?? null;
+}
+
+/** Lee el paquete guardado (para las pantallas que trabajan sin señal). */
+export async function readPackage<T = Record<string, unknown>>(): Promise<T | null> {
+  const row = await tx<{ iv: Uint8Array; data: ArrayBuffer } | undefined>("catalogs", "readonly", (s) => s.get("package")).catch(() => undefined);
+  if (!row) return null;
+  try {
+    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: row.iv as BufferSource }, await key(), row.data);
+    return JSON.parse(new TextDecoder().decode(plain)) as T;
   } catch {
     return null;
   }

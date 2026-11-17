@@ -16,7 +16,23 @@ use Illuminate\Support\Facades\DB;
  */
 class DiagnosisController extends Controller
 {
+    /** Código de cada obligación del catálogo (en el orden en que se evalúan). */
+    public const CODES = ['committee', 'iperc', 'pets', 'drills', 'registers', 'training', 'emo', 'policy', 'ppe'];
+
+    public const CHECKLIST_VERSION = 'SUN-2026.1';
+
+    public const SEVERITY_LABEL = ['minor' => 'Leve', 'serious' => 'Grave', 'very_serious' => 'Muy grave'];
+
     public function __invoke(): JsonResponse
+    {
+        return response()->json(['data' => $this->evaluate()]);
+    }
+
+    /**
+     * RN-SUN-01/02: evalúa el catálogo de obligaciones con los datos de los módulos; cada obligación lleva la gravedad de su
+     * infracción (parámetro por confirmar) y el puntaje ponderado da más peso a las graves y muy graves.
+     */
+    public function evaluate(): array
     {
         $today = DB::selectOne("select (now() at time zone 'America/Lima')::date as d")->d;
         $year = (int) substr($today, 0, 4);
@@ -34,24 +50,39 @@ class DiagnosisController extends Controller
             $this->policy($workers),
             $this->ppe($today),
         ];
-        foreach ($areas as &$a) {
+        $severity = json_decode(LegalParams::text('sunafil_obligation_severity', '{}'), true) ?: [];
+        $weights = ['minor' => LegalParams::number('sunafil_weight_minor', 1), 'serious' => LegalParams::number('sunafil_weight_serious', 2),
+            'very_serious' => LegalParams::number('sunafil_weight_very_serious', 3)];
+        $gapBelow = LegalParams::number('sunafil_gap_threshold_pct', 70);
+        foreach ($areas as $i => &$a) {
+            $a['code'] = self::CODES[$i];
             $a['enabled'] = in_array($a['module'], $enabled, true);
-            $a['tone'] = $a['pct'] === null ? 'na' : ($a['pct'] >= 90 ? 'ok' : ($a['pct'] >= 70 ? 'warn' : 'bad'));
+            $a['tone'] = $a['pct'] === null ? 'na' : ($a['pct'] >= 90 ? 'ok' : ($a['pct'] >= $gapBelow ? 'warn' : 'bad'));
+            $a['result'] = $a['pct'] === null ? 'na' : ($a['pct'] >= 100 ? 'complies' : ($a['pct'] >= $gapBelow ? 'partial' : 'fails'));
+            $a['severity'] = isset(self::SEVERITY_LABEL[$severity[$a['code']] ?? '']) ? $severity[$a['code']] : 'serious';
+            $a['severity_label'] = self::SEVERITY_LABEL[$a['severity']];
         }
         unset($a);
         $measured = array_filter($areas, fn ($a) => $a['pct'] !== null);
         $score = $measured ? (int) round(array_sum(array_column($measured, 'pct')) / count($measured)) : null;
+        $wsum = array_sum(array_map(fn ($a) => $weights[$a['severity']], $measured));
+        $weighted = $measured && $wsum > 0 ? (int) round(array_sum(array_map(fn ($a) => $a['pct'] * $weights[$a['severity']], $measured)) / $wsum) : null;
 
-        return response()->json(['data' => [
+        return [
             'score' => $score,
+            'risk_weighted_score' => $weighted,
+            'very_serious_gaps' => count(array_filter($measured, fn ($a) => $a['severity'] === 'very_serious' && $a['result'] === 'fails')),
+            'checklist_version' => self::CHECKLIST_VERSION,
             'evaluated_at' => now('America/Lima')->toIso8601String(),
             'areas' => $areas,
-        ]]);
+        ];
     }
 
-    private function area(string $name, string $module, ?string $table, ?float $pct, string $detail): array
+    /** @param list<string> $workers trabajadores que faltan en la obligación (criterio 1 de M-SUN: se listan por nombre) */
+    private function area(string $name, string $module, ?string $table, ?float $pct, string $detail, array $workers = []): array
     {
-        return ['name' => $name, 'module' => $module, 'table' => $table, 'pct' => $pct === null ? null : (int) round(max(0, min(100, $pct))), 'detail' => $detail];
+        return ['name' => $name, 'module' => $module, 'table' => $table, 'pct' => $pct === null ? null : (int) round(max(0, min(100, $pct))), 'detail' => $detail,
+            'workers' => array_slice($workers, 0, 100), 'workers_total' => count($workers)];
     }
 
     /** Comité (o supervisor) activo y sesiones mensuales de los últimos 3 meses. */
@@ -206,12 +237,18 @@ class DiagnosisController extends Controller
               where w.deleted_at is null and w.status = 'active'", [$grace, $r->id]) : null;
         $deliv = (int) ($d->done ?? 0);
         $late = (int) ($d->late ?? 0);
+        // Quiénes no tienen el cargo de entrega del RISST pasado el plazo.
+        $lateNames = $r && $late ? array_column(DB::select(
+            "select w.full_name from workers w
+              where w.deleted_at is null and w.status = 'active' and (w.hire_on is null or w.hire_on + ?::int < current_date)
+                and not exists (select 1 from risst_deliveries d where d.risst_version_id = ? and d.worker_id = w.id and d.deleted_at is null and d.status in ('delivered', 'signed'))
+              order by w.full_name", [$grace, $r->id]), 'full_name') : [];
         $due = $deliv + $late;
         $pct = ($p ? 50 : 0) + ($r ? 50 * ($due ? $deliv / $due : 1) : 0);
         $parts = [$p ? 'Política vigente' : 'Falta la política vigente',
             $r ? "RISST entregado a {$deliv} de {$workers} trabajadores".($late ? " ({$late} sin cargo pasado el plazo de {$grace} días)" : '') : 'Falta el RISST vigente'];
 
-        return $this->area('Política y RISST', $p ? 'RIS' : 'POL', $p ? 'risst_deliveries' : 'sst_policies', $pct, implode(' · ', $parts).'.');
+        return $this->area('Política y RISST', $p ? 'RIS' : 'POL', $p ? 'risst_deliveries' : 'sst_policies', $pct, implode(' · ', $parts).'.', $lateNames);
     }
 
     /** Trabajadores con todo el EPP obligatorio de su puesto entregado y vigente. */
@@ -228,8 +265,14 @@ class DiagnosisController extends Controller
             return $this->area('EPP', 'EPP', 'ppe_position_requirements', 0, 'No hay EPP obligatorio configurado por puesto.');
         }
         $pending = $r->den - $r->num;
+        $names = $pending > 0 ? array_column(DB::select(
+            "select distinct w.full_name from workers w join ppe_position_requirements q on q.position_id = w.current_position_id and q.deleted_at is null and q.is_mandatory
+              where w.deleted_at is null and w.status = 'active'
+                and not exists (select 1 from ppe_deliveries d where d.worker_id = w.id and d.ppe_item_id = q.ppe_item_id and d.deleted_at is null and d.status = 'delivered'
+                                 and (d.expires_on is null or d.expires_on >= ?))
+              order by w.full_name", [$today]), 'full_name') : [];
 
         return $this->area('EPP', 'EPP', 'ppe_deliveries', $r->num * 100 / $r->den,
-            $pending === 0 ? 'Todos tienen el EPP obligatorio de su puesto vigente.' : "{$pending} trabajador(es) sin todo el EPP obligatorio de su puesto vigente.");
+            $pending === 0 ? 'Todos tienen el EPP obligatorio de su puesto vigente.' : "{$pending} trabajador(es) sin todo el EPP obligatorio de su puesto vigente.", $names);
     }
 }

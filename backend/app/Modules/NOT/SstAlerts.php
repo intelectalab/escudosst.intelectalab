@@ -226,14 +226,13 @@ final class SstAlerts
         return max(0, (int) \App\Core\Support\LegalParams::number($key, $default));
     }
 
-    /** @param ?bool $digest null = solo a la hora digest_hour (Lima); true/false para forzarlo (pruebas). */
-    public function forCompany(ConnectionInterface $db, string $company, ?bool $digest = null): int
+    /**
+     * Catálogo de alertas por tiempo: [módulo, sql, evento, prioridad, título, texto, enlace, roles, semanal, texto para el trabajador?].
+     * Lo usa la pantalla de reglas (SCR-NOT-01) para listar los eventos que la empresa puede ajustar.
+     */
+    public static function checks(): array
     {
-        $enabled = array_column($db->select("select module_code from feature_flags where mode = 'enabled' and deleted_at is null"), 'module_code');
-        $this->refreshStatuses($db);
-        $week = date('o-W');
-        $created = 0;
-        $checks = [
+        return [
             // M-ACR §10: acción vencida → responsable, jefe del área y Jefe SST; al vencer y cada overdue_repeat_days.
             ['ACR', "select a.id, a.code as ref, a.title as name, a.responsible_user_id as owner, (select mw.user_id from areas ar join workers mw on mw.id = ar.manager_worker_id where ar.id = a.area_id) as owner2, a.due_on as due,
                             ((current_date - a.due_on - 1) / ".max(1, self::days('overdue_repeat_days', 7)).")::text as dk, 'overdue' as kind from corrective_actions a
@@ -671,13 +670,64 @@ final class SstAlerts
                                          and x.starts_on <= a.ends_on + 1 and x.ends_on > a.ends_on)",
                 'des.return_to_work', 'high', 'Retorno de descanso por accidente', fn ($r) => "{$r->ref} retorna el ".date('d/m/Y', strtotime($r->due)).' de su descanso: programa el EMO de reintegro.', '/m/des?t=absences&open=', ['sst_manager', 'occupational_doctor'], false],
         ];
-        foreach ($checks as $check) {
+    }
+
+    /** Reglas de la empresa por evento (notification_rules propias): activo, roles destinatarios y días de anticipación. */
+    public static function companyRules(ConnectionInterface $db, string $company): array
+    {
+        $out = [];
+        foreach ($db->select('select event_code, is_active, recipients_spec, lead_days from notification_rules where company_id = ? and deleted_at is null', [$company]) as $r) {
+            $spec = json_decode((string) $r->recipients_spec, true) ?: [];
+            $lead = array_values(array_filter(array_map('intval', str_getcsv(trim((string) $r->lead_days, '{}'))), fn ($d) => $d >= 0));
+            $out[$r->event_code] = ['active' => (bool) $r->is_active, 'roles' => isset($spec['roles']) && is_array($spec['roles']) ? array_values($spec['roles']) : null,
+                'lead_days' => $r->lead_days === null || trim((string) $r->lead_days, '{}') === '' ? [] : $lead];
+        }
+
+        return $out;
+    }
+
+    /** @param ?bool $digest null = solo a la hora digest_hour (Lima); true/false para forzarlo (pruebas). */
+    public function forCompany(ConnectionInterface $db, string $company, ?bool $digest = null): int
+    {
+        $enabled = array_column($db->select("select module_code from feature_flags where mode = 'enabled' and deleted_at is null"), 'module_code');
+        $this->refreshStatuses($db);
+        $week = date('o-W');
+        $created = 0;
+        $rules = self::companyRules($db, $company);
+        foreach (self::checks() as $check) {
             [$module, $sql, $event, $priority, $title, $body, $link, $roles, $weekly] = $check;
             $workerBody = $check[9] ?? $body;
             if (! in_array($module, $enabled, true)) {
                 continue;
             }
+            // M-NOT SCR-NOT-01 / RN-NOT-03: la regla de la empresa para el evento puede apagarlo, cambiar los roles que lo
+            // reciben y fijar los días de anticipación (solo se avisa los días indicados antes del vencimiento).
+            $rule = $rules[$event] ?? null;
+            if ($rule && ! $rule['active']) {
+                continue;
+            }
+            if ($rule && $rule['roles'] !== null) {
+                $roles = $rule['roles'];
+            }
             $rows = $db->select($sql);
+            if ($rule && $rule['lead_days']) {
+                $today = now('America/Lima')->startOfDay();
+                $rows = array_values(array_filter($rows, function ($r) use ($rule, $today) {
+                    if (empty($r->due)) {
+                        return true;
+                    }
+                    $left = (int) $today->diffInDays(\Carbon\Carbon::parse(substr((string) $r->due, 0, 10), 'America/Lima')->startOfDay(), false);
+                    if ($left < 0) {
+                        return true;
+                    }
+                    if (! in_array($left, $rule['lead_days'], true)) {
+                        return false;
+                    }
+                    $r->dk = ($r->dk ?? '').'L'.$left;
+
+                    return true;
+                }));
+            }
             if ($rows === []) {
                 continue;
             }

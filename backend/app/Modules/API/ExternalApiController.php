@@ -14,10 +14,12 @@ use Illuminate\Support\Str;
 /**
  * API para integraciones de la empresa (complemento API), de solo lectura:
  *  GET /ext/v1/{resource}?updated_since=AAAA-MM-DDTHH:MM:SS&page=1
- *  recursos: workers, events, actions, inspections, trainings
+ *  recursos: workers, events, actions, inspections, trainings, credentials (fotochecks), access_events (ingresos en garita)
  * Cabeceras: X-Company-Id (ID de la empresa), X-Api-Key (ck_…) y X-Api-Secret (sk_…), que se crean en
- * «API e integraciones › Clientes». El cliente debe estar activo, sin vencer, con el alcance «read» y, si tiene IPs
- * permitidas, llamar desde una de ellas. Nunca se devuelven datos de salud ni documentos completos.
+ * «API e integraciones › Clientes». El cliente debe estar activo, sin vencer, con permiso para el recurso
+ * («workers.read», «credentials.read»…; «read» o «*» dan lectura de todos) y, si tiene IPs permitidas, llamar desde una
+ * de ellas. Nunca se devuelven datos de salud (RN-API-01) ni documentos completos. Cada consulta suma al uso del cliente
+ * por día y recurso (§11).
  */
 class ExternalApiController extends Controller
 {
@@ -31,13 +33,25 @@ class ExternalApiController extends Controller
         'inspections' => ["select id, code, title, inspection_type, site_id, scheduled_on, completed_at, score_pct, status, updated_at
                              from inspections where deleted_at is null", 'updated_at'],
         'trainings' => ["select id, code, title, training_type, modality, duration_minutes, status, updated_at from trainings where deleted_at is null", 'updated_at'],
+        // M-FOT: estado del fotocheck (sin el token del QR).
+        'credentials' => ["select id, credential_number, credential_type_id, worker_id, contractor_worker_id, valid_from, expires_on, status, blocking_reasons, updated_at
+                             from credentials where deleted_at is null", 'updated_at'],
+        // M-ING: ingresos y salidas registrados en garita.
+        'access_events' => ["select id, access_point_id, occurred_at, direction, subject_type, worker_id, contractor_worker_id, credential_id, result, deny_codes, is_offline
+                               from access_events where true", 'occurred_at'],
     ];
+
+    /** RN-API-01: recursos que nunca salen por la API (datos de salud). */
+    private const MEDICAL = ['fitness_status', 'medical_exams', 'medical_exam_orders', 'emo', 'fitness'];
 
     public function index(Request $request, string $resource): JsonResponse
     {
+        if (in_array($resource, self::MEDICAL, true)) {
+            throw ApiProblem::forbidden('Los datos de salud no se entregan por la API.');
+        }
         [$sql, $col] = self::RESOURCES[$resource] ?? throw ApiProblem::notFound('Recurso desconocido. Disponibles: '.implode(', ', array_keys(self::RESOURCES)).'.');
 
-        return $this->authenticated($request, function () use ($request, $sql, $col) {
+        return $this->authenticated($request, $resource, function () use ($request, $sql, $col) {
             $bind = [];
             if ($since = $request->query('updated_since')) {
                 if (! strtotime((string) $since)) {
@@ -53,7 +67,7 @@ class ExternalApiController extends Controller
         });
     }
 
-    private function authenticated(Request $request, callable $fn): JsonResponse
+    private function authenticated(Request $request, string $resource, callable $fn): JsonResponse
     {
         $company = (string) $request->header('X-Company-Id');
         $key = (string) $request->header('X-Api-Key');
@@ -67,7 +81,7 @@ class ExternalApiController extends Controller
         }
         RateLimiter::hit('ext-api-any:'.$key, 60);
 
-        return DB::transaction(function () use ($company, $key, $secret, $request, $fn) {
+        $out = DB::transaction(function () use ($company, $key, $secret, $request, $fn, $resource) {
             DbContext::setCompany($company);
             $c = DB::selectOne('select * from api_clients where client_key = ? and deleted_at is null', [$key]);
             if (! $c || ! hash_equals((string) $c->secret_hash, hash('sha256', $secret))) {
@@ -76,9 +90,13 @@ class ExternalApiController extends Controller
             if ($c->status !== 'active' || ($c->expires_at && strtotime($c->expires_at) < time())) {
                 throw new ApiProblem(401, 'unauthenticated', 'Cliente inactivo', 'El cliente de la API está revocado o vencido.');
             }
-            $scopes = array_filter(explode(',', trim((string) $c->scopes, '{}')));
-            if (! in_array('read', $scopes, true) && ! in_array('*', $scopes, true)) {
-                throw new ApiProblem(403, 'forbidden', 'Sin permiso', 'El cliente no tiene el alcance «read».');
+            // Permiso por recurso: «workers.read», «credentials.read»… o «read» / «*» para todos.
+            $scopes = array_map('trim', array_filter(explode(',', trim((string) $c->scopes, '{}'))));
+            if (! array_intersect(['read', '*', $resource.'.read'], $scopes)) {
+                // Se registra el intento rechazado (se confirma la transacción) y luego se responde 403.
+                $this->usage($c, $resource, true);
+
+                return null;
             }
             $ips = array_filter(explode(',', trim((string) $c->allowed_ips, '{}')));
             if ($ips && ! in_array($request->ip(), $ips, true)) {
@@ -92,6 +110,7 @@ class ExternalApiController extends Controller
             }
             RateLimiter::hit('ext-api:'.$c->id, 60);
             DB::update('update api_clients set last_used_at = now() where id = ?', [$c->id]);
+            $this->usage($c, $resource, false);
             $module = DB::selectOne("select mode from feature_flags where module_code = 'API' and deleted_at is null")?->mode;
             if ($module !== 'enabled') {
                 throw new ApiProblem(403, 'module_not_in_plan', 'API no activa', 'El complemento API no está activo para esta empresa.');
@@ -99,5 +118,14 @@ class ExternalApiController extends Controller
 
             return $fn();
         });
+
+        return $out ?? throw new ApiProblem(403, 'forbidden', 'Sin permiso', "El cliente no tiene permiso para leer «{$resource}» (alcance {$resource}.read).");
+    }
+
+    private function usage(object $c, string $resource, bool $denied): void
+    {
+        DB::insert("insert into api_usage (company_id, api_client_id, day, resource, calls, denied) values (?, ?, (now() at time zone 'America/Lima')::date, ?, ?, ?)
+                    on conflict (api_client_id, day, resource) do update set calls = api_usage.calls + excluded.calls, denied = api_usage.denied + excluded.denied, updated_at = now()",
+            [$c->company_id, $c->id, $resource, $denied ? 0 : 1, $denied ? 1 : 0]);
     }
 }

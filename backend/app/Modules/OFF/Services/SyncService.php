@@ -62,6 +62,10 @@ class SyncService
             throw ApiProblem::forbidden('Este dispositivo está registrado a otra persona. Pide al responsable SST que lo revise.');
         }
         if ($device && $device->status !== 'active') {
+            // RN-OFF-04: el equipo revocado borra sus datos al recibir esta respuesta; queda como «borrado».
+            if (in_array($device->status, ['revoked', 'lost'], true)) {
+                DB::update("update devices set status = 'wiped', updated_at = now() where id = ? and status in ('revoked', 'lost')", [$device->id]);
+            }
             throw new ApiProblem(403, 'device_revoked', 'Dispositivo revocado',
                 'Este dispositivo fue revocado: los datos guardados en él se borran. Vuelve a ingresar desde un dispositivo autorizado.',
                 ['wipe' => true]);

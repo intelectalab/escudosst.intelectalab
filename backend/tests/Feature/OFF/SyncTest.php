@@ -131,3 +131,30 @@ it('un dispositivo revocado no sincroniza y recibe la orden de borrar sus datos'
     $this->postJson('/api/v1/sync/batches', offBatch([offOp('substandard_reports', ['report_type' => 'suggestion', 'description' => 'Más luz'])], 'pwa-revocar'), $h)
         ->assertStatus(403)->assertJsonPath('type', 'device_revoked')->assertJsonPath('wipe', true);
 });
+
+it('lista los dispositivos, los revoca con motivo o pide el borrado remoto y entrega el reporte de sincronización', function () {
+    $h = offH();
+    $uid = 'pwa-admin-'.substr(md5(uniqid()), 0, 6);
+    $this->postJson('/api/v1/sync/devices', ['device_uid' => $uid, 'platform' => 'web_pwa', 'model' => 'Equipo de obra'], $h)->assertOk();
+    $d = collect($this->getJson('/api/v1/sync/devices', $h)->assertOk()->json('data'))->firstWhere('device_uid', $uid);
+    expect($d)->toMatchArray(['status' => 'active', 'model' => 'Equipo de obra']);
+
+    $this->postJson("/api/v1/sync/devices/{$d['id']}/revoke", [], $h)->assertStatus(422)->assertJsonValidationErrors('reason');
+    $this->postJson("/api/v1/sync/devices/{$d['id']}/revoke", ['reason' => 'Equipo perdido en obra', 'wipe' => true], $h)->assertOk()->assertJsonPath('data.status', 'lost');
+    $this->postJson("/api/v1/sync/devices/{$d['id']}/revoke", ['reason' => 'Otra vez'], $h)->assertStatus(409);
+    $this->postJson('/api/v1/sync/devices', ['device_uid' => $uid, 'platform' => 'web_pwa'], $h)->assertStatus(403)->assertJsonPath('wipe', true);
+
+    $x = $this->get('/api/v1/sync/report.xlsx', $h)->assertOk();
+    expect($x->headers->get('content-type'))->toContain('spreadsheetml');
+});
+
+it('entrega el paquete sin conexión con su tamaño y sin datos médicos', function () {
+    $r = $this->getJson('/api/v1/sync/package', offH())->assertOk();
+    expect($r->json('data'))->toHaveKeys(['workers', 'inspection_templates', 'inspection_template_items', 'iperc', 'ppe_items', 'ppe_position_requirements', 'credentials'])
+        ->and($r->json('meta.size_bytes'))->toBeGreaterThan(0)
+        ->and($r->json('meta.counts'))->toHaveKeys(['workers', 'credentials']);
+    $json = strtolower($r->getContent());
+    foreach (['fitness', 'aptitud', 'diagnos', 'medical_exam', 'restriction'] as $word) {
+        expect($json)->not->toContain($word);
+    }
+});

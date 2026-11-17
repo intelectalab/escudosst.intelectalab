@@ -44,6 +44,7 @@ export function ConsultancyPanel({ readOnly = false }: { readOnly?: boolean }) {
   const [consultant, setConsultant] = useState("");
   const [modal, setModal] = useState<"invite" | "brand" | null>(null);
   const [entering, setEntering] = useState<string | null>(null);
+  const [view, setView] = useState<"list" | "month">("list");
   const [invites, setInvites] = useState<Invitation[]>([]);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -87,6 +88,7 @@ export function ConsultancyPanel({ readOnly = false }: { readOnly?: boolean }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted">Panel multi-cliente de <b className="text-fg">{data.consultancy.name}</b>. Cada empresa conserva su propio plan.</p>
         <div className="flex flex-wrap gap-2">
+          <a href="/imprimir/consolidado-clientes" target="_blank" rel="noreferrer" className="rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-semibold hover:border-brand">Reporte consolidado en PDF</a>
           {data.consultancy.is_admin && (
             <Button icon="palette" onClick={() => (atHome ? setModal("brand") : setToast("La marca blanca se configura desde la empresa de tu consultora: cámbiate a ella desde el selector de empresa."))}>
               Configurar marca blanca
@@ -164,8 +166,13 @@ export function ConsultancyPanel({ readOnly = false }: { readOnly?: boolean }) {
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Próximas visitas">
-          {data.agenda.length === 0 ? (
+        <Card title="Agenda de vencimientos" action={
+          <span className="flex gap-1 text-xs">
+            {(["list", "month"] as const).map((v) => (
+              <button key={v} type="button" onClick={() => setView(v)} className={`rounded-md px-2 py-1 font-semibold ${view === v ? "bg-brand text-white" : "border border-line"}`}>{v === "list" ? "Lista" : "Calendario"}</button>
+            ))}
+          </span>}>
+          {view === "month" ? <AgendaMonth items={data.agenda} /> : data.agenda.length === 0 ? (
             <p className="text-sm text-muted">Sin inspecciones, reuniones del comité ni capacitaciones programadas en los próximos {data.agenda_days} días.</p>
           ) : (
             <ul className="divide-y divide-line">
@@ -291,5 +298,42 @@ function InviteModal({ onClose, onSent }: { onClose: () => void; onSent: (msg: s
       </p>
       {error && <p className="mt-3 text-sm text-bad">{error}</p>}
     </Modal>
+  );
+}
+
+/** SCR-CON-02: los vencimientos de todas las empresas asignadas en un calendario (mes actual y el siguiente). */
+function AgendaMonth({ items }: { items: Panel["agenda"] }) {
+  const today = new Date();
+  const [offset, setOffset] = useState(0);
+  const first = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+  const days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  const lead = (first.getDay() + 6) % 7;
+  const key = (d: number) => `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const byDay: Record<string, Panel["agenda"]> = {};
+  for (const a of items) (byDay[a.date.slice(0, 10)] ??= []).push(a);
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return (
+    <div className="text-xs">
+      <div className="mb-2 flex items-center justify-between">
+        <button type="button" className="rounded-md border border-line px-2 py-1 disabled:opacity-40" disabled={offset <= 0} onClick={() => setOffset(offset - 1)}>‹</button>
+        <b className="capitalize">{first.toLocaleDateString("es-PE", { month: "long", year: "numeric" })}</b>
+        <button type="button" className="rounded-md border border-line px-2 py-1 disabled:opacity-40" disabled={offset >= 1} onClick={() => setOffset(offset + 1)}>›</button>
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {["L", "M", "M", "J", "V", "S", "D"].map((d, i) => <span key={i} className="text-center font-semibold text-muted">{d}</span>)}
+        {Array.from({ length: lead }).map((_, i) => <span key={`b${i}`} />)}
+        {Array.from({ length: days }).map((_, i) => {
+          const k = key(i + 1);
+          const list = byDay[k] ?? [];
+          return (
+            <div key={k} className={`min-h-14 rounded-md border p-1 ${k === todayKey ? "border-brand" : "border-line"}`} title={list.map((a) => `${a.company}: ${a.kind} · ${a.text}`).join(" · ")}>
+              <span className="text-muted">{i + 1}</span>
+              {list.slice(0, 2).map((a, j) => <p key={j} className="truncate rounded bg-brand-soft px-1 text-[10px]">{a.company}</p>)}
+              {list.length > 2 && <p className="text-[10px] text-muted">+{list.length - 2} más</p>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

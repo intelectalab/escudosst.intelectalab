@@ -190,16 +190,30 @@ class DossierBuilder extends Controller
             }
         }
 
-        DB::update('update dossier_items set deleted_at = now() where dossier_id = ? and deleted_at is null', [$dossier]);
+        // SCR-SUN-04: las exclusiones con motivo y el orden manual se conservan al volver a armar el expediente.
+        $prev = [];
+        foreach (DB::select("select section_code, worker_id, status, exclusion_reason, sort_order, manual_sort from dossier_items where dossier_id = ? and deleted_at is null
+                               and source_type is distinct from 'manual'", [$dossier]) as $p) {
+            $prev[$p->section_code.'|'.$p->worker_id] = $p;
+        }
+        // Las evidencias manuales (archivos que subió la persona) se conservan al volver a armar.
+        DB::update("update dossier_items set deleted_at = now() where dossier_id = ? and deleted_at is null and source_type is distinct from 'manual'", [$dossier]);
         foreach ($items as $k => $it) {
+            $p = $prev[$it['code'].'|'.$it['worker_id']] ?? null;
+            $excluded = $p && $p->status === 'excluded';
+            $snap = self::snapshot($it['table'] ?? null, $it['id'] ?? null);
             DB::insert(
-                "insert into dossier_items (company_id, dossier_id, worker_id, section_code, title, source_module, source_type, source_id, status, gap_description, sort_order, created_by, updated_by)
-                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [$d->company_id, $dossier, $it['worker_id'], $it['code'], mb_substr($it['title'], 0, 300), $it['module'], $it['table'], $it['id'], $it['status'], $it['gap'], $k + 1,
-                    (string) auth()->id(), (string) auth()->id()]
+                "insert into dossier_items (company_id, dossier_id, worker_id, section_code, title, source_module, source_type, source_id, status, gap_description, sort_order,
+                        exclusion_reason, manual_sort, snapshot, snapshot_hash, frozen_at, created_by, updated_by)
+                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, case when ?::text is null then null else now() end, ?, ?)",
+                [$d->company_id, $dossier, $it['worker_id'], $it['code'], mb_substr($it['title'], 0, 300), $it['module'], $it['table'], $it['id'], $excluded ? 'excluded' : $it['status'], $it['gap'],
+                    $p && $p->manual_sort ? (int) $p->sort_order : $k + 1, $excluded ? $p->exclusion_reason : null, $p && $p->manual_sort ? 'true' : 'false',
+                    $snap[0], $snap[1], $snap[1], (string) auth()->id(), (string) auth()->id()]
             );
         }
-        $gaps = array_values(array_filter($items, fn ($i) => in_array($i['status'], ['missing', 'expired'], true)));
+        // Lo excluido con motivo no cuenta como brecha (sigue en el índice con su motivo).
+        $gaps = array_values(array_filter($items, fn ($i) => in_array($i['status'], ['missing', 'expired'], true)
+            && ! (($prev[$i['code'].'|'.$i['worker_id']] ?? null)?->status === 'excluded')));
         DB::update('update inspection_dossiers set status = ?, gaps = ?::jsonb, built_at = now() where id = ?',
             [$gaps ? 'ready_with_gaps' : 'ready', json_encode(array_map(fn ($g) => ['code' => $g['code'], 'title' => $g['title'], 'gap' => $g['gap']], $gaps), JSON_UNESCAPED_UNICODE), $dossier]);
 
@@ -215,5 +229,23 @@ class DossierBuilder extends Controller
     private function badWorker(): never
     {
         throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'El trabajador no existe en esta empresa.', ['errors' => ['worker_ids' => ['El trabajador no existe en esta empresa.'], 'worker_id' => ['El trabajador no existe en esta empresa.']]]);
+    }
+
+    /**
+     * RN-SUN-05: copia congelada del registro de origen con su huella SHA-256. Solo tablas de esta base (los datos médicos
+     * viven aparte y no se copian). @return array{0: ?string, 1: ?string}
+     */
+    public static function snapshot(?string $table, ?string $id): array
+    {
+        if (! $table || ! $id || ! preg_match('/^[a-z_]+$/', $table) || ! \Illuminate\Support\Str::isUuid($id)
+            || ! DB::selectOne("select 1 as ok from information_schema.columns where table_schema = 'public' and table_name = ? and column_name = 'id'", [$table])) {
+            return [null, null];
+        }
+        $row = DB::selectOne('select (to_jsonb(t) - \'updated_at\' - \'updated_by\')::text as j from "'.$table.'" t where t.id = ?', [$id]);
+        if (! $row) {
+            return [null, null];
+        }
+
+        return [$row->j, hash('sha256', $row->j)];
     }
 }

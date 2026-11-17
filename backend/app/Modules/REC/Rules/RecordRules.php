@@ -59,6 +59,7 @@ abstract class RecordRules
         'risst_versions' => DocsFieldRules::class,
         'procedure_versions' => DocsFieldRules::class,
         'document_versions' => DocsFieldRules::class,
+        'documents' => DocsFieldRules::class,
         'substandard_reports' => DocsFieldRules::class,
         'report_points' => DocsFieldRules::class,
         'safety_talks' => DocsFieldRules::class,

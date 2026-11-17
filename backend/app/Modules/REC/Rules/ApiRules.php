@@ -18,6 +18,8 @@ class ApiRules extends RecordRules
     /** Secreto recién generado en esta solicitud (se entrega una vez con la respuesta de creación). */
     private static ?string $fresh = null;
 
+    public const SCOPES = ['read', '*', 'workers.read', 'events.read', 'actions.read', 'inspections.read', 'trainings.read', 'credentials.read', 'access_events.read'];
+
     public function prepare(string $op, array $res, array &$values, ?object $current, array &$extra): void
     {
         if ($res['table'] === 'api_clients') {
@@ -31,6 +33,12 @@ class ApiRules extends RecordRules
             }
             if ($current && $current->status === 'revoked' && $values !== []) {
                 $this->conflict('El cliente está revocado: crea uno nuevo.');
+            }
+            // Permisos por recurso (M-API SCR-API-01): «read», «*» o «recurso.read»; ningún permiso abre datos de salud (RN-API-01).
+            foreach ((array) ($values['scopes'] ?? []) as $sc) {
+                if (! in_array($sc, self::SCOPES, true)) {
+                    $this->fail('scopes', "Permiso «{$sc}» no válido. Usa: ".implode(', ', self::SCOPES).'.');
+                }
             }
 
             return;
