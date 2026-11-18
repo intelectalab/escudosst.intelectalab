@@ -131,3 +131,14 @@ it('un «no cumple» crítico pide foto y al finalizar avisa al equipo SST', fun
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
     expect(DB::selectOne("select count(*) as n from notifications where event_code = 'ins.critical' and subject_id = ?", [$ins])->n)->toBeGreaterThan(0);
 });
+
+it('quien firma el ATS después de la hora de inicio del trabajo queda con firma tardía (RN-ATS-02)', function () {
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $ats = DB::selectOne("insert into ats_forms (company_id, code, task, site_id, performed_on, started_at, status) values (?, ?, 'Cambio de luminarias', ?, current_date, now() - interval '1 hour', 'draft') returning id",
+        [HUAYLAS_ID, 'ATS-LATE-'.random_int(1000, 999999), $this->site])->id;
+    DB::select("select set_config('app.company_id', '', false)");
+    $p = $this->postJson('/api/v1/records/ATS/ats_participants', ['ats_form_id' => $ats, 'worker_id' => frWorker('62626291', 'Tardío'), 'role' => 'executor',
+        'signed_at' => now()->toIso8601String()], $this->h)->assertCreated()->json('data.id');
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    expect(DB::selectOne('select late_signature from ats_participants where id = ?', [$p])->late_signature)->toBeTrue();
+});

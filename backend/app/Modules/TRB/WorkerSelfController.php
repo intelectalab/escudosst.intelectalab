@@ -234,11 +234,11 @@ class WorkerSelfController extends Controller
                 // RN-CH5-01: con la primera firma de un asistente, la charla programada pasa a «realizada».
                 'talk' => DB::update('update talk_attendances set signature_id = ?, updated_by = ? where id = ?', [$sig, $uid, $row->id])
                     + DB::update("update safety_talks set status = 'held', updated_at = now() where status = 'scheduled' and id = (select safety_talk_id from talk_attendances where id = ?)", [$row->id]),
-                // RN-ATS-02: si el ATS ya estaba firmado o en ejecución, queda como firma tardía.
+                // RN-ATS-02: si el ATS ya estaba firmado o en ejecución, o ya pasó la hora de inicio, queda como firma tardía.
                 // M-IPC SCR-IPC-08: la firma «Lo conozco» queda como firma del trabajador sobre la versión vigente del IPERC.
                 'iperc' => null,
                 'ats' => DB::update("update ats_participants p set signature_id = ?, signed_at = now(), updated_by = ?,
-                        late_signature = exists (select 1 from ats_forms f where f.id = p.ats_form_id and f.status in ('signed', 'in_execution')) where p.id = ?", [$sig, $uid, $row->id]),
+                        late_signature = exists (select 1 from ats_forms f where f.id = p.ats_form_id and (f.status in ('signed', 'in_execution') or f.started_at < now())) where p.id = ?", [$sig, $uid, $row->id]),
             };
         }
         DB::insert("insert into audit_logs (company_id, actor_user_id, actor_role, actor_type, action, module_code, entity_type, entity_id, changes, ip, user_agent)

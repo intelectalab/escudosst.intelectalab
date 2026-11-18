@@ -446,7 +446,12 @@ class DocsFieldRules extends RecordRules
     {
         unset($values['late_signature']);   // la marca la pone el sistema
         $ats = $this->value($values, $current, 'ats_form_id');
-        $st = $ats ? DB::selectOne('select status from ats_forms where id = ?', [$ats])?->status : null;
+        $form = $ats ? DB::selectOne('select status, started_at from ats_forms where id = ?', [$ats]) : null;
+        $st = $form?->status;
+        // RN-ATS-02: firmar después de la hora de inicio del trabajo también es «firma tardía».
+        if ($participant && $form?->started_at && ($values['signed_at'] ?? null) && strtotime((string) $values['signed_at']) > strtotime((string) $form->started_at)) {
+            $values['late_signature'] = true;
+        }
         if (in_array($st, ['closed', 'cancelled'], true)) {
             $this->conflict('El ATS está cerrado: no se modifica.');
         }
