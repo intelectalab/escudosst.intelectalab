@@ -77,16 +77,29 @@ it('compara la medición con el límite de exposición', function () {
     $agent = collect($this->getJson('/api/v1/records/MAG/measurements/options/agent_type_id?q=ruido', $h)->json('data'))->first()['id'] ?? null;
     $limit = $this->postJson('/api/v1/records/MAG/exposure_limits', ['agent_type_id' => $agent, 'substance_name' => 'Ruido', 'limit_type' => 'TWA', 'limit_value' => 85, 'unit' => 'dB(A)',
         'valid_from' => '2020-01-01'], $h);
-    if ($limit->status() !== 201) {
-        $this->markTestSkipped('Límites de exposición de solo catálogo en esta empresa.');
+    // Si la empresa no puede crear límites propios, se usa el del catálogo general para ese agente.
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $limitId = $limit->status() === 201 ? $limit->json('data.id') : DB::selectOne("select id from exposure_limits where agent_type_id = ? and unit = 'dB(A)' and deleted_at is null limit 1", [$agent])?->id;
+    if (! $limitId) {
+        $this->markTestSkipped('No hay límite de ruido en el catálogo.');
     }
     $site = $this->postJson('/api/v1/records/TEN/sites', ['code' => 'MAG-S', 'name' => 'Sede ruido'], $h)->json('data.id');
     $camp = $this->postJson('/api/v1/records/MAG/monitoring_campaigns', ['title' => 'Monitoreo de ruido 2026'], $h)->assertCreated()->json('data.id');
-    $point = $this->postJson('/api/v1/records/MAG/monitoring_points', ['site_id' => $site, 'agent_type_id' => $agent, 'code' => 'P-01', 'name' => 'Prensa'], $h)
+    $area = $this->postJson('/api/v1/records/TEN/areas', ['site_id' => $site, 'code' => 'MAG-A', 'name' => 'Prensas'], $h)->assertCreated()->json('data.id');
+    $point = $this->postJson('/api/v1/records/MAG/monitoring_points', ['site_id' => $site, 'area_id' => $area, 'agent_type_id' => $agent, 'code' => 'P-01', 'name' => 'Prensa'], $h)
         ->assertCreated()->json('data.id');
     $m = $this->postJson('/api/v1/records/MAG/measurements', ['campaign_id' => $camp, 'monitoring_point_id' => $point, 'agent_type_id' => $agent,
-        'exposure_limit_id' => $limit->json('data.id'), 'measured_at' => now()->toIso8601String(), 'value' => 92, 'unit' => 'dB(A)'], $h)->assertCreated();
+        'exposure_limit_id' => $limitId, 'measured_at' => now()->toIso8601String(), 'value' => 92, 'unit' => 'dB(A)'], $h)->assertCreated();
     expect($m->json('data.result'))->toBe('exceeds_limit');
+
+    // RN-MAG-03: al aprobarla, el IPERC del área queda «por revisar».
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $crit = DB::selectOne('select id from risk_criteria where company_id = ? or company_id is null order by company_id nulls last limit 1', [HUAYLAS_ID])->id;
+    $mx = DB::selectOne("insert into iperc_matrices (company_id, code, title, risk_criteria_id, area_id, status) values (?, ?, 'IPERC prensas', ?, ?, 'active') returning id",
+        [HUAYLAS_ID, 'IPC-MAG-'.random_int(1000, 99999), $crit, $area])->id;
+    $this->patchJson('/api/v1/records/MAG/measurements/'.$m->json('data.id'), ['status' => 'approved'], $h)->assertOk();
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    expect(DB::selectOne('select status from iperc_matrices where id = ?', [$mx])->status)->toBe('review_required');
 });
 
 it('completa la revisión por la dirección indicando los participantes (uno por línea en el formulario)', function () {

@@ -65,3 +65,8 @@ it('el autodiagnóstico lista por nombre a quienes faltan en la obligación', fu
         expect($ppe['workers'])->not->toBeEmpty();
     }
 });
+
+it('incluye los aportes de política, ATS, permisos, monitoreo, mapa, matriz legal, reportes, auditoría y revisión por la dirección', function () {
+    $codes = collect($this->getJson("/api/v1/sun/dossiers/{$this->d}/items", $this->h)->assertOk()->json('data'))->pluck('code')->all();
+    expect($codes)->toContain('19', '20', '21', '22', '23', '24', '25', '26', '27', '28');
+});

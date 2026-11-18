@@ -164,6 +164,47 @@ class DossierBuilder extends Controller
             $add('18', 'Contratistas acreditados', 'CTR', null, null, 'not_applicable');
         }
 
+        // M-POL §11: objetivos del año y constancia de difusión de la política (cargos de lectura de sus trabajadores).
+        $obj = (int) $one("select count(*) as n from sst_objectives where deleted_at is null and year = ? and status not in ('draft', 'cancelled')", [$year])->n;
+        $add('19', "Objetivos de SST {$year} ({$obj})", 'POL', 'sst_objectives', null, $obj > 0 ? 'included' : 'missing', $obj > 0 ? null : "No hay objetivos de SST para {$year}.");
+        $polDoc = $p ? $one('select document_version_id from sst_policies where id = ?', [$p->id])?->document_version_id : null;
+        $ack = $polDoc ? (int) $one('select count(distinct worker_id) as n from document_acknowledgements where document_version_id = ? and worker_id is not null', [$polDoc])->n : 0;
+        $add('20', "Difusión de la política: cargos de {$ack} de {$workers} trabajadores", 'POL', 'document_acknowledgements', null,
+            ! $p ? 'missing' : ($ack >= $workers && $workers > 0 ? 'included' : ($ack > 0 ? 'included' : 'missing')),
+            ! $p ? 'No hay política vigente que difundir.' : ($ack >= $workers ? null : ($workers - $ack).' trabajador(es) sin cargo de lectura de la política.'));
+
+        // M-ATS §11 y M-PTR §11: análisis de trabajo seguro y permisos de trabajo de alto riesgo del periodo.
+        $ats = $one("select count(*) as n, count(*) filter (where status in ('signed', 'in_execution', 'closed')) as ok from ats_forms where deleted_at is null and performed_on between ? and ?", [$from, $to]);
+        $add('21', "ATS del periodo ({$ats->ok} firmados de {$ats->n})", 'ATS', 'ats_forms', null, (int) $ats->n === 0 ? 'not_applicable' : ((int) $ats->ok === (int) $ats->n ? 'included' : 'missing'),
+            (int) $ats->n === 0 ? 'No hubo ATS en el periodo.' : ((int) $ats->ok === (int) $ats->n ? null : ((int) $ats->n - (int) $ats->ok).' ATS sin firmar.'));
+        $ptr = $one("select count(*) as n, count(*) filter (where status in ('active', 'closed', 'expired', 'suspended')) as issued from work_permits where deleted_at is null and valid_from::date between ? and ?", [$from, $to]);
+        $add('22', "Permisos de trabajo de alto riesgo del periodo ({$ptr->issued})", 'PTR', 'work_permits', null, (int) $ptr->issued > 0 ? 'included' : 'not_applicable',
+            (int) $ptr->issued > 0 ? null : 'No hubo trabajos de alto riesgo con permiso en el periodo.');
+
+        // M-MAG §11 y M-MAP §11: monitoreo de agentes del periodo y mapa de riesgos vigente.
+        $mag = $one("select count(*) as n, count(*) filter (where result = 'exceeds_limit') as over from measurements where deleted_at is null and status = 'approved' and measured_at::date between ? and ?", [$from, $to]);
+        $add('23', "Monitoreo de agentes ocupacionales ({$mag->n} mediciones".((int) $mag->over > 0 ? ", {$mag->over} sobre el límite" : '').')', 'MAG', 'measurements', null,
+            (int) $mag->n > 0 ? 'included' : 'missing', (int) $mag->n > 0 ? null : 'No hay mediciones aprobadas en el periodo.');
+        $map = $one("select id from risk_maps where deleted_at is null and status = 'current' order by approved_at desc nulls last limit 1");
+        $add('24', 'Mapa de riesgos vigente', 'MAP', 'risk_maps', $map?->id, $map ? 'included' : 'missing', $map ? null : 'No hay un mapa de riesgos vigente.');
+
+        // M-MRL §12: matriz de requisitos legales con su evaluación al día.
+        $mrl = $one("select count(*) as n, count(*) filter (where next_evaluation_on < current_date) as overdue from legal_requirements where deleted_at is null and status = 'active'");
+        $add('25', "Matriz de requisitos legales ({$mrl->n} requisitos".((int) $mrl->overdue > 0 ? ", {$mrl->overdue} con evaluación vencida" : '').')', 'MRL', 'legal_requirements', null,
+            (int) $mrl->n === 0 ? 'missing' : ((int) $mrl->overdue === 0 ? 'included' : 'expired'),
+            (int) $mrl->n === 0 ? 'No hay matriz de requisitos legales.' : ((int) $mrl->overdue === 0 ? null : 'Hay requisitos con la evaluación vencida.'));
+
+        // M-ACT §11: participación de los trabajadores (reportes de actos y condiciones del periodo).
+        $act = (int) $one('select count(*) as n from substandard_reports where deleted_at is null and coalesce(occurred_at, reported_at, created_at)::date between ? and ?', [$from, $to])->n;
+        $add('26', "Reportes de actos y condiciones de los trabajadores ({$act})", 'ACT', 'substandard_reports', null, $act > 0 ? 'included' : 'missing',
+            $act > 0 ? null : 'No hay reportes de los trabajadores en el periodo.');
+
+        // M-AUI §11 y M-RVD §11: auditoría del sistema y revisión por la dirección.
+        $aud = $one("select id from audits where deleted_at is null and status in ('completed', 'closed') and coalesce(ends_on, starts_on) >= (?::date - interval '2 years') order by coalesce(ends_on, starts_on) desc limit 1", [$to]);
+        $add('27', 'Auditoría del sistema de gestión de SST (últimos 2 años)', 'AUI', 'audits', $aud?->id, $aud ? 'included' : 'missing', $aud ? null : 'No hay una auditoría completada en los últimos 2 años.');
+        $rvd = $one("select id from management_reviews where deleted_at is null and status in ('completed', 'closed') and (year = ? or review_on between ? and ?) order by review_on desc nulls last limit 1", [$year, $from, $to]);
+        $add('28', "Revisión del sistema por la dirección {$year}", 'RVD', 'management_reviews', $rvd?->id, $rvd ? 'included' : 'missing', $rvd ? null : "No hay revisión por la dirección de {$year}.");
+
         foreach ($selected as $worker) {
             $w = $worker->id;
             $n = $worker->full_name;

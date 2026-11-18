@@ -419,6 +419,12 @@ class ImprovementRules extends RecordRules
                     "Medido {$m->value} {$m->unit} (".round((float) $m->ratio_to_limit * 100).' % del límite).', $m->responsible_user_id, null, 'high', $m->site_id, $m->area_id);
                 DB::update('update measurements set corrective_action_id = ? where id = ?', [$action, $id]);
             }
+            // RN-MAG-03 / criterio 1: una medición aprobada sobre el límite (o en nivel de acción) deja el IPERC del área «por revisar».
+            if ($m && $m->status === 'approved' && in_array($m->result, ['exceeds_limit', 'action_level'], true) && ($values['status'] ?? null) === 'approved' && $m->area_id) {
+                foreach (DB::select("select id from iperc_matrices where area_id = ? and deleted_at is null and status in ('active', 'review_overdue')", [$m->area_id]) as $mx) {
+                    \App\Modules\IPC\Services\IpercReview::flag($mx->id, ($m->result === 'exceeds_limit' ? 'Medición sobre el límite' : 'Medición en nivel de acción').' de '.($m->agent ?? 'un agente').' en '.($m->point ?? 'el área'), $id);
+                }
+            }
         }
         // RN-PSI-03: una evaluación ergonómica de riesgo alto o muy alto genera su acción correctiva.
         if ($res['table'] === 'ergonomic_assessments') {
@@ -427,6 +433,14 @@ class ImprovementRules extends RecordRules
                 $action = \App\Modules\ACR\AutoAction::create($e->company_id, 'other', $id, 'Reducir el riesgo ergonómico'.($e->position ? " del puesto {$e->position}" : ''),
                     $e->recommendations ?: $e->findings, $e->assessor_user_id, null, $e->risk_level === 'very_high' ? 'critical' : 'high', null, $e->area_id);
                 DB::update('update ergonomic_assessments set corrective_action_id = ? where id = ?', [$action, $id]);
+            }
+            // RN-PSI-03: también deja el IPERC del puesto (o, si no tiene, del área) «por revisar».
+            if ($e && $e->status !== 'draft' && in_array($e->risk_level, ['high', 'very_high'], true) && ($current === null || $current->risk_level !== $e->risk_level || $current->status === 'draft')) {
+                $mx = DB::select("select id from iperc_matrices where deleted_at is null and status in ('active', 'review_overdue')
+                                   and ((?::uuid is not null and position_id = ?::uuid) or (position_id is null and ?::uuid is not null and area_id = ?::uuid))", [$e->position_id, $e->position_id, $e->area_id, $e->area_id]);
+                foreach ($mx as $x) {
+                    \App\Modules\IPC\Services\IpercReview::flag($x->id, 'Evaluación ergonómica de riesgo '.($e->risk_level === 'very_high' ? 'muy alto' : 'alto').($e->position ? " en el puesto {$e->position}" : ''), $id);
+                }
             }
         }
         // RN-MOC-05: las condiciones de una revisión que aprueba con condiciones se vuelven acciones para quien pidió el cambio.
