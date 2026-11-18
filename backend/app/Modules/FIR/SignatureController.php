@@ -154,13 +154,15 @@ class SignatureController extends Controller
             'document_hash' => $current, 'hash_scope' => SignatureService::scope($r->subject_type), 'ip' => $request->ip(), 'user_agent' => mb_substr((string) $request->userAgent(), 0, 300), 'at' => now()->toIso8601String()]
             + ($method === 'assisted_in_person' ? ['identity' => $identity ?? null, 'witness_user_id' => $uid] : [])
             + ($offline ? ['offline_captured_at' => date(DATE_ATOM, strtotime((string) $offline))] : []);
+        [$lat, $lng, $device] = SignatureService::place($request, $uid);
+        $evidence += ($lat !== null ? ['geo' => [$lat, $lng]] : []) + ($device ? ['device_id' => $device] : []);
         $sigId = DB::selectOne(
             "insert into signatures (company_id, signature_request_id, subject_type, subject_id, signer_user_id, signer_worker_id, signer_name, signer_document_masked, method,
-                document_hash, evidence_hash, evidence, ip, user_agent, signed_at, client_created_at, created_by)
-             values (?, ?, ?, ?, ?, ?, ?, ?, ?, decode(?, 'hex'), decode(?, 'hex'), ?::jsonb, ?::inet, ?, now(), ?, ?) returning id",
+                document_hash, evidence_hash, evidence, ip, user_agent, signed_at, client_created_at, geo_lat, geo_lng, device_id, created_by)
+             values (?, ?, ?, ?, ?, ?, ?, ?, ?, decode(?, 'hex'), decode(?, 'hex'), ?::jsonb, ?::inet, ?, now(), ?, ?, ?, ?, ?) returning id",
             [$r->company_id, $r->id, $r->subject_type, $r->subject_id, $r->signer_user_id, $r->signer_worker_id, $name, $doc, $method, $current,
                 hash('sha256', json_encode($evidence)), json_encode($evidence, JSON_UNESCAPED_UNICODE), $request->ip(), mb_substr((string) $request->userAgent(), 0, 300),
-                $offline ? date(DATE_ATOM, strtotime((string) $offline)) : null, $uid]
+                $offline ? date(DATE_ATOM, strtotime((string) $offline)) : null, $lat, $lng, $device, $uid]
         )->id;
         // Imagen de la firma en el documento: la guardada del usuario, o la que el trabajador dibujó en la pantalla.
         SignatureImages::stamp($sigId, $r->company_id, $r->signer_user_id ? $uid : null, $request->input('image') ?: null);

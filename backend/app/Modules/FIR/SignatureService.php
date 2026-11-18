@@ -36,6 +36,26 @@ class SignatureService
     }
 
     /** Huella SHA-256 (hex) del registro según el alcance indicado. */
+    /**
+     * Dónde y con qué equipo se firmó (ficha FIR: geo_lat, geo_lng, device_id). La ubicación es opcional (si el celular la
+     * comparte) y se descarta si no es válida; el equipo solo se guarda si es un celular activo de quien firma.
+     *
+     * @return array{0: ?float, 1: ?float, 2: ?string}
+     */
+    public static function place(\Illuminate\Http\Request $request, ?string $userId): array
+    {
+        $lat = $request->input('geo_lat');
+        $lng = $request->input('geo_lng');
+        $ok = is_numeric($lat) && is_numeric($lng) && abs((float) $lat) <= 90 && abs((float) $lng) <= 180;
+        $device = (string) $request->input('device_id', '');
+        $deviceId = null;
+        if ($userId && \Illuminate\Support\Str::isUuid($device)) {
+            $deviceId = DB::selectOne("select id from devices where id = ? and user_id = ? and status = 'active' and deleted_at is null", [$device, $userId])?->id;
+        }
+
+        return [$ok ? round((float) $lat, 6) : null, $ok ? round((float) $lng, 6) : null, $deviceId];
+    }
+
     public static function hash(string $table, object $row, ?string $scope = null): string
     {
         $scope ??= self::scope($table);

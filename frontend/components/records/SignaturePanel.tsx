@@ -11,6 +11,7 @@ import { api, ApiError } from "@/lib/api";
 import { RefSelect } from "./ModuleRecords";
 import { SignaturePad } from "@/components/addons/SignaturePad";
 import { session } from "@/lib/session";
+import { signPlace } from "@/lib/geo";
 import { API_URL } from "@/lib/api";
 import { VerifyResult, type Verification } from "@/components/modules/FirTools";
 
@@ -99,7 +100,8 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
     setMsg(null);
     try {
       const own = otp[r.id] !== undefined ? { otp: otp[r.id] } : { password: pwd[r.id] ?? "" };
-      await api(`/fir/requests/${r.id}/sign`, { method: "POST", withCompany: true, body: r.signer_user_id ? own : { assisted: true, image: assist?.image ?? null, dni: assist?.dni || undefined, pin: assist?.pin || undefined } });
+      const place = await signPlace();
+      await api(`/fir/requests/${r.id}/sign`, { method: "POST", withCompany: true, body: { ...(r.signer_user_id ? own : { assisted: true, image: assist?.image ?? null, dni: assist?.dni || undefined, pin: assist?.pin || undefined }), ...place } });
       setOtp((o) => { const n = { ...o }; delete n[r.id]; return n; });
       setAssist(null);
       load();

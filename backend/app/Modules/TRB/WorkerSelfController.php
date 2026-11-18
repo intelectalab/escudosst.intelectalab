@@ -657,12 +657,14 @@ class WorkerSelfController extends Controller
         $evidence = ['request_id' => $requestId, 'method' => 'pin', 'channel' => 'worker_app', 'signed_by_user_id' => $uid, 'signer_worker_id' => $w->id, 'signer' => $w->full_name,
             'subject' => "{$table}/{$subjectId}", 'document_hash' => $hash, 'hash_scope' => SignatureService::scope($table), 'ip' => $req->ip(),
             'user_agent' => mb_substr((string) $req->userAgent(), 0, 300), 'at' => now()->toIso8601String()];
+        [$lat, $lng, $device] = SignatureService::place($req, $uid);
+        $evidence += ($lat !== null ? ['geo' => [$lat, $lng]] : []) + ($device ? ['device_id' => $device] : []);
         $id = DB::selectOne(
             "insert into signatures (company_id, signature_request_id, subject_type, subject_id, signer_user_id, signer_worker_id, signer_name, signer_document_masked, method,
-                document_hash, evidence_hash, evidence, ip, user_agent, signed_at, created_by)
-             values (?, ?, ?, ?, ?, ?, ?, ?, 'pin', decode(?, 'hex'), decode(?, 'hex'), ?::jsonb, ?::inet, ?, now(), ?) returning id",
+                document_hash, evidence_hash, evidence, ip, user_agent, signed_at, geo_lat, geo_lng, device_id, created_by)
+             values (?, ?, ?, ?, ?, ?, ?, ?, 'pin', decode(?, 'hex'), decode(?, 'hex'), ?::jsonb, ?::inet, ?, now(), ?, ?, ?, ?) returning id",
             [$company, $requestId, $table, $subjectId, $uid, $w->id, $w->full_name, $doc, $hash, hash('sha256', json_encode($evidence)), json_encode($evidence, JSON_UNESCAPED_UNICODE),
-                $req->ip(), mb_substr((string) $req->userAgent(), 0, 300), $uid])->id;
+                $req->ip(), mb_substr((string) $req->userAgent(), 0, 300), $lat, $lng, $device, $uid])->id;
         if ($image) {
             SignatureImages::stamp($id, $company, null, $image);
         }

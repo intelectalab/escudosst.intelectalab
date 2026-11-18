@@ -27,5 +27,9 @@ it('firma con el código enviado al correo y lo rechaza si no coincide', functio
     });
     $wrong = $code === '000000' ? '111111' : '000000';
     $this->postJson("/api/v1/fir/requests/{$req}/sign", ['otp' => $wrong], $h)->assertStatus(422);
-    $this->postJson("/api/v1/fir/requests/{$req}/sign", ['otp' => $code], $h)->assertOk()->assertJsonPath('data.method', 'otp');
+    // Se guarda dónde se firmó (si el celular lo comparte); un equipo que no es de quien firma no se guarda.
+    $this->postJson("/api/v1/fir/requests/{$req}/sign", ['otp' => $code, 'geo_lat' => -12.0464, 'geo_lng' => -77.0428, 'device_id' => (string) \Illuminate\Support\Str::uuid()], $h)
+        ->assertOk()->assertJsonPath('data.method', 'otp');
+    $sig = \Illuminate\Support\Facades\DB::selectOne('select geo_lat, geo_lng, device_id from signatures where signature_request_id = ?', [$req]);
+    expect((float) $sig->geo_lat)->toBe(-12.0464)->and((float) $sig->geo_lng)->toBe(-77.0428)->and($sig->device_id)->toBeNull();
 });

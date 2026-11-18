@@ -7,7 +7,8 @@ import { useCallback, useEffect, useState } from "react";
 import { SignaturePad } from "@/components/addons/SignaturePad";
 import { Modal } from "@/components/ui/Modal";
 import { Icon } from "@/components/ui/Icon";
-import { errorText, openProtectedFile, safeHtml, workerApi, type SignItem, type SignKind } from "@/lib/workerApp";
+import { errorText, openProtectedFile, safeHtml, workerApi, workerDevice, type SignItem, type SignKind } from "@/lib/workerApp";
+import { signPlace } from "@/lib/geo";
 
 export type Tone = "ok" | "bad" | "amber" | "brand" | "na";
 
@@ -112,7 +113,7 @@ export function SignSheet({ kind, id, onClose, onSigned }: { kind: SignKind; id:
     setError(null);
     setPinError(null);
     try {
-      await workerApi("/sign", { method: "POST", body: { kind, id, pin, image } });
+      await workerApi("/sign", { method: "POST", body: { kind, id, pin, image, device_id: workerDevice.get()?.device_id, ...(await signPlace()) } });
       onSigned();
     } catch (e) {
       const msg = errorText(e);
