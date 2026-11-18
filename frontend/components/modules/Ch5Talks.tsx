@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { api, type ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "./Summary";
+import { ReportButton } from "./CtrExtras";
 
 type Opt = { id: string; name: string; site_id?: string | null };
 type Worker = { id: string; full_name: string; document: string | null; position: string | null };
@@ -149,7 +150,10 @@ export function Ch5Talks({ readOnly, onSaved }: { readOnly: boolean; onSaved: ()
       )}
       {!readOnly && <TopicBank bank={bank} onSaved={() => setTv((x) => x + 1)} />}
       <Card title="Cobertura del día por área">
-        <input type="date" className="input mb-3 max-w-[12rem]" aria-label="Fecha de la cobertura" value={covDate} onChange={(e) => setCovDate(e.target.value)} />
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <input type="date" className="input max-w-[12rem]" aria-label="Fecha de la cobertura" value={covDate} onChange={(e) => setCovDate(e.target.value)} />
+          <ReportButton path={`/ch5/report.xlsx?from=${covDate.slice(0, 8)}01&to=${covDate}`} file={`charlas-${covDate.slice(0, 7)}.xlsx`} label="Reporte de charlas del mes en Excel" />
+        </div>
         {!cov ? <div className="h-24 animate-pulse rounded-lg bg-bg" /> : cov.length === 0 ? <p className="text-sm text-muted">No hay áreas con trabajadores activos.</p> : (
           <table className="w-full text-left text-sm">
             <thead className="border-b border-line text-xs text-muted">

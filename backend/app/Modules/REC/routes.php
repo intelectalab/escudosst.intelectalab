@@ -65,6 +65,7 @@ Route::middleware(['auth:sanctum', 'company', 'module:CH5'])->prefix('ch5')->con
     Route::get('area-workers', 'areaWorkers');
     Route::post('quick', 'quick')->middleware('throttle:30,1');
     Route::get('coverage', 'coverage');
+    Route::get('report.xlsx', 'report');
     Route::get('topics', 'topics');
     Route::post('topics', 'saveTopic');
 });

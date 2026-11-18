@@ -135,6 +135,7 @@ final class KpiService
             'legal_compliance' => ['MRL', 'legal_requirements', ['status' => 'active']],
             'baseline_score' => ['LBA', 'baseline_assessments', ['status' => 'completed,approved']],
             'ppe_compliance' => ['EPP', 'ppe_deliveries', ['status' => 'delivered'] + $site],
+            'talk_coverage' => ['CH5', 'safety_talks', []],
             'emo_valid' => ['EMO', 'fitness_status', ['is_current' => 'true']],
             'events_notified_on_time' => ['ACC', 'event_notifications', $period('deadline_at')],
             'frequency_index', 'severity_index', 'accident_rate' => ['ACC', 'sst_events', ['event_type' => 'disabling_accident,fatal_accident'] + $period('occurred_at') + $site],
@@ -186,6 +187,13 @@ final class KpiService
                 "select coalesce(compliant_items, 0) as num, coalesce(total_items, 0) as den from baseline_assessments
                   where deleted_at is null and status in ('completed','approved')".$this->siteSql('site_id', true).' order by assessment_on desc limit 1', [],
                 'ítems cumplidos en la última línea base'),
+            // M-CH5 RN-CH5-05: cobertura del día = trabajadores activos con asistencia firmada a una charla hoy / trabajadores activos.
+            'talk_coverage_pct' => $this->ratio(
+                "select count(*) filter (where exists (select 1 from talk_attendances t join safety_talks k on k.id = t.safety_talk_id
+                                                        where t.worker_id = w.id and t.deleted_at is null and k.deleted_at is null and k.status <> 'cancelled'
+                                                          and k.talk_on = ?::date and (t.signature_id is not null or t.method <> 'signature'))) as num, count(*) as den
+                   from workers w where w.deleted_at is null and w.status = 'active'".$this->siteSql('w.current_site_id').$this->areaSql('w.current_area_id'), [$this->today],
+                'trabajadores activos con charla firmada hoy'),
             'ppe_compliance_pct' => $this->ratio(
                 "with req as (select w.id as worker_id, r.ppe_item_id from workers w join ppe_position_requirements r on r.position_id = w.current_position_id and r.deleted_at is null and r.is_mandatory
                                where w.deleted_at is null and w.status = 'active'".$this->siteSql('w.current_site_id').$this->areaSql('w.current_area_id').")
@@ -307,7 +315,7 @@ final class KpiService
     private array $areas = [];
 
     /** Indicadores que se pueden acotar a un área (tienen el área en sus registros); los demás no aplican para el área. */
-    private const AREA_KPIS = ['inspection_compliance_pct', 'corrective_actions_overdue_count', 'corrective_actions_on_time_pct', 'ppe_compliance_pct', 'emo_valid_pct',
+    private const AREA_KPIS = ['talk_coverage_pct', 'inspection_compliance_pct', 'corrective_actions_overdue_count', 'corrective_actions_on_time_pct', 'ppe_compliance_pct', 'emo_valid_pct',
         'events_notified_on_time_pct', 'substandard_reports_count'];
 
     /** @param list<string> $areas */

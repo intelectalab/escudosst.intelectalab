@@ -167,6 +167,36 @@ class TalksController extends Controller
         return response()->json(['data' => ['date' => $date, 'areas' => array_values(array_filter($rows, fn ($r) => $r->workers > 0))]]);
     }
 
+    /** GET /ch5/report.xlsx?from=&to= — M-CH5 §11: charlas del periodo con tema, área, expositor, duración y asistentes con firma. */
+    public function report(Request $request): \Symfony\Component\HttpFoundation\Response
+    {
+        $this->can('ch5.safety_talks.read');
+        $from = (string) ($request->query('from') ?: now('America/Lima')->startOfMonth()->toDateString());
+        $to = (string) ($request->query('to') ?: now('America/Lima')->toDateString());
+        $rows = DB::select(
+            "select k.talk_on, k.topic, k.status, k.duration_minutes, a.name as area, s.name as site,
+                    coalesce(u.full_name, w.full_name) as speaker,
+                    (select count(*) from talk_attendances t where t.safety_talk_id = k.id and t.deleted_at is null) as attendees,
+                    (select count(*) from talk_attendances t where t.safety_talk_id = k.id and t.deleted_at is null and (t.signature_id is not null or t.method <> 'signature')) as signed
+               from safety_talks k left join areas a on a.id = k.area_id left join sites s on s.id = k.site_id
+               left join users u on u.id = k.speaker_user_id left join workers w on w.id = k.speaker_worker_id
+              where k.deleted_at is null and k.talk_on between ?::date and ?::date order by k.talk_on, a.name", [$from, $to]);
+        $status = ['scheduled' => 'Programada', 'held' => 'Realizada', 'cancelled' => 'Anulada'];
+        $out = [['Charlas de cinco minutos'], ["Del {$from} al {$to}."], [], ['Fecha', 'Tema', 'Sede', 'Área', 'Expositor', 'Minutos', 'Asistentes', 'Con firma', 'Estado']];
+        foreach ($rows as $r) {
+            $out[] = [date('d/m/Y', strtotime($r->talk_on)), $r->topic, $r->site, $r->area, $r->speaker, $r->duration_minutes === null ? '' : (int) $r->duration_minutes,
+                (int) $r->attendees, (int) $r->signed, $status[$r->status] ?? $r->status];
+        }
+        if ($rows === []) {
+            $out[] = ['Sin charlas en el periodo'];
+        }
+
+        return response(\App\Core\Support\Xlsx::build('Charlas', $out, 4), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"charlas-{$from}-{$to}.xlsx\"",
+        ]);
+    }
+
     private function can(string $p): void
     {
         if (! in_array($p, Permissions::effective(), true)) {

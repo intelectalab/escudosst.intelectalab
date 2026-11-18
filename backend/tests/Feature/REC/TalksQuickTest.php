@@ -41,6 +41,16 @@ it('registra la charla con los trabajadores del área y calcula la cobertura del
 
     $cov = collect($this->getJson('/api/v1/ch5/coverage?date=2031-05-05', $this->h)->assertOk()->json('data.areas'))->firstWhere('id', $area);
     expect($cov['workers'])->toBe(3)->and($cov['attended'])->toBe(2)->and($cov['pct'])->toBe(67)->and($cov['talks'])->toBe(1);
+
+    // §12: el indicador de cobertura de charlas en el tablero, al corte de ese día (por área: las dos firmas de tres).
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    DB::update("update feature_flags set mode = 'enabled' where company_id = ? and module_code = 'CH5' and deleted_at is null", [HUAYLAS_ID]);
+    $k = collect((new \App\Modules\DSH\Services\KpiService)->forAreas([$area])->overview(2031, null, '2031-05-05'))->firstWhere('code', 'talk_coverage');
+    expect($k)->not->toBeNull()->and($k['locked'])->toBeFalse()->and((int) $k['numerator'])->toBe(2)->and((int) $k['denominator'])->toBe(3);
+    DB::select("select set_config('app.company_id', '', false)");
+
+    // §11: el reporte de charlas del periodo.
+    expect($this->get('/api/v1/ch5/report.xlsx?from=2031-05-01&to=2031-05-31', $this->h)->assertOk()->headers->get('Content-Type'))->toContain('spreadsheetml');
 });
 
 it('sugiere temas del banco según los peligros significativos del IPERC del área y cuenta la charla como capacitación si se activa', function () {
