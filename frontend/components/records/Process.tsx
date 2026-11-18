@@ -1409,7 +1409,7 @@ function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => voi
   const [items, setItems] = useState<DossierItem[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const scope = typeof row.scope === "string" ? (JSON.parse(row.scope || "{}") as { worker_id?: string; worker_ids?: string[] }) : (row.scope as { worker_id?: string; worker_ids?: string[] } | null);
+  const scope = typeof row.scope === "string" ? (JSON.parse(row.scope || "{}") as { worker_id?: string; worker_ids?: string[]; requested_documents?: string[] }) : (row.scope as { worker_id?: string; worker_ids?: string[]; requested_documents?: string[] } | null);
   // Varios trabajadores (SCR-SUN-03): «Volver a armar» conserva los del asistente; con uno, se puede cambiar aquí.
   const several = (scope?.worker_ids?.length ?? 0) > 1;
   const savedWorker = scope?.worker_id ?? "";
@@ -1476,6 +1476,12 @@ function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => voi
             disabled={busy} invalid={false} onChange={(v) => setWorker(String(v ?? ""))} />
         </FormField>}
       </div>
+      {(scope?.requested_documents?.length ?? 0) > 0 && (
+        <div className="rounded-lg bg-bg p-3 text-sm">
+          <p className="font-semibold">Documentos que pide el inspector</p>
+          <ol className="list-decimal pl-5 text-xs">{scope?.requested_documents?.map((d, i) => <li key={i}>{d}</li>)}</ol>
+        </div>
+      )}
       {msg && <p className="font-semibold text-brand-strong">{msg}</p>}
       {items && (
         <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-brand underline">

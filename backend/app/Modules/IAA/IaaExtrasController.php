@@ -98,6 +98,13 @@ class IaaExtrasController extends Controller
             'period_from' => $v['period_from'] ?? "{$year}-01-01",
             'period_to' => $v['period_to'] ?? date('Y-m-d'),
         ], fn ($x) => $x !== null && $x !== ''));
+        // Documentos que pide el inspector (los leídos, corregidos por la persona): quedan en el expediente para armarlo.
+        $docs = array_values(array_filter(array_map(fn ($d) => mb_substr(trim((string) $d), 0, 300),
+            (array) (array_key_exists('requested_documents', $edit) ? $edit['requested_documents'] : ($payload['requested_documents'] ?? []))), fn ($d) => $d !== ''));
+        if ($docs) {
+            DB::update("update inspection_dossiers set scope = coalesce(scope, '{}'::jsonb) || jsonb_build_object('requested_documents', ?::jsonb) where id = ?",
+                [json_encode(array_slice($docs, 0, 60), JSON_UNESCAPED_UNICODE), $row['id']]);
+        }
 
         return ['entity' => 'inspection_dossiers', 'ids' => [$row['id']]];
     }

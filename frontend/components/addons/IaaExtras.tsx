@@ -22,14 +22,17 @@ export function IaaDocument() {
   const [form, setForm] = useState<Record<string, string>>({});
   const [done, setDone] = useState<string | null>(null);
   const [ocr, setOcr] = useState(false);
+  const [docsText, setDocsText] = useState("");
+  const [preview, setPreview] = useState("");
 
   const read = async (file?: File) => {
     if (!file) return;
     setBusy(true); setMsg(null); setS(null); setDone(null);
     try {
       const f = await uploadFile(file, "SUN");
-      const r = await api<{ data: { suggestion: Suggestion; redacted: string[]; ocr?: boolean } }>("/iaa/document/read", { method: "POST", withCompany: true, body: { file_id: f.id } });
-      setS(r.data.suggestion); setHidden(r.data.redacted); setOcr(!!r.data.ocr);
+      const r = await api<{ data: { suggestion: Suggestion; redacted: string[]; ocr?: boolean; preview?: string } }>("/iaa/document/read", { method: "POST", withCompany: true, body: { file_id: f.id } });
+      setS(r.data.suggestion); setHidden(r.data.redacted); setOcr(!!r.data.ocr); setPreview(r.data.preview ?? "");
+      setDocsText(((r.data.suggestion.payload.requested_documents as string[] | undefined) ?? []).join("\n"));
       const p = r.data.suggestion.payload;
       setForm({ inspection_order_number: String(p.inspection_order_number ?? ""), inspector_name: String(p.inspector_name ?? ""),
         appearance_at: String(p.appearance_at ?? "").slice(0, 16), period_from: String(p.period_from ?? ""), period_to: String(p.period_to ?? "") });
@@ -38,7 +41,9 @@ export function IaaDocument() {
   const accept = async () => {
     if (!s) return;
     const p = s.payload;
-    const edit = Object.fromEntries(Object.entries(form).filter(([k, v]) => v !== "" && v !== String(p[k] ?? "").slice(0, k === "appearance_at" ? 16 : undefined)));
+    const edit: Record<string, unknown> = Object.fromEntries(Object.entries(form).filter(([k, v]) => v !== "" && v !== String(p[k] ?? "").slice(0, k === "appearance_at" ? 16 : undefined)));
+    const docs = docsText.split("\n").map((d) => d.trim()).filter(Boolean);
+    if (docs.join("\n") !== ((p.requested_documents as string[] | undefined) ?? []).join("\n")) edit.requested_documents = docs;
     try {
       const r = await api<{ data: { dossier_id: string } }>(`/iaa/suggestions/${s.id}/accept`, { method: "POST", withCompany: true, body: Object.keys(edit).length ? { dossier: edit } : {} });
       setDone(r.data.dossier_id);
@@ -47,13 +52,17 @@ export function IaaDocument() {
   const input = (k: string, label: string, type = "text") => (
     <label className="block text-xs">{label}<input className="input mt-1" type={type} value={form[k] ?? ""} onChange={(e) => setForm({ ...form, [k]: e.target.value })} /></label>
   );
-  const docs = (s?.payload.requested_documents as string[] | undefined) ?? [];
   return (
     <section className="space-y-3 rounded-xl border border-line bg-surface p-4 text-sm">
       <div>
         <p className="font-semibold">Leer un requerimiento de SUNAFIL</p>
-        <p className="text-xs text-muted">Sube el PDF del requerimiento: el asistente propone la orden, el inspector, la comparecencia, el periodo y los documentos pedidos. Revisa antes de crear el expediente. Si el PDF es escaneado (foto), se lee con reconocimiento de texto: revisa con más cuidado.</p>
+        <p className="text-xs text-muted">Sube el PDF del requerimiento: el asistente propone la orden, el inspector, la comparecencia, el periodo y los documentos pedidos. Tú revisas y corriges antes de crear el expediente.</p>
       </div>
+      <ul className="list-disc space-y-0.5 pl-5 text-xs text-muted">
+        <li>Mejor el PDF original que llega a la casilla electrónica de SUNAFIL: se lee completo.</li>
+        <li>Si es escaneado o una foto: que esté nítido, derecho, con buena luz y sin sombras ni dobleces.</li>
+        <li>Lo que no encuentre queda vacío: complétalo tú en el formulario.</li>
+      </ul>
       <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-line px-3 py-2 font-semibold hover:border-brand">
         {busy ? "Leyendo…" : "Subir PDF"}
         <input type="file" accept="application/pdf,.pdf" className="hidden" disabled={busy} onChange={(e) => { void read(e.target.files?.[0]); e.target.value = ""; }} />
@@ -69,8 +78,14 @@ export function IaaDocument() {
             {input("appearance_at", "Comparecencia", "datetime-local")}
             <div className="grid grid-cols-2 gap-2">{input("period_from", "Periodo desde", "date")}{input("period_to", "Periodo hasta", "date")}</div>
           </div>
-          {docs.length > 0 && (
-            <div><p className="text-xs font-semibold">Documentos pedidos</p><ol className="list-decimal pl-5 text-xs">{docs.map((d, i) => <li key={i}>{d}</li>)}</ol></div>
+          <label className="block text-xs">Documentos pedidos (uno por línea; corrige, agrega o borra)
+            <textarea className="input mt-1 min-h-28" value={docsText} onChange={(e) => setDocsText(e.target.value)} placeholder="Ej.: Matriz IPERC vigente" />
+          </label>
+          {preview && (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-brand">Ver el texto que se leyó del documento</summary>
+              <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap rounded bg-surface p-2 text-[11px]">{preview}</pre>
+            </details>
           )}
           <Button variant="primary" size="sm" onClick={() => void accept()}>Crear el expediente con estos datos</Button>
         </div>

@@ -55,9 +55,10 @@ it('lee un requerimiento SUNAFIL en PDF y, al aceptarlo, crea el expediente con 
     expect($p['inspection_order_number'])->toBe('4521-2026-SUNAFIL/IRE-LIM')->and($p['appearance_at'])->toBe('2026-11-25T10:30:00')
         ->and($p['inspector_name'])->toBe('Rosa Medina Calle')->and($p['period_from'])->toBe('2026-01-01')->and($p['requested_documents'])->toHaveCount(3);
 
-    $a = $this->postJson('/api/v1/iaa/suggestions/'.$r->json('data.suggestion.id').'/accept', [], $this->h)->assertOk()->json('data');
+    $a = $this->postJson('/api/v1/iaa/suggestions/'.$r->json('data.suggestion.id').'/accept', ['dossier' => ['requested_documents' => ['Matriz IPERC vigente de la obra', 'Registro de entrega de EPP', 'Programa anual de capacitaciones', 'Actas del comité']]], $this->h)->assertOk()->json('data');
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
     $d = DB::selectOne('select inspection_order_number, inspector_name, requirement_file_id, period_to from inspection_dossiers where id = ?', [$a['dossier_id']]);
+    expect(json_decode(DB::selectOne('select scope from inspection_dossiers where id = ?', [$a['dossier_id']])->scope, true)['requested_documents'])->toHaveCount(4)->toContain('Actas del comité');
     expect($d->inspection_order_number)->toBe('4521-2026-SUNAFIL/IRE-LIM')->and($d->requirement_file_id)->toBe($file)->and($d->period_to)->toBe('2026-10-31');
 
     $img = $this->post('/api/v1/files', ['file' => UploadedFile::fake()->createWithContent('escaneado.pdf', "%PDF-1.4\n%%EOF"), 'module' => 'SUN'], $this->h + ['Accept' => 'application/json'])->json('data.id');
