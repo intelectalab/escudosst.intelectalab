@@ -171,6 +171,8 @@ Route::middleware(['auth:sanctum', 'company', 'module:ATS'])->get('ats/forms/{id
 // Matriz puesto × EPP, cumplimiento por trabajador y solicitudes de reposición (M-EPP RN-EPP-04).
 Route::middleware(['auth:sanctum', 'company', 'module:EPP'])->prefix('epp')->group(function () {
     Route::get('matrix', [\App\Modules\REC\PpeMatrixController::class, 'matrix']);
+    Route::get('stock', [\App\Modules\REC\PpeMatrixController::class, 'stock']);
+    Route::get('kardex.xlsx', [\App\Modules\REC\PpeMatrixController::class, 'kardex']);
     Route::get('replacement-requests', [\App\Modules\REC\PpeMatrixController::class, 'requests']);
     Route::post('replacement-requests/{id}/resolve', [\App\Modules\REC\PpeMatrixController::class, 'resolve'])->whereUuid('id');
 });

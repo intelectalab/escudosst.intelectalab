@@ -124,6 +124,11 @@ it('entrega EPP con vencimiento por vida útil y controla el stock', function ()
     $this->patchJson("/api/v1/records/EPP/ppe_deliveries/{$del}", ['quantity' => 2], $h)->assertStatus(409);
     $this->patchJson("/api/v1/records/EPP/ppe_deliveries/{$del}", ['status' => 'returned', 'return_condition' => 'Dañado'], $h)->assertOk();
     expect(collect($this->getJson("/api/v1/records/EPP/ppe_stock_movements?f[ppe_item_id]={$item}", $h)->json('data'))->pluck('movement_type')->all())->toContain('return');
+
+    // SCR-EPP-01: saldo por sede (10 ingresados − 1 entregado + 1 devuelto) y kárdex con su saldo en Excel.
+    $row = collect($this->getJson('/api/v1/epp/stock', $h)->assertOk()->json('data'))->first(fn ($x) => $x['item_id'] === $item && $x['site_id'] === $site);
+    expect($row['balance'])->toEqual(10.0)->and($row['low'])->toBeFalse();
+    expect($this->get('/api/v1/epp/kardex.xlsx?from=2026-01-01&to=2030-12-31', $h)->assertOk()->headers->get('Content-Type'))->toContain('spreadsheetml');
 });
 
 it('el comité exige titulares pares y mitad por lado, y sin quórum no hay acuerdos', function () {

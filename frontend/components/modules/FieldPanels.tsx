@@ -8,9 +8,11 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card, Kpi } from "./Summary";
+import { ReportButton } from "./CtrExtras";
 
 type W = { worker_id: string; name: string; position_id: string; compliant: boolean; pct: number; items: { ppe_item_id: string; item: string; state: "ok" | "expired" | "missing" }[] };
 type Matrix = { positions: { position_id: string; position: string; items: { ppe_item_id: string; item: string; quantity: number; mandatory: boolean }[] }[]; workers: W[]; compliance: number | null };
+type Stock = { item_id: string; code: string; item: string; site_id: string | null; site: string; balance: number; min_stock: number | null; low: boolean };
 type Req = { id: string; reason: string; notes: string | null; status: string; created_at: string; worker: string; item: string; resolution_note: string | null };
 const REASON: Record<string, string> = { worn: "Desgastado", damaged: "Dañado", lost: "Perdido", size: "Talla", other: "Otro" };
 const STATE: Record<string, [string, string]> = { ok: ["Vigente", "text-ok"], expired: ["Para reponer", "text-amber-ink"], missing: ["Sin entregar", "text-bad"] };
@@ -19,12 +21,14 @@ const RSTATUS: Record<string, string> = { pending: "Pendiente", attended: "Atend
 export function EppPanel({ readOnly }: { readOnly: boolean }) {
   const [m, setM] = useState<Matrix | null>(null);
   const [reqs, setReqs] = useState<Req[]>([]);
+  const [stock, setStock] = useState<Stock[] | null>(null);
   const [only, setOnly] = useState(true);
   const [note, setNote] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const load = useCallback(() => {
     api<{ data: Matrix }>("/epp/matrix", { withCompany: true }).then((r) => setM(r.data)).catch(() => setM(null));
     api<{ data: Req[] }>("/epp/replacement-requests", { withCompany: true }).then((r) => setReqs(r.data)).catch(() => setReqs([]));
+    api<{ data: Stock[] }>("/epp/stock", { withCompany: true }).then((r) => setStock(r.data)).catch(() => setStock([]));
   }, []);
   useEffect(() => { load(); }, [load]);
   const reject = async (id: string) => {
@@ -35,6 +39,26 @@ export function EppPanel({ readOnly }: { readOnly: boolean }) {
   const rows = (m?.workers ?? []).filter((w) => !only || !w.compliant);
   return (
     <div className="space-y-4">
+      {/* SCR-EPP-01 y SCR-EPP-04: saldo por sede frente al mínimo; kárdex y consumo en Excel. */}
+      <Card title="Stock por sede">
+        <div className="mb-2 flex justify-end">
+          <ReportButton path="/epp/kardex.xlsx" file={`kardex-epp-${new Date().getFullYear()}.xlsx`} label="Kárdex y consumo en Excel" />
+        </div>
+        {!stock ? <div className="h-16 animate-pulse rounded-lg bg-bg" /> : stock.length === 0 ? <p className="text-sm text-muted">Aún no hay movimientos de stock. Registra los ingresos en «Kárdex».</p> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs text-muted"><tr><th className="py-1 pr-2">EPP</th><th className="py-1 pr-2">Sede</th><th className="py-1 pr-2 text-right">Saldo</th><th className="py-1 text-right">Mínimo</th></tr></thead>
+              <tbody>{stock.map((x) => (
+                <tr key={`${x.item_id}-${x.site_id ?? "g"}`} className="border-t border-line">
+                  <td className="py-1.5 pr-2">{x.item}</td><td className="py-1.5 pr-2">{x.site}</td>
+                  <td className={`py-1.5 pr-2 text-right tabular-nums ${x.low ? "font-semibold text-bad" : ""}`}>{x.balance}</td>
+                  <td className="py-1.5 text-right tabular-nums text-muted">{x.min_stock ?? "—"}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
+      </Card>
       {pending.length > 0 && (
         <Card title={`Solicitudes de reposición (${pending.length})`}>
           {msg && <p role="alert" className="mb-2 text-sm text-bad">{msg}</p>}

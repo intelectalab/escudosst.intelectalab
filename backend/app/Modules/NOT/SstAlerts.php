@@ -382,11 +382,15 @@ final class SstAlerts
                         and d.scheduled_at between now() and now() + make_interval(days => ".self::days('drill_notice_days', 7).')',
                 'sim.upcoming', 'normal', 'Simulacro próximo', fn ($r) => "El simulacro «{$r->name}» está programado para el ".date('d/m/Y H:i', strtotime($r->due)).'.', '/m/sim?t=drills&open=', ['area_lead'], false],
             // M-EPP RN-EPP-08: stock por debajo del mínimo.
-            ['EPP', "select i.id, i.name as ref, '' as name, null as owner, current_date as due, 'stock' as kind from ppe_items i
+            // SCR-EPP-01: el mínimo se compara en cada sede (o almacén general) donde el EPP tiene movimientos.
+            ['EPP', "select i.id, i.name as ref, (select string_agg(coalesce(s.name, 'almacén general'), ', ') from (
+                               select m.site_id from ppe_stock_movements m where m.ppe_item_id = i.id and m.deleted_at is null group by m.site_id
+                               having sum(case when m.movement_type in ('in','return','adjustment') then m.quantity else -m.quantity end) < i.min_stock) x
+                             left join sites s on s.id = x.site_id) as name, null as owner, current_date as due, 'stock' as kind from ppe_items i
                       where i.deleted_at is null and i.is_active and i.min_stock is not null
-                        and (select coalesce(sum(case when m.movement_type in ('in','return','adjustment') then m.quantity else -m.quantity end), 0)
-                               from ppe_stock_movements m where m.ppe_item_id = i.id and m.deleted_at is null) < i.min_stock",
-                'epp.low_stock', 'normal', 'Stock de EPP bajo', fn ($r) => "El stock de {$r->ref} está por debajo del mínimo: repón.", '/m/epp?t=ppe_items&open=', ['sst_manager'], true],
+                        and exists (select 1 from ppe_stock_movements m where m.ppe_item_id = i.id and m.deleted_at is null group by m.site_id
+                                     having sum(case when m.movement_type in ('in','return','adjustment') then m.quantity else -m.quantity end) < i.min_stock)",
+                'epp.low_stock', 'normal', 'Stock de EPP bajo', fn ($r) => "El stock de {$r->ref} está por debajo del mínimo en: {$r->name}. Repón.", '/m/epp?t=ppe_items&open=', ['sst_manager'], true],
             // M-EQE RN-EQE-02: mantenimiento o vencimiento de equipos de emergencia.
             // M-EQE §10: también la recarga y la prueba hidrostática por vencer (extintores).
             ['EQE', "select id, code as ref, equipment_type as name, null as owner, least(next_maintenance_on, expires_on, next_recharge_on, next_hydrostatic_test_on) as due, 'eqe' as kind from emergency_equipment

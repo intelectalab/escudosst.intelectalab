@@ -14,6 +14,8 @@ use Illuminate\Support\Str;
  * EPP (M-EPP):
  *  GET  /epp/matrix                              matriz puesto × EPP obligatorio y cumplimiento por trabajador (RN-EPP-04: todos los EPP
  *                                                obligatorios de su puesto entregados y con fecha de reposición no vencida)
+ *  GET  /epp/stock                               saldo por sede de cada EPP frente a su mínimo
+ *  GET  /epp/kardex.xlsx                         kárdex con saldo por movimiento y consumo por sede, área e ítem
  *  GET  /epp/replacement-requests                solicitudes de reposición hechas desde la app del trabajador
  *  POST /epp/replacement-requests/{id}/resolve   {status: rejected, note}: rechaza con motivo (al entregar el EPP se atiende sola)
  */
@@ -86,6 +88,69 @@ class PpeMatrixController extends Controller
         DB::update("update ppe_replacement_requests set status = 'rejected', resolution_note = ?, resolved_by = ?, resolved_at = now(), updated_at = now() where id = ?", [$d['note'], (string) auth()->id(), $id]);
 
         return response()->json(['data' => ['id' => $id, 'status' => 'rejected']]);
+    }
+
+    /** GET /epp/stock — SCR-EPP-01: saldo de cada EPP por sede frente a su mínimo (RN-EPP-08). */
+    public function stock(): JsonResponse
+    {
+        $this->can('epp.ppe_stock_movements.read');
+        $rows = DB::select(
+            "select i.id as item_id, i.code, i.name as item, i.min_stock, m.site_id, s.name as site,
+                    sum(case when m.movement_type in ('in','return','adjustment') then m.quantity else -m.quantity end) as balance
+               from ppe_stock_movements m join ppe_items i on i.id = m.ppe_item_id and i.deleted_at is null left join sites s on s.id = m.site_id
+              where m.deleted_at is null group by i.id, i.code, i.name, i.min_stock, m.site_id, s.name order by i.name, s.name nulls first");
+
+        return response()->json(['data' => array_map(fn ($r) => ['item_id' => $r->item_id, 'code' => $r->code, 'item' => $r->item, 'site_id' => $r->site_id,
+            'site' => $r->site ?? 'Sin sede (almacén general)', 'balance' => (float) $r->balance, 'min_stock' => $r->min_stock === null ? null : (float) $r->min_stock,
+            'low' => $r->min_stock !== null && (float) $r->balance < (float) $r->min_stock], $rows)]);
+    }
+
+    /**
+     * GET /epp/kardex.xlsx?from=&to= — SCR-EPP-04 y §11: kárdex por sede e ítem con saldo después de cada movimiento, y el
+     * consumo (entregas) del periodo por sede, área e ítem.
+     */
+    public function kardex(Request $request): \Symfony\Component\HttpFoundation\Response
+    {
+        $this->can('epp.ppe_stock_movements.read');
+        $from = (string) ($request->query('from') ?: now('America/Lima')->startOfYear()->toDateString());
+        $to = (string) ($request->query('to') ?: now('America/Lima')->toDateString());
+        $types = ['in' => 'Ingreso', 'out' => 'Entrega', 'return' => 'Devolución', 'disposal' => 'Baja', 'adjustment' => 'Ajuste', 'transfer' => 'Traslado'];
+        $mov = DB::select(
+            "select * from (
+               select m.moved_at, s.name as site, i.name as item, m.size, m.movement_type, m.quantity, m.reference, m.supplier_name,
+                      sum(case when m.movement_type in ('in','return','adjustment') then m.quantity else -m.quantity end)
+                        over (partition by m.ppe_item_id, m.site_id order by m.moved_at, m.created_at rows unbounded preceding) as balance
+                 from ppe_stock_movements m join ppe_items i on i.id = m.ppe_item_id left join sites s on s.id = m.site_id where m.deleted_at is null) x
+              where (moved_at at time zone 'America/Lima')::date between ? and ? order by site nulls first, item, moved_at", [$from, $to]);
+        $out = [['Kárdex de EPP'], ["Del {$from} al {$to}. Saldo: existencias después de cada movimiento."], [],
+            ['Sede', 'EPP', 'Talla', 'Fecha', 'Movimiento', 'Cantidad', 'Saldo', 'Referencia']];
+        foreach ($mov as $m) {
+            $out[] = [$m->site ?? 'Sin sede', $m->item, $m->size, date('d/m/Y H:i', strtotime($m->moved_at)), $types[$m->movement_type] ?? $m->movement_type,
+                (float) $m->quantity, (float) $m->balance, trim(($m->reference ?? '').($m->supplier_name ? ' · '.$m->supplier_name : ''), ' ·')];
+        }
+        if ($mov === []) {
+            $out[] = ['Sin movimientos en el periodo'];
+        }
+        $out[] = [];
+        $out[] = ['Consumo (entregas) por sede, área e ítem'];
+        $out[] = ['Sede', 'Área', 'EPP', 'Unidades entregadas', 'Trabajadores'];
+        $use = DB::select(
+            "select s.name as site, a.name as area, i.name as item, sum(d.quantity) as units, count(distinct d.worker_id) as workers
+               from ppe_deliveries d join ppe_items i on i.id = d.ppe_item_id left join workers w on w.id = d.worker_id
+               left join sites s on s.id = coalesce(d.site_id, w.current_site_id) left join areas a on a.id = w.current_area_id
+              where d.deleted_at is null and d.status = 'delivered' and (d.delivered_at at time zone 'America/Lima')::date between ? and ?
+              group by 1, 2, 3 order by 1 nulls first, 2 nulls first, 4 desc", [$from, $to]);
+        foreach ($use as $u) {
+            $out[] = [$u->site ?? 'Sin sede', $u->area ?? 'Sin área', $u->item, (float) $u->units, (int) $u->workers];
+        }
+        if ($use === []) {
+            $out[] = ['Sin entregas en el periodo'];
+        }
+
+        return response(\App\Core\Support\Xlsx::build('Kárdex', $out, 4), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"kardex-epp-{$from}-{$to}.xlsx\"",
+        ]);
     }
 
     private function can(string $p): void
