@@ -38,6 +38,8 @@ class EventRules extends RecordRules
         'approved' => ['actions_in_progress', 'closed'],
         'actions_in_progress' => ['closed'],
         'closed' => [],
+        // RN-INV-04: «vencida» la pone el sistema al pasar el plazo; desde ahí se sigue el trabajo normal.
+        'overdue' => ['analysis', 'committee_review', 'approved'],
     ];
 
     public function prepare(string $op, array $res, array &$values, ?object $current, array &$extra): void

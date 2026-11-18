@@ -26100,7 +26100,8 @@
      "signed",
      "in_execution",
      "closed",
-     "cancelled"
+     "cancelled",
+     "not_closed"
     ],
     "ref": null,
     "encrypted": false,
@@ -29625,7 +29626,8 @@
      "operational",
      "needs_maintenance",
      "out_of_service",
-     "retired"
+     "retired",
+     "inspection_overdue"
     ],
     "ref": null,
     "encrypted": false,
@@ -44248,7 +44250,8 @@
      "committee_review",
      "approved",
      "actions_in_progress",
-     "closed"
+     "closed",
+     "overdue"
     ],
     "ref": null,
     "encrypted": false,

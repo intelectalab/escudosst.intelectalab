@@ -56,8 +56,12 @@ it('lleva la matriz legal: no aplicable con motivo, próxima evaluación y evalu
     $norm = collect($this->getJson('/api/v1/records/MRL/legal_requirements/options/legal_norm_id?q=29783', $h)->json('data'))->first()['id'];
     $this->postJson('/api/v1/records/MRL/legal_requirements', ['legal_norm_id' => $norm, 'article' => 'Art. 35', 'requirement' => 'Capacitar 4 veces al año',
         'applies' => false], $h)->assertStatus(422)->assertJsonPath('errors.applicability.0', 'Si el requisito no aplica, explica el motivo.');
+    // RN-MRL-03: si aplica, tiene responsable.
+    $this->postJson('/api/v1/records/MRL/legal_requirements', ['legal_norm_id' => $norm, 'article' => 'Art. 35', 'requirement' => 'Capacitar 4 veces al año',
+        'applies' => true, 'status' => 'active'], $h)->assertStatus(422)->assertJsonValidationErrors('responsible_user_id');
+    $owner = collect($this->getJson('/api/v1/records/MRL/legal_requirements/options/responsible_user_id', $h)->json('data'))->first()['id'];
     $req = $this->postJson('/api/v1/records/MRL/legal_requirements', ['legal_norm_id' => $norm, 'article' => 'Art. 35', 'requirement' => 'Capacitar 4 veces al año',
-        'applies' => true, 'status' => 'active'], $h)->assertCreated()->json('data.id');
+        'applies' => true, 'status' => 'active', 'responsible_user_id' => $owner], $h)->assertCreated()->json('data.id');
 
     $ev = $this->postJson('/api/v1/records/MRL/requirement_evaluations', ['legal_requirement_id' => $req, 'result' => 'partial', 'evidence_notes' => 'Solo 2 de 4'], $h)
         ->assertCreated();

@@ -14,7 +14,8 @@ beforeEach(function () {
 
 it('un requisito legal que no se cumple crea su acción correctiva', function () {
     $norm = collect($this->getJson('/api/v1/records/MRL/legal_requirements/options/legal_norm_id?q=29783', $this->h)->json('data'))->first()['id'];
-    $req = $this->postJson('/api/v1/records/MRL/legal_requirements', ['legal_norm_id' => $norm, 'article' => 'Art. 35', 'requirement' => 'Entregar el RISST a cada trabajador'], $this->h)
+    $owner = collect($this->getJson('/api/v1/records/MRL/legal_requirements/options/responsible_user_id', $this->h)->json('data'))->first()['id'];
+    $req = $this->postJson('/api/v1/records/MRL/legal_requirements', ['legal_norm_id' => $norm, 'article' => 'Art. 35', 'requirement' => 'Entregar el RISST a cada trabajador', 'responsible_user_id' => $owner], $this->h)
         ->assertCreated()->json('data.id');
     $ev = $this->postJson('/api/v1/records/MRL/requirement_evaluations', ['legal_requirement_id' => $req, 'result' => 'non_compliant', 'evidence_notes' => 'Faltan 12 cargos'], $this->h)
         ->assertCreated()->json('data.id');

@@ -45,6 +45,17 @@ final class SstAlerts
         // M-ACC §9: una notificación obligatoria pendiente pasa a «vencida» al pasar su plazo (queda marcada fuera de plazo).
         $db->update("update event_notifications set status = 'overdue', notification_overdue = true, updated_at = now()
                       where status = 'pending' and deadline_at < now() and deleted_at is null");
+        // M-INV RN-INV-04: investigación abierta o en análisis con el plazo vencido → «vencida».
+        $db->update("update investigations set status = 'overdue', updated_at = now()
+                      where status in ('open', 'analysis') and due_on < (now() at time zone 'America/Lima')::date and deleted_at is null");
+        // M-ATS RN-ATS-05: ATS firmado o en ejecución de un día anterior que no se cerró → «no cerrado».
+        $db->update("update ats_forms set status = 'not_closed', updated_at = now()
+                      where status in ('signed', 'in_execution') and performed_on < (now() at time zone 'America/Lima')::date and deleted_at is null");
+        // M-EQE RN-EQE-02: equipo operativo sin inspección en equipment_check_days → «inspección vencida» (vuelve a operativo al inspeccionarlo).
+        $db->update("update emergency_equipment e set status = 'inspection_overdue', updated_at = now()
+                      where e.status = 'operational' and e.deleted_at is null and coalesce(e.installed_on, e.created_at::date) < current_date - ?::int
+                        and not exists (select 1 from equipment_checks c where c.equipment_id = e.id and c.deleted_at is null and c.checked_at > now() - make_interval(days => ?::int))",
+            [self::days('equipment_check_days', 30), self::days('equipment_check_days', 30)]);
         // M-IPC RN-IPC-08: matriz vigente que pasó su fecha de revisión → «revisión vencida».
         $db->update("update iperc_matrices set status = 'review_overdue', review_reason = 'Pasó la fecha de revisión', review_flagged_at = now()
                       where status = 'active' and next_review_on < (now() at time zone 'America/Lima')::date and deleted_at is null");
@@ -282,7 +293,7 @@ final class SstAlerts
             ['INV', "select i.id, i.code as ref, '' as name, (select t.user_id from investigation_team t where t.investigation_id = i.id and t.role = 'leader' and t.deleted_at is null limit 1) as owner,
                             (select w.user_id from investigation_team t join workers w on w.id = t.worker_id where t.investigation_id = i.id and t.role = 'leader' and t.deleted_at is null limit 1) as owner2,
                             i.due_on as due, 'inv' as kind from investigations i
-                      where i.deleted_at is null and i.status in ('open', 'analysis', 'committee_review') and i.due_on <= current_date + ".self::days('investigation_notice_days', 3),
+                      where i.deleted_at is null and i.status in ('open', 'analysis', 'committee_review', 'overdue') and i.due_on <= current_date + ".self::days('investigation_notice_days', 3),
                 'inv.due', 'high', 'Investigación por vencer', fn ($r) => "La investigación {$r->ref} ".(strtotime($r->due) < strtotime('today') ? 'venció el ' : 'vence el ').date('d/m/Y', strtotime($r->due)).'.', '/m/inv?t=investigations&open=', [], true],
             // M-ACC: evento reportado que sigue sin clasificar (event_triage_hours).
             ['ACC', "select id, code as ref, '' as name, reporter_user_id as owner, reported_at as due, 'triage' as kind from sst_events
@@ -409,9 +420,9 @@ final class SstAlerts
             // M-EQE §10: equipo sin inspección mensual en el último mes → responsable del área.
             ['EQE', "select e.id, e.code as ref, e.equipment_type as name, (select mw.user_id from areas ar join workers mw on mw.id = ar.manager_worker_id where ar.id = e.area_id) as owner, current_date as due, to_char(current_date, 'YYYY-MM') as dk, 'monthly' as kind
                        from emergency_equipment e
-                      where e.deleted_at is null and e.status <> 'retired' and coalesce(e.installed_on, e.created_at::date) < current_date - interval '1 month'
+                      where e.deleted_at is null and e.status <> 'retired' and coalesce(e.installed_on, e.created_at::date) < current_date - ".self::days('equipment_check_days', 30)."
                         and not exists (select 1 from equipment_checks c where c.equipment_id = e.id and c.check_type = 'monthly_inspection' and c.deleted_at is null
-                                          and c.checked_at > now() - interval '1 month')",
+                                          and c.checked_at > now() - make_interval(days => ".self::days('equipment_check_days', 30)."))",
                 'eqe.monthly_overdue', 'normal', 'Inspección mensual vencida', fn ($r) => "El equipo {$r->ref} no tiene su inspección mensual.", '/m/eqe?t=emergency_equipment&open=', [], false],
             // M-EQE §10: botiquín con ítems vencidos o faltantes → su responsable (una vez por semana mientras siga así).
             ['EQE', "select k.id, k.code as ref, '' as name, (select w.user_id from workers w where w.id = k.responsible_worker_id) as owner, k.responsible_worker_id as worker, current_date as due, 'kit' as kind
@@ -579,7 +590,7 @@ final class SstAlerts
                 'pet.critical_without_pets', 'normal', 'Tarea crítica sin PETS', fn ($r) => "El puesto crítico «{$r->ref}» no tiene un PETS vigente.", '/m/pet?t=procedures&position=', ['sst_manager'], true],
             // M-ATS §10: ATS sin cierre al fin de la jornada (desde la hora ats_close_check_hour) → al supervisor.
             ['ATS', "select id, code as ref, task as name, supervisor_user_id as owner, performed_on as due, 'ats' as kind from ats_forms
-                      where deleted_at is null and status in ('signed', 'in_execution')
+                      where deleted_at is null and status in ('signed', 'in_execution', 'not_closed')
                         and (performed_on < (now() at time zone 'America/Lima')::date
                              or (performed_on = (now() at time zone 'America/Lima')::date and extract(hour from now() at time zone 'America/Lima') >= ".self::days('ats_close_check_hour', 18)."))",
                 'ats.not_closed', 'normal', 'ATS sin cerrar', fn ($r) => "El ATS {$r->ref} del ".date('d/m/Y', strtotime($r->due)).' sigue abierto: ciérralo.', '/m/ats?t=ats_forms&open=', [], false],

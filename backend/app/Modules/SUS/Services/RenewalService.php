@@ -37,7 +37,9 @@ class RenewalService
         $summary = ['reminders' => 0, 'past_due' => 0, 'trial_expired' => 0, 'blocked' => 0];
 
         // 1. Avisos antes del vencimiento.
-        $days = '{'.implode(',', config('escudo.subscriptions.reminder_days')).'}';
+        // M-SUS §10: días de aviso del parámetro renewal_notice_days (si no existe, la configuración del servidor).
+        $param = json_decode(\App\Core\Support\LegalParams::text('renewal_notice_days', ''), true);
+        $days = '{'.implode(',', array_map('intval', is_array($param) && $param ? $param : config('escudo.subscriptions.reminder_days'))).'}';
         foreach ($this->rows("s.status in ('active', 'trialing') and days_left = any(?::int[])", [$days]) as $sub) {
             $kind = $sub->status === 'trialing' ? 'trial_reminder' : 'reminder';
             $key = "{$kind}:{$sub->period_end}:{$sub->days_left}";

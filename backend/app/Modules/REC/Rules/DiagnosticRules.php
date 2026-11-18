@@ -126,7 +126,9 @@ class DiagnosticRules extends RecordRules
             && ! $this->value($values, $current, 'evidence_file_id') && ! trim((string) $this->value($values, $current, 'evidence_notes'))) {
             $this->fail('evidence_file_id', 'Para marcar «cumple» adjunta la evidencia o indica en las notas el registro que lo demuestra.');
         }
-        $extra['score'] = array_key_exists($result, self::SCORE) ? ['?', [self::SCORE[$result]]] : ['null', []];
+        // RN-LBA-01: el puntaje de cada respuesta es el parámetro baseline_scores (por confirmar); si falta, 1 / 0,5 / 0.
+        $scores = (json_decode(LegalParams::text('baseline_scores', ''), true) ?: []) + self::SCORE;
+        $extra['score'] = array_key_exists($result, self::SCORE) ? ['?', [(float) $scores[$result]]] : ['null', []];
     }
 
     private function editable(?string $assessment): void
@@ -179,6 +181,10 @@ class DiagnosticRules extends RecordRules
         }
         if ($status === 'not_applicable') {
             $values['applies'] = false;
+        }
+        // RN-MRL-03: todo requisito que aplica tiene un responsable (también en el formulario general, no solo en el asistente).
+        if ($applies !== false && $status !== 'not_applicable' && ! $this->value($values, $current, 'responsible_user_id')) {
+            $this->fail('responsible_user_id', 'Indica quién es el responsable de cumplir este requisito.');
         }
     }
 

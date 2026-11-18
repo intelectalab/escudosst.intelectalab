@@ -1996,7 +1996,9 @@
   "partially_refunded": "Reembolso parcial",
   "medical_center": "Centro asistencial",
   "principal_company": "Empresa principal",
-  "sst_events.status.registered": "Clasificado"
+  "sst_events.status.registered": "Clasificado",
+  "not_closed": "No cerrado",
+  "inspection_overdue": "Inspección vencida"
  },
  "tables": {
   "absences": "Ausencias",

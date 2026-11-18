@@ -432,7 +432,8 @@ class DocsFieldRules extends RecordRules
             } while (DB::selectOne('select 1 as ok from ats_forms where code = ? and deleted_at is null', [$values['code']]));
         }
         $to = $values['status'] ?? null;
-        $flow = ['draft' => ['signed', 'cancelled'], 'signed' => ['in_execution', 'draft', 'cancelled'], 'in_execution' => ['closed'], 'closed' => [], 'cancelled' => []];
+        // RN-ATS-05: «no cerrado» lo pone el sistema al pasar el día; se cierra igual (queda constancia del atraso).
+        $flow = ['draft' => ['signed', 'cancelled'], 'signed' => ['in_execution', 'draft', 'cancelled'], 'in_execution' => ['closed'], 'not_closed' => ['closed'], 'closed' => [], 'cancelled' => []];
         if ($current && $to && $to !== $current->status && ! in_array($to, $flow[$current->status] ?? [], true)) {
             $this->fail('status', $current->status === 'draft' ? 'Primero firma el ATS con todos los participantes.' : 'Ese cambio de estado no está permitido.');
         }

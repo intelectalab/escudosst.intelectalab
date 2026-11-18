@@ -10394,6 +10394,10 @@
       {
        "value": "cancelled",
        "label": "Cancelado"
+      },
+      {
+       "value": "not_closed",
+       "label": "No cerrado"
       }
      ],
      "default": "draft",
@@ -11992,6 +11996,10 @@
       {
        "value": "retired",
        "label": "Dado de baja"
+      },
+      {
+       "value": "inspection_overdue",
+       "label": "Inspección vencida"
       }
      ],
      "default": "operational",
@@ -19762,6 +19770,10 @@
       {
        "value": "closed",
        "label": "Cerrado"
+      },
+      {
+       "value": "overdue",
+       "label": "Vencido"
       }
      ],
      "default": "open",
