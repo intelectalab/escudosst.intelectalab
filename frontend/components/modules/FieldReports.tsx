@@ -30,10 +30,25 @@ export function useReport<T>(path: string) {
 
 /** M-CON: marca blanca de la consultora de la empresa (logo y pie de página en los PDF), si tiene una activa. */
 type Brand = { brand_name: string | null; logo: string | null; pdf_footer_text: string | null; show_powered_by: boolean } | null;
-function useBrand(): Brand {
+export function useBrand(): Brand {
   const [b, setB] = useState<Brand>(null);
   useEffect(() => { api<{ data: Brand }>("/brand", { withCompany: true }).then((r) => setB(r.data)).catch(() => setB(null)); }, []);
   return b;
+}
+
+/** Logo de la marca blanca para los impresos que tienen su propia cabecera (IPERC, actas del comité, tablero…). */
+export function BrandLogo({ brand, className = "h-10 w-auto object-contain" }: { brand: Brand; className?: string }) {
+  return brand?.logo ? <img src={brand.logo} alt={brand.brand_name ?? "Logo"} className={className} /> : null;
+}
+
+/** Pie de página de la marca blanca (RN-CON-04). */
+export function BrandFooter({ brand }: { brand: Brand }) {
+  if (!brand?.brand_name) return null;
+  return (
+    <footer className="border-t border-gray-300 pt-2 text-center text-[10px] text-gray-500">
+      {brand.pdf_footer_text || brand.brand_name}{brand.show_powered_by ? " · Con EscudoSST" : ""}
+    </footer>
+  );
 }
 
 export function Sheet({ company, title, sub, draft, children }: { company: Company; title: string; sub: string; draft?: string | null; children: React.ReactNode }) {
@@ -47,18 +62,14 @@ export function Sheet({ company, title, sub, draft, children }: { company: Compa
       </div>
       <div className="mx-auto max-w-3xl space-y-5 bg-white p-8 shadow print:max-w-none print:p-0 print:shadow-none">
         <header className="space-y-1 text-center">
-          {brand?.logo && <img src={brand.logo} alt={brand.brand_name ?? "Logo"} className="mx-auto h-10 w-auto object-contain" />}
+          <BrandLogo brand={brand} className="mx-auto h-10 w-auto object-contain" />
           <p className="text-xs text-gray-600">{company.legal_name} · RUC {company.ruc}</p>
           <h1 className="text-lg font-bold uppercase">{title}</h1>
           <p className="text-sm">{sub}</p>
           {draft && <p className="text-sm font-bold text-red-700">{draft}</p>}
         </header>
         {children}
-        {brand?.brand_name && (
-          <footer className="border-t border-gray-300 pt-2 text-center text-[10px] text-gray-500">
-            {brand.pdf_footer_text || brand.brand_name}{brand.show_powered_by ? " · Con EscudoSST" : ""}
-          </footer>
-        )}
+        <BrandFooter brand={brand} />
       </div>
     </div>
   );

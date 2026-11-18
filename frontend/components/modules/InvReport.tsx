@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api, type ApiError } from "@/lib/api";
+import { BrandFooter, BrandLogo, useBrand } from "./FieldReports";
 
 type Cause = { id: string; parent_cause_id: string | null; cause_level: string; cause_category: string | null; scat_code: string | null; description: string; action_code: string | null };
 type Member = { id: string; name: string; role: string; signed_at: string | null; image: string | null; pending?: boolean };
@@ -71,6 +72,7 @@ function SignBox({ name, role, at, image, pending }: { name: string; role?: stri
 export function InvReportSheet({ id }: { id: string }) {
   const [data, setData] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const brand = useBrand();
   useEffect(() => {
     api<{ data: Report }>(`/inv/investigations/${id}/report`, { withCompany: true })
       .then((r) => setData(r.data))
@@ -115,6 +117,7 @@ export function InvReportSheet({ id }: { id: string }) {
       </div>
       <div className="mx-auto max-w-3xl space-y-5 bg-white p-8 shadow print:max-w-none print:p-0 print:shadow-none">
         <header className="space-y-1 text-center">
+          <BrandLogo brand={brand} className="mx-auto h-10 w-auto object-contain" />
           <p className="text-xs text-gray-600">{data.company.legal_name} · RUC {data.company.ruc}</p>
           <h1 className="text-lg font-bold uppercase">Informe de investigación · {ev ? (EVENT[ev.event_type] ?? "Evento") : "Evento"}</h1>
           <p className="text-sm">{inv.code ?? "Investigación"} · Estado: {STATUS[inv.status] ?? inv.status}</p>
@@ -214,6 +217,7 @@ export function InvReportSheet({ id }: { id: string }) {
           </div>
         </Section>
         <p className="pt-4 text-xs text-gray-500">Generado el {fmtDateTime(new Date().toISOString())} · {data.company.name}</p>
+        <BrandFooter brand={brand} />
       </div>
     </div>
   );

@@ -6,6 +6,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { api, type ApiError } from "@/lib/api";
+import { BrandFooter, BrandLogo, useBrand } from "@/components/modules/FieldReports";
 
 type Kpi = { code: string; name: string; unit: string | null; locked?: boolean; label?: string; basis?: string; color?: string | null; module_name?: string | null };
 type Series = { code: string; name: string; points: { month: number; value: number | null }[] };
@@ -21,6 +22,7 @@ function Sheet() {
   const [series, setSeries] = useState<Series[]>([]);
   const [siteName, setSiteName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const brand = useBrand();
   useEffect(() => {
     const qs = `year=${year}${site ? `&site_id=${site}` : ""}`;
     api<{ data: { kpis: Kpi[]; sites: { id: string; name: string }[] } }>(`/dsh/overview?${qs}`, { withCompany: true })
@@ -37,6 +39,7 @@ function Sheet() {
       </div>
       <div className="mx-auto max-w-6xl space-y-4 bg-white p-6 text-xs shadow print:max-w-none print:p-0 print:shadow-none">
         <header className="text-center">
+          <BrandLogo brand={brand} className="mx-auto h-10 w-auto object-contain" />
           <h1 className="text-base font-bold uppercase">Tablero de indicadores SST {year}</h1>
           <p>{siteName ? `Sede: ${siteName}` : "Toda la empresa"} · Generado el {new Date().toLocaleString("es-PE")}</p>
         </header>
@@ -67,6 +70,7 @@ function Sheet() {
             </table>
           </>
         )}
+        <BrandFooter brand={brand} />
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import { api, type ApiError } from "@/lib/api";
 import type { Election } from "./ComElection";
 import { fmtDateTime } from "./ComElection";
 import { MinutesPaper, SignatureGrid, type Minutes } from "./ComModule";
+import { BrandFooter, BrandLogo, useBrand } from "./FieldReports";
 
 function useSheet<T>(path: string) {
   const [data, setData] = useState<T | null>(null);
@@ -19,6 +20,7 @@ function useSheet<T>(path: string) {
 }
 
 function Sheet({ children }: { children: React.ReactNode }) {
+  const brand = useBrand();
   return (
     <div className="min-h-screen bg-gray-100 p-4 text-gray-900 print:bg-white print:p-0">
       <style>{`@page { size: A4; margin: 16mm } @media print { .no-print { display: none } }`}</style>
@@ -28,7 +30,11 @@ function Sheet({ children }: { children: React.ReactNode }) {
           Imprimir / Guardar PDF
         </button>
       </div>
-      <div className="mx-auto max-w-3xl space-y-4 bg-white p-8 shadow print:max-w-none print:p-0 print:shadow-none">{children}</div>
+      <div className="mx-auto max-w-3xl space-y-4 bg-white p-8 shadow print:max-w-none print:p-0 print:shadow-none">
+        <BrandLogo brand={brand} className="mx-auto h-10 w-auto object-contain" />
+        {children}
+        <BrandFooter brand={brand} />
+      </div>
     </div>
   );
 }

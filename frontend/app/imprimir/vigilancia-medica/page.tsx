@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { api, type ApiError } from "@/lib/api";
+import { BrandFooter, BrandLogo, useBrand } from "@/components/modules/FieldReports";
 
 type G = { name: string; cases: number; open: number; overdue: number; high: number };
 type Ind = { min_group: number; total: number | null; by_program: { groups: G[]; hidden: number }; by_area: { groups: G[]; hidden: number } };
@@ -12,6 +13,7 @@ type Ind = { min_group: number; total: number | null; by_program: { groups: G[];
 export default function InformeVigilancia() {
   const [d, setD] = useState<Ind | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const brand = useBrand();
   useEffect(() => { api<{ data: Ind }>("/vmd/indicators", { withCompany: true }).then((r) => setD(r.data)).catch((e: ApiError) => setError(e.detail ?? e.title)); }, []);
   if (error) return <p className="p-8">{error}</p>;
   if (!d) return <p className="p-8">Preparando el informe…</p>;
@@ -34,12 +36,14 @@ export default function InformeVigilancia() {
       <div className="no-print mx-auto mb-4 flex max-w-3xl justify-end"><button onClick={() => window.print()} className="rounded-lg bg-[#0d3b6e] px-4 py-2 text-sm font-semibold text-white">Imprimir / Guardar PDF</button></div>
       <div className="mx-auto max-w-3xl space-y-5 bg-white p-8 shadow print:max-w-none print:p-0 print:shadow-none">
         <header className="text-center">
+          <BrandLogo brand={brand} className="mx-auto h-10 w-auto object-contain" />
           <h1 className="text-lg font-bold uppercase">Vigilancia médica ocupacional · informe agregado</h1>
           <p className="text-sm">Generado el {new Date().toLocaleDateString("es-PE")} · casos en seguimiento: {d.total ?? `menos de ${d.min_group}`}</p>
         </header>
         {table("Por programa", d.by_program)}
         {table("Por área", d.by_area)}
         <p className="text-xs text-gray-600">Informe anónimo: no contiene nombres, documentos ni datos médicos de ninguna persona.</p>
+        <BrandFooter brand={brand} />
       </div>
     </div>
   );

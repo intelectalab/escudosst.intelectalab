@@ -7,6 +7,7 @@
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { ApiError } from "@/lib/api";
+import { BrandFooter, BrandLogo, useBrand } from "@/components/modules/FieldReports";
 import { HIERARCHY, ipc, levelLabel, VERSION_STATUS, type Workspace } from "@/lib/ipc";
 
 const fmt = (d: string | null | undefined) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : "—");
@@ -17,6 +18,7 @@ function Sheet() {
   const v = useSearchParams().get("v") ?? undefined;
   const [ws, setWs] = useState<Workspace | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const brand = useBrand();
   useEffect(() => {
     ipc.workspace(id, v).then((r) => setWs(r.data)).catch((e: ApiError) => setError(e.detail ?? e.title));
   }, [id, v]);
@@ -38,6 +40,7 @@ function Sheet() {
       </div>
       <div className="mx-auto max-w-6xl space-y-3 bg-white p-6 text-[11px] print:max-w-none print:p-0">
         <header className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-[#0d3b6e] pb-2">
+          <BrandLogo brand={brand} className="h-10 w-auto object-contain" />
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-[#1b6fb7]">Matriz IPERC · Ley 29783 y R.M. 050-2013-TR</p>
             <h1 className="text-lg font-extrabold">{ws.matrix.code} · {ws.matrix.title}</h1>
@@ -104,6 +107,7 @@ function Sheet() {
           <div className="border-t border-[#0b2440] pt-1 text-center">Elaboró: {ver.prepared_by_name ?? "________________"}<br /><span className="text-gray-500">{fmt(ver.prepared_at)}</span></div>
           <div className="border-t border-[#0b2440] pt-1 text-center">Aprobó: {ver.approved_by_name ?? "________________"}<br /><span className="text-gray-500">{fmt(ver.approved_at)}</span></div>
         </div>
+        <BrandFooter brand={brand} />
       </div>
     </div>
   );

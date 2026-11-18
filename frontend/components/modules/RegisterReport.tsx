@@ -4,7 +4,7 @@
 // con los datos del empleador al corte (RN-REG-08), las filas congeladas al generar, la huella de los datos (RN-REG-03) y
 // las firmas obtenidas con FIR (RN-REG-05). Se guarda como PDF desde el diálogo de impresión del navegador.
 
-import { cell, fmtD, fmtDT, ReportLoading, useReport } from "./FieldReports";
+import { BrandFooter, BrandLogo, cell, fmtD, fmtDT, ReportLoading, useBrand, useReport } from "./FieldReports";
 
 type Sig = { role: string; status: string; signer_name: string; signed_at: string | null; method: string | null; image: string | null };
 type Version = {
@@ -39,6 +39,7 @@ const val = (v: unknown) => (v === null || v === undefined || v === "" ? "—" :
 
 export function RegisterReport({ id }: { id: string }) {
   const { data: v, error } = useReport<Version>(`/reg/exports/${id}`);
+  const brand = useBrand();
   if (!v) return <ReportLoading error={error} />;
   const e = v.snapshot.employer;
   const th = "border border-gray-500 bg-gray-100 px-1.5 py-1 text-left font-semibold";
@@ -52,6 +53,7 @@ export function RegisterReport({ id }: { id: string }) {
       </div>
       <div className="mx-auto max-w-6xl space-y-3 bg-white p-6 text-[11px] shadow print:max-w-none print:p-0 print:shadow-none">
         <header className="text-center">
+          <BrandLogo brand={brand} className="mx-auto h-10 w-auto object-contain" />
           <h1 className="text-sm font-bold uppercase">{v.snapshot.title}</h1>
           {STATUS[v.status] && <p className="text-xs font-bold text-red-700">{STATUS[v.status]}</p>}
         </header>
@@ -102,6 +104,7 @@ export function RegisterReport({ id }: { id: string }) {
           Formato referencial R.M. 050-2013-TR ({v.format_version}). Generado el {fmtDT(v.generated_at)}{v.generated_by ? ` por ${v.generated_by}` : ""} con {v.rows_count} fila(s).
           Huella de los datos (SHA-256): <span className="break-all font-mono">{v.data_hash}</span>
         </p>
+        <BrandFooter brand={brand} />
       </div>
     </div>
   );

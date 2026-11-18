@@ -43,6 +43,7 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
   const [msg, setMsg] = useState<string | null>(null);
   const [checks, setChecks] = useState<Verification[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [otp, setOtp] = useState<Record<string, string>>({});
 
   const load = useCallback(() => {
     if (!enabled) return;
@@ -85,7 +86,6 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
     }
   }
   // Firma con código de un solo uso enviado al correo (OTP).
-  const [otp, setOtp] = useState<Record<string, string>>({});
   async function sendOtp(r: Req) {
     setMsg(null);
     try {
