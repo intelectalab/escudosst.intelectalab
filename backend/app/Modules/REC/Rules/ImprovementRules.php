@@ -499,11 +499,28 @@ class ImprovementRules extends RecordRules
         if ($op === 'create') {
             return;
         }
+        // RN-MOC-04: un cambio temporal en curso que se vuelve permanente pasa por una nueva revisión (vuelve a «en revisión»
+        // y se aprueba de nuevo con una revisión posterior a su implementación).
+        if ($current->is_temporary && array_key_exists('is_temporary', $values) && ! $values['is_temporary']
+            && in_array($current->status, ['approved', 'implemented', 'verified'], true)) {
+            $values['status'] = 'under_review';
+            $values['temporary_until'] = null;
+            $values['decision_at'] = null;
+            $values['management_approved_by'] = null;
+            $values['management_approved_at'] = null;
+
+            return;
+        }
         $to = $values['status'] ?? null;
         if (! $to || $to === $current->status) {
             return;
         }
-        if (! in_array($to, self::MOC_FLOW[$current->status] ?? [], true)) {
+        // RN-MOC-04: un cambio temporal implementado se puede revertir y cerrar, dejando constancia de la reversión.
+        $revert = $current->is_temporary && $current->status === 'implemented' && $to === 'closed';
+        if ($current->is_temporary && $to === 'closed' && ! trim((string) $this->value($values, $current, 'closure_notes'))) {
+            $this->fail('closure_notes', 'Es un cambio temporal: indica cómo se revirtió (o hazlo permanente con una nueva revisión).');
+        }
+        if (! $revert && ! in_array($to, self::MOC_FLOW[$current->status] ?? [], true)) {
             $this->fail('status', 'Ese cambio de estado no está permitido.');
         }
         if (in_array($to, ['submitted', 'under_review'], true) && ! $this->value($values, $current, 'impact_level')) {
@@ -518,6 +535,11 @@ class ImprovementRules extends RecordRules
             }
             if (! DB::selectOne("select 1 as ok from change_reviews where change_request_id = ? and deleted_at is null and decision in ('approve','approve_with_conditions')", [$current->id])) {
                 $this->fail('status', 'Registra la revisión que aprueba el cambio (en «Revisiones») antes de aprobarlo.');
+            }
+            // RN-MOC-04: un temporal que pasa a permanente se aprueba con una revisión nueva (posterior a su implementación).
+            if ($current->implemented_at && ! DB::selectOne("select 1 as ok from change_reviews where change_request_id = ? and deleted_at is null
+                                                              and decision in ('approve','approve_with_conditions') and reviewed_at > ?", [$current->id, $current->implemented_at])) {
+                $this->fail('status', 'El cambio pasa de temporal a permanente: registra una revisión nueva que lo apruebe como permanente.');
             }
             // RN-MOC-03: un cambio de impacto alto lo aprueba gerencia.
             if ($this->value($values, $current, 'impact_level') === 'high') {

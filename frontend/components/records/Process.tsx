@@ -1141,7 +1141,7 @@ function CloseMonth({ row, onChanged }: { row: RecordRow; onChanged: () => void 
 
 // ─────────────── Pasos por estado (documentos con versiones y registros de campo) ───────────────
 
-type Step = { from: string[]; label: string; body: Record<string, unknown>; primary?: boolean; ask?: string };
+type Step = { from: string[]; label: string; body: Record<string, unknown>; primary?: boolean; ask?: string; when?: (row: RecordRow) => boolean };
 
 const VERSION_STEPS: Step[] = [
   { from: ["draft"], label: "Enviar a revisión", body: { status: "in_review" } },
@@ -1268,6 +1268,9 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
       { from: ["approved"], label: "Marcar implementado", body: { status: "implemented" }, primary: true },
       { from: ["implemented"], label: "Verificar eficacia", body: { status: "verified" }, primary: true, ask: "verification_notes" },
       { from: ["verified"], label: "Cerrar", body: { status: "closed" }, primary: true },
+      // RN-MOC-04: el cambio temporal se revierte (y se cierra) o se vuelve permanente con una nueva revisión.
+      { from: ["implemented"], label: "Revertir y cerrar", body: { status: "closed" }, ask: "closure_notes", when: (r) => !!r.is_temporary },
+      { from: ["approved", "implemented", "verified"], label: "Hacer permanente (nueva revisión)", body: { is_temporary: false }, when: (r) => !!r.is_temporary },
     ],
   },
   work_permits: {
@@ -1334,7 +1337,7 @@ function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; t
   const [asking, setAsking] = useState<Step | null>(null);
   const [text, setText] = useState("");
   const [gas, setGas] = useState<Record<string, string>>({ o2: "", lel: "", co: "", h2s: "" });
-  const options = cfg.steps.filter((x) => x.from.includes(st));
+  const options = cfg.steps.filter((x) => x.from.includes(st) && (!x.when || x.when(row)));
   const [otpSent, setOtpSent] = useState<string | null>(null);
   // M-POL RN-POL-02: gerencia aprueba la política con un código de un solo uso enviado a su correo.
   const askCode = () =>

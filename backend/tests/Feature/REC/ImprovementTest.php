@@ -112,3 +112,32 @@ it('completa la revisión por la dirección indicando los participantes (uno por
         ->assertOk()->assertJsonPath('data.status', 'completed');
     expect($this->getJson("/api/v1/records/RVD/management_reviews/{$id}", $h)->json('data.participants'))->toBe(['Gerente general', 'Jefe SST']);
 });
+
+it('un cambio temporal se revierte con constancia o se vuelve permanente con una revisión nueva (RN-MOC-04)', function () {
+    $h = imp();
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    DB::update("update feature_flags set mode = 'enabled' where company_id = ? and module_code = 'MOC' and deleted_at is null", [HUAYLAS_ID]);
+    app('auth')->forgetGuards();
+    \App\Core\Auth\Permissions::flush();
+    $mk = fn (string $code) => DB::selectOne("insert into change_requests (company_id, code, title, change_type, description, is_temporary, temporary_until, status, impact_level, risk_assessment, implemented_at)
+        values (?, ?, 'Desvío temporal de tránsito', 'process', 'Se desvía el tránsito por obras', true, current_date + 10, 'implemented', 'low', '{\"resumen\": \"Riesgo bajo\"}'::jsonb, now() - interval '1 day') returning id",
+        [HUAYLAS_ID, $code.'-'.random_int(1000, 999999)])->id;
+    $me = DB::connection('platform')->selectOne('select id from users where email = ?', [CORPORATIVO_EMAIL])->id;
+    $revert = $mk('MOC-T1');
+    $perm = $mk('MOC-T2');
+    DB::insert("insert into change_reviews (company_id, change_request_id, reviewer_user_id, review_area, decision, reviewed_at, is_required) values (?, ?, ?, 'sst', 'approve', now() - interval '2 days', true)", [HUAYLAS_ID, $perm, $me]);
+    DB::select("select set_config('app.company_id', '', false)");
+
+    // Revertir: se cierra con la constancia de cómo se revirtió.
+    $this->patchJson("/api/v1/records/MOC/change_requests/{$revert}", ['status' => 'closed'], $h)->assertStatus(422)->assertJsonValidationErrors('closure_notes');
+    $this->patchJson("/api/v1/records/MOC/change_requests/{$revert}", ['status' => 'closed', 'closure_notes' => 'Se restituyó la ruta original el viernes'], $h)->assertOk();
+
+    // Hacerlo permanente: vuelve a revisión y la revisión antigua no basta para aprobarlo.
+    $this->patchJson("/api/v1/records/MOC/change_requests/{$perm}", ['is_temporary' => false], $h)->assertOk()->assertJsonPath('data.status', 'under_review');
+    $this->patchJson("/api/v1/records/MOC/change_requests/{$perm}", ['status' => 'approved'], $h)->assertStatus(422)
+        ->assertJsonPath('errors.status.0', fn ($m) => str_contains($m, 'revisión nueva'));
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    DB::insert("insert into change_reviews (company_id, change_request_id, reviewer_user_id, review_area, decision, reviewed_at, is_required) values (?, ?, ?, 'sst', 'approve', now(), true)", [HUAYLAS_ID, $perm, $me]);
+    DB::select("select set_config('app.company_id', '', false)");
+    $this->patchJson("/api/v1/records/MOC/change_requests/{$perm}", ['status' => 'approved'], $h)->assertOk();
+});
