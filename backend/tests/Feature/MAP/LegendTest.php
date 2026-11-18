@@ -28,6 +28,7 @@ it('devuelve la leyenda con la ubicación y el IPERC vinculado de cada pictogram
     \Illuminate\Support\Facades\DB::update("update iperc_versions set status = 'current', approved_at = now() where id = ?", [$version]);
     \Illuminate\Support\Facades\DB::update('update iperc_matrices set current_version_id = ? where id = ?', [$version, $matrix]);
 
+    \Illuminate\Support\Facades\DB::insert("insert into iperc_controls (company_id, iperc_row_id, hierarchy, description, status) values (?, ?, 'engineering', 'Guarda fija en la prensa', 'existing')", [HUAYLAS_ID, $row]);
     $this->postJson('/api/v1/records/MAP/risk_map_markers', ['risk_map_id' => $map, 'marker_type' => 'hazard', 'x_pct' => 20, 'y_pct' => 30, 'label' => 'Riesgo mecánico',
         'iperc_row_id' => $row], $h)->assertCreated();
     $this->postJson('/api/v1/records/MAP/risk_map_markers', ['risk_map_id' => $map, 'marker_type' => 'fire', 'x_pct' => 70, 'y_pct' => 70, 'label' => 'Extintor'], $h)->assertCreated();
@@ -39,7 +40,9 @@ it('devuelve la leyenda con la ubicación y el IPERC vinculado de cada pictogram
         ->and($hz['iperc']['matrix_code'])->toBe('MAP-IPC')
         ->and($hz['iperc']['row_number'])->toBe(1)
         ->and($hz['iperc']['hazard'])->toBe('Partes móviles')
-        ->and($hz['iperc']['stale'])->toBeFalse();
+        ->and($hz['iperc']['stale'])->toBeFalse()
+        // SCR-MAP-04: al tocar el marcador se ven también los controles.
+        ->and($hz['iperc']['controls'][0])->toMatchArray(['hierarchy' => 'engineering', 'label' => 'Control de ingeniería', 'description' => 'Guarda fija en la prensa']);
     expect(collect($d['markers'])->firstWhere('marker_type', 'fire')['iperc'])->toBeNull();
 
     $this->getJson('/api/v1/map/maps/00000000-0000-7000-8000-000000000000/legend', $h)->assertNotFound();

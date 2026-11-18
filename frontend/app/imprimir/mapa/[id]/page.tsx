@@ -100,6 +100,7 @@ export default function AficheMapa() {
                 <li key={m.id}>
                   <b>{i + 1}.</b> {m.label || MARKER_TYPES[m.marker_type]}
                   {m.iperc && <span className="text-gray-600"> · {m.iperc.level ?? ""} (IPERC {m.iperc.matrix_code})</span>}
+                  {m.iperc && m.iperc.controls.length > 0 && <span className="block text-[10px] text-gray-600">Controles: {m.iperc.controls.map((c) => c.description).join("; ")}</span>}
                 </li>
               ))}
             </ol>

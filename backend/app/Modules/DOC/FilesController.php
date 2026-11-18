@@ -160,6 +160,8 @@ class FilesController extends Controller
             return true;
         }
 
-        return (bool) DB::selectOne('select 1 as ok where exists (select 1 from document_versions where file_id = ?) or exists (select 1 from risst_versions where file_id = ?)', [$f->id, $f->id]);
+        // El plano del mapa de riesgos vigente lo ve el trabajador (M-MAP: consulta el mapa de su sede).
+        return (bool) DB::selectOne("select 1 as ok where exists (select 1 from document_versions where file_id = ?) or exists (select 1 from risst_versions where file_id = ?)
+                                       or exists (select 1 from risk_maps where plan_file_id = ? and status in ('approved', 'current') and deleted_at is null)", [$f->id, $f->id, $f->id]);
     }
 }

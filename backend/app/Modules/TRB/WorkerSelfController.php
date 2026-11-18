@@ -44,7 +44,7 @@ class WorkerSelfController extends Controller
         $ctx = app(CompanyContext::class);
         $today = WorkerSelf::today();
         $mods = [];
-        foreach (['FOT', 'FIR', 'DOC', 'RIS', 'CAP', 'AUL', 'EPP', 'EMO', 'ACT', 'COM', 'PSI', 'OFF', 'IPC', 'ACR'] as $c) {
+        foreach (['FOT', 'FIR', 'DOC', 'RIS', 'CAP', 'AUL', 'EPP', 'EMO', 'ACT', 'COM', 'PSI', 'OFF', 'IPC', 'ACR', 'MAP'] as $c) {
             $mods[$c] = WorkerSelf::usable($c);
         }
         $cred = $mods['FOT'] ? DB::selectOne("select status, expires_on from credentials where worker_id = ? and deleted_at is null and status <> 'revoked' order by issued_at desc nulls last limit 1", [$w->id]) : null;
@@ -261,6 +261,25 @@ class WorkerSelfController extends Controller
         }
 
         return response()->json(['data' => ['position' => $w->position, 'matrices' => $out]]);
+    }
+
+    /**
+     * GET /me/worker/maps — mapas de riesgos vigentes de mi sede (M-MAP: el trabajador consulta el mapa de su sede; SCR-MAP-04:
+     * al tocar un marcador ve el riesgo, su nivel y los controles).
+     */
+    public function maps(): JsonResponse
+    {
+        $w = WorkerSelf::row();
+        $this->module('MAP');
+        $site = DB::selectOne('select current_site_id from workers where id = ?', [$w->id])?->current_site_id;
+        $out = [];
+        if ($site) {
+            foreach (DB::select("select id from risk_maps where site_id = ? and status in ('approved', 'current') and deleted_at is null order by title, floor_label", [$site]) as $m) {
+                $out[] = app(\App\Modules\MAP\LegendController::class)($m->id)->getData(true)['data'];
+            }
+        }
+
+        return response()->json(['data' => $out]);
     }
 
     /** Versiones vigentes de las matrices con filas de mi puesto (la fila o la matriz indica el puesto), y si ya firmé «Lo conozco». */

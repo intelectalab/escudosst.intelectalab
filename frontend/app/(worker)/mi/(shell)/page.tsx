@@ -33,6 +33,7 @@ export default function WorkerHomePage() {
         <BigCard href="/mi/avisos" icon="bell" title="Mis avisos" tone={s.notices ? "brand" : "ok"}
           line={s.notices ? `Tienes ${s.notices} aviso(s) sin leer` : "No tienes avisos nuevos"} badge={s.notices || null} />
         {m.IPC && <BigCard href="/mi/iperc" icon="shield" title="Mi IPERC" line="Los peligros de tu puesto y cómo cuidarte" />}
+        {m.MAP && <BigCard href="/mi/mapa" icon="map" title="Mapa de riesgos" line="El mapa de tu sede: toca un pictograma para ver el riesgo" />}
         {m.ACT && <BigCard href="/mi/reportar" icon="megaphone" title="Reportar" tone="amber" line="Acto o condición insegura, con foto" />}
         {m.ACR && <BigCard href="/mi/acciones" icon="checklist" title="Mis acciones" line="Las acciones a tu cargo y su evidencia con la cámara" />}
         {(m.CAP || m.AUL) && (

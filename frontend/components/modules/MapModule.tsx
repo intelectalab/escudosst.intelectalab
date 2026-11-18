@@ -158,6 +158,12 @@ function MarkerCard({ m, onClose }: { m: LegendMarker; onClose: () => void }) {
                 <span className="block">{m.iperc.hazard} — {m.iperc.risk}</span>
                 {m.iperc.level && <span className={`mt-1 inline-block rounded-md px-2 py-0.5 text-xs font-semibold ${LEVEL_CLS[m.iperc.color ?? ""] ?? "bg-bg text-muted"}`}>{m.iperc.level}</span>}
                 {m.iperc.stale && <span className="mt-1 block text-xs text-amber-ink">Esta fila ya no está en la versión vigente: revisa el vínculo.</span>}
+                {m.iperc.controls.length > 0 && (
+                  <span className="mt-1.5 block text-xs">
+                    <span className="font-semibold">Controles:</span>
+                    {m.iperc.controls.map((c, i) => <span key={i} className="block">{c.label}: {c.description}</span>)}
+                  </span>
+                )}
               </Link>
             ) : (
               <span className="text-muted">—</span>

@@ -15,6 +15,9 @@ use Illuminate\Support\Str;
  */
 class LegendController extends Controller
 {
+    private const HIERARCHY = ['elimination' => 'Eliminación', 'substitution' => 'Sustitución', 'engineering' => 'Control de ingeniería',
+        'signage' => 'Señalización', 'administrative' => 'Control administrativo', 'ppe' => 'EPP'];
+
     public function __invoke(string $id): JsonResponse
     {
         if (! Str::isUuid($id)) {
@@ -42,10 +45,21 @@ class LegendController extends Controller
               where k.risk_map_id = ? and k.deleted_at is null order by k.y_pct, k.x_pct', [$id]);
 
         $place = implode(' · ', array_filter([$map->site_name, $map->area_name, $map->floor_label]));
+        // SCR-MAP-04: al tocar un marcador se ven riesgo, nivel y controles de la fila IPERC vinculada.
+        $controls = [];
+        $rowIds = array_values(array_unique(array_filter(array_column($markers, 'row_id'))));
+        if ($rowIds) {
+            foreach (DB::select("select iperc_row_id, hierarchy, description from iperc_controls
+                                  where iperc_row_id = any(?::uuid[]) and deleted_at is null and coalesce(status, '') <> 'cancelled'
+                                  order by array_position(array['elimination','substitution','engineering','signage','administrative','ppe'], hierarchy::text), created_at",
+                ['{'.implode(',', $rowIds).'}']) as $c) {
+                $controls[$c->iperc_row_id][] = ['hierarchy' => $c->hierarchy, 'label' => self::HIERARCHY[$c->hierarchy] ?? $c->hierarchy, 'description' => $c->description];
+            }
+        }
 
         return response()->json(['data' => [
             'map' => [...(array) $map, 'place' => $place],
-            'markers' => array_map(function ($k) use ($place) {
+            'markers' => array_map(function ($k) use ($place, $controls) {
                 $band = $k->level_bands ? collect(json_decode($k->level_bands, true) ?: [])->firstWhere('code', $k->level) : null;
 
                 return [
@@ -57,6 +71,7 @@ class LegendController extends Controller
                         'matrix_title' => $k->matrix_title, 'version_number' => (int) $k->version_number, 'version_status' => $k->version_status,
                         // Coherencia (SCR-MAP-03): la fila fue retirada o su versión ya no es la vigente.
                         'stale' => $k->row_deleted !== null || $k->version_status === 'obsolete',
+                        'controls' => $controls[$k->row_id] ?? [],
                     ] : null,
                     'equipment' => $k->equipment_id ? ['id' => $k->equipment_id, 'code' => $k->equipment_code, 'type' => $k->equipment_type, 'location' => $k->location_text] : null,
                 ];

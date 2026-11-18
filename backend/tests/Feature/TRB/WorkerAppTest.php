@@ -317,3 +317,38 @@ it('«Mis accesos»: el trabajador ve quién consultó sus datos sensibles, sin 
     $rows = $this->getJson('/api/v1/me/worker/accesses', authHeaders($s['token'], HUAYLAS_ID))->assertOk()->json('data');
     expect($rows)->toHaveCount(1)->and($rows[0]['what'])->toBe('Examen médico')->and($rows[0]['purpose'])->toBe('Control periódico');
 });
+
+it('el trabajador ve el mapa de riesgos vigente de su sede y su plano, no los de otra sede ni los borradores', function () {
+    $dni = (string) random_int(78000000, 78999999);
+    $w = wappWorker($dni, 'Mapa');
+    [$site, $other] = wappAs(HUAYLAS_ID, fn () => [
+        DB::selectOne("insert into sites (company_id, code, name) values (?, ?, 'Sede del mapa') returning id", [HUAYLAS_ID, 'MAPW-'.random_int(1000, 999999)])->id,
+        DB::selectOne("insert into sites (company_id, code, name) values (?, ?, 'Otra sede') returning id", [HUAYLAS_ID, 'MAPO-'.random_int(1000, 999999)])->id,
+    ]);
+    wappAs(HUAYLAS_ID, fn () => DB::update('update workers set current_site_id = ? where id = ?', [$site, $w]));
+    $s = wappActivate($dni, wappIssue($w)['code'], '591736');
+    $h = authHeaders($s['token'], HUAYLAS_ID);
+    [$current, $file, $draftFile] = wappAs(HUAYLAS_ID, function () use ($site, $other) {
+        $f = fn () => DB::selectOne("insert into files (company_id, bucket, object_key, original_name, mime_type, size_bytes, status) values (?, 'local', ?, 'plano.png', 'image/png', 10, 'available') returning id",
+            [HUAYLAS_ID, 'test/'.bin2hex(random_bytes(6))])->id;
+        $file = $f();
+        $m = fn ($siteId, $status, $fileId) => DB::selectOne("insert into risk_maps (company_id, site_id, title, version_number, status, plan_file_id) values (?, ?, ?, 1, ?, ?) returning id",
+            [HUAYLAS_ID, $siteId, 'Mapa '.$status, $status, $fileId])->id;
+        $cur = $m($site, 'current', $file);
+        $draftFile = $f();
+        $m($site, 'draft', $draftFile);
+        $m($other, 'current', $f());
+
+        return [$cur, $file, $draftFile];
+    });
+    wappAs(HUAYLAS_ID, fn () => DB::update("update feature_flags set mode = 'enabled' where company_id = ? and module_code = 'MAP'", [HUAYLAS_ID]));
+
+    expect($this->getJson('/api/v1/me/worker', $h)->json('data.modules.MAP'))->toBeTrue();
+    $maps = $this->getJson('/api/v1/me/worker/maps', $h)->assertOk()->json('data');
+    expect($maps)->toHaveCount(1)->and($maps[0]['map']['id'])->toBe($current)->and($maps[0]['map']['site_name'])->toBe('Sede del mapa');
+    // El plano del mapa vigente lo puede abrir; el de un borrador, no.
+    \Illuminate\Support\Facades\Storage::fake('local');
+    \Illuminate\Support\Facades\Storage::disk('local')->put(wappAs(HUAYLAS_ID, fn () => DB::selectOne('select object_key from files where id = ?', [$file])->object_key), 'png');
+    $this->get("/api/v1/files/{$file}", $h)->assertOk();
+    $this->get("/api/v1/files/{$draftFile}", $h)->assertForbidden();
+});

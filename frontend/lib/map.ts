@@ -25,6 +25,7 @@ export type LegendMarker = {
     version_number: number;
     version_status: string;
     stale: boolean;
+    controls: { hierarchy: string; label: string; description: string }[];
   } | null;
   equipment: { id: string; code: string; type: string; location: string | null } | null;
 };
