@@ -145,3 +145,26 @@ it('la versión completa del registro de EMO solo la descarga el médico con su 
     expect($z->getFromName('xl/worksheets/sheet1.xml').$z->getFromName('xl/sharedStrings.xml'))->toContain('H83.3');
     expect(DB::selectOne("select count(*) as n from sensitive_access_logs where resource = 'medical_export' and action = 'export'")->n)->toBeGreaterThan(0);
 });
+
+it('un resultado que cumple el criterio del parámetro abre caso en el programa de vigilancia del puesto (M-VMD §7)', function () {
+    $sst = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
+    $w = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => (string) random_int(65000000, 65999999), 'first_name' => 'Iván', 'paternal_last_name' => 'Ruido'], $sst)->json('data.id');
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $pos = DB::selectOne("insert into positions (company_id, code, name) values (?, ?, 'Operador de molino') returning id", [HUAYLAS_ID, 'MOL-'.random_int(1000, 999999)])->id;
+    DB::update('update workers set current_position_id = ? where id = ?', [$pos, $w]);
+    DB::select("select set_config('app.company_id', '', false)");
+    companyParamForTests(HUAYLAS_ID, 'vmd_auto_case_fitness', '["fit_with_restrictions"]', 'json');
+    $order = emoOrder($w);
+
+    $doc = authHeaders(tokenFor(ESENCIAL_EMAIL), HUAYLAS_ID);
+    $m = $doc + ['X-Medical-Reauth' => $this->postJson('/api/v1/emo/reauth', ['password' => DEMO_PASSWORD], $doc)->assertOk()->json('data.reauth_id')];
+    $vm = $doc + ['X-Medical-Reauth' => $this->postJson('/api/v1/vmd/reauth', ['password' => DEMO_PASSWORD], $doc)->assertOk()->json('data.reauth_id')];
+    $p = $this->postJson('/api/v1/vmd/programs', ['code' => 'VMD-AUTO', 'name' => 'Conservación auditiva molino', 'target_risk' => 'noise', 'target_positions' => [$pos], 'status' => 'active'], $vm)
+        ->assertCreated()->json('data.id');
+    $db = DB::connection('medical');
+    $db->update("update surveillance_programs set status = 'active', target_positions = ?::uuid[] where id = ?", ['{'.$pos.'}', $p]);
+
+    $this->putJson("/api/v1/emo/orders/{$order}/clinical", ['exam_on' => now()->toDateString(), 'fitness_result' => 'fit_with_restrictions',
+        'work_restrictions' => 'Sin ruido mayor a 85 dB', 'fitness_valid_until' => now()->addMonths(6)->toDateString()], $m)->assertCreated();
+    expect((int) $db->selectOne("select count(*) as n from surveillance_cases where program_id = ? and worker_id = ? and status = 'open'", [$p, $w])->n)->toBe(1);
+});

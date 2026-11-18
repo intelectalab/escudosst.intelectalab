@@ -177,6 +177,23 @@ class EmoClinicalController extends Controller
             }
             $this->med($reauth, fn ($db) => $db->update('update medical_exams set fitness_status_synced_at = now() where id = ?', [$examId]));
         }
+        // M-VMD §7 paso 2: un resultado que cumple el criterio (aptitudes del parámetro vmd_auto_case_fitness) abre caso en los
+        // programas activos del puesto del trabajador, si no tiene ya uno abierto en ese programa.
+        $auto = json_decode(\App\Core\Support\LegalParams::text('vmd_auto_case_fitness', '[]'), true);
+        if (is_array($auto) && in_array($fitness, $auto, true)
+            && ($pos = DB::selectOne('select current_position_id from workers where id = ?', [$o->worker_id])?->current_position_id)) {
+            $this->med($reauth, function ($db) use ($o, $pos, $d) {
+                foreach ($db->select("select id from surveillance_programs where deleted_at is null and status = 'active' and ?::uuid = any(target_positions)", [$pos]) as $p) {
+                    if ($db->selectOne("select 1 as ok from surveillance_cases where program_id = ? and worker_id = ? and status <> 'closed' and deleted_at is null", [$p->id, $o->worker_id])) {
+                        continue;
+                    }
+                    $case = $db->selectOne("insert into surveillance_cases (company_id, program_id, worker_id, opened_on, reason, status, assigned_doctor_user_id, created_by, updated_by)
+                                             values (?, ?, ?, current_date, ?, 'open', ?, ?, ?) returning id",
+                        [$this->company(), $p->id, $o->worker_id, 'Abierto desde el EMO del '.date('d/m/Y', strtotime($d['exam_on'])), $this->uid(), $this->uid(), $this->uid()])->id;
+                    $this->log($db, 'surveillance_case', $case, $o->worker_id, 'create', null);
+                }
+            });
+        }
 
         return response()->json(['data' => ['id' => $examId, 'fitness_published' => $publish]], $created ? 201 : 200);
     }

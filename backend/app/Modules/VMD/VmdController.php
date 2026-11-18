@@ -230,8 +230,21 @@ class VmdController extends Controller
             return $db->select("select p.name as program, c.worker_id, c.status, c.risk_classification, (c.next_control_on < current_date) as overdue
                                   from surveillance_cases c join surveillance_programs p on p.id = c.program_id where c.deleted_at is null and p.deleted_at is null");
         });
-        $areas = collect(DB::select('select w.id, coalesce(a.name, \'Sin área\') as area from workers w left join areas a on a.id = w.current_area_id where w.id = any(?::uuid[])',
-            ['{'.implode(',', array_unique(array_column($rows, 'worker_id'))).'}']))->pluck('area', 'id');
+        $where = collect(DB::select("select w.id, coalesce(a.name, 'Sin área') as area, coalesce(s.name, 'Sin sede') as site
+                                       from workers w left join areas a on a.id = w.current_area_id left join sites s on s.id = coalesce(a.site_id, w.current_site_id)
+                                      where w.id = any(?::uuid[])", ['{'.implode(',', array_unique(array_column($rows, 'worker_id'))).'}']))->keyBy('id');
+        // Criterio 3: un área con menos de min_group_size casos no se muestra sola; sus casos se suman a nivel de su sede.
+        $perArea = [];
+        foreach ($rows as $r) {
+            $k = ($where[$r->worker_id]->site ?? 'Sin sede').'|'.($where[$r->worker_id]->area ?? 'Sin área');
+            $perArea[$k] = ($perArea[$k] ?? 0) + 1;
+        }
+        $areas = [];
+        foreach ($rows as $r) {
+            $site = $where[$r->worker_id]->site ?? 'Sin sede';
+            $area = $where[$r->worker_id]->area ?? 'Sin área';
+            $areas[$r->worker_id] = $perArea[$site.'|'.$area] >= $min ? $area : "Sede {$site} (áreas con pocos casos)";
+        }
         $group = function (callable $key) use ($rows, $min) {
             $g = [];
             foreach ($rows as $r) {

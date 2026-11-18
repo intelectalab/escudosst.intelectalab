@@ -51,3 +51,32 @@ it('muestra indicadores agregados ocultando grupos pequeños y publica la restri
     $ind = $this->getJson('/api/v1/vmd/indicators', authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID))->assertOk()->json('data');
     expect($ind['total'])->toBeNull()->and($ind['by_program']['groups'])->toBe([])->and($ind['by_program']['hidden'])->toBeGreaterThan(0);
 });
+
+it('las áreas con menos casos que el grupo mínimo se suman a nivel de su sede (criterio 3)', function () {
+    $sst = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
+    $site = $this->postJson('/api/v1/records/TEN/sites', ['code' => 'VMD-'.random_int(1000, 99999), 'name' => 'Planta Vigilancia'], $sst)->json('data.id');
+    $areas = [];
+    foreach (['Molienda', 'Envasado'] as $n) {
+        $areas[] = $this->postJson('/api/v1/records/TEN/areas', ['site_id' => $site, 'code' => 'A'.random_int(1000, 99999), 'name' => $n], $sst)->json('data.id');
+    }
+    $workers = [];
+    foreach ([0, 0, 0, 1, 1] as $i => $a) {
+        $id = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => (string) random_int(64000000, 64999999), 'first_name' => "T{$i}", 'paternal_last_name' => 'Vigilancia'], $sst)->json('data.id');
+        DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+        DB::update('update workers set current_site_id = ?, current_area_id = ? where id = ?', [$site, $areas[$a], $id]);
+        DB::select("select set_config('app.company_id', '', false)");
+        $workers[] = $id;
+    }
+    $doc = authHeaders(tokenFor(ESENCIAL_EMAIL), HUAYLAS_ID);
+    $m = $doc + ['X-Medical-Reauth' => $this->postJson('/api/v1/vmd/reauth', ['password' => DEMO_PASSWORD], $doc)->assertOk()->json('data.reauth_id')];
+    $p = $this->postJson('/api/v1/vmd/programs', ['code' => 'VMD-SITE', 'name' => 'Conservación auditiva planta', 'target_risk' => 'noise'], $m)->assertCreated()->json('data.id');
+    foreach ($workers as $w) {
+        $this->postJson('/api/v1/vmd/cases', ['program_id' => $p, 'worker_id' => $w, 'risk_classification' => 'medium'], $m)->assertCreated();
+    }
+
+    app('auth')->forgetGuards();
+    \App\Core\Auth\Permissions::flush();
+    $ind = $this->getJson('/api/v1/vmd/indicators', authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID))->assertOk()->json('data');
+    $names = collect($ind['by_area']['groups'])->pluck('cases', 'name');
+    expect($names['Sede Planta Vigilancia (áreas con pocos casos)'] ?? null)->toBe(5)->and($names->has('Molienda'))->toBeFalse();
+});
