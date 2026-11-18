@@ -398,6 +398,29 @@ final class AlertDelivery
                     $r->reporter_user_id ? "/m/act?t=substandard_reports&open={$r->id}" : '/inicio', "act.report_closed:{$r->id}:{$to}"]
             );
         }
+        // Quien reportó por QR sin cuenta y dejó su celular: el aviso le llega por WhatsApp con el enlace de seguimiento
+        // (solo muestra el estado, RN-ACT-09). Se envía una vez (feedback_sent_at).
+        if (! $this->wa->ready() || ! $this->wa->template('report')) {
+            return;
+        }
+        $guests = $db->select(
+            "select id, code, reporter_contact from substandard_reports
+              where deleted_at is null and status = 'closed' and closed_at > now() - interval '2 days' and not is_anonymous and feedback_sent_at is null
+                and reporter_user_id is null and reporter_worker_id is null and coalesce(reporter_contact, '') <> ''"
+        );
+        foreach ($guests as $g) {
+            $contact = (string) $g->reporter_contact;
+            $phone = str_contains($contact, '·') ? trim((string) \Illuminate\Support\Str::afterLast($contact, '·')) : $contact;
+            if (! WhatsAppCloud::normalize($phone)) {
+                $db->update('update substandard_reports set feedback_sent_at = now() where id = ?', [$g->id]);   // sin celular válido: no se reintenta
+
+                continue;
+            }
+            $r = $this->wa->sendTemplate($phone, $this->wa->template('report'), [$g->code, \App\Modules\ACT\ReportPointController::trackUrl($company, $g->code)]);
+            if ($r['ok']) {
+                $db->update('update substandard_reports set feedback_sent_at = now() where id = ?', [$g->id]);
+            }
+        }
     }
 
     /** M-NOT §9: el registro ya se resolvió antes del envío (dejó de cumplir la condición de su alerta) → envío cancelado. */

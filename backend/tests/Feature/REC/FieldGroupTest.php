@@ -70,6 +70,12 @@ it('el QR del punto cambia y el anterior deja de servir; limita reportes por hor
     $this->getJson("/api/v1/public/report-status/{$tc}/{$code}/0000000000000000")->assertNotFound();
 
     $id = fgAs(fn () => DB::selectOne('select id from substandard_reports where code = ?', [$code])->id);
+    // RN-ACT-06: clasificado como incidente peligroso, no se cierra sin escalarlo.
+    $this->patchJson("/api/v1/records/ACT/substandard_reports/{$id}", ['status' => 'triaged', 'risk_level' => 'critical', 'classification' => 'Incidente peligroso'], $this->h)->assertOk();
+    $this->patchJson("/api/v1/records/ACT/substandard_reports/{$id}", ['status' => 'closed'], $this->h)->assertStatus(422)
+        ->assertJsonPath('errors.status.0', fn ($m) => str_contains($m, 'escálalo'));
+    // M-ACT §11: el reporte por área, tipo y tiempo de atención.
+    expect($this->get('/api/v1/act/report.xlsx', $this->h)->assertOk()->headers->get('Content-Type'))->toContain('spreadsheetml');
     $ev = $this->postJson("/api/v1/act/reports/{$id}/escalate", ['event_type' => 'dangerous_incident'], $this->h)->assertCreated()->json('data.event_id');
     $rep = fgAs(fn () => DB::selectOne('select status, escalated_event_id from substandard_reports where id = ?', [$id]));
     expect($rep->status)->toBe('escalated')->and($rep->escalated_event_id)->toBe($ev);

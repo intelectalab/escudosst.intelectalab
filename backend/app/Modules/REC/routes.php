@@ -107,6 +107,8 @@ Route::middleware(['auth:sanctum', 'company', 'module:PSI'])->post('psi/reba', \
 // Política SST (M-POL SCR-POL-01): resumen con % de cargos firmados y revisión pendiente; verificación pública del afiche (QR).
 // M-ACC §11: reporte de eventos agrupado (tipo, gravedad, sede, parte del cuerpo y agente).
 Route::middleware(['auth:sanctum', 'company', 'module:ACC'])->get('acc/report.xlsx', \App\Modules\REC\EventReportController::class);
+// M-ACT §11: reportes por área, tipo y canal con su tiempo de atención.
+Route::middleware(['auth:sanctum', 'company', 'module:ACT'])->get('act/report.xlsx', \App\Modules\REC\SubstandardReportController::class);
 Route::middleware(['auth:sanctum', 'company', 'module:POL'])->prefix('pol/policies/{id}')->whereUuid('id')->group(function () {
     Route::post('approval-code', [\App\Modules\REC\PolicyApprovalController::class, 'code'])->middleware('throttle:10,1');
     Route::post('approve', [\App\Modules\REC\PolicyApprovalController::class, 'approve'])->middleware('throttle:20,1');

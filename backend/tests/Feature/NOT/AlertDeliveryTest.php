@@ -186,3 +186,23 @@ it('un aviso por tiempo cuyo registro ya se resolvió no se envía: queda «canc
     expect(array_map(fn ($r) => [$r->channel, $r->status], deliveryRows($other)))->toBe([['email', 'sent']]);
     Mail::assertSent(AlertMail::class, 1);
 });
+
+it('al cerrarse un reporte por QR, quien dejó su celular recibe por WhatsApp el enlace de seguimiento una sola vez', function () {
+    deliveryWaLive(['template_report' => 'reporte_atendido']);
+    Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.QR1']]], 200)]);
+    $rep = app(AccountsService::class)->withCompany(ANDINAS_ID, function ($db) {
+        $site = $db->selectOne('select id from sites where company_id = ? and deleted_at is null limit 1', [ANDINAS_ID])->id;
+        $point = $db->selectOne("insert into report_points (company_id, code, name, site_id, token_hash) values (?, ?, 'Punto QR', ?, decode(md5(random()::text), 'hex')) returning id",
+            [ANDINAS_ID, 'QR-'.random_int(1000, 999999), $site])->id;
+
+        return $db->selectOne("insert into substandard_reports (company_id, code, report_type, origin, report_point_id, description, reporter_contact, status, closed_at)
+             values (?, 'REP-QR-0001', 'unsafe_condition', 'qr', ?, 'Escalera rota', 'Luis · 987 654 321', 'closed', now()) returning id", [ANDINAS_ID, $point])->id;
+    });
+
+    deliveryRun();
+    Http::assertSent(fn (Request $r) => $r['to'] === '51987654321' && $r['template']['name'] === 'reporte_atendido'
+        && $r['template']['components'][0]['parameters'][0]['text'] === 'REP-QR-0001' && str_contains($r['template']['components'][0]['parameters'][1]['text'], '/seguimiento/'));
+    deliveryRun();
+    Http::assertSentCount(1);
+    expect(app(AccountsService::class)->withCompany(ANDINAS_ID, fn ($db) => $db->selectOne('select feedback_sent_at from substandard_reports where id = ?', [$rep])->feedback_sent_at))->not->toBeNull();
+});

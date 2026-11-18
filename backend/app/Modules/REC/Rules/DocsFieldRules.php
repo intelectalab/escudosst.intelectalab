@@ -398,6 +398,13 @@ class DocsFieldRules extends RecordRules
         if ($to === 'rejected' && ! $this->value($values, $current, 'rejection_reason')) {
             $this->fail('rejection_reason', 'Para descartar el reporte indica el motivo.');
         }
+        // RN-ACT-06: un reporte clasificado como incidente peligroso se escala a ACC (donde corren los plazos de notificación);
+        // no se atiende ni se cierra solo con una acción.
+        $class = mb_strtolower(trim((string) $this->value($values, $current, 'classification')));
+        if (in_array($to, ['action_assigned', 'closed'], true) && ! $current->escalated_event_id
+            && ($class === 'dangerous_incident' || str_contains($class, 'incidente peligroso'))) {
+            $this->fail('status', 'Este reporte es un incidente peligroso: escálalo a Accidentes e incidentes para que corran sus plazos de notificación.');
+        }
         if ($to === 'closed') {
             $extra['closed_at'] = ['now()', []];
         }
