@@ -4,6 +4,9 @@
 // pasar a la tabla de parámetros cuando seguridad los defina (RN-USR-06).
 
 return [
+    // docs/10: verificar la contraseña nueva contra listas de contraseñas filtradas (en pruebas se apaga para no salir a internet).
+    'password_breach_check' => (bool) env('PASSWORD_BREACH_CHECK', true),
+
     'auth' => [
         // Intentos fallidos seguidos antes del bloqueo temporal (a confirmar).
         'max_failed_logins' => (int) env('AUTH_MAX_FAILED_LOGINS', 5),

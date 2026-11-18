@@ -14,9 +14,8 @@ import { api, ApiError } from "@/lib/api";
 type Invitation = { full_name: string; email: string; company_name: string };
 
 const RULES: [string, (p: string) => boolean][] = [
-  ["Al menos 10 caracteres", (p) => p.length >= 10],
-  ["Una letra", (p) => /[A-Za-zÁÉÍÓÚáéíóúÑñ]/.test(p)],
-  ["Un número", (p) => /\d/.test(p)],
+  // docs/10: mínimo 12 caracteres, sin reglas de composición forzadas; el servidor la verifica contra contraseñas filtradas.
+  ["Al menos 12 caracteres (puede ser una frase)", (p) => p.length >= 12],
 ];
 
 export default function InvitacionPage() {

@@ -57,6 +57,16 @@ class AuthController extends Controller
             throw $this->invalidCredentials();
         }
 
+        // docs/10: las contraseñas cifradas antes con bcrypt pasan a Argon2id en el primer ingreso correcto.
+        if (Hash::needsRehash($found->password_hash)) {
+            try {
+                \App\Core\Tenancy\DbContext::setUser($found->id);
+                DB::update('update users set password_hash = ? where id = ?', [Hash::make($password), $found->id]);
+            } catch (\Throwable $e) {
+                report($e);   // nunca impide ingresar
+            }
+        }
+
         $mfaEnabled = (bool) $found->mfa_enabled;
 
         // RN-USR-05: con MFA activo, o si el rol lo exige, el token se entrega después del segundo factor.

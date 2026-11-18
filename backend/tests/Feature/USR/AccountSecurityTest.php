@@ -65,6 +65,19 @@ it('cambia el nombre y la contraseña (pide la actual)', function () {
     $this->postJson('/api/v1/me/password', ['current_password' => DEMO_PASSWORD, 'password' => 'NuevaClave2026', 'password_confirmation' => 'NuevaClave2026'], $h)
         ->assertNoContent();
     expect(Hash::check('NuevaClave2026', userRow(ESENCIAL_EMAIL)->password_hash))->toBeTrue();
+    // docs/10: Argon2id; 11 caracteres no alcanzan aunque mezclen letras y números.
+    expect(userRow(ESENCIAL_EMAIL)->password_hash)->toStartWith('$argon2id$');
+    $this->postJson('/api/v1/me/password', ['current_password' => 'NuevaClave2026', 'password' => 'Clave2026ab', 'password_confirmation' => 'Clave2026ab'], $h)
+        ->assertStatus(422)->assertJsonPath('errors.password.0', 'Usa al menos 12 caracteres.');
+});
+
+it('una contraseña guardada con bcrypt sigue sirviendo y pasa a Argon2id al ingresar', function () {
+    $u = userRow(ESENCIAL_EMAIL);
+    expect($u->password_hash)->toStartWith('$2y$');
+    loginAs(ESENCIAL_EMAIL);
+    expect(userRow(ESENCIAL_EMAIL)->password_hash)->toStartWith('$argon2id$');
+    app('auth')->forgetGuards();
+    loginAs(ESENCIAL_EMAIL);   // y sigue ingresando
 });
 
 it('el correo nuevo solo se usa al confirmarlo', function () {

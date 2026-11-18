@@ -25,16 +25,15 @@ class AccountSecurityController extends Controller
         'min' => 'Es muy corto.',
         'in' => 'Elige una opción de la lista.',
         'password.confirmed' => 'Las contraseñas no coinciden.',
-        'password.min' => 'Usa al menos 10 caracteres.',
-        'password.letters' => 'Incluye al menos una letra.',
-        'password.numbers' => 'Incluye al menos un número.',
+        'password.min' => 'Usa al menos 12 caracteres.',
+        'password.uncompromised' => 'Esa contraseña aparece en filtraciones conocidas: elige otra.',
     ];
 
     public function __construct(private AccountSecurityService $svc) {}
 
     private function passwordRule(): array
     {
-        return ['required', 'string', 'confirmed', 'max:128', Password::min(10)->letters()->numbers()];
+        return ['required', 'string', 'confirmed', 'max:128', \App\Modules\USR\Support\PasswordPolicy::rule()];
     }
 
     // ---------------------------------------------------------------- Mi cuenta

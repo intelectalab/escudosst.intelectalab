@@ -34,9 +34,8 @@ export function AuthNotice({ icon, tone, title, children }: { icon: string; tone
 }
 
 export const PASSWORD_RULES: [string, (p: string) => boolean][] = [
-  ["Al menos 10 caracteres", (p) => p.length >= 10],
-  ["Una letra", (p) => /[A-Za-zÁÉÍÓÚáéíóúÑñ]/.test(p)],
-  ["Un número", (p) => /\d/.test(p)],
+  // docs/10: mínimo 12 caracteres, sin reglas de composición forzadas; el servidor la verifica contra contraseñas filtradas.
+  ["Al menos 12 caracteres (puede ser una frase)", (p) => p.length >= 12],
 ];
 
 export function PasswordRules({ value }: { value: string }) {

@@ -26,13 +26,12 @@ class InvitationController extends Controller
     public function accept(Request $request, string $token): JsonResponse
     {
         $data = $request->validate([
-            'password' => ['required', 'string', 'confirmed', 'max:128', Password::min(10)->letters()->numbers()],
+            'password' => ['required', 'string', 'confirmed', 'max:128', \App\Modules\USR\Support\PasswordPolicy::rule()],
         ], [
             'password.required' => 'Escribe una contraseña.',
             'password.confirmed' => 'Las contraseñas no coinciden.',
-            'password.min' => 'Usa al menos 10 caracteres.',
-            'password.letters' => 'Incluye al menos una letra.',
-            'password.numbers' => 'Incluye al menos un número.',
+            'password.min' => 'Usa al menos 12 caracteres.',
+            'password.uncompromised' => 'Esa contraseña aparece en filtraciones conocidas: elige otra.',
         ]);
 
         return response()->json(['data' => ['email' => $this->service->accept($token, $data['password'])]]);
