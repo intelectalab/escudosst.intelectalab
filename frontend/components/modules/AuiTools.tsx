@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "./Summary";
+import { ReportButton } from "./CtrExtras";
 
 type Audit = { id: string; code: string; audit_type: string; standard: string; starts_on: string | null; ends_on: string | null; status: string; lead_auditor_name: string | null; site: string | null; ncs: number };
 type Data = { year: number; audits: Audit[]; preparation: { id: string; title: string; diagnostic_on: string | null; score_pct: number | null; critical_gaps: unknown } | null };
@@ -48,7 +49,10 @@ export function AuiTools({ readOnly, onSaved }: { readOnly: boolean; onSaved: ()
     <div className="space-y-4">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Card title="Programa de auditorías">
-          <input type="number" className="input mb-3 w-28" aria-label="Año" value={year} onChange={(e) => setYear(Number(e.target.value))} />
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <input type="number" className="input w-28" aria-label="Año" value={year} onChange={(e) => setYear(Number(e.target.value))} />
+            <ReportButton path={`/aui/findings.xlsx?year=${year}`} file={`hallazgos-por-clausula-${year}.xlsx`} label="Hallazgos por cláusula en Excel" />
+          </div>
           {d && (
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {MONTHS.map((m, i) => {

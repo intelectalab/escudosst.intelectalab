@@ -130,6 +130,7 @@ Route::middleware(['auth:sanctum', 'company', 'module:PLA'])->prefix('pla')->con
 
 // Auditorías (M-AUI SCR-AUI-01/02, RN-AUI-02/07): calendario y preparación, checklist desde la plantilla y acceso del auditor externo.
 Route::middleware(['auth:sanctum', 'company', 'module:AUI'])->prefix('aui')->controller(\App\Modules\REC\AuditToolsController::class)->group(function () {
+    Route::get('findings.xlsx', 'findingsByClause');
     Route::get('calendar', 'calendar');
     Route::post('audits/{id}/checklist', 'loadChecklist')->whereUuid('id');
     Route::post('audits/{id}/auditor-access', 'auditorAccess')->whereUuid('id')->middleware('throttle:login');

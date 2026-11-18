@@ -31,6 +31,8 @@ it('aplica las reglas de auditoría y prepara el checklist y el acceso del audit
     $f = $this->postJson('/api/v1/records/AUI/audit_findings', ['audit_id' => $id, 'finding_type' => 'observation', 'description' => 'Señalización incompleta'], $this->h)->assertCreated()->json('data.id');
     $this->patchJson("/api/v1/records/AUI/audit_findings/{$f}", ['status' => 'dismissed'], $this->h)->assertStatus(422)->assertJsonValidationErrors('dismiss_reason');
     $this->patchJson("/api/v1/records/AUI/audit_findings/{$f}", ['status' => 'dismissed', 'dismiss_reason' => 'Se corrigió en el acto'], $this->h)->assertOk();
+    // §11: hallazgos por cláusula del año en Excel.
+    expect($this->get('/api/v1/aui/findings.xlsx?year=2031', $this->h)->assertOk()->headers->get('Content-Type'))->toContain('spreadsheetml');
 
     $acc = $this->postJson("/api/v1/aui/audits/{$id}/auditor-access", ['email' => 'auditor'.random_int(1000, 999999).'@ejemplo.test', 'full_name' => 'Auditor Externo'], $this->h)
         ->assertCreated()->json('data');

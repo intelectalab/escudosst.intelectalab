@@ -89,6 +89,33 @@ class AuditToolsController extends Controller
         return response()->json(['data' => ['membership_id' => $membership, 'expires_on' => $expires]], 201);
     }
 
+    /** GET /aui/findings.xlsx?year= — M-AUI §11: hallazgos del año por cláusula y tipo, con cuántos siguen abiertos. */
+    public function findingsByClause(Request $request): \Symfony\Component\HttpFoundation\Response
+    {
+        $this->can('aui.audit_findings.read');
+        $year = (int) $request->query('year', now('America/Lima')->format('Y'));
+        $rows = DB::select(
+            "select coalesce(nullif(trim(f.clause_code), ''), nullif(trim(i.clause_code), ''), 'Sin cláusula') as clause,
+                    count(*) filter (where f.finding_type = 'major_nc') as major, count(*) filter (where f.finding_type = 'minor_nc') as minor,
+                    count(*) filter (where f.finding_type = 'observation') as obs, count(*) filter (where f.finding_type = 'opportunity') as opp,
+                    count(*) filter (where f.status in ('open', 'action_assigned')) as open, count(*) as total
+               from audit_findings f join audits a on a.id = f.audit_id and a.deleted_at is null left join audit_checklist_items i on i.id = f.checklist_item_id
+              where f.deleted_at is null and extract(year from a.starts_on) = ? group by 1 order by 1", [$year]);
+        $out = [['Hallazgos de auditoría por cláusula'], ["Auditorías del {$year}."], [],
+            ['Cláusula', 'No conformidad mayor', 'No conformidad menor', 'Observación', 'Oportunidad de mejora', 'Abiertos', 'Total']];
+        foreach ($rows as $r) {
+            $out[] = [$r->clause, (int) $r->major, (int) $r->minor, (int) $r->obs, (int) $r->opp, (int) $r->open, (int) $r->total];
+        }
+        if ($rows === []) {
+            $out[] = ['Sin hallazgos en el año'];
+        }
+
+        return response(\App\Core\Support\Xlsx::build('Hallazgos', $out, 4), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"hallazgos-por-clausula-{$year}.xlsx\"",
+        ]);
+    }
+
     private function audit(string $id): object
     {
         return (Str::isUuid($id) ? DB::selectOne('select * from audits where id = ? and deleted_at is null', [$id]) : null) ?? throw ApiProblem::notFound('La auditoría no existe.');
