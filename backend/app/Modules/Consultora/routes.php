@@ -14,6 +14,8 @@ Route::middleware(['auth:sanctum', 'company', 'module:CON'])->prefix('con')->gro
     Route::post('white-label/domain/verify', [WhiteLabelController::class, 'verifyDomain'])->middleware('throttle:10,1');
 });
 Route::middleware(['auth:sanctum', 'company'])->get('brand', [WhiteLabelController::class, 'brand']);
+// Dominio propio del consultor: su marca en el login antes de entrar (solo dominios verificados y marca activa).
+Route::middleware('throttle:60,1')->get('public/brand-by-host', [WhiteLabelController::class, 'byHost']);
 
 // Panel multi-cliente e invitaciones (M-CON SCR-CON-01..03). Funciona desde la empresa de la consultora o desde
 // cualquiera de sus empresas cliente: el controlador valida que el usuario sea administrador o consultor de la consultora.

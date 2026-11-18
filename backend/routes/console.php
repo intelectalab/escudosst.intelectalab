@@ -353,3 +353,25 @@ Artisan::command('escudo:audit-archive {--before=}', function (\App\Modules\AUD\
 })->purpose('Archiva cifrada la bitácora que pasó su plazo de retención');
 
 Schedule::command('escudo:audit-archive')->monthlyOn(2, '03:30')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:audit-archive');
+
+/*
+| M-CON RN-CON-05: ¿el dominio propio está verificado? Lo usa ./deploy/escudo.sh domain <dominio> antes de publicarlo.
+| Uso: php artisan escudo:con-domain sst.miconsultora.pe   (sale con error si no está verificado)
+*/
+Artisan::command('escudo:con-domain {domain}', function () {
+    $d = strtolower(trim((string) $this->argument('domain')));
+    $w = DB::connection('platform')->selectOne('select brand_name, domain_verified_at from white_label_settings where custom_domain = ? and deleted_at is null', [$d]);
+    if (! $w) {
+        $this->error("Ninguna consultora registró el dominio {$d}.");
+
+        return 1;
+    }
+    if (! $w->domain_verified_at) {
+        $this->error("El dominio {$d} ({$w->brand_name}) aún no está verificado por DNS.");
+
+        return 1;
+    }
+    $this->info("Verificado: {$d} · {$w->brand_name}");
+
+    return 0;
+})->purpose('Comprueba que el dominio propio de una consultora esté verificado');

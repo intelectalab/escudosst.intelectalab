@@ -25,6 +25,9 @@ x-api: &api-base
   volumes:
     - ./deploy/backend.env:/var/www/backend/.env:ro
     - api_storage:/var/www/backend/storage
+    # Archivos médicos (resultados de EMO, certificados de descanso, copias de registros médicos), cifrados con su propia
+    # llave y en un almacenamiento aparte del resto de archivos (M-EMO): volumen propio, que se respalda por separado.
+    - medical_files:/var/www/backend/storage/app/private/medical
   restart: unless-stopped
   networks: [interna]
   depends_on:
@@ -139,3 +142,4 @@ volumes:
   pg_medical_data:
   redis_data:
   api_storage:
+  medical_files:

@@ -930,6 +930,13 @@ function FileInput({ code, value, initialLabel, disabled, onChange }: { code: st
           <button type="button" className="font-semibold text-brand hover:underline" onClick={() => downloadFile(`/files/${value}`, name || "archivo").catch((e: ApiError) => setError(e.detail ?? e.title))}>
             📎 {name || "Ver archivo"}
           </button>
+          {/* RN-DOC-07: enlace firmado que deja de funcionar a los pocos minutos (signed_url_ttl). */}
+          <button type="button" className="text-xs text-muted hover:text-brand" title="Enlace para abrir el archivo sin iniciar sesión; deja de funcionar a los pocos minutos"
+            onClick={() => api<{ data: { url: string; minutes: number } }>(`/files/${value}/link`, { method: "POST", withCompany: true })
+              .then((r) => navigator.clipboard.writeText(r.data.url).then(() => setError(`Enlace copiado: funciona durante ${r.data.minutes} minutos.`)))
+              .catch((e: ApiError) => setError(e.detail ?? e.title))}>
+            Copiar enlace temporal
+          </button>
           {!disabled && (
             <button type="button" className="text-xs text-muted hover:text-bad" onClick={() => { onChange(null); setName(""); }}>
               Quitar

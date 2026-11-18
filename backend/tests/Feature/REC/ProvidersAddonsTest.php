@@ -213,6 +213,12 @@ it('dominio propio: se guarda sin verificar, da el registro TXT y solo se verifi
         expect($r['txt_name'])->toBe('_escudosst.sst.consultora-prueba.invalid')->and($r['txt_value'])->toStartWith('escudosst-verify=')->and($r['verified_at'])->toBeNull();
         $this->postJson('/api/v1/con/white-label/domain/verify', [], $h)->assertStatus(409);
         expect($db->selectOne('select domain_verified_at from white_label_settings where account_id = ?', [$account])->domain_verified_at)->toBeNull();
+        // Sin verificar: el login de ese dominio no muestra la marca y el despliegue no lo publica.
+        $this->getJson('/api/v1/public/brand-by-host?host=sst.consultora-prueba.invalid')->assertOk()->assertJsonPath('data', null);
+        $this->artisan('escudo:con-domain', ['domain' => 'sst.consultora-prueba.invalid'])->assertExitCode(1);
+        $db->update("update white_label_settings set domain_verified_at = now(), status = 'active' where account_id = ?", [$account]);
+        $this->getJson('/api/v1/public/brand-by-host?host=sst.consultora-prueba.invalid')->assertOk()->assertJsonPath('data.brand_name', 'Consultora RF');
+        $this->artisan('escudo:con-domain', ['domain' => 'sst.consultora-prueba.invalid'])->assertExitCode(0);
     } finally {
         $db->rollBack();
     }

@@ -114,6 +114,18 @@ class WhiteLabelController extends Controller
         return response()->json(['data' => $this->dnsInstructions($w->custom_domain, now()->toIso8601String())]);
     }
 
+    /** GET /public/brand-by-host?host= — marca de la consultora para su dominio propio verificado (login antes de entrar). */
+    public function byHost(Request $request): JsonResponse
+    {
+        $host = strtolower(trim((string) $request->query('host')));
+        if ($host === '' || ! preg_match('/^[a-z0-9.\-]{4,120}$/', $host)) {
+            return response()->json(['data' => null]);
+        }
+        $w = $this->db()->selectOne("select * from white_label_settings where custom_domain = ? and domain_verified_at is not null and status = 'active' and deleted_at is null", [$host]);
+
+        return response()->json(['data' => $w ? $this->present($w) : null]);
+    }
+
     public static function txtToken(string $domain): string
     {
         return 'escudosst-verify='.substr(hash_hmac('sha256', 'con-domain|'.$domain, (string) config('app.key')), 0, 32);

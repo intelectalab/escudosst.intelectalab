@@ -90,6 +90,56 @@ class FilesController extends Controller
         if (app(CompanyContext::class)->roleCode === 'worker' && ! $this->workerMayRead($f)) {
             throw ApiProblem::forbidden('Este archivo no es tuyo.');
         }
+        return self::stream($f);
+    }
+
+    /**
+     * RN-DOC-07: enlace de descarga firmado y de corta duración (signed_url_ttl minutos), para abrir o compartir el archivo
+     * sin la sesión (p. ej. en otra pestaña o en el celular). Pasado el tiempo deja de funcionar. Los archivos médicos no
+     * tienen enlace: se abren con la reautenticación médica.
+     */
+    public function link(string $id): \Illuminate\Http\JsonResponse
+    {
+        $f = Str::isUuid($id) ? DB::selectOne("select * from files where id = ? and deleted_at is null and status = 'available'", [$id]) : null;
+        if (! $f) {
+            throw ApiProblem::notFound('El archivo no existe o es de otra empresa.');
+        }
+        if ($f->is_medical) {
+            throw ApiProblem::forbidden('Los archivos de salud no tienen enlace de descarga: se abren con la clave adicional.');
+        }
+        if (app(CompanyContext::class)->roleCode === 'worker' && ! $this->workerMayRead($f)) {
+            throw ApiProblem::forbidden('Este archivo no es tuyo.');
+        }
+        $minutes = max(1, (int) \App\Core\Support\LegalParams::number('signed_url_ttl', 10));
+        $expires = now()->addMinutes($minutes);
+        $url = \Illuminate\Support\Facades\URL::temporarySignedRoute('public.files.signed', $expires, ['company' => $f->company_id, 'id' => $f->id]);
+        $ctx = app(CompanyContext::class);
+        DB::insert("insert into audit_logs (company_id, actor_user_id, actor_role, actor_type, action, module_code, entity_type, entity_id, changes) values (?, ?, ?, 'user', 'export', 'DOC', 'files', ?, ?::jsonb)",
+            [$ctx->companyId, (string) auth()->id(), $ctx->roleCode, $f->id, json_encode(['signed_link_minutes' => $minutes])]);
+
+        return response()->json(['data' => ['url' => $url, 'expires_at' => $expires->toIso8601String(), 'minutes' => $minutes]]);
+    }
+
+    /** GET /public/files/{company}/{id}?expires=&signature= — descarga con el enlace firmado (sin sesión). */
+    public function signed(string $company, string $id): StreamedResponse
+    {
+        if (! Str::isUuid($company) || ! Str::isUuid($id)) {
+            throw ApiProblem::notFound('El archivo no existe.');
+        }
+
+        return DB::transaction(function () use ($company, $id) {
+            \App\Core\Tenancy\DbContext::setCompany($company);
+            $f = DB::selectOne("select * from files where id = ? and deleted_at is null and status = 'available' and not is_medical", [$id]);
+            if (! $f) {
+                throw ApiProblem::notFound('El archivo ya no está disponible.');
+            }
+
+            return self::stream($f);
+        });
+    }
+
+    private static function stream(object $f): StreamedResponse
+    {
         $name = str_replace('"', '', (string) ($f->original_name ?: 'archivo'));
 
         return Storage::disk($f->bucket)->response($f->object_key, $name, [

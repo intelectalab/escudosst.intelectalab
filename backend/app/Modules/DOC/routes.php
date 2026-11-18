@@ -9,7 +9,11 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'company'])->group(function () {
     Route::post('files', [FilesController::class, 'store'])->middleware('throttle:60,1');
     Route::get('files/{id}', [FilesController::class, 'show'])->whereUuid('id');
+    Route::post('files/{id}/link', [FilesController::class, 'link'])->whereUuid('id')->middleware('throttle:30,1');
 });
+// RN-DOC-07: descarga con enlace firmado de corta duración (signed_url_ttl), sin sesión.
+Route::middleware(['signed', 'throttle:60,1'])->get('public/files/{company}/{id}', [FilesController::class, 'signed'])
+    ->whereUuid(['company', 'id'])->name('public.files.signed');
 
 // Bandeja de aprobación (SCR-DOC-04), ficha con cargos y campaña de cargos (SCR-DOC-02/05).
 Route::middleware(['auth:sanctum', 'company', 'module:DOC'])->prefix('doc')->group(function () {
