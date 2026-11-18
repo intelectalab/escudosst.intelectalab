@@ -48,7 +48,7 @@ it('muestra al consultor sus empresas cliente con indicadores y agenda', functio
         ->and($r->json('data.kpis.companies'))->toBe(1)
         ->and($r->json('data.companies.0.company_id'))->toBe(ANDINAS_ID)
         ->and($r->json('data.companies.0.ruc'))->toBe('20518472632')
-        ->and($r->json('data.companies.0'))->toHaveKeys(['workers', 'plan', 'sst_model', 'compliance', 'alerts'])
+        ->and($r->json('data.companies.0'))->toHaveKeys(['workers', 'plan', 'sst_model', 'compliance', 'alerts', 'passt', 'overdue_actions', 'upcoming', 'aul', 'vta'])
         ->and($r->json('data.kpis'))->toHaveKeys(['workers', 'compliance', 'alerts'])
         ->and($r->json('data'))->toHaveKeys(['agenda', 'critical', 'consultants']);
     // Desde Huaylas (no gestionada por la consultora) el panel no se abre.

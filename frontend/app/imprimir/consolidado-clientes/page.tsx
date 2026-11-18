@@ -10,7 +10,7 @@ import { cell, fmtD } from "@/components/modules/FieldReports";
 type Panel = {
   consultancy: { name: string };
   kpis: { companies: number; workers: number; compliance: number | null; alerts: number };
-  companies: { company_id: string; name: string; ruc: string; workers: number; compliance: number | null; alerts: number; critical: number; plan: { name: string } | null }[];
+  companies: { company_id: string; name: string; ruc: string; workers: number; compliance: number | null; alerts: number; critical: number; plan: { name: string } | null; passt: number | null; overdue_actions: number | null }[];
   critical: { company: string; count: number; text: string }[];
   agenda: { company: string; kind: string; text: string; date: string }[];
 };
@@ -50,10 +50,10 @@ export default function ImprimirConsolidado() {
         <section className="space-y-2">
           <h2 className="border-b border-gray-400 pb-1 text-sm font-bold uppercase">2. Cumplimiento por empresa</h2>
           <table className="w-full border-collapse text-[11px]">
-            <thead><tr className="bg-gray-100"><th className={cell}>Empresa</th><th className={cell}>RUC</th><th className={cell}>Trabajadores</th><th className={cell}>Cumplimiento</th><th className={cell}>Alertas</th><th className={cell}>Críticas</th></tr></thead>
+            <thead><tr className="bg-gray-100"><th className={cell}>Empresa</th><th className={cell}>RUC</th><th className={cell}>Trabajadores</th><th className={cell}>Cumplimiento</th><th className={cell}>PASST</th><th className={cell}>Acciones vencidas</th><th className={cell}>Alertas</th><th className={cell}>Críticas</th></tr></thead>
             <tbody>{d.companies.map((c) => (
               <tr key={c.company_id}><td className={cell}>{c.name}</td><td className={cell}>{c.ruc}</td><td className={cell}>{c.workers}</td>
-                <td className={cell}>{c.compliance ?? "—"}</td><td className={cell}>{c.alerts}</td><td className={cell}>{c.critical}</td></tr>
+                <td className={cell}>{c.compliance ?? "—"}</td><td className={cell}>{c.passt == null ? "—" : `${c.passt}%`}</td><td className={cell}>{c.overdue_actions ?? "—"}</td><td className={cell}>{c.alerts}</td><td className={cell}>{c.critical}</td></tr>
             ))}</tbody>
           </table>
         </section>

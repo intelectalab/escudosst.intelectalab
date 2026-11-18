@@ -14,7 +14,8 @@ use Throwable;
 /**
  * Panel de la consultora (M-CON SCR-CON-01/02, docs/07 §5.1):
  *  GET /con/panel   empresas cliente con asignación vigente: trabajadores, plan, figura SST, cumplimiento (autodiagnóstico
- *                   SUNAFIL), alertas para actuar; agenda de los próximos 30 días y alertas críticas por empresa.
+ *                   SUNAFIL), % PASST, acciones vencidas, próximos vencimientos, estado del aula y la venta de cursos,
+ *                   alertas para actuar; agenda de los próximos 30 días y alertas críticas por empresa.
  *
  * Cada empresa se calcula con su propio contexto RLS (nunca se mezclan datos) y solo agrega indicadores, sin datos
  * personales (RN-CON-07). Un consultor solo ve las empresas con asignación vigente (RN-CON-01).
@@ -50,7 +51,14 @@ class PanelController extends Controller
                 }
                 $consultantIds = [...$consultantIds, ...$assignedIds];
                 $svc = new KpiService;
-                $svc->overview($year, null);   // fija el periodo que usan las alertas
+                $kpis = array_column($svc->overview($year, null), null, 'code');   // también fija el periodo que usan las alertas
+                $kpi = fn (string $code) => ($kpis[$code]['locked'] ?? true) ? null : ($kpis[$code]['value'] ?? null);
+                // RN-CON-09: el aula y la venta de cursos las activa cada empresa; aquí solo se muestra su estado.
+                $flags = [];
+                foreach (DB::select("select module_code, mode from feature_flags where module_code in ('AUL', 'VTA') and deleted_at is null") as $f) {
+                    $flags[$f->module_code] = in_array($f->mode, ['enabled', 'read_only'], true);
+                }
+                $companyAgenda = $this->agenda($today, $until);
                 $alerts = $svc->alerts();
                 $score = null;
                 try {
@@ -68,6 +76,11 @@ class PanelController extends Controller
                     'plan' => $plan ? ['code' => $plan->code, 'name' => $plan->name, 'status' => $plan->status] : null,
                     'sst_model' => $m->sst_model,
                     'compliance' => $score === null ? null : (int) $score,
+                    'passt' => $kpi('passt_progress') === null ? null : (int) round((float) $kpi('passt_progress')),
+                    'overdue_actions' => $kpi('corrective_actions_overdue') === null ? null : (int) $kpi('corrective_actions_overdue'),
+                    'upcoming' => count($companyAgenda),
+                    'aul' => $flags['AUL'] ?? false,
+                    'vta' => $flags['VTA'] ?? false,
                     'alerts' => array_sum(array_column($alerts, 'count')),
                     'critical' => array_sum(array_column(array_filter($alerts, fn ($a) => $a['tone'] === 'bad'), 'count')),
                     'consultants' => $assignedIds,
@@ -75,7 +88,7 @@ class PanelController extends Controller
                 foreach ($alerts as $a) {
                     $critical[] = ['company_id' => $m->company_id, 'company' => $name, 'tone' => $a['tone'], 'count' => $a['count'], 'text' => $a['text'], 'module' => $a['module']];
                 }
-                foreach ($this->agenda($today, $until) as $e) {
+                foreach ($companyAgenda as $e) {
                     $agenda[] = ['company_id' => $m->company_id, 'company' => $name] + $e;
                 }
             }

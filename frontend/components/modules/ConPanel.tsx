@@ -19,6 +19,7 @@ import { ConsultantMatrix } from "./ConMatrix";
 type Company = {
   company_id: string; name: string; ruc: string; role: string; is_active: boolean; sector: string | null; workers: number;
   plan: { code: string; name: string; status: string } | null; sst_model: string | null; compliance: number | null; alerts: number; critical: number; consultants: string[];
+  passt: number | null; overdue_actions: number | null; upcoming: number; aul: boolean; vta: boolean;
 };
 type Panel = {
   consultancy: { name: string; is_admin: boolean; home_company_id: string | null };
@@ -134,7 +135,7 @@ export function ConsultancyPanel({ readOnly = false }: { readOnly?: boolean }) {
             <div className="-mx-4 overflow-x-auto">
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="border-y border-line bg-bg text-xs font-semibold text-muted">
-                  <tr>{["Empresa", "Sector", "Trabajadores", "Plan", "Figura SST", "Cumplimiento", "Alertas"].map((h) => <th key={h} className="whitespace-nowrap px-4 py-2.5">{h}</th>)}</tr>
+                  <tr>{["Empresa", "Sector", "Trabajadores", "Plan", "Figura SST", "Cumplimiento", "PASST", "Acciones vencidas", "Próximos 30 días", "Aula / Venta", "Alertas"].map((h) => <th key={h} className="whitespace-nowrap px-4 py-2.5">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {rows.map((c) => (
@@ -154,10 +155,14 @@ export function ConsultancyPanel({ readOnly = false }: { readOnly?: boolean }) {
                           <div className="min-w-[120px]"><p className="text-right text-xs font-bold">{c.compliance}%</p><Bar pct={c.compliance} /></div>
                         )}
                       </td>
+                      <td className="px-4 py-3 tabular-nums">{c.passt == null ? <span className="text-muted">—</span> : `${c.passt}%`}</td>
+                      <td className="px-4 py-3 tabular-nums">{c.overdue_actions == null ? <span className="text-muted">—</span> : <span className={c.overdue_actions > 0 ? "font-semibold text-bad" : ""}>{c.overdue_actions}</span>}</td>
+                      <td className="px-4 py-3 tabular-nums">{c.upcoming}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs">{c.aul ? "Aula activa" : "Sin aula"} · {c.vta ? "Venta activa" : "Sin venta"}</td>
                       <td className="px-4 py-3"><Chip tone={c.critical > 0 ? "bad" : c.alerts > 0 ? "warn" : "ok"}>{c.alerts} {c.alerts === 1 ? "alerta" : "alertas"}</Chip></td>
                     </tr>
                   ))}
-                  {rows.length === 0 && <tr><td colSpan={7} className="px-4 py-6 text-center text-muted">Ninguna empresa con esos filtros.</td></tr>}
+                  {rows.length === 0 && <tr><td colSpan={11} className="px-4 py-6 text-center text-muted">Ninguna empresa con esos filtros.</td></tr>}
                 </tbody>
               </table>
             </div>
