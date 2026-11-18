@@ -101,6 +101,28 @@ it('el simulacro evaluado vinculado al PASST registra su ejecución sola', funct
     expect(collect($tr['parents'])->pluck('table')->all())->toContain('program_activities');
 });
 
+it('un simulacro evaluado «por mejorar» abre su acción correctiva una sola vez (RN-SIM-06); uno satisfactorio, no', function () {
+    $h = df();
+    $site = $this->postJson('/api/v1/records/TEN/sites', ['code' => 'SIM-A', 'name' => 'Sede simulacro A'], $h)->json('data.id');
+    $report = $this->post('/api/v1/files', ['file' => \Illuminate\Http\UploadedFile::fake()->create('informe.pdf', 20, 'application/pdf'), 'module' => 'SIM'], $h + ['Accept' => 'application/json'])->json('data.id');
+    $run = function (string $result) use ($h, $site, $report) {
+        $d = $this->postJson('/api/v1/records/SIM/drills', ['title' => "Simulacro {$result}", 'drill_type' => 'fire', 'site_id' => $site, 'scheduled_at' => now()->toIso8601String()],
+            $h)->assertCreated()->json('data.id');
+        $this->patchJson("/api/v1/records/SIM/drills/{$d}", ['status' => 'executed'], $h)->assertOk();
+        DB::select("select set_config('app.company_id', ?, false)", [ANDINAS_ID]);
+        DB::update("update drills set evaluation = '{\"observaciones\": \"La ruta de evacuación estaba bloqueada\"}'::jsonb where id = ?", [$d]);
+        $this->patchJson("/api/v1/records/SIM/drills/{$d}", ['status' => 'evaluated', 'result' => $result, 'report_file_id' => $report], $h)->assertOk();
+
+        return $d;
+    };
+    $bad = $run('needs_improvement');
+    $ok = $run('satisfactory');
+    DB::select("select set_config('app.company_id', ?, false)", [ANDINAS_ID]);
+    $acts = DB::select("select title, description, priority, site_id from corrective_actions where source_type = 'drill' and source_id = ? and deleted_at is null", [$bad]);
+    expect($acts)->toHaveCount(1)->and($acts[0]->site_id)->toBe($site)->and($acts[0]->description)->toContain('La ruta de evacuación estaba bloqueada');
+    expect(DB::selectOne("select count(*) as n from corrective_actions where source_type = 'drill' and source_id = ?", [$ok])->n)->toBe(0);
+});
+
 it('la revisión de un equipo de emergencia actualiza su estado y próximo mantenimiento', function () {
     $h = df();
     $site = $this->postJson('/api/v1/records/TEN/sites', ['code' => 'EQE-S', 'name' => 'Sede equipos'], $h)->json('data.id');

@@ -188,6 +188,22 @@ class DocsFieldRules extends RecordRules
         }
         if ($t === 'drills' && ($values['status'] ?? null) === 'evaluated') {
             $this->programExecution('drills', $id, 'SIM');
+            // RN-SIM-06: un simulacro con observaciones (por mejorar o no satisfactorio) abre su acción correctiva.
+            $d = DB::selectOne('select company_id, title, result, evaluation, site_id from drills where id = ?', [$id]);
+            if (in_array($d->result, ['needs_improvement', 'unsatisfactory'], true)
+                && ! DB::selectOne("select 1 as ok from corrective_actions where source_type = 'drill' and source_id = ? and deleted_at is null", [$id])) {
+                $notes = [];
+                $ev = json_decode((string) $d->evaluation, true);
+                $ev = is_array($ev) ? $ev : [];
+                array_walk_recursive($ev, function ($v) use (&$notes) {
+                    if (is_string($v) && trim($v) !== '') {
+                        $notes[] = trim($v);
+                    }
+                });
+                $desc = 'Resultado del simulacro: '.($d->result === 'unsatisfactory' ? 'no satisfactorio' : 'por mejorar').'.'.($notes ? ' Observaciones: '.implode('; ', $notes) : '');
+                \App\Modules\ACR\AutoAction::create($d->company_id, 'drill', $id, mb_substr('Corregir lo observado en el simulacro: '.$d->title, 0, 300),
+                    mb_substr($desc, 0, 2000), null, null, $d->result === 'unsatisfactory' ? 'high' : 'medium', $d->site_id);
+            }
         }
     }
 
