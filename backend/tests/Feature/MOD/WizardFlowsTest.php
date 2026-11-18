@@ -75,3 +75,22 @@ it('asistente de expediente SUNAFIL: crea con orden, inspector y obligaciones y 
     expect($b->json('data.total'))->toBeGreaterThan(0);
     expect($this->getJson("/api/v1/records/SUN/inspection_dossiers/{$d}", $h)->json('data.inspection_order_number'))->toBe('123-2026');
 });
+
+it('un nuevo diagnóstico de línea base trae como sugerencia las respuestas del anterior aprobado (LBA §7)', function () {
+    $h = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
+    \Illuminate\Support\Facades\DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $old = \Illuminate\Support\Facades\DB::selectOne("insert into baseline_assessments (company_id, title, assessment_on, status, approved_at) values (?, 'Línea base 2030', '2030-06-01', 'approved', now()) returning id", [HUAYLAS_ID])->id;
+    \Illuminate\Support\Facades\DB::insert("insert into baseline_items (company_id, assessment_id, lineament_code, lineament_name, item_code, question, result, evidence_notes, sort_order)
+        values (?, ?, 'L99', 'Propios', 'EMP-01', '¿Se revisa el plan de emergencia cada año?', 'partial', 'Solo en la sede principal', 1)", [HUAYLAS_ID, $old]);
+    \Illuminate\Support\Facades\DB::select("select set_config('app.company_id', '', false)");
+
+    $new = $this->postJson('/api/v1/records/LBA/baseline_assessments', ['title' => 'Línea base 2031', 'assessment_on' => '2031-06-01'], $h)->assertCreated()->json('data.id');
+    \Illuminate\Support\Facades\DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    \Illuminate\Support\Facades\DB::update('update baseline_assessments set previous_assessment_id = ? where id = ?', [$old, $new]);
+    \Illuminate\Support\Facades\DB::select("select set_config('app.company_id', '', false)");
+    $r = $this->postJson("/api/v1/lba/assessments/{$new}/load", [], $h)->assertOk()->json('data');
+    expect($r['previous_assessment_id'])->toBe($old)->and($r['suggested'])->toBeGreaterThanOrEqual(1);
+    \Illuminate\Support\Facades\DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $item = \Illuminate\Support\Facades\DB::selectOne("select result, evidence_notes from baseline_items where assessment_id = ? and item_code = 'EMP-01' and deleted_at is null", [$new]);
+    expect($item->result)->toBe('pending')->and($item->evidence_notes)->toContain('Parcial')->toContain('Solo en la sede principal');
+});
