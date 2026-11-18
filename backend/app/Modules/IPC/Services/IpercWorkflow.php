@@ -194,6 +194,7 @@ final class IpercWorkflow
         \App\Modules\NOT\FichaEvents::ipercApproved($versionId);
         $this->archivePdf($versionId);
         $actions = $this->openActions($v);
+        $this->ppeRequirements($v);
         $this->audit('approve', $versionId, ['next_review_on' => $next, 'corrective_actions' => $actions]);
 
         return ['next_review_on' => $next, 'corrective_actions' => $actions];
@@ -340,6 +341,24 @@ final class IpercWorkflow
         }
 
         return $cells;
+    }
+
+    /**
+     * RN-IPC-10 / M-EPP flujo §7.1: al aprobar, cada control de EPP de la matriz (o de la fila) con su puesto pasa a los EPP
+     * obligatorios de ese puesto (si aún no estaba). No borra los que ya había: la empresa los ajusta en EPP.
+     */
+    private function ppeRequirements(object $v): void
+    {
+        $user = (string) auth()->id();
+        $company = app(CompanyContext::class)->companyId;
+        foreach (DB::select("select distinct coalesce(r.position_id, m.position_id) as position_id, c.ppe_item_id
+                               from iperc_controls c join iperc_rows r on r.id = c.iperc_row_id join iperc_matrices m on m.id = ?
+                              where r.iperc_version_id = ? and c.deleted_at is null and r.deleted_at is null and c.ppe_item_id is not null
+                                and coalesce(r.position_id, m.position_id) is not null", [$v->iperc_matrix_id, $v->id]) as $p) {
+            DB::insert("insert into ppe_position_requirements (company_id, position_id, ppe_item_id, quantity, is_mandatory, conditions, created_by, updated_by)
+                        values (?, ?, ?, 1, true, 'Del IPERC aprobado', ?, ?) on conflict (company_id, position_id, ppe_item_id) where deleted_at is null do nothing",
+                [$company, $p->position_id, $p->ppe_item_id, $user, $user]);
+        }
     }
 
     private function openActions(object $v): int

@@ -96,6 +96,10 @@ it('aprueba solo otra persona, congela la versión, programa la revisión y abre
     $user = collect($this->getJson('/api/v1/records/IPC/iperc_controls/options/responsible_user_id', ipc())->json('data'))->first()['id'];
     $this->postJson('/api/v1/records/IPC/iperc_controls', ['iperc_row_id' => $row, 'hierarchy' => 'engineering', 'description' => 'Guarda en la amoladora',
         'responsible_user_id' => $user, 'due_on' => '2026-12-15'], ipc())->assertCreated();
+    // Un control de EPP con su ítem: al aprobar, pasa a los EPP obligatorios del puesto (RN-IPC-10).
+    DB::select("select set_config('app.company_id', ?, false)", [ANDINAS_ID]);
+    $ppe = DB::selectOne("insert into ppe_items (company_id, code, name, category) values (?, ?, 'Lentes de seguridad', 'head') returning id", [ANDINAS_ID, 'EPP-IPC-'.random_int(1000, 99999)])->id;
+    DB::insert("insert into iperc_controls (company_id, iperc_row_id, hierarchy, description, ppe_item_id, status) values (?, ?, 'ppe', 'Lentes de seguridad', ?, 'proposed')", [ANDINAS_ID, $row, $ppe]);
     $this->postJson("/api/v1/ipc/versions/{$version}/submit", ['participants' => ['Ana Quispe']], ipc())->assertNoContent();
 
     $this->postJson("/api/v1/ipc/versions/{$version}/approve", ["committee_meeting_id" => heldMeetingForTests(ANDINAS_ID)], ipc())
@@ -110,6 +114,7 @@ it('aprueba solo otra persona, congela la versión, programa la revisión y abre
     $ws = $this->getJson("/api/v1/ipc/matrices/{$matrix}/workspace", ipc())->json('data');
     expect($ws['versions'][0]['status'])->toBe('current')->and($ws['matrix']['current_version_id'])->toBe($version);
     expect(DB::table('corrective_actions')->where('source_type', 'iperc')->where('source_id', $row)->count())->toBe(1);
+    expect(DB::selectOne('select count(*) as n from ppe_position_requirements where position_id = ? and ppe_item_id = ? and deleted_at is null', [$position, $ppe])->n)->toBe(1);
 
     // Congelada: editar la fila no se permite; se abre una nueva versión y la vigente no cambia.
     $this->patchJson("/api/v1/records/IPC/iperc_rows/{$row}", ['task' => 'Otra tarea'], ipc())->assertStatus(409);
@@ -119,7 +124,7 @@ it('aprueba solo otra persona, congela la versión, programa la revisión y abre
     $this->postJson("/api/v1/ipc/matrices/{$matrix}/versions", ['change_reason' => 'Otra'], ipc())->assertStatus(409);
 
     $ws2 = $this->getJson("/api/v1/ipc/matrices/{$matrix}/workspace", ipc())->json('data');
-    expect($ws2['version_id'])->toBe($new)->and($ws2['rows'])->toHaveCount(1)->and($ws2['rows'][0]['controls'])->toHaveCount(1)
+    expect($ws2['version_id'])->toBe($new)->and($ws2['rows'])->toHaveCount(1)->and($ws2['rows'][0]['controls'])->toHaveCount(2)
         ->and(collect($ws2['versions'])->firstWhere('id', $version)['status'])->toBe('current');
 
     // El control de la versión vigente sigue su implementación (estado), aunque la versión esté congelada.
