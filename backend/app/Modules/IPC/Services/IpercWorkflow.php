@@ -128,7 +128,10 @@ final class IpercWorkflow
             [(string) auth()->id(), (string) auth()->id(), $versionId]);
         // M-IPC §10: aviso «enviado a aprobación» a quienes aprueban la matriz.
         $m = DB::selectOne('select m.id, m.code, m.title from iperc_matrices m join iperc_versions v on v.iperc_matrix_id = m.id where v.id = ?', [$versionId]);
-        \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['sst_manager', 'sst_supervisor']), 'ipc.submitted', 'IPC', $m->id, 'IPERC enviado a aprobación',
+        // También a los miembros del comité o al supervisor de SST en funciones (M-IPC §10).
+        $committee = array_column(DB::select("select distinct w.user_id from committee_members cm join committees c on c.id = cm.committee_id join workers w on w.id = cm.worker_id
+                                               where c.status = 'active' and c.deleted_at is null and cm.status = 'active' and cm.deleted_at is null and w.user_id is not null"), 'user_id');
+        \App\Modules\NOT\Notify::users([...\App\Modules\NOT\Notify::roles(['sst_manager', 'sst_supervisor']), ...$committee], 'ipc.submitted', 'IPC', $m->id, 'IPERC enviado a aprobación',
             "La matriz {$m->code} · {$m->title} espera revisión y aprobación.", '/m/ipc?t=iperc_matrices&open='.$m->id, 'normal', 'ipc.submitted:'.$versionId);
         $this->audit('submit', $versionId, ['participants' => count($participants)]);
     }

@@ -104,8 +104,18 @@ class EmoClinicalController extends Controller
         if ($fitness === 'fit_with_restrictions' && empty($d['work_restrictions'])) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Describe las restricciones de trabajo.', ['errors' => ['work_restrictions' => ['Describe las restricciones de trabajo (en términos laborales, sin diagnóstico).']]]);
         }
-        if (in_array($fitness, ['fit', 'fit_with_restrictions'], true) && empty($d['fitness_valid_until'])) {
-            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Indica hasta cuándo es válida la aptitud.', ['errors' => ['fitness_valid_until' => ['Indica hasta cuándo es válida la aptitud.']]]);
+        // RN-EMO-05: la vigencia es la fecha del examen más la periodicidad del protocolo del puesto (emo_periodicity_param del
+        // puesto o emo_periodic_months); el médico puede fijar una menor, nunca una mayor.
+        if (in_array($fitness, ['fit', 'fit_with_restrictions'], true)) {
+            $paramKey = $o->position_id ? (DB::selectOne('select emo_periodicity_param from positions where id = ?', [$o->position_id])?->emo_periodicity_param ?: null) : null;
+            $months = max(1, (int) \App\Core\Support\LegalParams::number($paramKey ?: 'emo_periodic_months', (float) \App\Core\Support\LegalParams::number('emo_periodic_months', 24)));
+            $max = date('Y-m-d', strtotime($d['exam_on'].' +'.$months.' months'));
+            if (empty($d['fitness_valid_until'])) {
+                $d['fitness_valid_until'] = $max;
+            } elseif ($d['fitness_valid_until'] > $max) {
+                throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', "La vigencia no puede pasar de {$months} meses desde el examen (hasta el ".date('d/m/Y', strtotime($max)).').',
+                    ['errors' => ['fitness_valid_until' => ["Como máximo hasta el ".date('d/m/Y', strtotime($max)).'.']]]);
+            }
         }
         $reauth = $this->reauthId($request);
 

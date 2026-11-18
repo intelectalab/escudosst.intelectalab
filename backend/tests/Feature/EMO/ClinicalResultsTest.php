@@ -57,7 +57,8 @@ it('registra el resultado clínico con re-autenticación, publica solo la aptitu
     $this->putJson("/api/v1/emo/orders/{$order}/clinical", ['diagnoses' => [['code' => 'XX']]] + $body, $m)->assertStatus(422);
     $this->putJson("/api/v1/emo/orders/{$order}/clinical", $body, $m)->assertStatus(422)->assertJsonValidationErrors('work_restrictions');
     $body += ['work_restrictions' => 'No trabajar en zonas con ruido > 85 dB sin protección doble'];
-    $this->putJson("/api/v1/emo/orders/{$order}/clinical", $body, $m)->assertStatus(422)->assertJsonValidationErrors('fitness_valid_until');
+    // RN-EMO-05: la vigencia no puede pasar la periodicidad del protocolo (el médico puede fijar una menor).
+    $this->putJson("/api/v1/emo/orders/{$order}/clinical", $body + ['fitness_valid_until' => now()->addYears(10)->toDateString()], $m)->assertStatus(422)->assertJsonValidationErrors('fitness_valid_until');
     $body['fitness_valid_until'] = now()->addYear()->toDateString();
     $exam = $this->putJson("/api/v1/emo/orders/{$order}/clinical", $body, $m)->assertCreated()->assertJsonPath('data.fitness_published', true)->json('data.id');
 

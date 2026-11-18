@@ -114,3 +114,20 @@ it('el diagnóstico y el certificado solo los ve el personal de salud, en la bas
     $this->getJson("/api/v1/des/absences/{$leave}/medical", $hr + ['X-Medical-Reauth' => $r])->assertStatus(403);
     $this->get("/api/v1/des/absences/{$leave}/certificate", $hr + ['X-Medical-Reauth' => $r])->assertStatus(403);
 });
+
+it('suma los días del descanso ligado a un accidente a los días perdidos del evento', function () {
+    $sst = desAs(CORPORATIVO_EMAIL);
+    $site = $this->postJson('/api/v1/records/TEN/sites', ['code' => 'DES-E', 'name' => 'Planta Evento'], $sst)->assertCreated()->json('data.id');
+    $w = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => '66556677', 'first_name' => 'Julia', 'paternal_last_name' => 'Evento'], $sst)->assertCreated()->json('data.id');
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $ev = DB::selectOne("insert into sst_events (company_id, code, event_type, occurred_at, site_id, description) values (?, ?, 'disabling_accident', now() - interval '3 days', ?, 'Caída en escalera') returning id",
+        [HUAYLAS_ID, 'ACC-DES-'.random_int(1000, 99999), $site])->id;
+    DB::insert("insert into event_people (company_id, event_id, worker_id, person_role, lost_days) values (?, ?, ?, 'injured', 0)", [HUAYLAS_ID, $ev, $w]);
+    DB::select("select set_config('app.company_id', '', false)");
+
+    // Lo registra Recursos Humanos.
+    $this->postJson('/api/v1/records/DES/absences', ['worker_id' => $w, 'absence_type' => 'occupational_accident', 'is_work_related' => true, 'sst_event_id' => $ev,
+        'starts_on' => now()->subDays(3)->toDateString(), 'ends_on' => now()->addDays(4)->toDateString()], desAs(PROFESIONAL_EMAIL))->assertCreated();
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    expect((int) DB::selectOne('select lost_days from sst_events where id = ?', [$ev])->lost_days)->toBe(8);
+});

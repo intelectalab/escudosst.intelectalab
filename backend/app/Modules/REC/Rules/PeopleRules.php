@@ -146,20 +146,48 @@ class PeopleRules extends RecordRules
                     "Se suspendió el permiso {$p->code}: ".mb_substr((string) $p->suspended_reason, 0, 200), $link, 'high');
             }
         }
+        // M-PTR §10: al aprobar un paso, se avisa a quien tiene el rol del siguiente paso pendiente.
+        if ($res['table'] === 'permit_approvals' && ($values['decision'] ?? null) === 'approved' && $current?->decision !== 'approved') {
+            $a = DB::selectOne('select work_permit_id, step_order from permit_approvals where id = ?', [$id]);
+            $next = $a ? DB::selectOne("select approver_role from permit_approvals where work_permit_id = ? and decision = 'pending' and step_order > ? and deleted_at is null order by step_order limit 1",
+                [$a->work_permit_id, $a->step_order]) : null;
+            if ($next) {
+                $p = DB::selectOne('select code, work_description from work_permits where id = ?', [$a->work_permit_id]);
+                \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles([$next->approver_role]), 'ptr.approval_pending', 'PTR', $a->work_permit_id, 'Permiso de trabajo por aprobar',
+                    "El permiso {$p->code} · ".mb_substr((string) $p->work_description, 0, 120).' espera tu aprobación (siguiente paso).', '/m/ptr?t=work_permits&open='.$a->work_permit_id,
+                    'high', 'ptr.approval_pending:'.$a->work_permit_id.':'.$next->approver_role);
+            }
+        }
         // M-CTR §10: acreditación aprobada o suspendida → aviso al administrador del contratista y al equipo SST.
         if ($res['table'] === 'contractor_accreditations' && in_array($values['status'] ?? null, ['accredited', 'suspended', 'observed', 'rejected'], true) && $values['status'] !== $current?->status) {
-            $a = DB::selectOne('select a.id, a.contractor_id, a.service_description, a.suspended_reason, a.observations, a.rejection_reason, c.legal_name from contractor_accreditations a
+            $a = DB::selectOne('select a.id, a.contractor_id, a.service_description, a.suspended_reason, a.observations, a.rejection_reason, a.created_by, c.legal_name from contractor_accreditations a
                                   join contractors c on c.id = a.contractor_id where a.id = ?', [$id]);
             $portal = array_column(DB::select("select m.user_id from membership_scopes s join memberships m on m.id = s.membership_id and m.status = 'active' and m.deleted_at is null
                                                 where s.scope_type = 'contractor' and s.contractor_id = ? and s.deleted_at is null", [$a->contractor_id]), 'user_id');
             $what = ['accredited' => 'quedó acreditada', 'suspended' => 'quedó suspendida', 'observed' => 'tiene observaciones', 'rejected' => 'fue rechazada'][$values['status']];
             $why = $a->suspended_reason ?? $a->observations ?? $a->rejection_reason;
-            \App\Modules\NOT\Notify::users([...$portal, ...\App\Modules\NOT\Notify::roles(['sst_supervisor'])], 'ctr.accreditation_'.$values['status'], 'CTR', $id,
+            // También a quien la solicitó (el jefe de área que la registró).
+            \App\Modules\NOT\Notify::users([...$portal, $a->created_by, ...\App\Modules\NOT\Notify::roles(['sst_supervisor'])], 'ctr.accreditation_'.$values['status'], 'CTR', $id,
                 'Acreditación de contratista: '.$what, "La acreditación de {$a->legal_name} para «".mb_substr((string) $a->service_description, 0, 80)."» {$what}".($why && $values['status'] !== 'accredited' ? ": {$why}" : '').'.',
                 '/m/ctr?t=contractor_accreditations&open='.$id, $values['status'] === 'accredited' ? 'normal' : 'high', 'ctr.accreditation:'.$id.':'.$values['status']);
         }
         if ($res['table'] === 'absences') {
-            self::syncLeave(DB::connection(), DB::selectOne('select worker_id from absences where id = ?', [$id])->worker_id);
+            $ab = DB::selectOne('select worker_id, sst_event_id from absences where id = ?', [$id]);
+            self::syncLeave(DB::connection(), $ab->worker_id);
+            // M-DES flujo §7.3 / §12: los días de descanso ligados a un evento se suman a los días perdidos de esa persona y del evento (EST/ACC).
+            $events = array_filter(array_unique([$ab->sst_event_id, $current?->sst_event_id]));
+            foreach ($events as $ev) {
+                DB::update("update event_people p set lost_days = greatest(coalesce(p.lost_days, 0), (select coalesce(sum(a.days), 0) from absences a
+                              where a.sst_event_id = p.event_id and a.worker_id = p.worker_id and a.deleted_at is null and a.status <> 'cancelled'))
+                             where p.event_id = ? and p.worker_id = ? and p.deleted_at is null and p.person_role in ('injured', 'affected', 'ill')", [$ev, $ab->worker_id]);
+                $before = (int) (DB::selectOne('select lost_days from sst_events where id = ?', [$ev])?->lost_days ?? 0);
+                DB::update("update sst_events set lost_days = (select coalesce(sum(greatest(lost_days, 0)), 0) from event_people where event_id = ? and deleted_at is null
+                              and person_role in ('injured', 'affected', 'ill')) where id = ?", [$ev, $ev]);
+                if ((int) (DB::selectOne('select lost_days from sst_events where id = ?', [$ev])?->lost_days ?? 0) !== $before) {
+                    \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['sst_manager']), 'des.event_days', 'DES', $ev, 'Días perdidos actualizados',
+                        'Se sumaron días de descanso médico a los días perdidos del evento.', '/m/acc?t=sst_events&open='.$ev, 'low', 'des.event_days:'.$ev.':'.$id);
+                }
+            }
         }
         if (in_array($res['table'], ['budget_lines', 'budget_executions'], true)) {
             $line = $res['table'] === 'budget_lines' ? $id : DB::selectOne('select budget_line_id from budget_executions where id = ?', [$id])->budget_line_id;
@@ -631,6 +659,7 @@ class PeopleRules extends RecordRules
                 $values['valid_until'] = date(DATE_ATOM, strtotime($values['valid_from']) + $hours * 3600);
             }
             $this->permitOverlap($values, null);
+            $this->permitMaxValidity($values, null);
 
             return;
         }
@@ -640,12 +669,24 @@ class PeopleRules extends RecordRules
         if (array_intersect(array_keys($values), ['executor_leader_worker_id', 'crew', 'valid_from', 'valid_until']) !== []) {
             $this->permitOverlap($values, $current);
         }
+        $this->permitMaxValidity($values, $current);
         $to = $values['status'] ?? null;
         if (! $to || $to === $current->status) {
             return;
         }
         if (! in_array($to, self::PTR_FLOW[$current->status] ?? [], true)) {
             $this->fail('status', 'Ese cambio de estado no está permitido.');
+        }
+        // RN-PTR-03 / criterio 3: los gases se registran y deben estar en rango antes de pasar a aprobación y de aprobar.
+        if (in_array($to, ['pending_approval', 'approved'], true)) {
+            $gasType = DB::selectOne('select requires_gas_test from permit_types where id = ?', [$current->permit_type_id]);
+            $gasNow = $this->value($values, $current, 'gas_measurements');
+            if ($gasType?->requires_gas_test && $to === 'approved' && (empty($gasNow) || $gasNow === '[]' || $gasNow === '{}')) {
+                $this->fail('gas_measurements', 'Este trabajo exige medición de gases (O₂, LEL, CO, H₂S) registrada antes de aprobar.');
+            }
+            foreach ($this->gasOutOfRange($gasNow) as $msg) {
+                $this->fail('gas_measurements', $msg.' No se puede pasar a aprobación.');
+            }
         }
         if ($to === 'approved') {
             if (DB::selectOne("select 1 as ok from permit_checks where work_permit_id = ? and check_phase = 'pre_start' and answer = 'no' and deleted_at is null", [$current->id])) {
@@ -756,6 +797,28 @@ class PeopleRules extends RecordRules
     }
 
     /** RN-PTR-09: un trabajador no está en dos permisos vigentes con horarios que se cruzan. */
+    /** RN-PTR-05: la vigencia (de inicio a fin) no puede exceder las horas máximas del tipo de permiso. */
+    private function permitMaxValidity(array $values, ?object $current): void
+    {
+        if (! array_key_exists('valid_from', $values) && ! array_key_exists('valid_until', $values)) {
+            return;
+        }
+        $from = $this->value($values, $current, 'valid_from');
+        $until = $this->value($values, $current, 'valid_until');
+        $type = $this->value($values, $current, 'permit_type_id');
+        if (! $from || ! $until || ! $type) {
+            return;
+        }
+        $max = (int) (DB::selectOne('select validity_hours from permit_types where id = ?', [$type])?->validity_hours ?? 0);
+        $hours = (strtotime((string) $until) - strtotime((string) $from)) / 3600;
+        if ($hours <= 0) {
+            $this->fail('valid_until', 'El fin de la vigencia debe ser posterior al inicio.');
+        }
+        if ($max > 0 && $hours > $max + 0.01) {
+            $this->fail('valid_until', "Este tipo de permiso vale como máximo {$max} horas: para más tiempo, renuévalo con una nueva verificación.");
+        }
+    }
+
     private function permitOverlap(array $values, ?object $current): void
     {
         $from = $this->value($values, $current, 'valid_from');

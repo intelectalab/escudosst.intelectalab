@@ -60,8 +60,14 @@ it('el permiso: pasos en orden, sin cruce de horarios, requisitos del ejecutante
     // RN-PTR-01: con las aprobaciones completas, el líder sin requisitos SST (inducción, SCTR…) no deja aprobar.
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
     DB::update("update permit_approvals set decision = 'approved', approver_user_id = coalesce(approver_user_id, ?), decided_at = now() where work_permit_id = ?", [$me, $id]);
-    $this->patchJson("/api/v1/records/PTR/work_permits/{$id}", ['status' => 'approved'], $this->h)
+    // RN-PTR-03 / criterio 3: sin medición de gases (o fuera de rango) no se aprueba.
+    $this->patchJson("/api/v1/records/PTR/work_permits/{$id}", ['status' => 'approved'], $this->h)->assertStatus(422)->assertJsonValidationErrors('gas_measurements');
+    $this->patchJson("/api/v1/records/PTR/work_permits/{$id}", ['status' => 'approved', 'gas_measurements' => ['o2' => 17.0, 'lel' => 0, 'co' => 3, 'h2s' => 0]], $this->h)
+        ->assertStatus(422)->assertJsonValidationErrors('gas_measurements');
+    $this->patchJson("/api/v1/records/PTR/work_permits/{$id}", ['status' => 'approved', 'gas_measurements' => ['o2' => 20.9, 'lel' => 0, 'co' => 3, 'h2s' => 0]], $this->h)
         ->assertStatus(422)->assertJsonPath('errors.status.0', fn ($m) => str_contains($m, 'no cumplen sus requisitos'));
+    // RN-PTR-05: la vigencia no puede pasar las horas máximas del tipo.
+    $this->patchJson("/api/v1/records/PTR/work_permits/{$id}", ['valid_until' => now()->addDays(5)->toIso8601String()], $this->h)->assertStatus(422)->assertJsonValidationErrors('valid_until');
 
     // RN-PTR-03: aprobado, no se inicia con oxígeno bajo.
     DB::update("update work_permits set status = 'approved', valid_from = now() - interval '1 minute' where id = ?", [$id]);

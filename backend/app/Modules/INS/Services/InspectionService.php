@@ -248,7 +248,9 @@ final class InspectionService
     {
         $users = DB::select(
             "select distinct m.user_id from memberships m join roles r on r.id = m.role_id
-              where m.company_id = ? and m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) in ('sst_manager', 'sst_supervisor')", [$i->company_id]);
+              where m.company_id = ? and m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) in ('sst_manager', 'sst_supervisor')
+             union
+             select w.user_id from areas a join workers w on w.id = a.manager_worker_id where a.id = ? and w.user_id is not null", [$i->company_id, $i->area_id ?? null]);
         foreach ($users as $u) {
             DB::insert("insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, dedupe_key)
                         values (?, 'ins.critical', 'INS', ?, ?, ?, ?, ?, 'critical', ?) on conflict do nothing",

@@ -317,6 +317,13 @@ final class SstAlerts
             ['AUI', "select id, code as ref, scope as name, null as owner, starts_on as due, 'aui' as kind from audits
                       where deleted_at is null and status = 'planned' and starts_on between current_date and current_date + ".self::days('audit_notice_days', 15),
                 'aui.upcoming', 'normal', 'Auditoría próxima', fn ($r) => "La auditoría {$r->ref} empieza el ".date('d/m/Y', strtotime($r->due)).'.', '/m/aui?t=audits&open=', ['sst_manager'], false],
+            // M-RVD RN-RVD-04 / criterio 4: sin revisión por la dirección completada en management_review_months → Jefe SST y gerencia (una vez al mes).
+            ['RVD', "select c.id, coalesce(to_char(max(r.review_on), 'DD/MM/YYYY'), 'nunca') as ref, '' as name, null as owner, current_date as due, to_char(current_date, 'YYYY-MM') as dk, 'rvd_missing' as kind
+                       from companies c left join management_reviews r on r.deleted_at is null and r.status in ('completed', 'closed')
+                      where c.id = nullif(current_setting('app.company_id', true), '')::uuid
+                        and not exists (select 1 from management_reviews p where p.deleted_at is null and p.status in ('planned', 'in_progress'))
+                      group by c.id having coalesce(max(r.review_on), '1900-01-01') < current_date - make_interval(months => ".self::days('management_review_months', 12).')',
+                'rvd.missing', 'normal', 'Falta la revisión por la dirección', fn ($r) => "La última revisión por la dirección completada es del {$r->ref}: prográmala.", '/m/rvd?t=management_reviews', ['sst_manager', 'management'], false],
             // M-RVD RN-RVD-04: revisión por la dirección planificada que llega o pasó su fecha.
             ['RVD', "select id, title as ref, '' as name, null as owner, review_on as due, 'rvd' as kind from management_reviews
                       where deleted_at is null and status = 'planned' and review_on <= current_date + ".self::days('management_review_notice_days', 15),
@@ -340,9 +347,10 @@ final class SstAlerts
                                from ppe_stock_movements m where m.ppe_item_id = i.id and m.deleted_at is null) < i.min_stock",
                 'epp.low_stock', 'normal', 'Stock de EPP bajo', fn ($r) => "El stock de {$r->ref} está por debajo del mínimo: repón.", '/m/epp?t=ppe_items&open=', ['sst_manager'], true],
             // M-EQE RN-EQE-02: mantenimiento o vencimiento de equipos de emergencia.
-            ['EQE', "select id, code as ref, equipment_type as name, null as owner, least(next_maintenance_on, expires_on) as due, 'eqe' as kind from emergency_equipment
-                      where deleted_at is null and status <> 'retired' and least(next_maintenance_on, expires_on) <= current_date + ".self::days('equipment_due_notice_days', 15),
-                'eqe.due', 'normal', 'Equipo de emergencia por revisar', fn ($r) => "El equipo {$r->ref} necesita mantenimiento o vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/eqe?t=emergency_equipment&open=', ['sst_manager'], true],
+            // M-EQE §10: también la recarga y la prueba hidrostática por vencer (extintores).
+            ['EQE', "select id, code as ref, equipment_type as name, null as owner, least(next_maintenance_on, expires_on, next_recharge_on, next_hydrostatic_test_on) as due, 'eqe' as kind from emergency_equipment
+                      where deleted_at is null and status <> 'retired' and least(next_maintenance_on, expires_on, next_recharge_on, next_hydrostatic_test_on) <= current_date + ".self::days('equipment_due_notice_days', 15),
+                'eqe.due', 'normal', 'Equipo de emergencia por revisar', fn ($r) => "El equipo {$r->ref} necesita mantenimiento, recarga o prueba, o vence, el ".date('d/m/Y', strtotime($r->due)).'.', '/m/eqe?t=emergency_equipment&open=', ['sst_manager'], true],
             // M-MOC RN-MOC-04: cambio temporal que llega a su fecha de fin.
             ['MOC', "select id, code as ref, title as name, requested_by as owner, temporary_until as due, 'moc' as kind from change_requests
                       where deleted_at is null and is_temporary and status in ('approved', 'implemented') and temporary_until <= current_date + ".self::days('moc_temp_notice_days', 7),
