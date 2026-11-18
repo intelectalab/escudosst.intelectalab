@@ -33,6 +33,8 @@ case "${1:-}" in
     # El volumen de archivos médicos nace vacío y de root: que lo pueda escribir la aplicación.
     "${DC[@]}" exec -T -u root api sh -c 'chown www-data:www-data storage/app/private/medical && chmod 700 storage/app/private/medical'
     "${DC[@]}" exec -T -u www-data api php artisan migrate --database=pgsql_owner --path=database/migrations/main --force
+    # Tras reiniciar los contenedores, ninguna tarea programada (p. ej. la copia diaria) queda trabada por un bloqueo viejo.
+    "${DC[@]}" exec -T -u www-data api php artisan schedule:clear-cache
     "${DC[@]}" ps
     ;;
   domain)

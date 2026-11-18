@@ -189,7 +189,9 @@ Artisan::command('escudo:backup:decrypt {input} {output} {--target=main}', funct
 Schedule::command('escudo:backup')
     ->dailyAt(config('escudo.backups.daily_at'))
     ->timezone('America/Lima')
-    ->withoutOverlapping()
+    // El bloqueo «no correr dos a la vez» vence a las 3 horas: si un despliegue reinicia los contenedores en medio de una
+    // copia, la del día siguiente no queda trabada (antes el bloqueo duraba 24 horas).
+    ->withoutOverlapping(180)
     ->runInBackground()   // la copia puede tardar más de un minuto: no detiene al programador
     ->name('escudo:backup');
 
