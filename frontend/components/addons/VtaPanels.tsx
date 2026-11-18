@@ -4,6 +4,7 @@
 // El pago se registra a mano (Yape, Plin, transferencia, depósito o efectivo, con su número de operación); con la pasarela
 // configurada en Proveedores y claves, el pago en línea se confirma solo.
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/lib/api";
@@ -354,7 +355,7 @@ export function VtaPortal() {
   const box = "space-y-2 rounded-xl border border-line bg-surface px-4 py-3 text-sm";
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">Tus cursos están en <a href="/m/aul" className="font-semibold text-brand underline">Aula virtual</a>.</p>
+      <p className="text-sm text-muted">Tus cursos están en <Link href="/m/aul" className="font-semibold text-brand underline">Aula virtual</Link>.</p>
       {d.licenses.length > 0 && (
         <section className="space-y-2">
           <h2 className="font-display text-lg font-semibold">Cupos de tu empresa</h2>
