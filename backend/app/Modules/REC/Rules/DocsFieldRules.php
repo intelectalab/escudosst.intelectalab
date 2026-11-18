@@ -381,9 +381,9 @@ class DocsFieldRules extends RecordRules
         if ($current && $current->status === 'held' && $values !== []) {
             $this->conflict('La charla ya se realizó: no se modifica. Si hubo un error, registra una nueva charla.');
         }
-        // RN-CH5-01: se marca «realizada» con al menos un asistente que firmó (o registrado por QR o lista física).
+        // RN-CH5-01: se marca «realizada» con al menos un asistente que firmó (o que marcó su asistencia escaneando el QR él mismo).
         if (($values['status'] ?? null) === 'held' && $current
-            && ! DB::selectOne("select 1 as ok from talk_attendances where safety_talk_id = ? and deleted_at is null and (signature_id is not null or method <> 'signature')", [$current->id])) {
+            && ! DB::selectOne("select 1 as ok from talk_attendances where safety_talk_id = ? and deleted_at is null and (signature_id is not null or method = 'qr_scan')", [$current->id])) {
             $this->fail('status', DB::selectOne('select 1 as ok from talk_attendances where safety_talk_id = ? and deleted_at is null', [$current->id])
                 ? 'Ningún asistente firmó todavía: registra al menos una firma antes de marcar la charla como realizada.'
                 : 'Registra la asistencia de la charla antes de marcarla como realizada.');

@@ -10,6 +10,7 @@ Route::middleware(['auth:sanctum', 'company', 'module:FIR'])->prefix('fir')->gro
     Route::get('subject/{table}/{id}', [SignatureController::class, 'subject'])->where('table', '[a-z_]{2,60}')->whereUuid('id');
     Route::post('requests', [SignatureController::class, 'request']);
     Route::post('requests/{id}/sign', [SignatureController::class, 'sign'])->whereUuid('id')->middleware('throttle:10,1');
+    Route::post('requests/{id}/otp', [SignatureController::class, 'otp'])->whereUuid('id')->middleware('throttle:10,1');
     Route::post('requests/{id}/decline', [SignatureController::class, 'decline'])->whereUuid('id');
     Route::get('signatures/{id}/image', [SignatureImages::class, 'image'])->whereUuid('id');
     // Seguimiento (reenviar recordatorio) y verificación de integridad (SCR-FIR-03/04).

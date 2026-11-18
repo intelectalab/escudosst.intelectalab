@@ -84,7 +84,10 @@ it('la charla se cierra con una firma y ya realizada no cambia', function () {
     $this->postJson('/api/v1/records/CH5/talk_attendances', ['safety_talk_id' => $talk, 'worker_id' => $w, 'method' => 'signature'], $this->h)->assertCreated();
     $this->patchJson("/api/v1/records/CH5/safety_talks/{$talk}", ['status' => 'held'], $this->h)
         ->assertStatus(422)->assertJsonPath('errors.status.0', fn ($m) => str_contains($m, 'firmó'));
+    // Una lista sin firma no basta (RN-CH5-01); quien marca su asistencia con el QR sí cuenta.
     $this->postJson('/api/v1/records/CH5/talk_attendances', ['safety_talk_id' => $talk, 'worker_id' => frWorker('62626204', 'Lista'), 'method' => 'list'], $this->h)->assertCreated();
+    $this->patchJson("/api/v1/records/CH5/safety_talks/{$talk}", ['status' => 'held'], $this->h)->assertStatus(422);
+    $this->postJson('/api/v1/records/CH5/talk_attendances', ['safety_talk_id' => $talk, 'worker_id' => frWorker('62626206', 'Qr'), 'method' => 'qr_scan'], $this->h)->assertCreated();
     $this->patchJson("/api/v1/records/CH5/safety_talks/{$talk}", ['status' => 'held'], $this->h)->assertOk();
     $this->patchJson("/api/v1/records/CH5/safety_talks/{$talk}", ['topic' => 'Otro tema'], $this->h)->assertStatus(409);
     $this->postJson('/api/v1/records/CH5/talk_attendances', ['safety_talk_id' => $talk, 'worker_id' => frWorker('62626205', 'Tarde'), 'method' => 'list'], $this->h)->assertStatus(409);

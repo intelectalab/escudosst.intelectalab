@@ -231,7 +231,9 @@ class WorkerSelfController extends Controller
                 'risst' => DB::update("update risst_deliveries set status = 'signed', method = 'app_signature', signature_id = ?, delivered_on = coalesce(delivered_on, ?::date), updated_by = ? where id = ?",
                     [$sig, WorkerSelf::today(), $uid, $row->id]),
                 'ppe' => DB::update("update ppe_deliveries set signature_id = ?, status = case when status = 'pending_signature' then 'delivered' else status end, updated_by = ? where id = ?", [$sig, $uid, $row->id]),
-                'talk' => DB::update('update talk_attendances set signature_id = ?, updated_by = ? where id = ?', [$sig, $uid, $row->id]),
+                // RN-CH5-01: con la primera firma de un asistente, la charla programada pasa a «realizada».
+                'talk' => DB::update('update talk_attendances set signature_id = ?, updated_by = ? where id = ?', [$sig, $uid, $row->id])
+                    + DB::update("update safety_talks set status = 'held', updated_at = now() where status = 'scheduled' and id = (select safety_talk_id from talk_attendances where id = ?)", [$row->id]),
                 // RN-ATS-02: si el ATS ya estaba firmado o en ejecución, queda como firma tardía.
                 // M-IPC SCR-IPC-08: la firma «Lo conozco» queda como firma del trabajador sobre la versión vigente del IPERC.
                 'iperc' => null,

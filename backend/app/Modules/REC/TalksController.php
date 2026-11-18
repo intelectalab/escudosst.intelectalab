@@ -71,7 +71,7 @@ class TalksController extends Controller
                 // Asistencia por lista: la registra quien da la charla; cada trabajador puede firmarla después desde su app.
                 $records->create($attRes, ['safety_talk_id' => $talk['id'], 'worker_id' => $w, 'method' => 'list', 'attended_at' => now()->toIso8601String()]);
             }
-            $records->update($talkRes, $talk['id'], ['status' => 'held']);
+            // RN-CH5-01: queda programada hasta que firme al menos un asistente; con la primera firma pasa sola a «realizada».
 
             return $talk['id'];
         });

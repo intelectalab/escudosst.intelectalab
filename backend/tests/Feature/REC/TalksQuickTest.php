@@ -35,7 +35,8 @@ it('registra la charla con los trabajadores del área y calcula la cobertura del
         'worker_ids' => [$ids[0], $ids[1]]], $this->h)->assertCreated()->json('data');
     expect($r['attendees'])->toBe(2);
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
-    expect(DB::selectOne('select status from safety_talks where id = ?', [$r['id']])->status)->toBe('held');
+    // RN-CH5-01: con la lista queda programada; pasa a realizada con la primera firma.
+    expect(DB::selectOne('select status from safety_talks where id = ?', [$r['id']])->status)->toBe('scheduled');
     DB::select("select set_config('app.company_id', '', false)");
 
     $cov = collect($this->getJson('/api/v1/ch5/coverage?date=2031-05-05', $this->h)->assertOk()->json('data.areas'))->firstWhere('id', $area);
@@ -61,8 +62,12 @@ it('sugiere temas del banco según los peligros significativos del IPERC del ár
     expect(collect($b['suggested'])->pluck('id')->all())->toContain($t)->and(collect($b['suggested'])->pluck('title')->all())->not->toContain('Orden y limpieza');
 
     $w = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => (string) random_int(73000000, 73999999), 'first_name' => 'Eva', 'paternal_last_name' => 'Temas'], $this->h)->json('data.id');
-    $this->postJson('/api/v1/ch5/quick', ['topic' => 'Uso del arnés', 'topic_bank_id' => $t, 'talk_on' => '2031-06-02', 'site_id' => $site, 'area_id' => $area, 'duration_minutes' => 6, 'worker_ids' => [$w]], $this->h)
-        ->assertCreated();
+    $q = $this->postJson('/api/v1/ch5/quick', ['topic' => 'Uso del arnés', 'topic_bank_id' => $t, 'talk_on' => '2031-06-02', 'site_id' => $site, 'area_id' => $area, 'duration_minutes' => 6, 'worker_ids' => [$w]], $this->h)
+        ->assertCreated()->json('data.id');
+    // El trabajador firmó desde su app: la charla quedó realizada.
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    DB::update("update safety_talks set status = 'held' where id = ?", [$q]);
+    DB::select("select set_config('app.company_id', '', false)");
     $reg = fn () => collect($this->getJson('/api/v1/reg/training/preview?from=2031-06-01&to=2031-06-30&limit=500', $this->h)->assertOk()->json('data.rows'))->flatten()->implode(' ');
     expect($reg())->not->toContain('charla de 5 minutos');
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);

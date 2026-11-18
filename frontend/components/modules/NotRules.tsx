@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
+import { ReportButton } from "./CtrExtras";
 
 type Rule = { code: string; module: string; title: string; priority: string; default_roles: string[]; customized: boolean; is_active: boolean; roles: string[]; lead_days: number[]; channels: string[] };
 
@@ -56,7 +57,10 @@ export function NotRules({ readOnly }: { readOnly: boolean }) {
           <p className="font-semibold">Reglas de alerta</p>
           <p className="text-xs text-muted">Elige qué avisos salen, a quién llegan y con cuántos días de anticipación. Sin días, se usa el plazo por defecto.</p>
         </div>
-        <input className="input !w-56" placeholder="Buscar aviso" value={q} onChange={(e) => setQ(e.target.value)} />
+        <span className="flex flex-wrap items-center gap-2">
+          <ReportButton path="/not/report.xlsx" file="avisos-emitidos-atendidos.xlsx" label="Reporte: avisos emitidos y atendidos" />
+          <input className="input !w-56" placeholder="Buscar aviso" value={q} onChange={(e) => setQ(e.target.value)} />
+        </span>
       </div>
       {msg && <p className={msg.ok ? "text-ok" : "text-bad"}>{msg.text}</p>}
       {Object.entries(groups).map(([mod, list]) => (

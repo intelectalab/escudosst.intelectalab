@@ -83,10 +83,24 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
       err(e);
     }
   }
+  // Firma con código de un solo uso enviado al correo (OTP).
+  const [otp, setOtp] = useState<Record<string, string>>({});
+  async function sendOtp(r: Req) {
+    setMsg(null);
+    try {
+      const res = await api<{ data: { sent_to: string; minutes: number } }>(`/fir/requests/${r.id}/otp`, { method: "POST", withCompany: true });
+      setOtp((o) => ({ ...o, [r.id]: "" }));
+      setMsg(`Te enviamos un código a ${res.data.sent_to}. Vale ${res.data.minutes} minutos.`);
+    } catch (e) {
+      err(e);
+    }
+  }
   async function sign(r: Req) {
     setMsg(null);
     try {
-      await api(`/fir/requests/${r.id}/sign`, { method: "POST", withCompany: true, body: r.signer_user_id ? { password: pwd[r.id] ?? "" } : { assisted: true, image: assist?.image ?? null, dni: assist?.dni || undefined, pin: assist?.pin || undefined } });
+      const own = otp[r.id] !== undefined ? { otp: otp[r.id] } : { password: pwd[r.id] ?? "" };
+      await api(`/fir/requests/${r.id}/sign`, { method: "POST", withCompany: true, body: r.signer_user_id ? own : { assisted: true, image: assist?.image ?? null, dni: assist?.dni || undefined, pin: assist?.pin || undefined } });
+      setOtp((o) => { const n = { ...o }; delete n[r.id]; return n; });
       setAssist(null);
       load();
     } catch (e) {
@@ -116,9 +130,15 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
             <span className="flex flex-wrap items-center gap-2">
               {r.status === "pending" && mine && (
                 <>
-                  <input type="password" className="input !h-8 !w-40" placeholder="Tu contraseña" aria-label="Contraseña para firmar" value={pwd[r.id] ?? ""}
-                    onChange={(e) => setPwd({ ...pwd, [r.id]: e.target.value })} />
+                  {otp[r.id] !== undefined ? (
+                    <input className="input !h-8 !w-32" inputMode="numeric" maxLength={6} placeholder="Código" aria-label="Código recibido por correo" value={otp[r.id]}
+                      onChange={(e) => setOtp({ ...otp, [r.id]: e.target.value.replace(/\D/g, "") })} />
+                  ) : (
+                    <input type="password" className="input !h-8 !w-40" placeholder="Tu contraseña" aria-label="Contraseña para firmar" value={pwd[r.id] ?? ""}
+                      onChange={(e) => setPwd({ ...pwd, [r.id]: e.target.value })} />
+                  )}
                   <Button size="sm" variant="primary" onClick={() => sign(r)}>Firmar</Button>
+                  {otp[r.id] === undefined && <button type="button" className="text-xs text-brand underline" onClick={() => void sendOtp(r)}>Firmar con código por correo</button>}
                 </>
               )}
               {r.status === "pending" && !r.signer_user_id && assist?.id !== r.id && (

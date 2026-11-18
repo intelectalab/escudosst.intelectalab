@@ -71,7 +71,7 @@ export function Ch5Talks({ readOnly, onSaved }: { readOnly: boolean; onSaved: ()
         method: "POST", withCompany: true,
         body: { topic, topic_bank_id: topicId || null, content: content || null, talk_on: date, site_id: site, area_id: area, duration_minutes: minutes ? Number(minutes) : null, worker_ids: [...picked] },
       });
-      setMsg({ ok: true, text: `Charla registrada como realizada con ${r.data.attendees} asistente(s). Cada trabajador puede firmar su asistencia desde su app.` });
+      setMsg({ ok: true, text: `Charla registrada con ${r.data.attendees} asistente(s). Se marca «realizada» cuando firme al menos uno: cada trabajador firma su asistencia desde su app.` });
       setTopic("");
       setContent("");
       setTopicId("");
@@ -142,7 +142,7 @@ export function Ch5Talks({ readOnly, onSaved }: { readOnly: boolean; onSaved: ()
             </div>
           )}
           <div className="mt-3">
-            <Button variant="primary" icon="check" loading={busy} disabled={busy || !topic.trim() || !area || picked.size === 0} onClick={save}>Registrar charla realizada</Button>
+            <Button variant="primary" icon="check" loading={busy} disabled={busy || !topic.trim() || !area || picked.size === 0} onClick={save}>Registrar charla</Button>
           </div>
           {msg && <p role={msg.ok ? "status" : "alert"} className={`mt-2 text-sm ${msg.ok ? "text-ok" : "text-bad"}`}>{msg.text}</p>}
         </Card>
