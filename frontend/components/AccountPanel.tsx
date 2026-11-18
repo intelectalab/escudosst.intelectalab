@@ -8,6 +8,7 @@ import { CodeInput } from "@/components/mfa/CodeInput";
 import { QrCode } from "@/components/mfa/QrCode";
 import { AccountEditor } from "@/components/AccountEditor";
 import { RecoveryCodes } from "@/components/mfa/RecoveryCodes";
+import { ActiveSessions } from "@/components/mfa/ActiveSessions";
 import { Icon } from "@/components/ui/Icon";
 import { api, ApiError } from "@/lib/api";
 import { getTheme, setTheme, type Theme } from "@/lib/theme";
@@ -334,6 +335,17 @@ export function AccountPanel({
               Tus datos y acceso
             </h2>
             <AccountEditor name={user.full_name} email={user.email} roleLabel={roleLabel} roleValue={roleValue} platform={user.is_platform_staff} />
+          </section>
+
+          <section className="space-y-4 rounded-2xl border border-line bg-surface p-6 shadow-sm">
+            <h2 className="flex items-center gap-2.5 text-lg font-semibold">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-soft text-brand-strong">
+                <Icon name="lock" size={17} />
+              </span>
+              Sesiones activas
+            </h2>
+            <p className="text-sm text-muted">Equipos donde tu cuenta está abierta. Si no reconoces alguno, ciérralo y cambia tu contraseña.</p>
+            <ActiveSessions />
           </section>
         </div>
       </div>

@@ -35,6 +35,9 @@ Route::middleware('throttle:mfa')->group(function () {
 // Con sesión, sin empresa activa
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('auth/logout', [AuthController::class, 'logout']);
+    Route::get('auth/sessions', [\App\Modules\USR\Http\Controllers\SessionsController::class, 'index']);
+    Route::delete('auth/sessions/{id}', [\App\Modules\USR\Http\Controllers\SessionsController::class, 'destroy'])->whereUuid('id');
+    Route::post('auth/sessions/close-others', [\App\Modules\USR\Http\Controllers\SessionsController::class, 'closeOthers']);
     Route::get('auth/mfa', [MfaController::class, 'status']);
     Route::post('auth/mfa/recovery-codes', [MfaController::class, 'regenerateRecoveryCodes'])->middleware('throttle:mfa');
     Route::post('auth/mfa/disable', [MfaController::class, 'disable'])->middleware('throttle:mfa');
