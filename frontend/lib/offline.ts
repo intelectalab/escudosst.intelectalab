@@ -298,6 +298,12 @@ export function canQueue(table: string): boolean {
 export async function enqueue(input: { entity: string; op?: "create" | "update"; payload: Record<string, unknown>; entity_id?: string; base_version?: number | null }): Promise<OutboxOp> {
   if (!canQueue(input.entity)) throw new ApiError(0, "network_error", "Sin conexión", "Este registro necesita conexión.");
   const queued = await listOutbox();
+  // RN-OFF-07: pasados offline_max_days sin sincronizar (contados desde la última sincronización o, si nunca sincronizó,
+  // desde el registro pendiente más antiguo) no se aceptan nuevas capturas hasta sincronizar.
+  const blocked = captureBlockedDays(queued);
+  if (blocked !== null) {
+    throw new ApiError(0, "sync_required", "Sincroniza primero", `Este equipo lleva ${blocked} días sin sincronizar: conéctate y sincroniza antes de registrar más.`);
+  }
   const op: OutboxOp = {
     idempotency_key: uuidv7(),
     op: input.op ?? "create",
@@ -456,10 +462,11 @@ export async function discardOp(k: string) {
 export async function registerDevice(): Promise<void> {
   if (!ctx?.enabled || !navigator.onLine) return;
   try {
-    const r = await api<{ data: { offline_warning_days?: number; offline_photo_max_kb?: number } }>("/sync/devices", { method: "POST", withCompany: true, body: { device_uid: deviceUid(), platform: "web_pwa", model: navigator.userAgent.slice(0, 120) } });
+    const r = await api<{ data: { offline_warning_days?: number; offline_photo_max_kb?: number; offline_max_days?: number } }>("/sync/devices", { method: "POST", withCompany: true, body: { device_uid: deviceUid(), platform: "web_pwa", model: navigator.userAgent.slice(0, 120) } });
     try {
       if (r.data?.offline_warning_days) localStorage.setItem("escudo.offline_warning_days", String(r.data.offline_warning_days));
       if (r.data?.offline_photo_max_kb) localStorage.setItem("escudo.offline_photo_max_kb", String(r.data.offline_photo_max_kb));
+      if (r.data?.offline_max_days) localStorage.setItem("escudo.offline_max_days", String(r.data.offline_max_days));
     } catch {
       /* sin almacenamiento local */
     }
@@ -485,6 +492,21 @@ export function unsyncedDays(pending: number): number | null {
     if (!last) return null;
     const days = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
     return days >= limit ? days : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Días sin sincronizar si ya pasaron offline_max_days (bloquea nuevas capturas); null = puede seguir registrando. */
+export function captureBlockedDays(queued: { created_at_device?: string }[]): number | null {
+  try {
+    const max = Number(localStorage.getItem("escudo.offline_max_days") ?? "7") || 7;
+    const last = localStorage.getItem("escudo.last_sync");
+    const oldest = queued.map((q) => q.created_at_device).filter(Boolean).sort()[0];
+    const since = last ?? oldest;
+    if (!since || queued.length === 0) return null;
+    const days = Math.floor((Date.now() - new Date(since).getTime()) / 86400000);
+    return days >= max ? days : null;
   } catch {
     return null;
   }

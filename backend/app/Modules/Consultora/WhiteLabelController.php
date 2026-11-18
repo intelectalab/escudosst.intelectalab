@@ -67,6 +67,64 @@ class WhiteLabelController extends Controller
         return $this->show();
     }
 
+    /**
+     * SCR-CON-05 / RN-CON-05: dominio propio. PUT guarda el dominio (queda sin verificar) y devuelve el registro TXT que la
+     * consultora debe crear; POST /verify consulta el DNS y, si el TXT coincide, marca domain_verified_at. Solo un dominio
+     * verificado puede activarse (la publicación en el servidor la hace el equipo de EscudoSST).
+     */
+    public function domain(Request $request, AccountsService $accounts): JsonResponse
+    {
+        $this->can('con.white_label_settings.update');
+        $d = $request->validate(['domain' => ['required', 'string', 'max:120', 'regex:/^(?=.{4,120}$)([a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/']],
+            ['domain.regex' => 'Escribe solo el dominio, por ejemplo: sst.miconsultora.pe']);
+        $domain = strtolower(trim($d['domain']));
+        if (str_ends_with($domain, 'intelectalab.com') || str_ends_with($domain, 'escudosst.pe')) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Ese dominio es de EscudoSST.', ['errors' => ['domain' => ['Dominio no permitido.']]]);
+        }
+        $w = $this->db()->selectOne('select id from white_label_settings where account_id = ? and deleted_at is null', [$this->account()])
+            ?? throw new ApiProblem(409, 'conflict', 'Primero la marca', 'Guarda primero la marca blanca (nombre y logo).');
+        if ($this->db()->selectOne('select 1 as ok from white_label_settings where custom_domain = ? and id <> ? and deleted_at is null', [$domain, $w->id])) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Ese dominio ya lo usa otra cuenta.', ['errors' => ['domain' => ['Dominio en uso.']]]);
+        }
+        $this->db()->update('update white_label_settings set custom_domain = ?, domain_verified_at = null, updated_by = ?, updated_at = now() where id = ?', [$domain, (string) auth()->id(), $w->id]);
+        $accounts->audit((string) auth()->id(), 'white_label_domain', 'white_label_settings', null, ['domain' => $domain]);
+
+        return response()->json(['data' => $this->dnsInstructions($domain, null)]);
+    }
+
+    public function verifyDomain(AccountsService $accounts): JsonResponse
+    {
+        $this->can('con.white_label_settings.update');
+        $w = $this->db()->selectOne('select id, custom_domain, domain_verified_at from white_label_settings where account_id = ? and deleted_at is null', [$this->account()]);
+        if (! $w || ! $w->custom_domain) {
+            throw new ApiProblem(409, 'conflict', 'Sin dominio', 'Primero registra el dominio.');
+        }
+        $expected = self::txtToken($w->custom_domain);
+        $found = [];
+        foreach ((array) (@dns_get_record('_escudosst.'.$w->custom_domain, DNS_TXT) ?: []) as $r) {
+            $found[] = trim((string) ($r['txt'] ?? ''));
+        }
+        if (! in_array($expected, $found, true)) {
+            throw new ApiProblem(409, 'conflict', 'Aún no se verifica', 'No encontramos el registro TXT en el DNS. Puede tardar unas horas en propagarse: vuelve a intentarlo.',
+                ['expected' => $expected, 'found' => $found]);
+        }
+        $this->db()->update('update white_label_settings set domain_verified_at = now(), updated_by = ?, updated_at = now() where id = ?', [(string) auth()->id(), $w->id]);
+        $accounts->audit((string) auth()->id(), 'white_label_domain_verified', 'white_label_settings', null, ['domain' => $w->custom_domain]);
+
+        return response()->json(['data' => $this->dnsInstructions($w->custom_domain, now()->toIso8601String())]);
+    }
+
+    public static function txtToken(string $domain): string
+    {
+        return 'escudosst-verify='.substr(hash_hmac('sha256', 'con-domain|'.$domain, (string) config('app.key')), 0, 32);
+    }
+
+    private function dnsInstructions(string $domain, ?string $verifiedAt): array
+    {
+        return ['domain' => $domain, 'verified_at' => $verifiedAt, 'txt_name' => '_escudosst.'.$domain, 'txt_value' => self::txtToken($domain),
+            'cname_target' => parse_url((string) config('escudo.frontend_url'), PHP_URL_HOST)];
+    }
+
     public function brand(): JsonResponse
     {
         $company = app(CompanyContext::class)->companyId;
@@ -83,7 +141,7 @@ class WhiteLabelController extends Controller
             $logo = 'data:'.(str_ends_with($w->logo_file_key, '.png') ? 'image/png' : 'image/jpeg').';base64,'.base64_encode(Storage::disk('local')->get($w->logo_file_key));
         }
 
-        return ['brand_name' => $w->brand_name, 'logo' => $logo, 'primary_color' => $w->primary_color ? trim($w->primary_color) : null, 'secondary_color' => $w->secondary_color ? trim($w->secondary_color) : null,
+        return ['custom_domain' => $w->custom_domain ?? null, 'domain_verified_at' => $w->domain_verified_at ?? null, 'brand_name' => $w->brand_name, 'logo' => $logo, 'primary_color' => $w->primary_color ? trim($w->primary_color) : null, 'secondary_color' => $w->secondary_color ? trim($w->secondary_color) : null,
             'pdf_footer_text' => $w->pdf_footer_text, 'show_powered_by' => (bool) $w->show_powered_by, 'active' => $w->status === 'active'];
     }
 

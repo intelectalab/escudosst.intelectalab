@@ -25,6 +25,8 @@ class AppServiceProvider extends ServiceProvider
         // Migraciones de la base principal (docs/02-convenciones.md §6). Las de la base
         // médica se corren aparte con --database=medical --path=database/migrations/medical.
         $this->loadMigrationsFrom(database_path('migrations/main'));
+        // M-CON: los correos llevan la marca blanca de la consultora de la empresa, si tiene (MailBrand::use antes de enviar).
+        \Illuminate\Support\Facades\View::composer('mail.*', fn ($view) => $view->with('brand', \App\Modules\Consultora\MailBrand::current()));
 
         // Conteo de correos enviados para «Salud del sistema».
         Event::listen(MessageSent::class, fn () => SystemPulse::mailSent());

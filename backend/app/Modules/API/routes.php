@@ -14,3 +14,7 @@ Route::middleware(['auth:sanctum', 'company', 'module:API'])->group(function () 
 
 // API de solo lectura para integraciones (con clave, secreto y el ID de la empresa).
 Route::get('ext/v1/{resource}', [ExternalApiController::class, 'index'])->where('resource', '[a-z_]{3,30}');
+// Escrituras (alcance workers.write, con Idempotency-Key) y token OAuth2 «client credentials».
+Route::post('ext/v1/workers', [ExternalApiController::class, 'storeWorker']);
+Route::patch('ext/v1/workers/{id}', [ExternalApiController::class, 'updateWorker']);
+Route::middleware('throttle:30,1')->post('ext/oauth/token', [ExternalApiController::class, 'token']);

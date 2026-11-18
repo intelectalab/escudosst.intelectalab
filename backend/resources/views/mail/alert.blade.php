@@ -11,7 +11,7 @@
         <td align="center">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;">
                 <tr>
-                    <td style="background:#0d3b6e;padding:18px 24px;color:#ffffff;font-size:20px;font-weight:bold;">EscudoSST</td>
+                    <td style="background:{{ $brand['color'] ?? '#0d3b6e' }};padding:18px 24px;color:#ffffff;font-size:20px;font-weight:bold;">{{ $brand['name'] ?? 'EscudoSST' }}</td>
                 </tr>
                 <tr>
                     <td style="padding:28px 24px;">
@@ -27,7 +27,7 @@
                             </tr>
                         </table>
                         <p style="margin:20px 0 0;text-align:center;">
-                            <a href="{{ $url }}" style="display:inline-block;background:#0d3b6e;color:#ffffff;border-radius:10px;padding:12px 22px;font-size:15px;font-weight:bold;text-decoration:none;">Abrir en EscudoSST</a>
+                            <a href="{{ $url }}" style="display:inline-block;background:{{ $brand['color'] ?? '#0d3b6e' }};color:#ffffff;border-radius:10px;padding:12px 22px;font-size:15px;font-weight:bold;text-decoration:none;">Abrir en {{ $brand['name'] ?? 'EscudoSST' }}</a>
                         </p>
                     </td>
                 </tr>
@@ -35,7 +35,7 @@
                     <td style="background:#f4b90f;height:6px;font-size:0;line-height:0;">&nbsp;</td>
                 </tr>
             </table>
-            <p style="margin:16px 0 0;font-size:12px;color:#6b7684;">Correo automático de EscudoSST. Puedes cambiar estos avisos en tus preferencias de notificación.</p>
+            <p style="margin:16px 0 0;font-size:12px;color:#6b7684;">{{ $brand['footer'] ?? 'Correo automático de EscudoSST.' }}@if(!empty($brand['powered'])) Con EscudoSST.@endif Puedes cambiar estos avisos en tus preferencias de notificación.</p>
         </td>
     </tr>
 </table>

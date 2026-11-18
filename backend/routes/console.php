@@ -341,3 +341,15 @@ Artisan::command('escudo:web-retention', function () {
 })->purpose('Borra los datos personales de los contactos de la web al pasar el plazo');
 
 Schedule::command('escudo:web-retention')->dailyAt('03:10')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:web-retention');
+
+/*
+| M-AUD RN-AUD-06: archiva cifrados los meses de la bitácora que pasaron audit_retention_years (por empresa) en el disco de
+| copias y, si está configurado, en el almacenamiento externo. No borra registros: la purga necesita aprobación.
+| Uso: php artisan escudo:audit-archive [--before=AAAA-MM-01]
+*/
+Artisan::command('escudo:audit-archive {--before=}', function (\App\Modules\AUD\AuditArchive $archive) {
+    $n = $archive->run($this->option('before') ?: null);
+    $this->info("Meses de bitácora archivados: {$n}");
+})->purpose('Archiva cifrada la bitácora que pasó su plazo de retención');
+
+Schedule::command('escudo:audit-archive')->monthlyOn(2, '03:30')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:audit-archive');

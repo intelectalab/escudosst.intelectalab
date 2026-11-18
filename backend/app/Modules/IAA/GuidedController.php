@@ -289,6 +289,21 @@ class GuidedController extends Controller
             if ($s->suggestion_type === 'investigation_cause') {
                 return $this->applyCause($s, $payload, $request->input('description'), $request->input('cause_level'));
             }
+            if ($s->suggestion_type === 'dossier_fields') {
+                $this->records->authorize(Registry::resource('SUN', 'inspection_dossiers'), 'create');
+                $edit = (array) $request->input('dossier', []);
+                $r = IaaExtrasController::applyDossier($s, $payload, $edit);
+                $this->review($s->id, $edit ? 'partially_accepted' : 'accepted', $r['entity'], $r['ids']);
+
+                return ['status' => $edit ? 'partially_accepted' : 'accepted', 'dossier_id' => $r['ids'][0]];
+            }
+            if ($s->suggestion_type === 'course_recommendation') {
+                $this->needs('AUL', 'el Aula virtual');
+                $r = IaaExtrasController::applyCourse($s, $payload);
+                $this->review($s->id, 'accepted', $r['entity'], $r['ids']);
+
+                return ['status' => 'accepted', 'recommendations' => count($r['ids'])];
+            }
             throw new ApiProblem(409, 'conflict', 'No se puede aplicar', 'Esta sugerencia es solo de consulta.');
         });
 
@@ -445,7 +460,7 @@ class GuidedController extends Controller
             "insert into ai_requests (company_id, user_id, feature, module_code, subject_type, subject_id, provider, model, prompt_template_code, prompt_version,
                 input_redacted, contains_medical_data, input_summary, latency_ms, status, completed_at, created_by, updated_by)
              values (?, ?, ?, ?, ?, ?, 'escudosst_library', 'biblioteca', ?, '1', true, false, ?, ?, 'completed', now(), ?, ?) returning id",
-            [$ctx->companyId, $user, $feature, $module, $subjectType, $subjectId, $feature, mb_substr($summary, 0, 200), (int) ((microtime(true) - $started) * 1000), $user, $user]
+            [$ctx->companyId, $user, $feature, $module, $subjectType, $subjectId, $feature, mb_substr(Redactor::redact($summary)[0], 0, 200), (int) ((microtime(true) - $started) * 1000), $user, $user]
         )->id;
     }
 

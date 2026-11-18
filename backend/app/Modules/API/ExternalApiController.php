@@ -67,32 +67,47 @@ class ExternalApiController extends Controller
         });
     }
 
-    private function authenticated(Request $request, string $resource, callable $fn): JsonResponse
+    /**
+     * Credenciales: «Authorization: Bearer at_…» (token OAuth2 de POST /ext/oauth/token) o X-Api-Key + X-Api-Secret; siempre con
+     * X-Company-Id. $action read|write: leer pide «recurso.read», «read» o «*»; escribir pide «recurso.write», «write» o «*».
+     */
+    private function authenticated(Request $request, string $resource, callable $fn, string $action = 'read'): JsonResponse
     {
         $company = (string) $request->header('X-Company-Id');
+        $bearer = (string) $request->bearerToken();
         $key = (string) $request->header('X-Api-Key');
         $secret = (string) $request->header('X-Api-Secret');
-        if (! Str::isUuid($company) || $key === '' || $secret === '') {
-            throw new ApiProblem(401, 'unauthenticated', 'Faltan credenciales', 'Envía X-Company-Id, X-Api-Key y X-Api-Secret.');
+        $useToken = str_starts_with($bearer, 'at_');
+        if (! Str::isUuid($company) || (! $useToken && ($key === '' || $secret === ''))) {
+            throw new ApiProblem(401, 'unauthenticated', 'Faltan credenciales', 'Envía X-Company-Id y un token Bearer (POST /ext/oauth/token) o X-Api-Key y X-Api-Secret.');
         }
-        // Tope general por clave antes de tocar la base (protege contra claves inventadas).
-        if (RateLimiter::tooManyAttempts('ext-api-any:'.$key, 600)) {
+        $limiterKey = 'ext-api-any:'.($useToken ? substr(hash('sha256', $bearer), 0, 24) : $key);
+        // Tope general por credencial antes de tocar la base (protege contra claves inventadas).
+        if (RateLimiter::tooManyAttempts($limiterKey, 600)) {
             throw new ApiProblem(429, 'too_many_requests', 'Demasiadas consultas', 'Espera un minuto antes de seguir consultando.');
         }
-        RateLimiter::hit('ext-api-any:'.$key, 60);
+        RateLimiter::hit($limiterKey, 60);
 
-        $out = DB::transaction(function () use ($company, $key, $secret, $request, $fn, $resource) {
+        $out = DB::transaction(function () use ($company, $key, $secret, $bearer, $useToken, $request, $fn, $resource, $action) {
             DbContext::setCompany($company);
-            $c = DB::selectOne('select * from api_clients where client_key = ? and deleted_at is null', [$key]);
-            if (! $c || ! hash_equals((string) $c->secret_hash, hash('sha256', $secret))) {
-                throw new ApiProblem(401, 'unauthenticated', 'Credenciales no válidas', 'La clave o el secreto no son correctos para esta empresa.');
+            if ($useToken) {
+                $t = DB::selectOne('select api_client_id from api_access_tokens where token_hash = ? and revoked_at is null and expires_at > now()', [hash('sha256', $bearer)]);
+                $c = $t ? DB::selectOne('select * from api_clients where id = ? and deleted_at is null', [$t->api_client_id]) : null;
+                if (! $c) {
+                    throw new ApiProblem(401, 'unauthenticated', 'Token no válido', 'El token no existe, venció o es de otra empresa: pide uno nuevo.');
+                }
+            } else {
+                $c = DB::selectOne('select * from api_clients where client_key = ? and deleted_at is null', [$key]);
+                if (! $c || ! hash_equals((string) $c->secret_hash, hash('sha256', $secret))) {
+                    throw new ApiProblem(401, 'unauthenticated', 'Credenciales no válidas', 'La clave o el secreto no son correctos para esta empresa.');
+                }
             }
             if ($c->status !== 'active' || ($c->expires_at && strtotime($c->expires_at) < time())) {
                 throw new ApiProblem(401, 'unauthenticated', 'Cliente inactivo', 'El cliente de la API está revocado o vencido.');
             }
-            // Permiso por recurso: «workers.read», «credentials.read»… o «read» / «*» para todos.
-            $scopes = array_map('trim', array_filter(explode(',', trim((string) $c->scopes, '{}'))));
-            if (! array_intersect(['read', '*', $resource.'.read'], $scopes)) {
+            $scopes = self::scopesOf($c);
+            $need = $action === 'write' ? ['write', '*', $resource.'.write'] : ['read', '*', $resource.'.read'];
+            if (! array_intersect($need, $scopes)) {
                 // Se registra el intento rechazado (se confirma la transacción) y luego se responde 403.
                 $this->usage($c, $resource, true);
 
@@ -116,10 +131,131 @@ class ExternalApiController extends Controller
                 throw new ApiProblem(403, 'module_not_in_plan', 'API no activa', 'El complemento API no está activo para esta empresa.');
             }
 
-            return $fn();
+            return $fn($c);
         });
 
-        return $out ?? throw new ApiProblem(403, 'forbidden', 'Sin permiso', "El cliente no tiene permiso para leer «{$resource}» (alcance {$resource}.read).");
+        $verb = $action === 'write' ? 'escribir en' : 'leer';
+
+        return $out ?? throw new ApiProblem(403, 'forbidden', 'Sin permiso', "El cliente no tiene permiso para {$verb} «{$resource}» (alcance {$resource}.{$action}).");
+    }
+
+    private static function scopesOf(object $c): array
+    {
+        return array_map('trim', array_filter(explode(',', trim((string) $c->scopes, '{}'))));
+    }
+
+    /**
+     * POST /ext/oauth/token — OAuth2 «client credentials» (M-API flujo 2): grant_type=client_credentials, client_id (la clave
+     * esc_…) y client_secret, con X-Company-Id. Devuelve {access_token, token_type: Bearer, expires_in, scope}.
+     */
+    public function token(Request $request): JsonResponse
+    {
+        $company = (string) $request->header('X-Company-Id');
+        $id = (string) ($request->input('client_id') ?? $request->getUser() ?? '');
+        $secret = (string) ($request->input('client_secret') ?? $request->getPassword() ?? '');
+        if ($request->input('grant_type') !== 'client_credentials') {
+            return response()->json(['error' => 'unsupported_grant_type', 'error_description' => 'Solo se admite grant_type=client_credentials.'], 400);
+        }
+        if (! Str::isUuid($company) || $id === '' || $secret === '') {
+            return response()->json(['error' => 'invalid_request', 'error_description' => 'Envía X-Company-Id, client_id y client_secret.'], 400);
+        }
+        if (RateLimiter::tooManyAttempts('ext-token:'.$id, 30)) {
+            return response()->json(['error' => 'slow_down', 'error_description' => 'Demasiados intentos: espera un minuto.'], 429);
+        }
+        RateLimiter::hit('ext-token:'.$id, 60);
+
+        return DB::transaction(function () use ($company, $id, $secret) {
+            DbContext::setCompany($company);
+            $c = DB::selectOne('select * from api_clients where client_key = ? and deleted_at is null', [$id]);
+            if (! $c || ! hash_equals((string) $c->secret_hash, hash('sha256', $secret)) || $c->status !== 'active' || ($c->expires_at && strtotime($c->expires_at) < time())) {
+                return response()->json(['error' => 'invalid_client', 'error_description' => 'Cliente, secreto o empresa no válidos, o cliente revocado.'], 401);
+            }
+            $ttl = max(5, (int) config('escudo.api_token_minutes', 60));
+            $token = 'at_'.Str::random(48);
+            $scopes = self::scopesOf($c);
+            DB::insert('insert into api_access_tokens (company_id, api_client_id, token_hash, scopes, expires_at) values (?, ?, ?, ?::text[], now() + make_interval(mins => ?::int))',
+                [$c->company_id, $c->id, hash('sha256', $token), '{'.implode(',', $scopes).'}', $ttl]);
+
+            return response()->json(['access_token' => $token, 'token_type' => 'Bearer', 'expires_in' => $ttl * 60, 'scope' => implode(' ', $scopes)]);
+        });
+    }
+
+    /** Campos que un sistema externo (planillas, ERP) puede escribir en un trabajador. Nunca datos de salud. */
+    private const WORKER_FIELDS = ['document_type', 'document_number', 'first_name', 'paternal_last_name', 'maternal_last_name', 'birth_on', 'sex', 'nationality',
+        'phone_e164', 'personal_email', 'employee_code', 'hire_on', 'termination_on', 'termination_reason', 'employment_type', 'contract_type',
+        'current_site_id', 'current_area_id', 'current_position_id', 'status'];
+
+    /** POST /ext/v1/workers — alta de un trabajador (alcance workers.write); acepta Idempotency-Key (RN-API-06). */
+    public function storeWorker(Request $request): JsonResponse
+    {
+        return $this->authenticated($request, 'workers', fn (object $c) => $this->idempotent($request, $c, function () use ($request, $c) {
+            $row = $this->asClient($c, fn () => app(\App\Modules\REC\RecordsService::class)->create(\App\Modules\REC\Registry::resource('TRB', 'workers'),
+                array_intersect_key($request->all(), array_flip(self::WORKER_FIELDS))));
+
+            return [201, ['data' => ['id' => $row['id'], 'full_name' => $row['full_name'] ?? null, 'status' => $row['status'] ?? null]]];
+        }), 'write');
+    }
+
+    /** PATCH /ext/v1/workers/{id} — cambio de datos laborales (cargo, área, sede, cese…), con las mismas reglas que la ficha. */
+    public function updateWorker(Request $request, string $id): JsonResponse
+    {
+        return $this->authenticated($request, 'workers', fn (object $c) => $this->idempotent($request, $c, function () use ($request, $c, $id) {
+            if (! Str::isUuid($id)) {
+                throw ApiProblem::notFound('El trabajador no existe.');
+            }
+            $row = $this->asClient($c, fn () => app(\App\Modules\REC\RecordsService::class)->update(\App\Modules\REC\Registry::resource('TRB', 'workers'), $id,
+                array_intersect_key($request->all(), array_flip(array_diff(self::WORKER_FIELDS, ['document_type', 'document_number'])))));
+
+            return [200, ['data' => ['id' => $row['id'], 'full_name' => $row['full_name'] ?? null, 'status' => $row['status'] ?? null]]];
+        }), 'write');
+    }
+
+    /**
+     * RN-API-06: misma Idempotency-Key y mismo cuerpo → la respuesta original sin volver a escribir; misma llave con otro
+     * cuerpo → 409. Sin llave, la escritura se hace normal.
+     */
+    private function idempotent(Request $request, object $c, callable $write): JsonResponse
+    {
+        $key = trim((string) $request->header('Idempotency-Key'));
+        if ($key !== '' && mb_strlen($key) > 100) {
+            throw ApiProblem::badRequest('Idempotency-Key admite hasta 100 caracteres.');
+        }
+        $hash = hash('sha256', $request->method().' '.$request->path().' '.json_encode($request->all()));
+        if ($key !== '') {
+            $prev = DB::selectOne('select request_hash, response_status, response_body from api_idempotency_keys where api_client_id = ? and idempotency_key = ?', [$c->id, $key]);
+            if ($prev) {
+                if ($prev->request_hash !== $hash) {
+                    throw new ApiProblem(409, 'conflict', 'Llave repetida', 'Esa Idempotency-Key ya se usó con otros datos.');
+                }
+
+                return response()->json(json_decode($prev->response_body, true), (int) $prev->response_status)->header('Idempotent-Replay', 'true');
+            }
+        }
+        [$status, $body] = $write();
+        if ($key !== '') {
+            DB::insert('insert into api_idempotency_keys (company_id, api_client_id, idempotency_key, request_hash, response_status, response_body) values (?, ?, ?, ?, ?, ?::jsonb)',
+                [$c->company_id, $c->id, $key, $hash, $status, json_encode($body, JSON_UNESCAPED_UNICODE)]);
+        }
+
+        return response()->json($body, $status);
+    }
+
+    /**
+     * La escritura corre con las mismas reglas que la ficha, a nombre de la persona que creó el cliente de la API (queda en la
+     * bitácora con el cliente que la hizo).
+     */
+    private function asClient(object $c, callable $fn): array
+    {
+        $user = $c->created_by ? \App\Models\User::find($c->created_by) : null;
+        $m = $user ? DB::selectOne("select m.id, coalesce(r.base_role_code, r.code) as role from memberships m join roles r on r.id = m.role_id
+                                     where m.user_id = ? and m.company_id = ? and m.status = 'active' and m.deleted_at is null limit 1", [$user->id, $c->company_id]) : null;
+        if (! $user || ! $m) {
+            throw ApiProblem::forbidden('La persona que creó este cliente de la API ya no está activa en la empresa: crea un cliente nuevo.');
+        }
+        $co = DB::selectOne('select legal_name, ruc from companies where id = ?', [$c->company_id]);
+        auth()->setUser($user);
+        app()->instance(\App\Core\Tenancy\CompanyContext::class, new \App\Core\Tenancy\CompanyContext($c->company_id, $m->id, $m->role, $co->legal_name, trim((string) $co->ruc)));
+        return $fn();
     }
 
     private function usage(object $c, string $resource, bool $denied): void

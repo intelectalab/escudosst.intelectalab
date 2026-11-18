@@ -178,3 +178,42 @@ it('marca blanca: la empresa ve la marca activa de su cuenta; solo el administra
         $db->rollBack();
     }
 });
+
+it('los correos de aviso salen con la marca blanca de la consultora de la empresa', function () {
+    $db = DB::connection('platform');
+    $db->beginTransaction();
+    try {
+        $account = $db->selectOne('select account_id from companies where id = ?', [HUAYLAS_ID])->account_id;
+        $db->insert("insert into white_label_settings (account_id, brand_name, primary_color, show_powered_by, pdf_footer_text, status) values (?, 'Consultora RF', '#AA2200', false, 'Consultora RF · Lima', 'active')", [$account]);
+        \App\Modules\Consultora\MailBrand::use(HUAYLAS_ID);
+        $html = (new \App\Modules\NOT\AlertMail('Ana', 'Huaylas', 'Acción vencida', 'Revisa la acción', 'https://x.test', 'normal'))->render();
+        expect($html)->toContain('Consultora RF')->toContain('#AA2200')->toContain('Consultora RF · Lima')->not->toContain('Abrir en EscudoSST');
+    } finally {
+        $db->rollBack();
+        \App\Modules\Consultora\MailBrand::use(null);
+    }
+    $html = (new \App\Modules\NOT\AlertMail('Ana', 'Huaylas', 'Acción vencida', 'Revisa la acción', 'https://x.test', 'normal'))->render();
+    expect($html)->toContain('Abrir en EscudoSST');
+});
+
+it('dominio propio: se guarda sin verificar, da el registro TXT y solo se verifica si el DNS lo tiene', function () {
+    DB::connection('platform')->update("update feature_flags set mode = 'enabled', company_enabled = true where company_id = ? and module_code = 'CON'", [HUAYLAS_ID]);
+    $h = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    DB::update("update memberships set role_id = (select id from roles where code = 'account_admin' and account_id is null limit 1)
+                 where company_id = ? and user_id = (select id from app_auth_lookup_user(?))", [HUAYLAS_ID, CORPORATIVO_EMAIL]);
+    \App\Core\Auth\Permissions::flush();
+    $db = DB::connection('platform');
+    $db->beginTransaction();
+    try {
+        $account = $db->selectOne('select account_id from companies where id = ?', [HUAYLAS_ID])->account_id;
+        $db->insert("insert into white_label_settings (account_id, brand_name, show_powered_by, status) values (?, 'Consultora RF', true, 'draft')", [$account]);
+        $this->putJson('/api/v1/con/white-label/domain', ['domain' => 'http://mal dominio'], $h)->assertStatus(422);
+        $r = $this->putJson('/api/v1/con/white-label/domain', ['domain' => 'sst.consultora-prueba.invalid'], $h)->assertOk()->json('data');
+        expect($r['txt_name'])->toBe('_escudosst.sst.consultora-prueba.invalid')->and($r['txt_value'])->toStartWith('escudosst-verify=')->and($r['verified_at'])->toBeNull();
+        $this->postJson('/api/v1/con/white-label/domain/verify', [], $h)->assertStatus(409);
+        expect($db->selectOne('select domain_verified_at from white_label_settings where account_id = ?', [$account])->domain_verified_at)->toBeNull();
+    } finally {
+        $db->rollBack();
+    }
+});

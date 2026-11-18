@@ -170,6 +170,7 @@ final class AlertDelivery
                 continue;
             }
             try {
+                \App\Modules\Consultora\MailBrand::use($company);
                 Mail::to($n->email)->send(new AlertMail(explode(' ', (string) $n->full_name)[0], $companyName, $n->title, (string) $n->body,
                     $front.($n->link ?: '/inicio'), $n->priority));
                 $this->record($db, $company, $n->id, 'email', 'sent', null, null, null, (int) $n->failures + 1);

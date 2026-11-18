@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'company', 'module:CON'])->prefix('con')->group(function () {
     Route::get('white-label', [WhiteLabelController::class, 'show']);
     Route::put('white-label', [WhiteLabelController::class, 'save'])->middleware('throttle:20,1');
+    Route::put('white-label/domain', [WhiteLabelController::class, 'domain'])->middleware('throttle:10,1');
+    Route::post('white-label/domain/verify', [WhiteLabelController::class, 'verifyDomain'])->middleware('throttle:10,1');
 });
 Route::middleware(['auth:sanctum', 'company'])->get('brand', [WhiteLabelController::class, 'brand']);
 

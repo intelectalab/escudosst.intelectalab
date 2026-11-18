@@ -1,9 +1,5 @@
-// Maquetas visuales de pantallas para el sitio (docs/07 §1.4): datos ficticios, siempre rotulados «Ejemplo».
+// Maquetas visuales de pantallas para el sitio (docs/07 §1.4): muestran cómo se ve el sistema con datos ilustrativos.
 // Son HTML/SVG propios, livianos y nítidos en cualquier tamaño; no son capturas reales ni de empresas reales.
-
-function Example() {
-  return <span className="rounded-md bg-[var(--site-amber)]/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#6b5003]">Ejemplo</span>;
-}
 
 function Window({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
   return (
@@ -14,7 +10,6 @@ function Window({ title, children, className = "" }: { title: string; children: 
         <span className="h-2.5 w-2.5 rounded-full bg-[#22A35A]/70" />
         <span className="ml-3 truncate text-xs font-semibold text-[var(--site-text-2)]">{title}</span>
         <span className="ml-auto">
-          <Example />
         </span>
       </div>
       <div className="p-4 sm:p-5">{children}</div>
@@ -77,7 +72,7 @@ export function DashboardMock() {
 /** Modo Inspección SUNAFIL: expediente por trabajador con lo encontrado y lo faltante. */
 export function SunafilMock() {
   return (
-    <Window title="Expediente SUNAFIL · J. Quispe (ficticio)">
+    <Window title="Expediente SUNAFIL · J. Quispe">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <p className="text-sm font-bold text-[var(--site-navy-title)]">Periodo: enero – octubre</p>
@@ -117,7 +112,6 @@ export function FotocheckMock() {
         <div className="site-stripe h-2" />
         <div className="flex items-center justify-between bg-[var(--site-navy)] px-5 py-3 text-white">
           <span className="font-display font-bold">Fotocheck SST</span>
-          <Example />
         </div>
         <div className="grid grid-cols-[1fr_auto] gap-4 p-5">
           <div className="space-y-1.5">
@@ -152,7 +146,6 @@ export function ReportMock() {
         <span className="grid h-8 w-8 place-items-center rounded-full bg-white/20 text-xs font-bold">SST</span>
         <span className="text-sm font-semibold">Reportes SST</span>
         <span className="ml-auto">
-          <Example />
         </span>
       </div>
       <div className="space-y-2 p-3 text-[12px]">

@@ -8,4 +8,4 @@ Alertas SST de {!! $company !!} que requieren tu atención:
 @endforeach
 
 Ir al inicio: {!! $url !!}
-— EscudoSST
+— {{ $brand['name'] ?? 'EscudoSST' }}

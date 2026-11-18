@@ -18,7 +18,7 @@ class ApiRules extends RecordRules
     /** Secreto recién generado en esta solicitud (se entrega una vez con la respuesta de creación). */
     private static ?string $fresh = null;
 
-    public const SCOPES = ['read', '*', 'workers.read', 'events.read', 'actions.read', 'inspections.read', 'trainings.read', 'credentials.read', 'access_events.read'];
+    public const SCOPES = ['read', '*', 'workers.read', 'events.read', 'actions.read', 'inspections.read', 'trainings.read', 'credentials.read', 'access_events.read', 'write', 'workers.write'];
 
     public function prepare(string $op, array $res, array &$values, ?object $current, array &$extra): void
     {

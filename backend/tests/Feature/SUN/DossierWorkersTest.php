@@ -55,3 +55,21 @@ it('sigue aceptando un solo trabajador con worker_id', function () {
     $this->postJson("/api/v1/sun/dossiers/{$d}/build", ['worker_id' => $a], $h)->assertOk()->assertJsonPath('data.worker.id', $a)->assertJsonCount(1, 'data.workers');
     $this->postJson("/api/v1/sun/dossiers/{$d}/build", ['worker_id' => null], $h)->assertOk()->assertJsonPath('data.worker', null);
 });
+
+it('usa el IPERC del puesto que tuvo el trabajador en cada tramo del periodo', function () {
+    $h = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
+    DB::select("select set_config('app.company_id', ?, false)", [ANDINAS_ID]);
+    $area = DB::selectOne('select id from areas where company_id = ? and deleted_at is null limit 1', [ANDINAS_ID])->id;
+    $site = DB::selectOne('select site_id from areas where id = ?', [$area])->site_id;
+    $tag = substr(md5(uniqid()), 0, 4);
+    $p1 = $this->postJson('/api/v1/records/TEN/positions', ['code' => 'PA'.$tag, 'name' => 'Ayudante '.$tag, 'area_id' => $area], $h)->assertCreated()->json('data.id');
+    $p2 = $this->postJson('/api/v1/records/TEN/positions', ['code' => 'PB'.$tag, 'name' => 'Operario '.$tag, 'area_id' => $area], $h)->assertCreated()->json('data.id');
+    $w = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => (string) random_int(70000000, 79999999), 'first_name' => 'Cambio', 'paternal_last_name' => 'Puesto',
+        'hire_on' => '2026-01-10', 'current_site_id' => $site, 'current_area_id' => $area, 'current_position_id' => $p1], $h)->assertCreated()->json('data.id');
+    $this->patchJson("/api/v1/records/TRB/workers/{$w}", ['current_position_id' => $p2], $h)->assertOk();
+
+    $d = $this->postJson('/api/v1/records/SUN/inspection_dossiers', ['title' => 'Por puesto', 'period_from' => '2026-01-01', 'period_to' => '2026-12-31'], $h)->assertCreated()->json('data.id');
+    $this->postJson("/api/v1/sun/dossiers/{$d}/build", ['worker_id' => $w], $h)->assertOk();
+    $w6 = collect($this->getJson("/api/v1/sun/dossiers/{$d}/items", $h)->json('data'))->where('code', 'W6')->pluck('title')->values()->all();
+    expect($w6)->toHaveCount(2)->and($w6[0])->toContain('Ayudante '.$tag)->and($w6[1])->toContain('Operario '.$tag);
+});

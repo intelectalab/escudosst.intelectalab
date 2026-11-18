@@ -181,9 +181,22 @@ class DossierBuilder extends Controller
             $ris = $one("select id from risst_deliveries where worker_id = ? and status in ('delivered', 'signed') and deleted_at is null limit 1", [$w]);
             $add('W5', "{$n}: entrega del RISST", 'RIS', 'risst_deliveries', $ris?->id, $ris ? 'included' : ($workers >= $risstMin ? 'missing' : 'not_applicable'),
                 $ris || $workers < $risstMin ? null : 'No consta la entrega del RISST.', $w);
-            $ip = $one("select id from iperc_matrices where status in ('active', 'review_required', 'review_overdue') and current_version_id is not null and deleted_at is null and (position_id = ? or (position_id is null and area_id = ?)) limit 1",
-                [$worker->current_position_id, $worker->current_area_id]);
-            $add('W6', "{$n}: IPERC de su puesto o área", 'IPC', 'iperc_matrices', $ip?->id, $ip ? 'included' : 'missing', $ip ? null : 'Su puesto o área no tiene una matriz IPERC aprobada.', $w);
+            // M-SUN: el IPERC que corresponde es el del puesto que tuvo en cada tramo del periodo (historial de asignaciones);
+            // sin historial, el puesto actual.
+            $held = DB::select("select a.position_id, a.area_id, p.name as position, greatest(a.starts_on, ?::date) as from_on, least(coalesce(a.ends_on, ?::date), ?::date) as to_on
+                                  from worker_assignments a left join positions p on p.id = a.position_id
+                                 where a.worker_id = ? and a.is_primary and a.deleted_at is null and a.starts_on <= ?::date and (a.ends_on is null or a.ends_on >= ?::date)
+                                 order by a.starts_on", [$from, $to, $to, $w, $to, $from]);
+            if (! $held) {
+                $held = [(object) ['position_id' => $worker->current_position_id, 'area_id' => $worker->current_area_id, 'position' => null, 'from_on' => null, 'to_on' => null]];
+            }
+            $mes = fn (?string $d) => $d ? ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'set', 'oct', 'nov', 'dic'][(int) substr($d, 5, 2) - 1].' '.substr($d, 0, 4) : '';
+            foreach ($held as $h) {
+                $ip = $one("select id from iperc_matrices where status in ('active', 'review_required', 'review_overdue') and current_version_id is not null and deleted_at is null and (position_id = ? or (position_id is null and area_id = ?)) limit 1",
+                    [$h->position_id, $h->area_id]);
+                $label = $h->position ? "{$n}: IPERC del puesto {$h->position}".(count($held) > 1 ? ' ('.$mes($h->from_on).' a '.$mes($h->to_on).')' : '') : "{$n}: IPERC de su puesto o área";
+                $add('W6', $label, 'IPC', 'iperc_matrices', $ip?->id, $ip ? 'included' : 'missing', $ip ? null : 'Ese puesto o su área no tiene una matriz IPERC aprobada.', $w);
+            }
             $cr = $one("select id, status from credentials where worker_id = ? and deleted_at is null and status <> 'revoked' order by issued_at desc nulls last limit 1", [$w]);
             if ($cr) {
                 $add('W7', "{$n}: fotocheck SST", 'FOT', 'credentials', $cr->id, $cr->status === 'active' ? 'included' : 'expired', $cr->status === 'active' ? null : 'El fotocheck está bloqueado o vencido.', $w);

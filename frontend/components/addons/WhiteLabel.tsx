@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/Form";
 import { api, ApiError } from "@/lib/api";
 
-type Brand = { brand_name: string; logo: string | null; primary_color: string | null; secondary_color: string | null; pdf_footer_text: string | null; show_powered_by: boolean; active: boolean };
+type Brand = { custom_domain?: string | null; domain_verified_at?: string | null; brand_name: string; logo: string | null; primary_color: string | null; secondary_color: string | null; pdf_footer_text: string | null; show_powered_by: boolean; active: boolean };
 let cache: { company: string; p: Promise<Brand | null> } | null = null;
 
 export function useCompanyBrand(companyId: string): Brand | null {
@@ -123,6 +123,39 @@ export function WhiteLabelPanel({ bare = false }: { bare?: boolean } = {}) {
       </div>
       <Button variant="primary" onClick={save} disabled={d.brand_name.trim().length < 2}>Guardar marca</Button>
       {msg && <p className={`text-sm ${msg.ok ? "text-ok" : "text-bad"}`}>{msg.text}</p>}
+      {d.brand_name && <CustomDomain initial={d.custom_domain ?? ""} verifiedAt={d.domain_verified_at ?? null} />}
     </section>
+  );
+}
+
+/** SCR-CON-05 / RN-CON-05: dominio propio con verificación por un registro TXT en el DNS. */
+function CustomDomain({ initial, verifiedAt }: { initial: string; verifiedAt: string | null }) {
+  const [domain, setDomain] = useState(initial);
+  const [info, setInfo] = useState<{ domain: string; verified_at: string | null; txt_name: string; txt_value: string; cname_target: string | null } | null>(null);
+  const [verified, setVerified] = useState(verifiedAt);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const fail = (e: ApiError) => setMsg({ text: Object.values(e.errors ?? {})[0]?.[0] ?? e.detail ?? e.title, ok: false });
+  const save = () => api<{ data: NonNullable<typeof info> }>("/con/white-label/domain", { method: "PUT", withCompany: true, body: { domain: domain.trim().toLowerCase() } })
+    .then((r) => { setInfo(r.data); setVerified(null); setMsg(null); }).catch(fail);
+  const verify = () => api<{ data: NonNullable<typeof info> }>("/con/white-label/domain/verify", { method: "POST", withCompany: true })
+    .then((r) => { setInfo(r.data); setVerified(r.data.verified_at); setMsg({ text: "Dominio verificado. El equipo de EscudoSST lo publicará para tus clientes.", ok: true }); }).catch(fail);
+  return (
+    <div className="space-y-2 rounded-xl border border-line p-4 text-sm">
+      <p className="font-semibold">Dominio propio (opcional)</p>
+      <p className="text-xs text-muted">Tus clientes entran por tu dominio (por ejemplo sst.miconsultora.pe). Primero se verifica que el dominio es tuyo con un registro en el DNS.</p>
+      <div className="flex flex-wrap gap-2">
+        <input className="input !w-64" placeholder="sst.miconsultora.pe" value={domain} onChange={(e) => setDomain(e.target.value)} />
+        <Button size="sm" onClick={save} disabled={domain.trim().length < 4}>Guardar dominio</Button>
+        {(info || initial) && !verified && <Button size="sm" variant="primary" onClick={verify}>Verificar ahora</Button>}
+      </div>
+      {verified ? <p className="text-ok">Verificado el {new Date(verified).toLocaleDateString("es-PE")}.</p> : info && (
+        <div className="rounded-lg bg-bg p-3 text-xs">
+          <p>En el DNS de tu dominio crea este registro y luego pulsa «Verificar ahora» (puede tardar unas horas):</p>
+          <p className="mt-1">Tipo <b>TXT</b> · Nombre <code>{info.txt_name}</code> · Valor <code className="break-all">{info.txt_value}</code></p>
+          {info.cname_target && <p className="mt-1">Y para usarlo: tipo <b>CNAME</b> de <code>{info.domain}</code> hacia <code>{info.cname_target}</code>.</p>}
+        </div>
+      )}
+      {msg && <p className={msg.ok ? "text-ok" : "text-bad"}>{msg.text}</p>}
+    </div>
   );
 }

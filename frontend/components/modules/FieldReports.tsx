@@ -28,7 +28,16 @@ export function useReport<T>(path: string) {
   return { data, error };
 }
 
+/** M-CON: marca blanca de la consultora de la empresa (logo y pie de página en los PDF), si tiene una activa. */
+type Brand = { brand_name: string | null; logo: string | null; pdf_footer_text: string | null; show_powered_by: boolean } | null;
+function useBrand(): Brand {
+  const [b, setB] = useState<Brand>(null);
+  useEffect(() => { api<{ data: Brand }>("/brand", { withCompany: true }).then((r) => setB(r.data)).catch(() => setB(null)); }, []);
+  return b;
+}
+
 export function Sheet({ company, title, sub, draft, children }: { company: Company; title: string; sub: string; draft?: string | null; children: React.ReactNode }) {
+  const brand = useBrand();
   return (
     <div className="min-h-screen bg-gray-100 p-4 text-gray-900 print:bg-white print:p-0">
       <style>{`@page { size: A4; margin: 14mm } @media print { .no-print { display: none } } img { break-inside: avoid }`}</style>
@@ -38,12 +47,18 @@ export function Sheet({ company, title, sub, draft, children }: { company: Compa
       </div>
       <div className="mx-auto max-w-3xl space-y-5 bg-white p-8 shadow print:max-w-none print:p-0 print:shadow-none">
         <header className="space-y-1 text-center">
+          {brand?.logo && <img src={brand.logo} alt={brand.brand_name ?? "Logo"} className="mx-auto h-10 w-auto object-contain" />}
           <p className="text-xs text-gray-600">{company.legal_name} · RUC {company.ruc}</p>
           <h1 className="text-lg font-bold uppercase">{title}</h1>
           <p className="text-sm">{sub}</p>
           {draft && <p className="text-sm font-bold text-red-700">{draft}</p>}
         </header>
         {children}
+        {brand?.brand_name && (
+          <footer className="border-t border-gray-300 pt-2 text-center text-[10px] text-gray-500">
+            {brand.pdf_footer_text || brand.brand_name}{brand.show_powered_by ? " · Con EscudoSST" : ""}
+          </footer>
+        )}
       </div>
     </div>
   );

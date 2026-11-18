@@ -298,8 +298,35 @@ h3 {
   }
   .site-reveal {
     opacity: 0;
-    transform: translateY(18px);
-    transition: opacity 0.6s ease, transform 0.6s ease;
+    transform: translateY(28px);
+    transition: opacity 0.75s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.75s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  /* SiteMotion: bloques que aparecen al bajar (desde abajo, de costado o con acercamiento). */
+  .site-motion {
+    opacity: 0;
+    transition: opacity 0.8s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+    will-change: opacity, transform;
+  }
+  .site-motion-up { transform: translateY(32px); }
+  .site-motion-left { transform: translate(-28px, 18px); }
+  .site-motion-right { transform: translate(28px, 18px); }
+  .site-motion-zoom { transform: translateY(24px) scale(0.94); }
+  .site-motion.is-shown { opacity: 1; transform: none; }
+  /* Maquetas que se inclinan con el mouse y suben al pasar encima. */
+  .site-tilt {
+    transform: perspective(1100px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+    transition: transform 0.35s ease, box-shadow 0.35s ease;
+  }
+  .site-tilt:hover { box-shadow: 0 34px 70px -24px rgba(13, 59, 110, 0.55); }
+  /* Tarjetas que se elevan al pasar el mouse. */
+  .site main section .grid > .rounded-2xl,
+  .site main section .grid > .rounded-3xl {
+    transition: transform 0.3s ease, box-shadow 0.3s ease, opacity 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .site main section .grid > .rounded-2xl:hover,
+  .site main section .grid > .rounded-3xl:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 18px 40px -22px rgba(13, 59, 110, 0.45);
   }
   .site-reveal.is-shown {
     opacity: 1;
@@ -314,6 +341,12 @@ h3 {
       opacity: 1;
       transform: none;
       transition: none;
+    }
+    .site-motion,
+    .site-tilt {
+      opacity: 1 !important;
+      transform: none !important;
+      transition: none !important;
     }
   }
   /* El banner de cookies no se tapa con el botón de WhatsApp (SCR-WEB-13). */

@@ -153,20 +153,39 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="grid min-h-screen bg-bg lg:grid-cols-2">
-      <section className="hidden flex-col justify-between bg-side p-12 text-white lg:flex">
-        <AppBrand light />
-        <div className="max-w-md space-y-4">
-          <h1 className="font-display text-3xl font-semibold leading-tight">Seguridad y salud en el trabajo, en orden y a la mano.</h1>
-          <p className="text-white/75">IPERC, inspecciones, capacitaciones, EPP y el expediente para SUNAFIL en un solo lugar.</p>
-        </div>
-        <p className="flex items-center gap-2 text-sm text-white/60"><Icon name="lock" size={15} /> Ley N.° 29783 y su reglamento</p>
-      </section>
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-[#eef4fb] via-bg to-[#e6f6f3] px-4 py-8 sm:px-6">
+      {/* Fondo suave con los colores de la marca */}
+      <div className="pointer-events-none absolute -left-32 -top-32 h-96 w-96 rounded-full bg-brand/10 blur-3xl" aria-hidden="true" />
+      <div className="pointer-events-none absolute -bottom-40 -right-24 h-[28rem] w-[28rem] rounded-full bg-[#1FB5A3]/10 blur-3xl" aria-hidden="true" />
 
-      <section className="relative flex flex-col items-center justify-start px-4 pb-8 pt-12 sm:px-6 lg:justify-center lg:py-8">
-        <div className="absolute inset-x-0 top-0 h-44 bg-side lg:hidden" aria-hidden="true" />
-        <div className="relative mb-5 lg:hidden"><AppBrand light /></div>
-        <div className="relative w-full max-w-md space-y-5 rounded-xl border border-line bg-surface p-6 shadow-sm sm:p-8">
+      <div className="login-enter relative grid w-full max-w-5xl overflow-hidden rounded-3xl lg:min-h-[600px] border border-line bg-surface shadow-[0_30px_80px_-30px_rgba(13,59,110,.45)] lg:grid-cols-[1.05fr_1fr]">
+        <section className="relative hidden flex-col justify-between gap-8 overflow-hidden bg-gradient-to-br from-[#0b2f58] via-side to-[#1b6fb7] p-10 text-white lg:flex">
+          <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-2xl" aria-hidden="true" />
+          <div className="relative space-y-2">
+            <AppBrand light />
+            <p className="text-sm text-white/70">Gestión de seguridad y salud en el trabajo para empresas peruanas</p>
+          </div>
+          <div className="relative space-y-6">
+            <h1 className="font-display text-[2rem] font-semibold leading-tight">Seguridad y salud en el trabajo, en orden y a la mano.</h1>
+            <ul className="space-y-3">
+              {[
+                ["shield", "Riesgos e IPERC", "Matrices por puesto, mapas de riesgo y controles."],
+                ["clipboard", "Inspecciones y capacitaciones", "En campo, con o sin señal, y con firma del trabajador."],
+                ["file", "Expediente SUNAFIL", "Listo en minutos, con enlace temporal para el inspector."],
+              ].map(([icon, title, text], i) => (
+                <li key={title} className="login-item flex items-start gap-3 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm" style={{ animationDelay: `${0.15 + i * 0.1}s` }}>
+                  <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/15"><Icon name={icon as "shield"} size={18} /></span>
+                  <span><b className="block text-sm">{title}</b><span className="text-sm text-white/75">{text}</span></span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <p className="relative flex items-center gap-2 text-xs text-white/60"><Icon name="lock" size={14} /> Ley N.° 29783 y su reglamento</p>
+        </section>
+
+        <section className="relative flex flex-col justify-center px-6 py-8 sm:px-10 sm:py-10">
+        <div className="mb-6 lg:hidden"><AppBrand /></div>
+        <div className="relative w-full space-y-5">
           {expired && !error && step === "password" && (
             <div role="status" className="rounded-lg bg-amber-soft px-4 py-3 text-sm text-amber-ink">
               Tu sesión se cerró por seguridad (inactividad o tiempo máximo). Vuelve a ingresar.
@@ -302,10 +321,23 @@ export default function LoginPage() {
             </div>
           )}
         </div>
-        <p className="relative mt-5 text-center text-xs text-muted">
-          ¿Aún no usas EscudoSST? <Link href="/demo" className="font-semibold text-brand hover:underline">Solicita una demostración</Link>
-        </p>
-      </section>
+        <div className="relative mt-6 space-y-2 text-center text-sm">
+          <Link href="/" className="inline-flex items-center gap-1 text-muted hover:text-brand">
+            <span aria-hidden="true">←</span> Volver al portal
+          </Link>
+          <p className="text-xs text-muted">
+            ¿Aún no usas EscudoSST? <Link href="/demo" className="font-semibold text-brand hover:underline">Solicita una demostración</Link>
+          </p>
+        </div>
+        </section>
+      </div>
+      <style>{`
+        .login-enter { animation: loginIn .5s cubic-bezier(.2,.7,.2,1) both }
+        .login-item { animation: loginItem .5s cubic-bezier(.2,.7,.2,1) both }
+        @keyframes loginIn { from { opacity: 0; transform: translateY(14px) scale(.985) } to { opacity: 1; transform: none } }
+        @keyframes loginItem { from { opacity: 0; transform: translateX(-10px) } to { opacity: 1; transform: none } }
+        @media (prefers-reduced-motion: reduce) { .login-enter, .login-item { animation: none } }
+      `}</style>
     </main>
   );
 }

@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { IaaHistory, InvestigationGuide, IpercSuggest } from "@/components/addons/IaaGuided";
+import { IaaCourses, IaaDocument } from "@/components/addons/IaaExtras";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/Form";
 import { api, ApiError } from "@/lib/api";
@@ -17,7 +18,7 @@ const FEATURES: [string, string, string, string][] = [
   ["talk", "Guion de charla de 5 minutos", "Tema de la charla", "Ej.: orden y limpieza en el almacén"],
 ];
 
-const TABS: [string, string][] = [["iperc", "IPERC sugerido"], ["inv", "Investigación guiada"], ["quick", "Consultas rápidas"], ["history", "Historial"], ["usage", "Consumo"]];
+const TABS: [string, string][] = [["iperc", "IPERC sugerido"], ["inv", "Investigación guiada"], ["doc", "Leer documento"], ["courses", "Cursos sugeridos"], ["quick", "Consultas rápidas"], ["history", "Historial"], ["usage", "Consumo"]];
 
 export function IaaModule() {
   const [tab, setTab] = useState("iperc");
@@ -46,6 +47,8 @@ export function IaaModule() {
       </div>
       {tab === "iperc" && <IpercSuggest key={preset.position ?? "-"} positionId={preset.position} />}
       {tab === "inv" && <InvestigationGuide key={preset.investigation ?? "-"} investigationId={preset.investigation} />}
+      {tab === "doc" && <IaaDocument />}
+      {tab === "courses" && <IaaCourses />}
       {tab === "quick" && <QuickAssistant />}
       {tab === "history" && <IaaHistory />}
       {tab === "usage" && <IaaUsage />}

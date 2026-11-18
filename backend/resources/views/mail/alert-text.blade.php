@@ -3,5 +3,5 @@ Hola, {!! $name !!}:
 {!! $title !!} ({!! $company !!})
 {!! $body !!}
 
-Abrir en EscudoSST: {!! $url !!}
-— EscudoSST · Puedes cambiar estos avisos en tus preferencias de notificación.
+Abrir en {{ $brand['name'] ?? 'EscudoSST' }}: {!! $url !!}
+— {{ $brand['name'] ?? 'EscudoSST' }} · Puedes cambiar estos avisos en tus preferencias de notificación.

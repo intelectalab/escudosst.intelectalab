@@ -820,6 +820,7 @@ final class SstAlerts
             $status = 'sent';
             $error = null;
             try {
+                \App\Modules\Consultora\MailBrand::use($company);
                 Mail::to($user->email)->send(new SstDigestMail(explode(' ', $user->full_name)[0], $companyName,
                     array_map(fn ($i) => ['title' => $i['title'], 'body' => $i['body'], 'url' => $front.$i['link'], 'priority' => $i['priority']], $items), $front.'/inicio'));
             } catch (Throwable $e) {

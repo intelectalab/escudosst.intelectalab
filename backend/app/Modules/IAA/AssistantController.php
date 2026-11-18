@@ -31,6 +31,8 @@ class AssistantController extends Controller
         }
         Usage::guard();
         $started = microtime(true);
+        // RN-IAA-03: nombres, DNI, teléfonos y correos se reemplazan por marcadores antes de procesar y guardar el texto.
+        [$d['text'], $hidden] = Redactor::redact($d['text']);
         [$items, $note, $matched] = $this->answer($d['feature'], $d['text']);
 
         $ctx = app(CompanyContext::class);
@@ -47,7 +49,7 @@ class AssistantController extends Controller
             [$ctx->companyId, $req->id, $d['feature'], json_encode(['items' => $items], JSON_UNESCAPED_UNICODE), $note, (string) auth()->id(), (string) auth()->id()]
         );
 
-        return response()->json(['data' => ['items' => $items, 'note' => $note, 'topic' => $matched]]);
+        return response()->json(['data' => ['items' => $items, 'note' => $note, 'topic' => $matched, 'redacted' => $hidden]]);
     }
 
     /** @return array{0: list<array>, 1: string, 2: ?string} sugerencias, nota y tema encontrado */

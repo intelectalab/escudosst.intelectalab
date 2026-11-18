@@ -29,6 +29,7 @@ export default async function PlanesPage() {
 
       <section className="bg-[var(--site-surface)] px-4 py-14 lg:px-8">
         <div className="mx-auto max-w-[1360px] space-y-6">
+          <h2 className="sr-only">Planes y precios</h2>
           {pricing.plans.length ? <PlanPricing plans={pricing.plans} s={s} discount={pricing.annual_discount_pct ?? 0} /> : <p className="text-center text-[var(--site-text-2)]">Los planes se publican pronto.</p>}
           <p className="text-center text-sm text-[var(--site-text-2)]">
             ¿Necesitas IA, app offline o plantillas de tu sector?{" "}

@@ -108,3 +108,33 @@ it('limita cada cliente a los recursos de sus permisos, nunca entrega datos de s
     $x = $this->get('/api/v1/api-clients/usage.xlsx', $h)->assertOk();
     expect($x->headers->get('content-type'))->toContain('spreadsheetml');
 });
+
+it('entrega un token OAuth2, escribe trabajadores con su permiso y no duplica con la misma Idempotency-Key', function () {
+    $h = asAccountAdmin();
+    $c = $this->postJson('/api/v1/records/API/api_clients', ['name' => 'Planillas', 'scopes' => ['workers.read', 'workers.write']], $h)->assertCreated();
+    $ro = $this->postJson('/api/v1/records/API/api_clients', ['name' => 'Solo lectura', 'scopes' => ['workers.read']], $h)->assertCreated();
+
+    $tok = fn ($cl, $secret) => $this->postJson('/api/v1/ext/oauth/token', ['grant_type' => 'client_credentials', 'client_id' => $cl, 'client_secret' => $secret], ['X-Company-Id' => HUAYLAS_ID]);
+    $tok($c->json('data.client_key'), 'sk_malo')->assertStatus(401)->assertJsonPath('error', 'invalid_client');
+    $this->postJson('/api/v1/ext/oauth/token', ['grant_type' => 'password'], ['X-Company-Id' => HUAYLAS_ID])->assertStatus(400);
+    $t = $tok($c->json('data.client_key'), $c->json('data.secret'))->assertOk()->assertJsonPath('token_type', 'Bearer')->json();
+    expect($t['access_token'])->toStartWith('at_')->and($t['expires_in'])->toBeGreaterThan(0);
+    $bearer = ['X-Company-Id' => HUAYLAS_ID, 'Authorization' => 'Bearer '.$t['access_token']];
+
+    $this->getJson('/api/v1/ext/v1/workers', $bearer)->assertOk();
+    $dni = (string) random_int(50000000, 59999999);
+    $body = ['document_number' => $dni, 'first_name' => 'Ana', 'paternal_last_name' => 'Planilla'];
+    $first = $this->postJson('/api/v1/ext/v1/workers', $body, $bearer + ['Idempotency-Key' => 'alta-'.$dni])->assertCreated()->json('data.id');
+    $again = $this->postJson('/api/v1/ext/v1/workers', $body, $bearer + ['Idempotency-Key' => 'alta-'.$dni])->assertCreated();
+    expect($again->json('data.id'))->toBe($first)->and($again->headers->get('Idempotent-Replay'))->toBe('true');
+    $this->postJson('/api/v1/ext/v1/workers', $body + ['maternal_last_name' => 'Otro'], $bearer + ['Idempotency-Key' => 'alta-'.$dni])->assertStatus(409);
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    expect(DB::selectOne("select count(*) as n from workers where id = ? and full_name like '%Planilla%'", [$first])->n)->toBe(1);
+
+    $this->patchJson("/api/v1/ext/v1/workers/{$first}", ['employee_code' => 'PL-001'], $bearer)->assertOk();
+    $this->postJson('/api/v1/ext/v1/workers', ['first_name' => 'Sin DNI'], $bearer)->assertStatus(422);
+
+    $roExt = ['X-Company-Id' => HUAYLAS_ID, 'X-Api-Key' => $ro->json('data.client_key'), 'X-Api-Secret' => $ro->json('data.secret')];
+    $this->postJson('/api/v1/ext/v1/workers', $body, $roExt)->assertForbidden();
+    $this->getJson('/api/v1/ext/v1/workers', ['X-Company-Id' => HUAYLAS_ID, 'Authorization' => 'Bearer at_inventado'])->assertStatus(401);
+});

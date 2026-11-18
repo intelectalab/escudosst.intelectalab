@@ -266,7 +266,7 @@ export default function ModulePage() {
           <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface p-4 text-sm">
             <span>
               <b className="block">Uso de la API</b>
-              <span className="text-xs text-muted">Consultas por cliente y recurso del mes, rechazadas por permiso y webhooks fallidos. Permisos válidos: read, workers.read, credentials.read, access_events.read…</span>
+              <span className="text-xs text-muted">Consultas por cliente y recurso del mes, rechazadas por permiso y webhooks fallidos. Permisos: read, workers.read, workers.write, credentials.read, access_events.read… Token OAuth2 en POST /api/v1/ext/oauth/token (client_credentials); las altas aceptan Idempotency-Key.</span>
             </span>
             <ReportButton path="/api-clients/usage.xlsx" file="uso-api.xlsx" label="Uso de la API en Excel" />
           </section>

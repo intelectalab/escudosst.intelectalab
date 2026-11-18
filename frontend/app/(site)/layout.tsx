@@ -9,6 +9,7 @@ import { SiteHeader } from "@/components/site/SiteHeader";
 import { GoogleAnalytics } from "@/components/site/GoogleAnalytics";
 import { PopupWidget } from "@/components/site/PopupWidget";
 import { RefCapture } from "@/components/site/RefCapture";
+import { SiteMotion } from "@/components/site/SiteMotion";
 import { SiteTracker } from "@/components/site/SiteTracker";
 import { WhatsAppFloat } from "@/components/site/WhatsAppFloat";
 import { assetUrl, contactHref, getSite } from "@/lib/site";
@@ -55,6 +56,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       <GoogleAnalytics id={s.google?.ga4 ?? null} />
       <RefCapture />
       <SiteTracker />
+      <SiteMotion />
     </div>
   );
 }

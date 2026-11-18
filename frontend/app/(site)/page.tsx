@@ -129,8 +129,10 @@ export default async function HomePage() {
           </div>
           <div className="relative px-2 sm:px-6">
             <div className="absolute inset-4 -rotate-2 rounded-[28px] bg-[var(--site-navy)]/90 shadow-xl" aria-hidden="true" />
-            <div className="relative rotate-1 transition-transform duration-500 hover:rotate-0">
-              <DashboardMock />
+            <div className="site-float relative">
+              <div className="rotate-1 transition-transform duration-500 hover:rotate-0">
+                <div data-motion="art"><DashboardMock /></div>
+              </div>
             </div>
             {/* Avisos flotantes: ejemplos del tipo de alertas que da el sistema */}
             <div className="site-float absolute -left-2 top-6 hidden items-center gap-2.5 rounded-2xl bg-white px-3.5 py-2.5 text-sm shadow-lg ring-1 ring-[var(--site-border)] sm:flex">
@@ -263,7 +265,7 @@ export default async function HomePage() {
                     </a>
                   </div>
                 </div>
-                <Reveal delay={120}>{f.art}</Reveal>
+                <Reveal delay={120}><div data-motion="art">{f.art}</div></Reveal>
               </div>
             );
           })}
