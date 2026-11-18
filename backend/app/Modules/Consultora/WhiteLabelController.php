@@ -110,6 +110,18 @@ class WhiteLabelController extends Controller
         }
         $this->db()->update('update white_label_settings set domain_verified_at = now(), updated_by = ?, updated_at = now() where id = ?', [(string) auth()->id(), $w->id]);
         $accounts->audit((string) auth()->id(), 'white_label_domain_verified', 'white_label_settings', null, ['domain' => $w->custom_domain]);
+        // Aviso al equipo de EscudoSST: publicar el dominio en el servidor (un comando, ~1 minuto).
+        try {
+            $s = json_decode($this->db()->selectOne('select public_site_settings() as s')->s, true);
+            $to = ($s['contact_email'] ?? null) ?: ($s['sales_email'] ?? null);
+            if ($to) {
+                \Illuminate\Support\Facades\Mail::to($to)->send(new \App\Modules\WEB\Mail\SiteRequestMail('equipo',
+                    'Dominio de consultora verificado: '.$w->custom_domain, 'Una consultora verificó su dominio propio. Para que sus clientes entren por él, publícalo en el servidor con el comando de abajo.',
+                    [['Dominio', $w->custom_domain], ['Comando', './deploy/escudo.sh domain '.$w->custom_domain]], null, null, null));
+            }
+        } catch (\Throwable) {
+            // El aviso nunca impide la verificación.
+        }
 
         return response()->json(['data' => $this->dnsInstructions($w->custom_domain, now()->toIso8601String())]);
     }

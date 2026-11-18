@@ -20,6 +20,9 @@ class AssistantController extends Controller
 {
     private const FEATURES = ['controls' => 'iperc_suggestion', 'causes' => 'investigation_guide', 'talk' => 'other'];
 
+    /** true si la última respuesta salió del proveedor de IA (para registrar proveedor y modelo: RN-IAA-07). */
+    private bool $usedProvider = false;
+
     public function suggest(Request $request): JsonResponse
     {
         $d = $request->validate([
@@ -39,8 +42,9 @@ class AssistantController extends Controller
         $req = DB::selectOne(
             "insert into ai_requests (company_id, user_id, feature, module_code, provider, model, prompt_template_code, prompt_version, input_redacted, contains_medical_data,
                 input_summary, latency_ms, status, completed_at, created_by, updated_by)
-             values (?, ?, ?, 'IAA', 'escudosst_library', 'biblioteca', ?, '2', true, false, ?, ?, 'completed', now(), ?, ?) returning id",
-            [$ctx->companyId, (string) auth()->id(), self::FEATURES[$d['feature']], $d['feature'], mb_substr($d['text'], 0, 200),
+             values (?, ?, ?, 'IAA', ?, ?, ?, '2', true, false, ?, ?, 'completed', now(), ?, ?) returning id",
+            [$ctx->companyId, (string) auth()->id(), self::FEATURES[$d['feature']], $this->usedProvider ? 'anthropic' : 'escudosst_library', $this->usedProvider ? AiProvider::model() : 'biblioteca',
+                $d['feature'], mb_substr($d['text'], 0, 200),
                 (int) ((microtime(true) - $started) * 1000), (string) auth()->id(), (string) auth()->id()]
         );
         DB::insert(
@@ -81,6 +85,14 @@ class AssistantController extends Controller
         // Sin respuesta: se anota para que el equipo le enseñe al asistente.
         $q = mb_substr(trim(preg_replace('/\s+/', ' ', mb_strtolower($text))), 0, 300);
         DB::statement('insert into assistant_misses (feature, question) values (?, ?) on conflict (feature, question) do update set times = assistant_misses.times + 1, last_at = now()', [$feature, $q]);
+
+        // Conexión opcional a un proveedor de IA (apagada por defecto): solo cuando la biblioteca no tiene el tema.
+        $ai = AiProvider::suggest($feature, $text);
+        if ($ai !== null) {
+            $this->usedProvider = true;
+
+            return [$ai, 'Sugerencias generadas con IA (la biblioteca aún no tiene este tema). Revísalas y adáptalas: son propuestas.', null];
+        }
 
         return [$this->general($feature, $text), 'Aún no tengo un tema para esto: te doy la guía general. El equipo de EscudoSST revisará tu pregunta para enseñarle al asistente.', null];
     }

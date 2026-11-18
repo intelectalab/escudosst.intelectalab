@@ -84,3 +84,16 @@ it('sugiere cursos por cargo y al aceptarlos quedan en la bandeja del aula sin e
     $rows = DB::select("select status, source, sent_at from course_recommendations where course_id = ?", [$course]);
     expect(collect($rows)->pluck('status')->unique()->all())->toBe(['suggested'])->and(collect($rows)->pluck('sent_at')->filter()->all())->toBe([]);
 });
+
+it('la conexión de IA está apagada por defecto y solo acepta respuestas con el formato esperado', function () {
+    expect(\App\Modules\IAA\AiProvider::enabled())->toBeFalse()
+        ->and(\App\Modules\IAA\AiProvider::suggest('controls', 'trabajo en altura'))->toBeNull()
+        ->and(\App\Modules\IAA\AiProvider::validate(['items' => [['title' => 'Arnés', 'detail' => 'Usar línea de vida']]]))->toHaveCount(1)
+        ->and(\App\Modules\IAA\AiProvider::validate(['items' => []]))->toBeNull()
+        ->and(\App\Modules\IAA\AiProvider::validate(['items' => [['title' => 5]]]))->toBeNull()
+        ->and(\App\Modules\IAA\AiProvider::validate('texto libre'))->toBeNull();
+    // Sin proveedor, la consulta sale de la biblioteca y así queda registrada.
+    $this->postJson('/api/v1/iaa/suggest', ['feature' => 'controls', 'text' => 'Trabajo en altura sobre andamio'], $this->h)->assertOk();
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    expect(DB::selectOne('select provider from ai_requests where company_id = ? order by created_at desc limit 1', [HUAYLAS_ID])->provider)->toBe('escudosst_library');
+});

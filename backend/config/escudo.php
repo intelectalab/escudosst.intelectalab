@@ -52,6 +52,13 @@ return [
     'mail_webhook_secret' => env('MAIL_WEBHOOK_SECRET', ''),
     // M-API: vigencia del token OAuth2 «client credentials» (minutos).
     'api_token_minutes' => (int) env('API_TOKEN_MINUTES', 60),
+    // M-IAA: proveedor de IA opcional. Vacío = solo la biblioteca y reglas de EscudoSST (sin costo). «anthropic» + llave = se usa
+    // cuando la biblioteca no tiene el tema. La llave va solo en deploy/backend.env del servidor.
+    'ai' => [
+        'provider' => env('AI_PROVIDER', ''),
+        'api_key' => env('AI_API_KEY', ''),
+        'model' => env('AI_MODEL', 'claude-opus-5-5'),
+    ],
 
     'medical' => [
         'field_key' => env('MEDICAL_FIELD_KEY'),
