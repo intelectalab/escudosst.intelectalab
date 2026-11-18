@@ -144,6 +144,20 @@ class PeopleRules extends RecordRules
             if ($values['status'] === 'suspended') {
                 \App\Modules\NOT\Notify::users([$p->requested_by, ...\App\Modules\NOT\Notify::roles(['sst_manager', 'sst_supervisor'])], 'ptr.suspended', 'PTR', $id, 'Permiso de trabajo suspendido',
                     "Se suspendió el permiso {$p->code}: ".mb_substr((string) $p->suspended_reason, 0, 200), $link, 'high');
+                // M-PTR §12: la suspensión queda como reporte de condición subestándar en ACT (ya revisado, riesgo alto).
+                if (DB::selectOne("select 1 as ok from feature_flags where module_code = 'ACT' and mode = 'enabled' and deleted_at is null")) {
+                    $w = DB::selectOne('select company_id, site_id, area_id, location_text from work_permits where id = ?', [$id]);
+                    $n = (int) DB::selectOne('select count(*) + 1 as n from substandard_reports where extract(year from created_at) = extract(year from now())')->n;
+                    do {
+                        $code = sprintf('REP-%s-%04d', date('Y'), $n++);
+                    } while (DB::selectOne('select 1 as ok from substandard_reports where code = ? and deleted_at is null', [$code]));
+                    $me = (string) auth()->id();
+                    DB::insert("insert into substandard_reports (company_id, code, report_type, origin, site_id, area_id, description, location_text, occurred_at, reported_at,
+                                    is_anonymous, reporter_user_id, classification, risk_level, status, triaged_by, triaged_at, created_by, updated_by)
+                                values (?, ?, 'unsafe_condition', 'app', ?, ?, ?, ?, now(), now(), false, ?, ?, 'high', 'triaged', ?, now(), ?, ?)",
+                        [$w->company_id, $code, $w->site_id, $w->area_id, mb_substr("Permiso {$p->code} suspendido: ".$p->suspended_reason, 0, 2000), $w->location_text,
+                            $me, "Suspensión del permiso {$p->code}", $me, $me, $me]);
+                }
             }
         }
         // M-PTR §10: al aprobar un paso, se avisa a quien tiene el rol del siguiente paso pendiente.

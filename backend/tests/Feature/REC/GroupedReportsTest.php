@@ -59,3 +59,33 @@ it('el RISST impreso trae su aprobación y el acta de la sesión del comité', f
     $d = $this->getJson("/api/v1/reports/risst_versions/{$r}", $this->h)->assertOk()->json('data');
     expect($d['risst']['title'])->toBe('RISST 2027')->and($d['meeting']['id'])->toBe($meeting)->and($d['agreements'][0]['description'])->toBe('Aprobar el RISST 2027');
 });
+
+it('suspender un permiso deja un reporte de condición en ACT y las estadísticas cuentan la suspensión con su causa', function () {
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    DB::update("update feature_flags set mode = 'enabled' where company_id = ? and module_code in ('ACT', 'PTR') and deleted_at is null", [HUAYLAS_ID]);
+    $site = DB::selectOne('select id from sites where company_id = ? and deleted_at is null limit 1', [HUAYLAS_ID])->id;
+    $type = DB::selectOne('select id from permit_types where company_id is null or company_id = ? order by company_id nulls last limit 1', [HUAYLAS_ID])->id;
+    $code = 'PT-SUS-'.random_int(1000, 999999);
+    $p = DB::selectOne("insert into work_permits (company_id, code, permit_type_id, site_id, work_description, valid_from, valid_until, status)
+                        values (?, ?, ?, ?, 'Soldadura en techo', now() - interval '1 hour', now() + interval '4 hours', 'active') returning id", [HUAYLAS_ID, $code, $type, $site])->id;
+    DB::select("select set_config('app.company_id', '', false)");
+
+    $this->patchJson("/api/v1/records/PTR/work_permits/{$p}", ['status' => 'suspended', 'suspended_reason' => 'Viento fuerte sobre el techo'], $this->h)->assertOk();
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $rep = DB::selectOne("select report_type, status, risk_level, description from substandard_reports where description like ? and deleted_at is null", ["Permiso {$code} suspendido%"]);
+    expect($rep)->not->toBeNull()->and($rep->report_type)->toBe('unsafe_condition')->and($rep->status)->toBe('triaged')->and($rep->description)->toContain('Viento fuerte');
+    DB::select("select set_config('app.company_id', '', false)");
+
+    $r = $this->get('/api/v1/ptr/stats.xlsx', $this->h)->assertOk();
+    $f = tempnam(sys_get_temp_dir(), 'x');
+    file_put_contents($f, $r->getContent());
+    $z = new ZipArchive;
+    $z->open($f);
+    $all = '';
+    for ($i = 0; $i < $z->numFiles; $i++) {
+        $all .= $z->getFromIndex($i);
+    }
+    $z->close();
+    unlink($f);
+    expect($all)->toContain('Suspensiones y causas')->toContain($code)->toContain('Viento fuerte sobre el techo');
+});

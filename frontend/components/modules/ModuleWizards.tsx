@@ -39,10 +39,11 @@ export function ModuleWizards({ code, readOnly }: { code: string; readOnly: bool
 
   return (
     <div className="space-y-4">
-      {((a && can && !readOnly) || code === "ACC" || code === "ACT") && (
+      {((a && can && !readOnly) || ["ACC", "ACT", "PTR"].includes(code)) && (
         <div className="flex flex-wrap items-center justify-end gap-2">
           {/* M-ACC §11: eventos agrupados por tipo, gravedad, sede, parte del cuerpo y agente. */}
           {code === "ACC" && <ReportButton path="/acc/report.xlsx" file={`eventos-${new Date().getFullYear()}.xlsx`} label="Reporte de eventos en Excel" />}
+          {code === "PTR" && <ReportButton path="/ptr/stats.xlsx" file={`permisos-${new Date().getFullYear()}.xlsx`} label="Estadísticas y suspensiones en Excel" />}
           {code === "ACT" && <ReportButton path="/act/report.xlsx" file={`reportes-${new Date().getFullYear()}.xlsx`} label="Reporte por área, tipo y tiempo de atención" />}
           {a && can && !readOnly && (
             <Button variant={code === "TRB" ? "secondary" : "primary"} icon={a.icon} onClick={() => setOpen(true)}>

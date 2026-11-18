@@ -109,6 +109,8 @@ Route::middleware(['auth:sanctum', 'company', 'module:PSI'])->post('psi/reba', \
 Route::middleware(['auth:sanctum', 'company', 'module:ACC'])->get('acc/report.xlsx', \App\Modules\REC\EventReportController::class);
 // M-ACT §11: reportes por área, tipo y canal con su tiempo de atención.
 Route::middleware(['auth:sanctum', 'company', 'module:ACT'])->get('act/report.xlsx', \App\Modules\REC\SubstandardReportController::class);
+// M-PTR §11: estadísticas de permisos por tipo y sede, y suspensiones con su causa.
+Route::middleware(['auth:sanctum', 'company', 'module:PTR'])->get('ptr/stats.xlsx', \App\Modules\REC\PermitStatsController::class);
 Route::middleware(['auth:sanctum', 'company', 'module:POL'])->prefix('pol/policies/{id}')->whereUuid('id')->group(function () {
     Route::post('approval-code', [\App\Modules\REC\PolicyApprovalController::class, 'code'])->middleware('throttle:10,1');
     Route::post('approve', [\App\Modules\REC\PolicyApprovalController::class, 'approve'])->middleware('throttle:20,1');
