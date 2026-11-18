@@ -88,6 +88,24 @@ it('la revisión diaria avisa un puesto crítico sin PETS', function () {
     expect((int) DB::selectOne("select count(*) as n from notifications where event_code = 'pet.critical_without_pets' and subject_id = ? and recipient_user_id = ?", [$pos, $this->me])->n)->toBe(1);
 });
 
+it('la revisión diaria avisa una tarea crítica del IPERC vigente sin PETS que la cubra (RN-PET-01)', function () {
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $crit = DB::selectOne('select id from risk_criteria where company_id = ? or company_id is null order by company_id nulls last limit 1', [HUAYLAS_ID])->id;
+    $m = DB::selectOne("insert into iperc_matrices (company_id, code, title, risk_criteria_id) values (?, ?, 'IPERC tareas críticas', ?) returning id", [HUAYLAS_ID, 'IPC-PET-'.random_int(1000, 999999), $crit])->id;
+    $v = DB::selectOne("insert into iperc_versions (company_id, iperc_matrix_id, version_number, status, approved_at, effective_on) values (?, ?, 1, 'current', now(), current_date) returning id", [HUAYLAS_ID, $m])->id;
+    DB::update('update iperc_matrices set current_version_id = ? where id = ?', [$v, $m]);
+    $row = fn ($task, $sig) => DB::selectOne("insert into iperc_rows (company_id, iperc_version_id, row_number, activity, task, hazard, risk, probability_value, severity_value, risk_level, is_significant)
+        values (?, ?, ?, 'Montaje', ?, 'Trabajo en altura', 'Caída', 3, 3, 'important', ?) returning id", [HUAYLAS_ID, $v, random_int(1, 999), $task, $sig ? 'true' : 'false'])->id;
+    $critical = $row('Montar vigas a 8 m', true);
+    $minor = $row('Ordenar herramientas', false);
+
+    app(\App\Modules\NOT\SstAlerts::class)->forCompany(DB::connection(), HUAYLAS_ID);
+
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $n = fn ($id) => (int) DB::selectOne("select count(*) as n from notifications where event_code = 'pet.critical_without_pets' and subject_id = ? and recipient_user_id = ?", [$id, $this->me])->n;
+    expect($n($critical))->toBe(1)->and($n($minor))->toBe(0);
+});
+
 it('avisa al revisor cuando le asignan la revisión de un cambio', function () {
     $sup = supervisorInHuaylas();
     $c = $this->postJson('/api/v1/records/MOC/change_requests', ['title' => 'Cambio de compresor', 'change_type' => 'equipment', 'description' => 'Compresor nuevo'], $this->h)

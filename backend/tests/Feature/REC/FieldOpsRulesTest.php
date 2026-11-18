@@ -59,6 +59,31 @@ it('la brigada: un solo líder, sin cesados, mínimo de miembros y el cese la de
     }
 });
 
+it('el brigadista necesita la capacitación de brigada vigente (RN-SIM-03) y se avisa cuando vence', function () {
+    $b = $this->postJson('/api/v1/records/SIM/brigades', ['site_id' => $this->site, 'brigade_type' => 'first_aid', 'name' => 'Brigada de primeros auxilios', 'status' => 'inactive'], $this->h)
+        ->assertCreated()->json('data.id');
+    $worker = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => '63636311', 'first_name' => 'Brigadista', 'paternal_last_name' => 'Capacitado'], $this->h)->json('data.id');
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $training = DB::selectOne("insert into trainings (company_id, title, training_type) values (?, 'Primeros auxilios para brigadistas', 'specific') returning id", [HUAYLAS_ID])->id;
+
+    $this->postJson('/api/v1/records/SIM/brigade_members', ['brigade_id' => $b, 'worker_id' => $worker, 'role' => 'member', 'training_id' => $training], $this->h)
+        ->assertStatus(422)->assertJsonValidationErrors('training_id');
+
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $me = DB::connection('platform')->selectOne('select id from users where email = ?', [CORPORATIVO_EMAIL])->id;
+    $cert = DB::selectOne("insert into training_certificates (company_id, worker_id, training_id, certificate_code, verification_code, holder_name, course_title, issued_on, expires_on, status, validated_by, validated_at)
+                           values (?, ?, ?, ?, ?, 'Brigadista Capacitado', 'Primeros auxilios para brigadistas', current_date - 400, current_date + 30, 'validated', ?, now()) returning id",
+        [HUAYLAS_ID, $worker, $training, sprintf('BRG-%s-%06d', date('Y'), random_int(1, 999999)), strtoupper(bin2hex(random_bytes(8))), $me])->id;
+    $m = $this->postJson('/api/v1/records/SIM/brigade_members', ['brigade_id' => $b, 'worker_id' => $worker, 'role' => 'member', 'training_id' => $training], $this->h)
+        ->assertCreated()->json('data.id');
+
+    // El certificado vence: el Jefe SST recibe el aviso.
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    DB::update('update training_certificates set expires_on = current_date - 1 where id = ?', [$cert]);
+    $check = collect(\App\Modules\NOT\SstAlerts::checks())->first(fn ($c) => $c[2] === 'sim.brigadist_training');
+    expect(collect(DB::select($check[1]))->pluck('id')->all())->toContain($m);
+});
+
 it('el simulacro se evalúa con su informe, ya evaluado no cambia y da origen a una acción', function () {
     $d = $this->postJson('/api/v1/records/SIM/drills', ['title' => 'Simulacro de sismo', 'drill_type' => 'earthquake', 'site_id' => $this->site], $this->h)->assertCreated()->json('data.id');
     $this->patchJson("/api/v1/records/SIM/drills/{$d}", ['status' => 'executed'], $this->h)->assertOk();
@@ -67,6 +92,7 @@ it('el simulacro se evalúa con su informe, ya evaluado no cambia y da origen a 
     $this->patchJson("/api/v1/records/SIM/drills/{$d}", ['status' => 'evaluated', 'result' => 'needs_improvement', 'report_file_id' => $report], $this->h)->assertOk();
     $this->patchJson("/api/v1/records/SIM/drills/{$d}", ['title' => 'Otro'], $this->h)->assertStatus(409);
     $me = DB::connection('platform')->selectOne('select id from users where email = ?', [CORPORATIVO_EMAIL])->id;
-    $this->postJson("/api/v1/acr/from/drills/{$d}", ['title' => 'Despejar la salida B', 'responsible_user_id' => $me, 'due_on' => now()->addDays(7)->toDateString()], $this->h)->assertCreated();
+    // RN-SIM-06: evaluado «por mejorar», la acción ya se abrió sola; no se duplica a mano.
+    expect((int) DB::selectOne("select count(*) as n from corrective_actions where source_type = 'drill' and source_id = ? and deleted_at is null", [$d])->n)->toBe(1);
     $this->postJson("/api/v1/acr/from/drills/{$d}", ['title' => 'Otra', 'responsible_user_id' => $me, 'due_on' => now()->addDays(7)->toDateString()], $this->h)->assertStatus(409);
 });

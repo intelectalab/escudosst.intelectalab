@@ -88,7 +88,7 @@ class SignatureController extends Controller
             }
             // RN-FIR-08 / flujo §7.3: firma con código de un solo uso (OTP) enviado al correo, o con la contraseña.
             if ($request->filled('otp')) {
-                self::checkOtp($r->id, $uid, (string) $request->input('otp'));
+                Otp::check("fir-otp:{$r->id}:{$uid}", (string) $request->input('otp'));
                 $method = 'otp';
             } else {
                 $password = (string) $request->input('password');
@@ -184,41 +184,7 @@ class SignatureController extends Controller
         if ((string) $r->signer_user_id !== $uid) {
             throw ApiProblem::forbidden('El código se envía solo a la persona a quien se pidió la firma.');
         }
-        $key = "fir-otp:{$r->id}:{$uid}";
-        if (\Illuminate\Support\Facades\Cache::get($key.':sent')) {
-            throw new ApiProblem(429, 'too_many_requests', 'Espera un momento', 'Ya te enviamos un código hace menos de un minuto: revisa tu correo.');
-        }
-        $code = (string) random_int(100000, 999999);
-        $minutes = max(3, (int) config('escudo.fir_otp_minutes', 10));
-        \Illuminate\Support\Facades\Cache::put($key, ['hash' => hash_hmac('sha256', $code, (string) config('app.key')), 'tries' => 0], now()->addMinutes($minutes));
-        \Illuminate\Support\Facades\Cache::put($key.':sent', 1, now()->addMinute());
-        $u = DB::selectOne('select full_name, email from users where id = ?', [$uid]);
-        \Illuminate\Support\Facades\Mail::to($u->email)->send(new \App\Modules\WEB\Mail\SiteRequestMail(explode(' ', (string) $u->full_name)[0] ?: 'Hola',
-            'Tu código para firmar: '.$code, "Usa este código para firmar el registro en EscudoSST. Vale {$minutes} minutos. Si no lo pediste, ignora este correo.",
-            [['Código', $code]]));
-        $masked = preg_replace('/(?<=.).(?=[^@]*@)/', '•', (string) $u->email);
-
-        return response()->json(['data' => ['sent_to' => $masked, 'minutes' => $minutes]]);
-    }
-
-    private static function checkOtp(string $requestId, string $uid, string $code): void
-    {
-        $key = "fir-otp:{$requestId}:{$uid}";
-        $s = \Illuminate\Support\Facades\Cache::get($key);
-        $fail = fn (string $m) => throw new ApiProblem(422, 'validation_failed', 'Revisa el código', $m, ['errors' => ['otp' => [$m]]]);
-        if (! $s) {
-            $fail('El código venció o no se pidió: pide uno nuevo.');
-        }
-        if ($s['tries'] >= 5) {
-            \Illuminate\Support\Facades\Cache::forget($key);
-            $fail('Demasiados intentos: pide un código nuevo.');
-        }
-        if (! hash_equals($s['hash'], hash_hmac('sha256', preg_replace('/\D/', '', $code), (string) config('app.key')))) {
-            $s['tries']++;
-            \Illuminate\Support\Facades\Cache::put($key, $s, now()->addMinutes(10));
-            $fail('El código no es correcto.');
-        }
-        \Illuminate\Support\Facades\Cache::forget($key);
+        return response()->json(['data' => Otp::send("fir-otp:{$r->id}:{$uid}", $uid, 'firmar')]);
     }
 
     public function decline(Request $request, string $id, AccountsService $accounts): JsonResponse

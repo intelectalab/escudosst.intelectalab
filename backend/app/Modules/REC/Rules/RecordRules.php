@@ -117,6 +117,7 @@ abstract class RecordRules
         'work_adjustments' => AddonRules::class,
         'signature_requests' => AddonRules::class,
         'risk_maps' => DocsFieldRules::class,
+        'register_exports' => DocsFieldRules::class,
         'risk_map_markers' => DocsFieldRules::class,
         'psychosocial_surveys' => PsiRules::class,
         'psychosocial_responses' => PsiRules::class,

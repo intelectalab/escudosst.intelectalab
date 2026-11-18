@@ -14,7 +14,7 @@ const CERT: Record<string, [string, string]> = {
   voided: ["Certificado anulado", "bg-[#FDECEB] text-[#a3261f]"],
   pending_validation: ["Pendiente de validación", "bg-[#FFF6DB] text-[#7a5300]"],
   not_public: ["No verificable públicamente", "bg-[#EEF1F5] text-[#4a5563]"],
-  invalid: ["No encontramos un certificado con ese código", "bg-[#FDECEB] text-[#a3261f]"],
+  invalid: ["No encontrado o no verificable públicamente", "bg-[#EEF1F5] text-[#4a5563]"],
 };
 const CRED: Record<string, [string, string]> = {
   enabled: ["Habilitado para ingresar", "bg-[#E8F7EE] text-[#17703e]"],

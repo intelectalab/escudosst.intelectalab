@@ -115,6 +115,12 @@ class FieldOpsRules extends RecordRules
         if ($status === 'active' && $worker && DB::selectOne("select 1 as ok from workers where id = ? and status = 'terminated'", [$worker])) {
             $this->fail('worker_id', 'El trabajador está cesado: no integra la brigada.');
         }
+        // RN-SIM-03: el brigadista tiene la capacitación de brigada vigente (certificado validado sin vencer, o asistió a la capacitación).
+        $training = $this->value($values, $current, 'training_id');
+        if ($status === 'active' && $worker && $training && (array_key_exists('training_id', $values) || array_key_exists('worker_id', $values) || array_key_exists('status', $values))
+            && ! self::trainedFor($worker, $training)) {
+            $this->fail('training_id', 'El trabajador no tiene vigente esta capacitación de brigada: registra su asistencia o renueva su certificado.');
+        }
         if ($status === 'active' && $this->value($values, $current, 'role') === 'leader'
             && DB::selectOne("select 1 as ok from brigade_members where brigade_id = ? and role = 'leader' and status = 'active' and deleted_at is null
                                 and id <> coalesce(?::uuid, '00000000-0000-0000-0000-000000000000'::uuid)", [$this->value($values, $current, 'brigade_id'), $current?->id])) {
@@ -123,6 +129,19 @@ class FieldOpsRules extends RecordRules
         if (($values['status'] ?? null) === 'inactive' && ! $this->value($values, $current, 'ends_on')) {
             $values['ends_on'] = date('Y-m-d');
         }
+    }
+
+    /** Capacitación vigente del trabajador: certificado validado y no vencido, o asistencia registrada a una sesión de esa capacitación. */
+    public static function trainedFor(string $worker, string $training): bool
+    {
+        return (bool) DB::selectOne(
+            "select 1 as ok where exists (select 1 from training_certificates c where c.worker_id = ? and c.training_id = ? and c.deleted_at is null
+                                              and c.status = 'validated' and (c.expires_on is null or c.expires_on >= current_date))
+                or exists (select 1 from training_attendances a join training_sessions s on s.id = a.session_id
+                            where a.worker_id = ? and s.training_id = ? and a.attended and a.deleted_at is null and s.deleted_at is null
+                              and not exists (select 1 from training_certificates c where c.worker_id = a.worker_id and c.training_id = s.training_id
+                                                 and c.deleted_at is null and c.status in ('validated', 'expired') and c.expires_on < current_date))",
+            [$worker, $training, $worker, $training]);
     }
 
     private function brigade(array &$values, ?object $current): void

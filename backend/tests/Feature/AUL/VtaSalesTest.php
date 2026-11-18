@@ -77,6 +77,7 @@ it('aplica el cupón, exige la evidencia del pago, lo cuenta al pagar y lo recha
 });
 
 it('un pedido vencido no se cobra y el reembolso total cancela la matrícula y anula el certificado', function () {
+    \Illuminate\Support\Facades\Mail::fake();
     $o = $this->postJson('/api/v1/vta/sell', vtaPerson(['course_offer_id' => $this->offer, 'document_number' => '73737373', 'email' => 'beto.vs@example.com']), $this->h)->json('data');
     DB::transaction(function () use ($o) {
         DbContext::setCompany(HUAYLAS_ID);
@@ -103,6 +104,8 @@ it('un pedido vencido no se cobra y el reembolso total cancela la matrícula y a
     $r = vtaQuery("select e.status as e, c.status as c, o.refunded_total from course_enrollments e join training_certificates c on c.course_enrollment_id = e.id
                      join order_items i on i.id = e.order_item_id join orders o on o.id = i.order_id where e.id = ?", [$enr->id])[0];
     expect($r->e)->toBe('cancelled')->and($r->c)->toBe('voided')->and((float) $r->refunded_total)->toEqual(100.0);
+    // M-VTA §10: el comprador recibe el aviso de cada reembolso confirmado.
+    \Illuminate\Support\Facades\Mail::assertSent(\App\Modules\WEB\Mail\SiteRequestMail::class, fn ($m) => $m->hasTo('beto.vs@example.com') && str_contains($m->title, 'Reembolso'));
 });
 
 it('asigna cupos hasta el máximo y solo libera a quien no inició el curso', function () {

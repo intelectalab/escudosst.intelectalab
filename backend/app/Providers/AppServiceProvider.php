@@ -41,6 +41,10 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('mfa', fn (Request $request) => Limit::perMinute(10)
             ->by(($request->input('mfa_challenge_id') ?: $request->user()?->id ?: 'anon').'|'.$request->ip()));
 
+        // M-CAP RN-CAP-14: consultas de verificación pública por IP y minuto (parámetro certificate_verify_rate_limit).
+        RateLimiter::for('cert-verify', fn (Request $request) => Limit::perMinute(max(1, (int) \App\Core\Support\LegalParams::number('certificate_verify_rate_limit', 30)))
+            ->by('cert-verify|'.$request->ip()));
+
         // Límites con nombre del sitio y del panel: cada uno con su propio contador por persona (usuario o IP real).
         // En producción (THROTTLE_TRUST_INTERNAL=true) no cuentan las llamadas de la red interna de Docker: son las
         // páginas que arma el servidor de Next para todos los visitantes, no una persona.

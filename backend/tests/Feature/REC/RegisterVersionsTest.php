@@ -71,3 +71,16 @@ it('exige un responsable con permiso de firma y una sede válida', function () {
         'site_id' => '01900000-0000-7000-8000-000000009999'], $h)->assertStatus(400);
     $this->postJson('/api/v1/reg/inventado/generate', ['from' => '2025-01-01', 'to' => '2025-01-31', 'signer_user_id' => REG_SIGNER], $h)->assertNotFound();
 });
+
+it('un registro generado no se elimina antes de su periodo de conservación según su tipo (RN-REG-07)', function () {
+    $h = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $mk = fn (string $type, string $to) => DB::selectOne("insert into register_exports (company_id, register_type, period_from, period_to, format, status, generated_at, requested_by)
+                                                          values (?, ?, ?::date - 30, ?::date, 'pdf', 'generated', now(), ?) returning id",
+        [HUAYLAS_ID, $type, $to, $to, REG_SIGNER])->id;
+    $recent = $mk('accidents', now()->subYears(2)->toDateString());
+    $old = $mk('inspections', now()->subYears(12)->toDateString());
+
+    $this->deleteJson("/api/v1/records/REG/register_exports/{$recent}", [], $h)->assertStatus(409)->assertJsonPath('detail', fn ($d) => str_contains($d, 'se conserva hasta'));
+    $this->deleteJson("/api/v1/records/REG/register_exports/{$old}", [], $h)->assertSuccessful();
+});

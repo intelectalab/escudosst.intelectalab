@@ -16,6 +16,7 @@ use Illuminate\Support\Str;
  *  POST /sim/drills/{id}/run   {alarm_time, evacuation_complete_time, attendees: [{worker_id, role}]}: guarda los tiempos (RN-SIM-01),
  *                              la asistencia por trabajador presente (RN-SIM-08) y deja el simulacro «ejecutado» con el mismo
  *                              servicio de registros (reglas, avisos y bitácora). Devuelve quiénes no participaron.
+ *  POST /sim/drills/{id}/evaluation  evaluación por criterios y observaciones (SCR-SIM-03).
  */
 class DrillRunController extends Controller
 {
@@ -72,6 +73,51 @@ class DrillRunController extends Controller
         return response()->json(['data' => $this->payload($this->drill($id))]);
     }
 
+    /**
+     * POST /sim/drills/{id}/evaluation  {criteria: [{name, met, note}], observations}  (SCR-SIM-03): evaluación por criterios
+     * (los del parámetro drill_evaluation_criteria) y observaciones. Se registra con el simulacro ejecutado y antes de evaluarlo;
+     * al evaluarlo «por mejorar» o «no satisfactorio», las observaciones pasan a su acción correctiva (RN-SIM-06).
+     */
+    public function evaluate(Request $request, string $id): JsonResponse
+    {
+        $this->can('sim.drills.update');
+        $d = $this->drill($id);
+        if ($d->status !== 'executed') {
+            throw new ApiProblem(409, 'conflict', 'No se evalúa ahora', $d->status === 'planned' ? 'Primero registra la ejecución del simulacro.' : 'El simulacro ya fue evaluado o está cancelado.');
+        }
+        $v = $request->validate([
+            'criteria' => ['array', 'max:50'],
+            'criteria.*.name' => ['required', 'string', 'max:200'],
+            'criteria.*.met' => ['nullable', 'boolean'],
+            'criteria.*.note' => ['nullable', 'string', 'max:500'],
+            'observations' => ['nullable', 'string', 'max:4000'],
+        ]);
+        $criteria = array_map(fn ($c) => ['name' => $c['name'], 'met' => $c['met'] ?? null, 'note' => $c['note'] ?? null], $v['criteria'] ?? []);
+        $failed = array_map(fn ($c) => $c['name'].($c['note'] ? " ({$c['note']})" : ''), array_filter($criteria, fn ($c) => $c['met'] === false));
+        $evaluation = ['criteria' => $criteria, 'observations' => trim((string) ($v['observations'] ?? '')) ?: null, 'not_met' => array_values($failed)];
+        DB::update('update drills set evaluation = ?::jsonb, updated_by = ?, updated_at = now() where id = ?',
+            [json_encode($evaluation, JSON_UNESCAPED_UNICODE), (string) auth()->id(), $d->id]);
+
+        return response()->json(['data' => $this->payload($this->drill($id))]);
+    }
+
+    /** GET /sim/drills/{id}/report — datos del informe de simulacro para imprimir (M-SIM §salidas «informe de simulacro»). */
+    public function report(string $id): JsonResponse
+    {
+        $this->can('sim.drills.read');
+        $d = $this->drill($id);
+        $c = DB::selectOne('select legal_name, trade_name, ruc from companies where id = ?', [$d->company_id]);
+        $present = DB::select("select w.full_name, p.role from drill_participants p join workers w on w.id = p.worker_id
+                                where p.drill_id = ? and p.attended and p.deleted_at is null order by w.full_name", [$d->id]);
+
+        return response()->json(['data' => $this->payload($d) + [
+            'company' => ['name' => $c->trade_name ?: $c->legal_name, 'legal_name' => $c->legal_name, 'ruc' => trim((string) $c->ruc)],
+            'details' => ['drill_type' => $d->drill_type, 'scenario' => $d->scenario, 'objectives' => $d->objectives, 'is_announced' => $d->is_announced,
+                'executed_at' => $d->executed_at, 'result' => $d->result, 'external_entity' => $d->external_entity, 'participants_count' => $d->participants_count],
+            'present' => array_map(fn ($p) => ['full_name' => $p->full_name, 'role' => $p->role], $present),
+        ]]);
+    }
+
     private function payload(object $d): array
     {
         $target = $d->site_id ? DB::selectOne('select evacuation_target_seconds from sites where id = ?', [$d->site_id])?->evacuation_target_seconds : null;
@@ -89,6 +135,8 @@ class DrillRunController extends Controller
             'met' => $target !== null && $d->evacuation_time_seconds !== null ? (int) $d->evacuation_time_seconds <= (int) $target : null,
             'workers' => array_map(fn ($w) => ['id' => $w->id, 'full_name' => $w->full_name, 'document' => $w->document, 'area' => $w->area,
                 'attended' => $w->attended === null ? null : (bool) $w->attended, 'role' => $w->role], $workers),
+            'criteria' => array_values(array_filter((array) (json_decode(\App\Core\Support\LegalParams::text('drill_evaluation_criteria', '[]'), true) ?: []), 'is_string')),
+            'evaluation' => $d->evaluation ? json_decode((string) $d->evaluation, true) : null,
             'not_participated' => $d->status === 'planned' ? [] : array_values(array_map(fn ($w) => $w->full_name, array_filter($workers, fn ($w) => ! $w->attended))),
         ];
     }

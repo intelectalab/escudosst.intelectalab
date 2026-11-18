@@ -28,6 +28,8 @@ Route::middleware(['auth:sanctum', 'company'])->prefix('reports')->group(functio
 // Informes imprimibles de planificación (§11 de las fichas): política, Plan Anual, PASST, línea base y matriz legal.
 Route::middleware(['auth:sanctum', 'company'])->prefix('reports')->controller(\App\Modules\REC\PlanningReportsController::class)->group(function () {
     Route::get('sst_policies/{id}', 'policy')->whereUuid('id')->middleware('module:POL');
+    Route::get('risst_versions/{id}', 'risst')->whereUuid('id')->middleware('module:RIS');
+    Route::get('sst_events/{id}/notifications', 'eventNotifications')->whereUuid('id')->middleware('module:ACC');
     Route::get('annual_plans/{id}', 'plan')->whereUuid('id')->middleware('module:PLA');
     Route::get('annual_programs/{id}', 'program')->whereUuid('id')->middleware('module:PAS');
     Route::get('training_programs/{id}', 'trainingProgram')->whereUuid('id')->middleware('module:PCA');
@@ -71,6 +73,8 @@ Route::middleware(['auth:sanctum', 'company', 'module:CH5'])->prefix('ch5')->con
 Route::middleware(['auth:sanctum', 'company', 'module:SIM'])->prefix('sim/drills/{id}')->whereUuid('id')->controller(\App\Modules\REC\DrillRunController::class)->group(function () {
     Route::get('run', 'show');
     Route::post('run', 'save')->middleware('throttle:30,1');
+    Route::post('evaluation', 'evaluate')->middleware('throttle:30,1');
+    Route::get('report', 'report');
 });
 
 // Nuevo ATS (M-ATS SCR-ATS-02): copiar pasos desde un PETS, un ATS anterior o filas del IPERC vigente.
@@ -101,6 +105,12 @@ Route::middleware(['auth:sanctum', 'company', 'module:OBS'])->prefix('obs')->con
 Route::middleware(['auth:sanctum', 'company', 'module:PSI'])->post('psi/reba', \App\Modules\REC\RebaController::class)->middleware('throttle:60,1');
 
 // Política SST (M-POL SCR-POL-01): resumen con % de cargos firmados y revisión pendiente; verificación pública del afiche (QR).
+// M-ACC §11: reporte de eventos agrupado (tipo, gravedad, sede, parte del cuerpo y agente).
+Route::middleware(['auth:sanctum', 'company', 'module:ACC'])->get('acc/report.xlsx', \App\Modules\REC\EventReportController::class);
+Route::middleware(['auth:sanctum', 'company', 'module:POL'])->prefix('pol/policies/{id}')->whereUuid('id')->group(function () {
+    Route::post('approval-code', [\App\Modules\REC\PolicyApprovalController::class, 'code'])->middleware('throttle:10,1');
+    Route::post('approve', [\App\Modules\REC\PolicyApprovalController::class, 'approve'])->middleware('throttle:20,1');
+});
 Route::middleware(['auth:sanctum', 'company', 'module:POL'])->get('pol/overview', [\App\Modules\REC\PolicyOverviewController::class, 'overview']);
 Route::middleware(['auth:sanctum', 'company', 'module:POL'])->match(['get', 'put'], 'pol/settings', [\App\Modules\REC\PolicyOverviewController::class, 'settings']);
 Route::middleware('throttle:30,1')->get('public/verify/policy/{company}/{id}', [\App\Modules\REC\PolicyOverviewController::class, 'public'])->whereUuid('company')->whereUuid('id');

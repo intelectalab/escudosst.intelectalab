@@ -67,6 +67,16 @@ class DocsFieldRules extends RecordRules
         if ($res['table'] === 'risk_map_markers') {
             $this->marker([], $current);
         }
+        // RN-REG-07 (D.S. 005-2012-TR art. 35): un registro generado se conserva el periodo de su tipo; antes no se elimina.
+        if ($res['table'] === 'register_exports' && ! in_array($current->status, ['queued', 'generating', 'failed'], true) && $current->generated_at) {
+            $key = ['accidents' => 'records_retention_accidents_years', 'incidents' => 'records_retention_accidents_years',
+                'occupational_diseases' => 'records_retention_diseases_years'][$current->register_type] ?? 'records_retention_other_years';
+            $years = (int) \App\Core\Support\LegalParams::number($key, 5);
+            $until = date('Y-m-d', strtotime(substr((string) ($current->period_to ?: $current->generated_at), 0, 10).' +'.$years.' years'));
+            if ($until > date('Y-m-d')) {
+                $this->conflict('Este registro se conserva hasta el '.date('d/m/Y', strtotime($until))." ({$years} años según su tipo): no se elimina antes. Si cambió, genera una nueva versión.");
+            }
+        }
         // RN-DOC-08: un documento que llegó a publicarse se conserva durante el plazo de su categoría (retention_param_key);
         // antes de eso no se borra: se deja obsoleto. Los borradores sí se pueden borrar.
         if (in_array($res['table'], ['documents', 'document_versions'], true)) {
@@ -195,6 +205,10 @@ class DocsFieldRules extends RecordRules
                 $notes = [];
                 $ev = json_decode((string) $d->evaluation, true);
                 $ev = is_array($ev) ? $ev : [];
+                // Evaluación por criterios (SCR-SIM-03): solo lo no cumplido y las observaciones.
+                if (array_key_exists('criteria', $ev)) {
+                    $ev = array_merge((array) ($ev['not_met'] ?? []), isset($ev['observations']) ? [$ev['observations']] : []);
+                }
                 array_walk_recursive($ev, function ($v) use (&$notes) {
                     if (is_string($v) && trim($v) !== '') {
                         $notes[] = trim($v);
@@ -300,6 +314,10 @@ class DocsFieldRules extends RecordRules
         if ($t === 'sst_policies' && $to === 'approved' && ! in_array('pol.sst_policies.approve', \App\Core\Auth\Permissions::effective(), true)) {
             // RN-POL-02: solo gerencia aprueba la política.
             $this->fail('status', 'La política la aprueba la gerencia (su rol tiene el permiso de aprobar la política).');
+        }
+        if ($t === 'sst_policies' && $to === 'approved' && request()->attributes->get('pol_otp_verified') !== $current->id) {
+            // RN-POL-02: la aprobación exige firma con OTP (POST /pol/policies/{id}/approve).
+            $this->fail('status', 'La política se aprueba con el código que llega a tu correo: usa «Aprobar con código».');
         }
         if ($to === 'approved') {
             $author = $current->prepared_by ?? $current->submitted_by ?? null;

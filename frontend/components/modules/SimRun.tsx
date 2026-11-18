@@ -2,6 +2,7 @@
 
 // Ejecutar simulacro (M-SIM SCR-SIM-02): cronómetro de la alarma a la evacuación completa (RN-SIM-01, comparado con la meta de la
 // sede), lista de asistencia con check de los trabajadores activos de la sede y, al guardar, quiénes no participaron (RN-SIM-08).
+// Ya ejecutado, la evaluación (SCR-SIM-03) por los criterios configurados y las observaciones: lo no cumplido pasa a la acción correctiva.
 
 import { useEffect, useState } from "react";
 import { api, type ApiError } from "@/lib/api";
@@ -11,7 +12,9 @@ import { Card, Kpi } from "./Summary";
 type DrillOpt = { id: string; code: string | null; title: string; status: string; scheduled_at: string | null };
 type Worker = { id: string; full_name: string; document: string | null; area: string | null; attended: boolean | null; role: string | null };
 type Run = { drill: { id: string; code: string | null; title: string; status: string; site: string | null; alarm_time: string | null; evacuation_complete_time: string | null; evacuation_time_seconds: number | null };
-  target_seconds: number | null; met: boolean | null; workers: Worker[]; not_participated: string[] };
+  target_seconds: number | null; met: boolean | null; workers: Worker[]; not_participated: string[];
+  criteria: string[]; evaluation: { criteria?: Crit[]; observations?: string | null } | null };
+type Crit = { name: string; met: boolean | null; note: string | null };
 
 const ROLE: Record<string, string> = { participant: "Participante", brigadist: "Brigadista", observer: "Observador", evaluator: "Evaluador" };
 const mmss = (s: number) => `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")} s`;
@@ -27,6 +30,8 @@ export function SimRun({ readOnly, onSaved }: { readOnly: boolean; onSaved: () =
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [crit, setCrit] = useState<Crit[]>([]);
+  const [obs, setObs] = useState("");
 
   useEffect(() => {
     api<{ data: DrillOpt[] }>("/records/SIM/drills?per_page=100", { withCompany: true })
@@ -42,6 +47,9 @@ export function SimRun({ readOnly, onSaved }: { readOnly: boolean; onSaved: () =
       setAlarm(local(r.data.drill.alarm_time));
       setDone(local(r.data.drill.evacuation_complete_time));
       setRoles(Object.fromEntries(r.data.workers.filter((w) => w.attended).map((w) => [w.id, w.role ?? "participant"])));
+      const saved = r.data.evaluation?.criteria ?? [];
+      setCrit(r.data.criteria.map((name) => saved.find((c) => c.name === name) ?? { name, met: null, note: null }));
+      setObs(r.data.evaluation?.observations ?? "");
     }).catch((e: ApiError) => setMsg({ ok: false, text: e.detail ?? e.title }));
   }, [id]);
   useEffect(() => {
@@ -62,6 +70,22 @@ export function SimRun({ readOnly, onSaved }: { readOnly: boolean; onSaved: () =
       });
       setRun(r.data);
       setMsg({ ok: true, text: "Ejecución guardada: el simulacro quedó «Ejecutado». Luego regístrale la evaluación y el informe." });
+      onSaved();
+    } catch (e) {
+      const err = e as ApiError;
+      setMsg({ ok: false, text: err.errors ? Object.values(err.errors).flat()[0] : (err.detail ?? err.title) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveEvaluation = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api<{ data: Run }>(`/sim/drills/${id}/evaluation`, { method: "POST", withCompany: true, body: { criteria: crit, observations: obs || null } });
+      setRun(r.data);
+      setMsg({ ok: true, text: "Evaluación guardada. Para cerrar el simulacro, márcalo evaluado con su resultado y su informe." });
       onSaved();
     } catch (e) {
       const err = e as ApiError;
@@ -124,6 +148,31 @@ export function SimRun({ readOnly, onSaved }: { readOnly: boolean; onSaved: () =
           {!readOnly && <Button variant="primary" loading={busy} disabled={busy || !alarm || !done} onClick={save}>Guardar ejecución</Button>}
           {run.not_participated.length > 0 && (
             <div className="text-sm"><b>No participaron ({run.not_participated.length}):</b> <span className="text-muted">{run.not_participated.join(", ")}</span></div>
+          )}
+          {run.drill.status === "executed" && (
+            <div className="space-y-2 border-t border-line pt-4">
+              <h3 className="font-semibold">Evaluación</h3>
+              {crit.length === 0 ? (
+                <p className="text-xs text-muted">Aún no hay criterios de evaluación configurados (parámetro «Criterios con los que se evalúa un simulacro»). Anota lo observado abajo.</p>
+              ) : (
+                <ul className="space-y-1.5 text-sm">
+                  {crit.map((c, i) => (
+                    <li key={c.name} className="flex flex-wrap items-center gap-2">
+                      <span className="min-w-0 flex-1">{c.name}</span>
+                      <select className="input h-8 w-36 py-0 text-xs" aria-label={`Resultado: ${c.name}`} disabled={readOnly} value={c.met === null ? "" : c.met ? "yes" : "no"}
+                        onChange={(e) => setCrit(crit.map((x, j) => (j === i ? { ...x, met: e.target.value === "" ? null : e.target.value === "yes" } : x)))}>
+                        <option value="">Sin evaluar</option><option value="yes">Cumple</option><option value="no">No cumple</option>
+                      </select>
+                      <input className="input h-8 w-56 py-0 text-xs" placeholder="Nota (opcional)" aria-label={`Nota: ${c.name}`} disabled={readOnly} value={c.note ?? ""}
+                        onChange={(e) => setCrit(crit.map((x, j) => (j === i ? { ...x, note: e.target.value || null } : x)))} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <textarea className="input min-h-20" aria-label="Observaciones" placeholder="Observaciones: qué salió bien, qué falló y qué se debe mejorar" disabled={readOnly}
+                value={obs} onChange={(e) => setObs(e.target.value)} />
+              {!readOnly && <Button loading={busy} disabled={busy} onClick={saveEvaluation}>Guardar evaluación</Button>}
+            </div>
           )}
         </div>
       )}

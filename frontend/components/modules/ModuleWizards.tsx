@@ -11,6 +11,7 @@ import { ModuleRecords } from "@/components/records/ModuleRecords";
 import { AccWizard } from "./AccWizard";
 import { PtrWizard } from "./PtrWizard";
 import { TrbImport } from "./TrbImport";
+import { ReportButton } from "./CtrExtras";
 
 const ACTIONS: Record<string, { table: string; label: string; icon: string }> = {
   ACC: { table: "sst_events", label: "Registrar evento", icon: "alert" },
@@ -38,11 +39,15 @@ export function ModuleWizards({ code, readOnly }: { code: string; readOnly: bool
 
   return (
     <div className="space-y-4">
-      {a && can && !readOnly && (
-        <div className="flex justify-end">
-          <Button variant={code === "TRB" ? "secondary" : "primary"} icon={a.icon} onClick={() => setOpen(true)}>
-            {a.label}
-          </Button>
+      {((a && can && !readOnly) || code === "ACC") && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* M-ACC §11: eventos agrupados por tipo, gravedad, sede, parte del cuerpo y agente. */}
+          {code === "ACC" && <ReportButton path="/acc/report.xlsx" file={`eventos-${new Date().getFullYear()}.xlsx`} label="Reporte de eventos en Excel" />}
+          {a && can && !readOnly && (
+            <Button variant={code === "TRB" ? "secondary" : "primary"} icon={a.icon} onClick={() => setOpen(true)}>
+              {a.label}
+            </Button>
+          )}
         </div>
       )}
       {open && code === "ACC" && <AccWizard onClose={close} onDone={done} />}

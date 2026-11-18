@@ -236,7 +236,20 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
     $this->patchJson("/api/v1/records/POL/sst_policies/{$pol}", ['principles_checklist' => $principles], $a)->qaStatus(200);
     $this->patchJson("/api/v1/records/POL/sst_policies/{$pol}", ['status' => 'approved'], $b)->assertStatus(422)->assertJsonValidationErrors('status');
     [$g] = qajInvite($admin, $cid, 'gerencia', 'management', 'Gerardo Gerencia Ríos');
-    $this->patchJson("/api/v1/records/POL/sst_policies/{$pol}", ['status' => 'approved'], $g)->qaStatus(200);
+    // Gerencia aprueba con el código que llega a su correo (firma OTP); sin código, no.
+    $this->patchJson("/api/v1/records/POL/sst_policies/{$pol}", ['status' => 'approved'], $g)->assertStatus(422)->assertJsonValidationErrors('status');
+    \Illuminate\Support\Facades\Mail::fake();
+    $this->postJson("/api/v1/pol/policies/{$pol}/approval-code", [], $g)->qaStatus(200);
+    $polCode = null;
+    \Illuminate\Support\Facades\Mail::assertSent(\App\Modules\WEB\Mail\SiteRequestMail::class, function ($m) use (&$polCode) {
+        $polCode = $m->rows[0][1];
+
+        return true;
+    });
+    $this->postJson("/api/v1/pol/policies/{$pol}/approve", ['otp' => $polCode === '000000' ? '111111' : '000000'], $g)->assertStatus(422);
+    $this->postJson("/api/v1/pol/policies/{$pol}/approve", ['otp' => $polCode], $g)->qaStatus(200)->assertJsonPath('data.status', 'approved');
+    $sig = collect($this->getJson("/api/v1/fir/verify/sst_policies/{$pol}", $b)->qaStatus(200)->json('data'))->first();
+    expect($sig['method'] ?? null)->toBe('otp');
     $this->patchJson("/api/v1/records/POL/sst_policies/{$pol}", ['status' => 'current'], $b)->qaStatus(200)->assertJsonPath('data.status', 'current');
 
     // ------------------------------------------------------------ 8. Matriz IPERC con filas, controles y aprobación
@@ -363,7 +376,7 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
     expect($cert['certificate_code'])->toMatch('/^CERT-\d{4}-\d{6}$/');
     $vcode = $this->getJson("/api/v1/cap/certificates/{$cert['id']}/print", $a)->qaStatus(200)->json('data.verification_code');
     app('auth')->forgetGuards();
-    $this->getJson("/api/v1/public/verify/certificate/{$vcode}")->qaStatus(200)->assertJsonPath('data.result', 'not_public');
+    $this->getJson("/api/v1/public/verify/certificate/{$vcode}")->qaStatus(200)->assertJsonPath('data.result', 'invalid');
     $this->patchJson("/api/v1/records/CAP/training_certificates/{$cert['id']}", ['public_verification_enabled' => true], $a)->qaStatus(200);
     app('auth')->forgetGuards();
     $this->getJson("/api/v1/public/verify/certificate/{$vcode}")->qaStatus(200)->assertJsonPath('data.result', 'valid');

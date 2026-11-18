@@ -17,7 +17,8 @@ Route::middleware(['auth:sanctum', 'company', 'module:CAP', 'permission:cap.trai
 Route::middleware(['auth:sanctum', 'company', 'module:CAP'])->get('cap/certificates/{id}/print', [\App\Modules\CAP\PrintController::class, 'certificate'])->whereUuid('id');
 Route::middleware(['auth:sanctum', 'company', 'module:FOT'])->get('fot/credentials/{id}/print', [\App\Modules\CAP\PrintController::class, 'credential'])->whereUuid('id');
 Route::middleware('throttle:30,1')->prefix('public/verify')->group(function () {
-    Route::get('certificate/{code}', [\App\Modules\CAP\PrintController::class, 'verifyCertificate'])->where('code', '[A-Za-z0-9-]{4,40}');
+    Route::get('certificate/{code}', [\App\Modules\CAP\PrintController::class, 'verifyCertificate'])->where('code', '[A-Za-z0-9-]{4,40}')
+        ->withoutMiddleware('throttle:30,1')->middleware('throttle:cert-verify');
     Route::get('credential/{token}', [\App\Modules\CAP\PrintController::class, 'verifyCredential'])->where('token', '[A-Za-z0-9]{8,64}');
 });
 

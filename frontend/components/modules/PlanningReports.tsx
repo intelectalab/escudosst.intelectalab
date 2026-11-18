@@ -78,6 +78,54 @@ export function PolicyReport({ id }: { id: string }) {
   );
 }
 
+// ─────────────── RISST (M-RIS: «RISST en PDF con acta de aprobación»)
+
+type Risst = {
+  company: Company;
+  risst: { title: string | null; version_number: number; status: string; content_html: string | null; file_id: string | null; change_summary: string | null;
+    effective_on: string | null; approved_at: string | null; approved_by: string | null; prepared_by: string | null };
+  meeting: { id: string; number: number | null; meeting_type: string; held_at: string | null; scheduled_at: string | null; location: string | null; status: string } | null;
+  agreements: { number: number | null; description: string; due_on: string | null; status: string }[];
+  meeting_signatures: Sig[];
+  signatures: Sig[];
+};
+
+export function RisstReport({ id }: { id: string }) {
+  const { data: d, error } = useReport<Risst>(`/reports/risst_versions/${id}`);
+  if (!d) return <ReportLoading error={error} />;
+  const r = d.risst;
+  const m = d.meeting;
+  return (
+    <Sheet company={d.company} title={r.title || "Reglamento Interno de Seguridad y Salud en el Trabajo"} sub={`Versión ${r.version_number} · ${DOC_STATUS[r.status] ?? r.status}`}
+      draft={["current", "approved", "obsolete"].includes(r.status) ? null : "BORRADOR · el reglamento aún no está aprobado"}>
+      <Section n={1} title="Texto del reglamento">
+        {r.content_html ? <div className="prose max-w-none text-sm" dangerouslySetInnerHTML={{ __html: safeHtml(r.content_html) }} />
+          : <p className="text-sm text-gray-600">{r.file_id ? "El texto está en el documento adjunto a esta versión." : "Sin texto."}</p>}
+      </Section>
+      <Section n={2} title="Aprobación">
+        <Facts rows={[["Elaborado por", r.prepared_by], ["Aprobado por", r.approved_by], ["Fecha de aprobación", fmtD(r.approved_at)], ["Vigente desde", fmtD(r.effective_on)],
+          ["Cambios de esta versión", r.change_summary]]} />
+        <SigBlock list={d.signatures} />
+      </Section>
+      <Section n={3} title="Acta de aprobación">
+        {!m ? <p className="text-sm text-gray-600">Sin sesión del comité registrada (empresa con Supervisor SST o aprobación sin acta).</p> : (
+          <>
+            <Facts rows={[["Sesión", `${m.meeting_type === "extraordinary" ? "Extraordinaria" : m.meeting_type === "installation" ? "Instalación" : "Ordinaria"}${m.number ? ` N.° ${m.number}` : ""}`],
+              ["Fecha", fmtDT(m.held_at ?? m.scheduled_at)], ["Lugar", m.location]]} />
+            {d.agreements.length > 0 && (
+              <table className="w-full border-collapse text-sm">
+                <thead><tr className="bg-gray-100"><th className={cell}>N.°</th><th className={cell}>Acuerdo</th><th className={cell}>Plazo</th></tr></thead>
+                <tbody>{d.agreements.map((a, i) => <tr key={i}><td className={cell}>{a.number ?? i + 1}</td><td className={cell}>{a.description}</td><td className={cell}>{fmtD(a.due_on)}</td></tr>)}</tbody>
+              </table>
+            )}
+            <SigBlock list={d.meeting_signatures} />
+          </>
+        )}
+      </Section>
+    </Sheet>
+  );
+}
+
 // ─────────────── Plan Anual
 
 type Plan = {

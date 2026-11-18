@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * Informes imprimibles de planificación (§11 de las fichas):
  *  GET /reports/sst_policies/{id}         M-POL: política con aprobación y firmas, y la matriz de objetivos y metas con su avance
+ *  GET /reports/risst_versions/{id}       M-RIS: RISST con su aprobación y el acta de la sesión del comité que lo aprobó
  *  GET /reports/annual_plans/{id}         M-PLA: Plan Anual con objetivos, actividades y sesión de aprobación del comité
  *  GET /reports/annual_programs/{id}      M-PAS: Programa Anual con cronograma por mes y avance ejecutado vs. programado
  *  GET /reports/baseline_assessments/{id} M-LBA: línea base por lineamiento, brechas y plan de cierre, con firmas
@@ -34,6 +35,46 @@ class PlanningReportsController extends FieldReportsController
                 'review_due_on' => $p->review_due_on, 'approved_at' => $p->approved_at, 'approved_by' => $this->person($p->approved_by, null), 'prepared_by' => $this->person($p->prepared_by, null)],
             'objectives' => $objectives,
             'signatures' => $this->signatures('sst_policies', $id),
+        ]]);
+    }
+
+    /** GET /reports/risst_versions/{id} — M-RIS: el RISST con su aprobación, firmas y el acta de la sesión del comité que lo aprobó. */
+    public function risst(string $id): JsonResponse
+    {
+        $this->can('ris.risst_versions.read');
+        $r = $this->row('risst_versions', $id, 'El reglamento no existe o es de otra empresa.');
+        $meeting = $r->committee_meeting_id ? DB::selectOne(
+            'select m.id, m.number, m.meeting_type, m.held_at, m.scheduled_at, m.location, m.status from committee_meetings m where m.id = ?', [$r->committee_meeting_id]) : null;
+        $agreements = $meeting ? DB::select('select number, description, due_on, status from meeting_agreements where meeting_id = ? and deleted_at is null order by number', [$meeting->id]) : [];
+
+        return response()->json(['data' => [
+            'company' => $this->company(),
+            'risst' => ['title' => $r->title, 'version_number' => $r->version_number, 'status' => $r->status, 'content_html' => $r->content_html, 'file_id' => $r->file_id,
+                'change_summary' => $r->change_summary, 'effective_on' => $r->effective_on, 'approved_at' => $r->approved_at,
+                'approved_by' => $this->person($r->approved_by, null), 'prepared_by' => $this->person($r->prepared_by, null)],
+            'meeting' => $meeting,
+            'agreements' => $agreements,
+            'meeting_signatures' => $meeting ? $this->signatures('committee_meetings', $meeting->id) : [],
+            'signatures' => $this->signatures('risst_versions', $id),
+        ]]);
+    }
+
+    /** GET /reports/sst_events/{id}/notifications — M-ACC §11: constancias de notificación del evento (destinatario, plazo, número y fecha). */
+    public function eventNotifications(string $id): JsonResponse
+    {
+        $this->can('acc.event_notifications.read');
+        $e = $this->row('sst_events', $id, 'El evento no existe o es de otra empresa.');
+        $rows = DB::select(
+            "select n.authority, n.notification_type, n.deadline_at, n.notified_at, n.notification_number, n.channel, n.status, n.notes, n.receipt_file_id is not null as has_receipt,
+                    u.full_name as notified_by
+               from event_notifications n left join users u on u.id = n.notified_by
+              where n.event_id = ? and n.deleted_at is null order by n.deadline_at nulls last, n.created_at", [$id]);
+
+        return response()->json(['data' => [
+            'company' => $this->company(),
+            'event' => ['code' => $e->code, 'event_type' => $e->event_type, 'occurred_at' => $e->occurred_at, 'site' => $this->name('sites', $e->site_id),
+                'description' => $e->description],
+            'notifications' => $rows,
         ]]);
     }
 

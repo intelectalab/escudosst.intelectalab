@@ -24,7 +24,15 @@ it('verifica públicamente un certificado solo si la empresa lo habilitó', func
     $p = $this->getJson("/api/v1/cap/certificates/{$cert}/print", $h)->assertOk()->json('data');
     expect($p['holder_name'])->toBe('Ana Lima')->and($p['verify_url'])->toContain('/verificar/certificado/'.$p['verification_code']);
 
-    $this->getJson('/api/v1/public/verify/certificate/'.$p['verification_code'])->assertOk()->assertJsonPath('data.result', 'not_public');
+    // RN-CAP-14: el no verificable responde igual que un código inexistente, y ambas consultas quedan registradas.
+    $hidden = $this->getJson('/api/v1/public/verify/certificate/'.$p['verification_code'])->assertOk()->json();
+    $missing = $this->getJson('/api/v1/public/verify/certificate/NOEXISTE98765432')->assertOk()->json();
+    expect($hidden)->toBe($missing)->and($hidden)->toBe(['data' => ['result' => 'invalid']]);
+    // El del código inexistente queda sin empresa (ninguna lo ve); el del no verificable, en la bitácora de la empresa.
+    $prev = (string) DB::selectOne("select current_setting('app.company_id', true) as c")->c;
+    DB::select("select set_config('app.company_id', ?, false)", [ANDINAS_ID]);
+    expect((int) DB::selectOne("select count(*) as n from certificate_verifications where queried_code = ? and result = 'not_public'", [strtoupper($p['verification_code'])])->n)->toBe(1);
+    DB::select("select set_config('app.company_id', ?, false)", [$prev]);
     $this->patchJson("/api/v1/records/CAP/training_certificates/{$cert}", ['public_verification_enabled' => true], $h)->assertOk();
     $this->getJson('/api/v1/public/verify/certificate/'.$p['verification_code'])->assertOk()
         ->assertJsonPath('data.result', 'valid')->assertJsonPath('data.holder_name', 'Ana Lima')->assertJsonMissingPath('data.worker_id');

@@ -26,6 +26,8 @@ class SignatureService
         'inspections' => ['id', 'company_id', 'code', 'template_id', 'site_id', 'area_id', 'scheduled_on', 'completed_at', 'score_pct', 'inspector_user_id'],
         // PETAR: lo firmado al cerrar es el trabajo y su cierre (no su estado, que pasa a cerrado).
         'work_permits' => ['id', 'company_id', 'code', 'permit_type_id', 'work_description', 'valid_from', 'valid_until', 'closure_notes', 'area_left_safe'],
+        // Política SST: lo que firma gerencia al aprobar (no su estado, que pasa a vigente y luego a obsoleta).
+        'sst_policies' => ['id', 'company_id', 'version_number', 'title', 'content_html', 'file_id', 'principles_checklist'],
         'investigations' => ['id', 'company_id', 'event_id', 'code', 'method', 'started_on', 'summary', 'immediate_causes', 'basic_causes', 'conclusions', 'lessons_learned'],
     ];
 

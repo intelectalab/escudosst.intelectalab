@@ -232,6 +232,36 @@ final class SstAlerts
         return $n;
     }
 
+    /**
+     * M-NOT §9 «pending → cancelled si el objeto se resolvió antes del envío»: ¿el registro sigue cumpliendo la condición de su
+     * alerta por tiempo? null si el evento no es de este catálogo (no se puede saber; se envía).
+     */
+    public static function stillPending(\Illuminate\Database\ConnectionInterface $db, string $event, ?string $subjectId): ?bool
+    {
+        static $byEvent = null;
+        if ($byEvent === null) {
+            $byEvent = [];
+            foreach (self::checks() as $c) {
+                $byEvent[$c[2]][] = $c[1];
+            }
+        }
+        if (! isset($byEvent[$event]) || ! $subjectId || ! \Illuminate\Support\Str::isUuid($subjectId)) {
+            return null;
+        }
+        foreach ($byEvent[$event] as $sql) {
+            try {
+                // En un punto de guardado: si la consulta falla, no deja abortada la transacción de quien llama.
+                if ($db->transaction(fn () => $db->selectOne("select 1 as ok from ({$sql}) q where q.id::text = ? limit 1", [$subjectId]))) {
+                    return true;
+                }
+            } catch (\Throwable) {
+                return null;   // si la consulta no se puede volver a correr, no se cancela
+            }
+        }
+
+        return false;
+    }
+
     private static function days(string $key, int $default): int
     {
         return max(0, (int) \App\Core\Support\LegalParams::number($key, $default));
@@ -472,6 +502,19 @@ final class SstAlerts
                        from brigades b where b.deleted_at is null and b.status = 'active'
                         and (b.leader_worker_id is null or (select count(*) from brigade_members m where m.brigade_id = b.id and m.status = 'active' and m.deleted_at is null) < ".max(1, self::days('min_brigade_members', 2)).')',
                 'sim.brigade_incomplete', 'normal', 'Brigada incompleta', fn ($r) => "La brigada «{$r->ref}» está sin líder o bajo el mínimo de miembros.", '/m/sim?t=brigades&open=', ['sst_manager'], false],
+            // M-SIM RN-SIM-03: brigadista activo cuya capacitación de brigada venció → Jefe SST (al vencer).
+            ['SIM', "select m.id, w.full_name as ref, t.title as name, null as owner, max(c.expires_on) as due, 'brigadist' as kind
+                       from brigade_members m join workers w on w.id = m.worker_id join trainings t on t.id = m.training_id
+                       join training_certificates c on c.worker_id = m.worker_id and c.training_id = m.training_id and c.deleted_at is null and c.status in ('validated', 'expired')
+                      where m.deleted_at is null and m.status = 'active'
+                      group by m.id, w.full_name, t.title
+                     having max(coalesce(c.expires_on, 'infinity'::date)) < current_date",
+                'sim.brigadist_training', 'normal', 'Capacitación de brigada vencida', fn ($r) => "La capacitación «{$r->name}» de {$r->ref} venció el ".date('d/m/Y', strtotime($r->due)).': renuévala para que siga en la brigada.', '/m/sim?t=brigade_members&open=', ['sst_manager'], false],
+            // M-VTA §10: cupos sin asignar por vencer → representante de la empresa compradora, license_assign_notice_days antes.
+            ['VTA', "select l.id, l.license_code as ref, (l.seats_purchased - l.seats_used)::text as name, l.manager_user_id as owner, l.expires_at::date as due, 'license' as kind
+                       from course_licenses l where l.deleted_at is null and l.status = 'active' and l.seats_used < l.seats_purchased and l.manager_user_id is not null
+                        and l.expires_at::date between current_date and current_date + ".self::days('license_assign_notice_days', 7),
+                'vta.license_unassigned', 'normal', 'Cupos sin asignar por vencer', fn ($r) => "Tienes {$r->name} cupo(s) sin asignar del código {$r->ref}: vencen el ".date('d/m/Y', strtotime($r->due)).'.', '/m/vta?open=', [], false],
             // M-TEN §10: trabajadores activos alcanzan el umbral del Comité (committee_threshold_workers) sin modelo de comité.
             ['TEN', "select c.id, (select count(*) from workers w where w.status = 'active' and w.deleted_at is null)::text as ref, '' as name, null as owner, current_date as due, 'ten' as kind
                        from companies c where c.id = nullif(current_setting('app.company_id', true), '')::uuid and coalesce(c.sst_model, '') <> 'committee'
@@ -588,6 +631,14 @@ final class SstAlerts
                         and not exists (select 1 from procedures r join procedure_versions v on v.id = r.current_version_id and v.status in ('approved', 'current')
                                          where r.position_id = p.id and r.deleted_at is null and r.status = 'active')",
                 'pet.critical_without_pets', 'normal', 'Tarea crítica sin PETS', fn ($r) => "El puesto crítico «{$r->ref}» no tiene un PETS vigente.", '/m/pet?t=procedures&position=', ['sst_manager'], true],
+            // M-PET RN-PET-01: tarea crítica (riesgo significativo) del IPERC vigente sin un PETS vigente que la cubra → Jefe SST.
+            ['PET', "select r.id, coalesce(r.task, r.activity, r.hazard) as ref, m.code as name, null as owner, current_date as due, 'pet_task' as kind
+                       from iperc_rows r join iperc_versions v on v.id = r.iperc_version_id and v.status = 'current' and v.deleted_at is null
+                       join iperc_matrices m on m.id = v.iperc_matrix_id and m.current_version_id = v.id and m.deleted_at is null
+                      where r.deleted_at is null and r.is_significant
+                        and not exists (select 1 from procedures p join procedure_versions pv on pv.id = p.current_version_id and pv.status in ('approved', 'current')
+                                         where p.deleted_at is null and p.status = 'active' and r.id = any(pv.iperc_row_ids))",
+                'pet.critical_without_pets', 'normal', 'Tarea crítica sin PETS', fn ($r) => "La tarea crítica «{$r->ref}» del IPERC {$r->name} no tiene un PETS vigente.", '/m/ipc?t=iperc_rows&open=', ['sst_manager'], true],
             // M-ATS §10: ATS sin cierre al fin de la jornada (desde la hora ats_close_check_hour) → al supervisor.
             ['ATS', "select id, code as ref, task as name, supervisor_user_id as owner, performed_on as due, 'ats' as kind from ats_forms
                       where deleted_at is null and status in ('signed', 'in_execution', 'not_closed')
@@ -635,11 +686,15 @@ final class SstAlerts
                       where e.deleted_at is null and e.status = 'approved' and e.valid_until between current_date and current_date + ".(int) \App\Core\Support\LegalParams::number('vendor_notice_days', 30),
                 'hom.expiring', 'normal', 'Homologación de proveedor por vencer', fn ($r) => "La homologación de {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/hom?t=vendor_evaluations&open=', self::SST_ROLES, false],
             // M-FOT §10: fotocheck por vencer → trabajador y jefe del área (credential_expiry_notice_days).
-            ['FOT', "select c.id, c.credential_number as ref, '' as name, (select mw.user_id from areas ar join workers mw on mw.id = ar.manager_worker_id where ar.id = w.current_area_id) as owner, c.worker_id as worker, c.expires_on as due, 'fot' as kind
+            // RN-FOT-12: si el aula ya recomendó la recapacitación a la persona, el aviso la menciona (la persona la ve en «Mis cursos»).
+            ['FOT', "select c.id, c.credential_number as ref, coalesce((select co.title from course_recommendations cr join courses co on co.id = cr.course_id
+                                                                         where cr.worker_id = c.worker_id and cr.deleted_at is null and cr.status in ('suggested', 'sent', 'viewed', 'clicked')
+                                                                         order by cr.created_at desc limit 1), '') as name,
+                            (select mw.user_id from areas ar join workers mw on mw.id = ar.manager_worker_id where ar.id = w.current_area_id) as owner, c.worker_id as worker, c.expires_on as due, 'fot' as kind
                        from credentials c left join workers w on w.id = c.worker_id
                       where c.deleted_at is null and c.status = 'active' and c.expires_on between current_date and current_date + ".self::days('credential_expiry_notice_days', 15),
-                'fot.expiring', 'low', 'Fotocheck por vencer', fn ($r) => "El fotocheck {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/fot?t=credentials&open=', [], false,
-                fn ($r) => 'Tu fotocheck vence el '.date('d/m/Y', strtotime($r->due)).'.'],
+                'fot.expiring', 'low', 'Fotocheck por vencer', fn ($r) => "El fotocheck {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.'.($r->name !== '' ? " Recapacitación recomendada: «{$r->name}»." : ''), '/m/fot?t=credentials&open=', [], false,
+                fn ($r) => 'Tu fotocheck vence el '.date('d/m/Y', strtotime($r->due)).'.'.($r->name !== '' ? " Te recomendamos el curso «{$r->name}»: lo encuentras en Mis cursos." : '')],
             // M-CAP §10: capacitación por vencer → trabajador, jefe del área y Jefe SST (training_expiry_notice_days).
             ['CAP', "select c.id, c.holder_name as ref, c.course_title as name, (select mw.user_id from areas ar join workers mw on mw.id = ar.manager_worker_id where ar.id = w.current_area_id) as owner, c.worker_id as worker, c.expires_on as due, 'cert' as kind
                        from training_certificates c left join workers w on w.id = c.worker_id

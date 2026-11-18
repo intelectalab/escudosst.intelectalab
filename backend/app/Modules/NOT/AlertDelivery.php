@@ -127,7 +127,7 @@ final class AlertDelivery
     {
         $rows = $db->select(
             // M-NOT §7: un aviso con intentos fallidos se reintenta con espera creciente (2, 4, 8… minutos) hasta max_retries.
-            "select n.id, n.event_code, n.recipient_user_id, n.title, n.body, n.link, n.priority, u.full_name, u.email, u.email_invalid_at,
+            "select n.id, n.event_code, n.subject_id, n.recipient_user_id, n.title, n.body, n.link, n.priority, u.full_name, u.email, u.email_invalid_at,
                     (select count(*) from notification_deliveries d where d.notification_id = n.id and d.channel = 'email' and d.status = 'failed') as failures,
                     (select max(d.attempted_at) from notification_deliveries d where d.notification_id = n.id and d.channel = 'email' and d.status = 'failed') as last_failed_at
                from notifications n join users u on u.id = n.recipient_user_id and u.deleted_at is null
@@ -143,6 +143,9 @@ final class AlertDelivery
         foreach ($rows as $n) {
             if ((int) $n->failures > 0 && strtotime((string) $n->last_failed_at) + 60 * (2 ** (int) $n->failures) > time()) {
                 continue;   // espera creciente entre reintentos
+            }
+            if ($this->resolved($db, $company, $n, 'email')) {
+                continue;
             }
             $ok = $this->allowed($db, $n->event_code, 'email', $n->priority);
             if ($ok === null) {
@@ -237,6 +240,9 @@ final class AlertDelivery
             [$company, '{'.implode(',', self::WHATSAPP_EVENTS).'}']
         );
         foreach ($rows as $n) {
+            if ($this->resolved($db, $company, $n, 'whatsapp')) {
+                continue;
+            }
             $ok = $this->allowed($db, $n->event_code, 'whatsapp', $n->priority);
             if ($ok === null) {
                 continue;
@@ -392,6 +398,17 @@ final class AlertDelivery
                     $r->reporter_user_id ? "/m/act?t=substandard_reports&open={$r->id}" : '/inicio', "act.report_closed:{$r->id}:{$to}"]
             );
         }
+    }
+
+    /** M-NOT §9: el registro ya se resolvió antes del envío (dejó de cumplir la condición de su alerta) → envío cancelado. */
+    private function resolved(ConnectionInterface $db, string $company, object $n, string $channel): bool
+    {
+        if (SstAlerts::stillPending($db, (string) $n->event_code, $n->subject_id) !== false) {
+            return false;
+        }
+        $this->record($db, $company, $n->id, $channel, 'cancelled', null, 'resolved', 'El registro se resolvió antes del envío.');
+
+        return true;
     }
 
     private function record(ConnectionInterface $db, string $company, string $notification, string $channel, string $status, ?string $messageId,

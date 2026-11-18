@@ -138,9 +138,9 @@ export function TraceStrip({ module, table, id, version }: { module: string; tab
 
 /** Informes imprimibles (§11 de las fichas) en PDF desde el navegador: [página, texto del botón] por tabla. */
 const FIELD_PDF: Record<string, [string, string][]> = {
-  inspections: [["inspeccion", "Descargar PDF"]], work_permits: [["petar", "Descargar PDF"]], ats_forms: [["ats", "Descargar PDF"]],
+  inspections: [["inspeccion", "Descargar PDF"]], work_permits: [["petar", "Descargar PDF"]], ats_forms: [["ats", "Descargar PDF"]], drills: [["simulacro", "Informe en PDF"]],
   workers: [["legajo", "Legajo SST en PDF"], ["entrega-epp", "Entregas de EPP en PDF"]],
-  sst_policies: [["politica", "Descargar PDF"]], annual_plans: [["plan-anual", "Descargar PDF"]], annual_programs: [["passt", "Descargar PDF"]], training_programs: [["programa-capacitacion", "Descargar PDF"]], procedure_versions: [["pets", "Descargar PDF"]],
+  sst_policies: [["politica", "Descargar PDF"]], sst_events: [["constancia-notificacion", "Constancias de notificación"]], risst_versions: [["reglamento", "PDF con acta"]], annual_plans: [["plan-anual", "Descargar PDF"]], annual_programs: [["passt", "Descargar PDF"]], training_programs: [["programa-capacitacion", "Descargar PDF"]], procedure_versions: [["pets", "Descargar PDF"]],
   baseline_assessments: [["linea-base", "Descargar PDF"]], legal_requirements: [["matriz-legal", "Matriz legal en PDF"]],
   management_reviews: [["revision-direccion", "Informe en PDF"]], elections: [["acta-convocatoria", "Acta de convocatoria en PDF"]],
   committees: [["acta-instalacion", "Acta de instalación en PDF"]], documents: [["documento", "Historial y cargos en PDF"]],
@@ -1152,7 +1152,10 @@ const VERSION_STEPS: Step[] = [
 
 /** Por tabla: el texto que explica el ciclo y los botones disponibles en cada estado. */
 const STEPS: Record<string, { help: string; steps: Step[] }> = {
-  sst_policies: { help: "Borrador → revisión → aprobada (por otra persona) → vigente. Al ponerla vigente, la anterior queda obsoleta.", steps: VERSION_STEPS },
+  sst_policies: {
+    help: "Borrador → revisión → aprobada por gerencia con el código que llega a su correo (queda su firma) → vigente. Al ponerla vigente, la anterior queda obsoleta.",
+    steps: VERSION_STEPS.map((x) => (x.body.status === "approved" ? { ...x, label: "Aprobar con código", ask: "policy_otp" } : x)),
+  },
   risst_versions: { help: "Con Comité, la aprobación pide la sesión. Al ponerla vigente se entrega a los trabajadores desde «Entregas».", steps: VERSION_STEPS },
   procedure_versions: { help: "La versión vigente queda como la actual del procedimiento.", steps: VERSION_STEPS },
   document_versions: { help: "La versión vigente queda como la actual del documento; los trabajadores toman conocimiento de ella.", steps: VERSION_STEPS },
@@ -1332,6 +1335,16 @@ function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; t
   const [text, setText] = useState("");
   const [gas, setGas] = useState<Record<string, string>>({ o2: "", lel: "", co: "", h2s: "" });
   const options = cfg.steps.filter((x) => x.from.includes(st));
+  const [otpSent, setOtpSent] = useState<string | null>(null);
+  // M-POL RN-POL-02: gerencia aprueba la política con un código de un solo uso enviado a su correo.
+  const askCode = () =>
+    api<{ data: { sent_to: string; minutes: number } }>(`/pol/policies/${row.id}/approval-code`, { method: "POST", withCompany: true })
+      .then((r) => { setOtpSent(`Te enviamos un código a ${r.data.sent_to}: vale ${r.data.minutes} minutos.`); setMsg(null); })
+      .catch((e: ApiError) => setMsg(e.detail ?? e.title));
+  const approveWithCode = () =>
+    api(`/pol/policies/${row.id}/approve`, { method: "POST", withCompany: true, body: { otp: text } })
+      .then(() => { setAsking(null); setText(""); setOtpSent(null); setMsg(null); onChanged(); })
+      .catch((e: ApiError) => setMsg(Object.values(e.errors ?? {})[0]?.[0] ?? e.detail ?? e.title));
   const gasBody = () => {
     const v = Object.fromEntries(Object.entries(gas).filter(([, x]) => x.trim() !== "").map(([k, x]) => [k, Number(x.replace(",", "."))]));
     return Object.keys(v).length ? { gas_measurements: v } : {};
@@ -1361,10 +1374,20 @@ function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; t
         {canEdit && options.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {options.map((x) => (
-              <Button key={x.label} variant={x.primary ? "primary" : "secondary"} onClick={() => (x.ask ? setAsking(x) : run(x))}>
+              <Button key={x.label} variant={x.primary ? "primary" : "secondary"} onClick={() => { if (x.ask === "policy_otp") void askCode(); if (x.ask) setAsking(x); else run(x); }}>
                 {x.label}
               </Button>
             ))}
+          </div>
+        )}
+        {asking?.ask === "policy_otp" && (
+          <div className="flex flex-wrap items-end gap-2 rounded-lg border border-line p-3">
+            {otpSent && <p className="w-full text-muted">{otpSent}</p>}
+            <label className="text-sm"><span className="mb-1 block text-xs font-semibold text-muted">Código de 6 dígitos</span>
+              <input className="input w-40" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={text} onChange={(e) => setText(e.target.value)} /></label>
+            <Button variant="primary" disabled={text.replace(/\D/g, "").length !== 6} onClick={approveWithCode}>Aprobar y firmar</Button>
+            <Button onClick={() => void askCode()}>Enviar otro código</Button>
+            <Button onClick={() => { setAsking(null); setText(""); setOtpSent(null); }}>Cancelar</Button>
           </div>
         )}
         {asking?.ask === "gas_measurements" && (
@@ -1381,7 +1404,7 @@ function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; t
             <Button variant="primary" onClick={() => run(asking, gasBody())}>{asking.label}</Button>
           </div>
         )}
-        {asking && asking.ask !== "gas_measurements" && (
+        {asking && asking.ask !== "gas_measurements" && asking.ask !== "policy_otp" && (
           <div className="flex flex-wrap gap-2">
             <input autoFocus className="input flex-1" placeholder="Motivo" aria-label="Motivo" value={text} onChange={(e) => setText(e.target.value)} />
             <Button variant="danger" disabled={!text.trim()} onClick={() => run(asking, { [asking.ask!]: text })}>

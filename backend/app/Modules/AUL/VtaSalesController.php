@@ -92,6 +92,15 @@ class VtaSalesController extends Controller
         });
         DB::insert("insert into audit_logs (company_id, actor_user_id, actor_role, actor_type, action, module_code, entity_type, entity_id, changes) values (?, ?, ?, 'user', 'update', 'VTA', 'orders', ?, ?::jsonb)",
             [$o->company_id, $me, app(CompanyContext::class)->roleCode, $o->id, json_encode(['refund' => $amount, 'full' => $full, 'reason' => $d['reason']] + $out)]);
+        // M-VTA §10: «Reembolso confirmado» → comprador, por correo, al confirmarse.
+        if ($o->buyer_email) {
+            $seller = DB::selectOne('select coalesce(trade_name, legal_name) as name from companies where id = ?', [$o->company_id])?->name ?? 'la empresa';
+            \Illuminate\Support\Facades\Mail::to($o->buyer_email)->send(new \App\Modules\WEB\Mail\SiteRequestMail(
+                explode(' ', trim((string) $o->buyer_name))[0] ?: 'Hola',
+                'Reembolso confirmado de tu pedido',
+                "{$seller} confirmó el reembolso de tu pedido. El abono se verá en tu medio de pago según los plazos de tu banco o billetera.",
+                [['Importe reembolsado', ($o->currency ?: 'PEN').' '.number_format($amount, 2)], ['Tipo', $full ? 'Total' : 'Parcial'], ['Motivo', trim($d['reason'])]]));
+        }
 
         return response()->json(['data' => $out + ['status' => $full ? 'refunded' : 'partially_refunded', 'refunded' => $amount, 'credit_note' => 'pendiente del proveedor de comprobantes']]);
     }

@@ -174,3 +174,15 @@ it('reintenta el correo que falló con espera creciente y marca inválido el cor
     $h = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
     $this->get('/api/v1/not/report.xlsx', $h)->assertOk();
 });
+
+it('un aviso por tiempo cuyo registro ya se resolvió no se envía: queda «cancelado» (M-NOT §9)', function () {
+    // La acción del aviso ya no existe vencida (el id no corresponde a ninguna pendiente): se cancela el envío.
+    $n = deliveryNotify($this->uid, 'acr.overdue', 'critical', 'Acción correctiva vencida');
+    // Un evento que no es de las alertas por tiempo sale igual.
+    $other = deliveryNotify($this->uid, 'acc.event_registered', 'critical');
+
+    expect(deliveryRun()['email'])->toBe(1);
+    expect(array_map(fn ($r) => [$r->channel, $r->status, $r->error_code], deliveryRows($n)))->toBe([['email', 'cancelled', 'resolved']]);
+    expect(array_map(fn ($r) => [$r->channel, $r->status], deliveryRows($other)))->toBe([['email', 'sent']]);
+    Mail::assertSent(AlertMail::class, 1);
+});

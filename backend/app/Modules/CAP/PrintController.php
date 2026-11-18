@@ -77,10 +77,21 @@ class PrintController extends Controller
 
     public function verifyCertificate(Request $request, string $code): JsonResponse
     {
-        $r = DB::selectOne("select public_verify_certificate(?, ?, decode(?, 'hex'), ?) as r",
-            [$code, 'public_web', hash_hmac('sha256', (string) $request->ip(), (string) config('app.key')), mb_substr((string) $request->userAgent(), 0, 300)]);
+        $ip = hash_hmac('sha256', (string) $request->ip(), (string) config('app.key'));
+        $ua = mb_substr((string) $request->userAgent(), 0, 300);
+        $data = json_decode(DB::selectOne("select public_verify_certificate(?, ?, decode(?, 'hex'), ?) as r", [$code, 'public_web', $ip, $ua])->r, true);
+        // RN-CAP-14: la misma respuesta para un código inexistente y uno no verificable (no revela que el código existe)…
+        if (in_array($data['result'] ?? null, ['invalid', 'not_public'], true)) {
+            // …y la consulta del código inexistente también queda registrada (la del no verificable ya la registró la función).
+            if (($data['result'] ?? null) === 'invalid') {
+                DB::insert("insert into certificate_verifications (company_id, certificate_id, queried_code, channel, result, response_snapshot, ip_hash, user_agent)
+                            values (null, null, ?, 'public_web', 'invalid', '{\"result\":\"invalid\"}'::jsonb, decode(?, 'hex'), ?)",
+                    [mb_substr(strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $code)), 0, 64), $ip, $ua]);
+            }
+            $data = ['result' => 'invalid'];
+        }
 
-        return response()->json(['data' => json_decode($r->r, true)]);
+        return response()->json(['data' => $data]);
     }
 
     public function verifyCredential(Request $request, string $token): JsonResponse
