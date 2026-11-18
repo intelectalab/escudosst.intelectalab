@@ -116,7 +116,7 @@ class WhiteLabelController extends Controller
             $to = ($s['contact_email'] ?? null) ?: ($s['sales_email'] ?? null);
             if ($to) {
                 \Illuminate\Support\Facades\Mail::to($to)->send(new \App\Modules\WEB\Mail\SiteRequestMail('equipo',
-                    'Dominio de consultora verificado: '.$w->custom_domain, 'Una consultora verificó su dominio propio. Para que sus clientes entren por él, publícalo en el servidor con el comando de abajo.',
+                    'Dominio de consultora verificado: '.$w->custom_domain, 'Una consultora verificó su dominio propio. El publicador automático del servidor lo publica en unos 10 minutos; si no está activo, publícalo con el comando de abajo.',
                     [['Dominio', $w->custom_domain], ['Comando', './deploy/escudo.sh domain '.$w->custom_domain]], null, null, null));
             }
         } catch (\Throwable) {

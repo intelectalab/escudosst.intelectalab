@@ -37,9 +37,10 @@ class IaaExtrasController extends Controller
             throw new ApiProblem(422, 'validation_failed', 'Revisa el archivo', 'El archivo no es un PDF.', ['errors' => ['file_id' => ['No es un PDF.']]]);
         }
         $started = microtime(true);
-        $text = PdfText::extract($raw);
+        // Texto del PDF; si es escaneado (foto) se lee con OCR gratuito en el servidor.
+        [$text, $ocr] = PdfText::read($raw);
         if (mb_strlen(trim($text)) < 20) {
-            throw new ApiProblem(422, 'validation_failed', 'No se pudo leer', 'El PDF no tiene texto (parece escaneado): escribe los datos a mano.', ['errors' => ['file_id' => ['PDF sin texto.']]]);
+            throw new ApiProblem(422, 'validation_failed', 'No se pudo leer', 'No se pudo leer el documento (la imagen está borrosa o no tiene texto): escribe los datos a mano.', ['errors' => ['file_id' => ['PDF sin texto.']]]);
         }
         if (preg_match('/\b(diagn[oó]stico|hipertensi[oó]n|diabetes|embarazo|gestante|VIH|c[aá]ncer|depresi[oó]n)\b/iu', $text)) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa el archivo', 'El documento tiene datos de salud: el asistente no lo procesa.', ['errors' => ['file_id' => ['Datos de salud.']]]);
@@ -48,9 +49,10 @@ class IaaExtrasController extends Controller
         $fields = self::sunafilFields($clean);
         $req = $this->request('document_reading', 'SUN', 'files', $f->id, 'Lectura de '.$f->original_name, $started, $found);
         $s = $this->suggestion($req, 'dossier_fields', 'inspection_dossiers', null, $fields + ['file_id' => $f->id],
-            'Datos leídos del documento. Revísalos antes de crear el expediente: el asistente puede equivocarse.');
+            $ocr ? 'Datos leídos de un documento escaneado (OCR). Revísalos con cuidado antes de crear el expediente: la lectura de imágenes puede confundir letras.'
+                : 'Datos leídos del documento. Revísalos antes de crear el expediente: el asistente puede equivocarse.');
 
-        return response()->json(['data' => ['suggestion' => $s, 'redacted' => $found, 'preview' => mb_substr($clean, 0, 1200)]], 201);
+        return response()->json(['data' => ['suggestion' => $s, 'redacted' => $found, 'ocr' => $ocr, 'preview' => mb_substr($clean, 0, 1200)]], 201);
     }
 
     /** Campos de un requerimiento de SUNAFIL (orden, inspector, comparecencia, periodo y documentos pedidos). */

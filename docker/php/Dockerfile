@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Cliente de PostgreSQL 17 (pg_dump) para las copias de seguridad (docs/15 §9). Debe ser de la misma versión mayor
 # que el servidor; Debian 13 (trixie), la base de esta imagen, ya trae la 17.
+# M-IAA: lectura de PDF escaneados sin costo (OCR de código abierto en español) y conversión de páginas a imagen.
+RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-spa poppler-utils && rm -rf /var/lib/apt/lists/*
 RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client-17     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer

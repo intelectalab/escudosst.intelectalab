@@ -14,6 +14,9 @@ final class Providers
 {
     /** Qué se configura de cada uno: [nombre, proveedores posibles, campos visibles, campos secretos, para qué sirve, qué pasa en modo de prueba]. */
     public const CATALOG = [
+        'ai' => ['Asistente IA (opcional)', ['anthropic' => 'Anthropic (Claude)'], ['model' => 'Modelo'], ['api_key' => 'Clave de la API'],
+            'Cuando la biblioteca del asistente no tiene el tema, pide sugerencias a la IA. Antes oculta nombres, DNI, teléfonos y correos; nunca envía datos de salud. El uso lo paga Intelectalab (límite mensual por empresa).',
+            'El asistente responde solo con la biblioteca y las reglas de EscudoSST, sin costo.'],
         'payments' => ['Pagos en línea', ['culqi' => 'Culqi', 'niubiz' => 'Niubiz', 'izipay' => 'Izipay', 'mercadopago' => 'Mercado Pago', 'other' => 'Otro'],
             ['public_key' => 'Clave pública', 'merchant_id' => 'Código de comercio'], ['secret_key' => 'Clave secreta', 'webhook_secret' => 'Secreto del webhook'],
             'Venta de cursos (VTA) y, más adelante, pago de la suscripción con tarjeta.',
@@ -45,6 +48,12 @@ final class Providers
      * aún no está decidido ni integrado: se guardan los datos, pero sigue en modo de prueba hasta integrarlo.
      */
     public const META = [
+        'ai' => [
+            'required' => [],
+            'modes' => ['test' => 'Apagada (solo biblioteca)', 'live' => 'Encendida'],
+            'hints' => ['model' => 'Vacío = claude-opus-5-5. La clave se crea en platform.claude.com › API keys.'],
+            'test_label' => 'Probar conexión (hace una consulta muy corta)',
+        ],
         'payments' => [
             'required' => [],
             'optional_secrets' => ['webhook_secret'],

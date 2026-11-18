@@ -21,14 +21,15 @@ export function IaaDocument() {
   const [hidden, setHidden] = useState<string[]>([]);
   const [form, setForm] = useState<Record<string, string>>({});
   const [done, setDone] = useState<string | null>(null);
+  const [ocr, setOcr] = useState(false);
 
   const read = async (file?: File) => {
     if (!file) return;
     setBusy(true); setMsg(null); setS(null); setDone(null);
     try {
       const f = await uploadFile(file, "SUN");
-      const r = await api<{ data: { suggestion: Suggestion; redacted: string[] } }>("/iaa/document/read", { method: "POST", withCompany: true, body: { file_id: f.id } });
-      setS(r.data.suggestion); setHidden(r.data.redacted);
+      const r = await api<{ data: { suggestion: Suggestion; redacted: string[]; ocr?: boolean } }>("/iaa/document/read", { method: "POST", withCompany: true, body: { file_id: f.id } });
+      setS(r.data.suggestion); setHidden(r.data.redacted); setOcr(!!r.data.ocr);
       const p = r.data.suggestion.payload;
       setForm({ inspection_order_number: String(p.inspection_order_number ?? ""), inspector_name: String(p.inspector_name ?? ""),
         appearance_at: String(p.appearance_at ?? "").slice(0, 16), period_from: String(p.period_from ?? ""), period_to: String(p.period_to ?? "") });
@@ -51,7 +52,7 @@ export function IaaDocument() {
     <section className="space-y-3 rounded-xl border border-line bg-surface p-4 text-sm">
       <div>
         <p className="font-semibold">Leer un requerimiento de SUNAFIL</p>
-        <p className="text-xs text-muted">Sube el PDF del requerimiento: el asistente propone la orden, el inspector, la comparecencia, el periodo y los documentos pedidos. Revisa antes de crear el expediente. Un PDF escaneado (foto) no se puede leer.</p>
+        <p className="text-xs text-muted">Sube el PDF del requerimiento: el asistente propone la orden, el inspector, la comparecencia, el periodo y los documentos pedidos. Revisa antes de crear el expediente. Si el PDF es escaneado (foto), se lee con reconocimiento de texto: revisa con más cuidado.</p>
       </div>
       <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-line px-3 py-2 font-semibold hover:border-brand">
         {busy ? "Leyendo…" : "Subir PDF"}
@@ -60,6 +61,7 @@ export function IaaDocument() {
       {msg && <p className="text-bad">{msg}</p>}
       {s && !done && (
         <div className="space-y-2 rounded-lg bg-bg p-3">
+          {ocr && <p className="text-xs font-semibold text-amber-ink">Documento escaneado: se leyó como imagen. Revisa cada dato con el original.</p>}
           {hidden.length > 0 && <p className="text-xs text-muted">Se ocultaron {hidden.map((h) => HIDDEN[h] ?? h).join(", ")} antes de procesar.</p>}
           <div className="grid gap-2 sm:grid-cols-2">
             {input("inspection_order_number", "Orden de inspección")}

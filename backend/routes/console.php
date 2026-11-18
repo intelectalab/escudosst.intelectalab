@@ -377,3 +377,24 @@ Artisan::command('escudo:con-domain {domain}', function () {
 
     return 0;
 })->purpose('Comprueba que el dominio propio de una consultora esté verificado');
+
+/*
+| Vigilante del servidor (cada hora): si falta la copia de seguridad de alguna base (más de 26 h), la hace y avisa; si el
+| disco pasa el 85 %, avisa. Uso: php artisan escudo:watch
+*/
+Artisan::command('escudo:watch', function (\App\Modules\SUS\Services\SystemWatch $watch) {
+    $r = $watch->run();
+    $this->info("Copia: {$r['backup']} · Disco usado: {$r['disk_used_pct']} %");
+})->purpose('Vigila que la copia de seguridad se haga y que el disco no se llene');
+
+Schedule::command('escudo:watch')->hourlyAt(17)->withoutOverlapping(120)->runInBackground()->name('escudo:watch');
+
+/*
+| M-CON: dominios propios verificados por DNS con marca activa, uno por línea (los usa ./deploy/escudo.sh domains-sync).
+*/
+Artisan::command('escudo:con-domains', function () {
+    foreach (DB::connection('platform')->select("select custom_domain from white_label_settings where custom_domain is not null and domain_verified_at is not null
+                                                  and status = 'active' and deleted_at is null order by custom_domain") as $r) {
+        $this->line($r->custom_domain);
+    }
+})->purpose('Lista los dominios propios de consultoras listos para publicar');

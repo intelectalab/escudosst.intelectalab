@@ -8,6 +8,7 @@
 #   ./deploy/escudo.sh ps               estado de los contenedores
 #   ./deploy/escudo.sh update           git pull + build + up + migrate (una versión nueva)
 #   ./deploy/escudo.sh domain <dominio> publica el dominio propio (ya verificado) de una consultora, con su certificado
+#   ./deploy/escudo.sh domains-sync     publica solos los dominios verificados en la página (va en el cron, cada 10 min)
 # Nunca usar «down -v»: borra las bases de datos.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -18,6 +19,23 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 DC=(docker compose -f compose.prod.yml --env-file "$ENV_FILE")
+
+# M-CON RN-CON-05: publica el dominio propio (ya verificado por DNS) de una consultora, con su certificado.
+publish_domain() {
+  local D="$1"
+  [[ "$D" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$ ]] || { echo "Dominio no válido: $D" >&2; return 1; }
+  "${DC[@]}" exec -T -u www-data api php artisan escudo:con-domain "$D" || return 1
+  local CONF="/etc/nginx/sites-available/escudo-cliente-$D"
+  sed -e "s/server_name escudosst.intelectalab.com;/server_name $D;/" -e '/Strict-Transport-Security/d'     deploy/nginx-escudosst.intelectalab.com.conf | sudo tee "$CONF" >/dev/null
+  sudo ln -sf "$CONF" "/etc/nginx/sites-enabled/escudo-cliente-$D"
+  if ! { sudo nginx -t && sudo systemctl reload nginx && sudo certbot --nginx -d "$D" --redirect --non-interactive --agree-tos --keep-until-expiring; }; then
+    # Si falla (por ejemplo el CNAME aún no apunta aquí), se retira para no dejar un sitio a medias.
+    sudo rm -f "/etc/nginx/sites-enabled/escudo-cliente-$D" "$CONF"
+    sudo nginx -t && sudo systemctl reload nginx
+    return 1
+  fi
+  echo "Publicado: https://$D"
+}
 
 case "${1:-}" in
   build)   "${DC[@]}" build ;;
@@ -38,16 +56,15 @@ case "${1:-}" in
     "${DC[@]}" ps
     ;;
   domain)
-    # M-CON RN-CON-05: solo un dominio verificado por DNS. La consultora debe tener el CNAME apuntando a este servidor.
-    D="${2:?Indica el dominio, por ejemplo: ./deploy/escudo.sh domain sst.miconsultora.pe}"
-    [[ "$D" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$ ]] || { echo "Dominio no válido: $D" >&2; exit 1; }
-    "${DC[@]}" exec -T -u www-data api php artisan escudo:con-domain "$D"
-    CONF="/etc/nginx/sites-available/escudo-cliente-$D"
-    sed -e "s/server_name escudosst.intelectalab.com;/server_name $D;/" -e '/Strict-Transport-Security/d'       deploy/nginx-escudosst.intelectalab.com.conf | sudo tee "$CONF" >/dev/null
-    sudo ln -sf "$CONF" "/etc/nginx/sites-enabled/escudo-cliente-$D"
-    sudo nginx -t && sudo systemctl reload nginx
-    sudo certbot --nginx -d "$D" --redirect --non-interactive --agree-tos --keep-until-expiring
-    echo "Publicado: https://$D"
+    publish_domain "${2:?Indica el dominio, por ejemplo: ./deploy/escudo.sh domain sst.miconsultora.pe}"
     ;;
-  *) sed -n '2,11p' "$0"; exit 1 ;;
+  domains-sync)
+    # Publica solos los dominios que las consultoras verificaron en la página (se programa una vez en el cron del servidor).
+    "${DC[@]}" exec -T -u www-data api php artisan escudo:con-domains | while read -r D; do
+      [ -z "$D" ] && continue
+      [ -e "/etc/nginx/sites-enabled/escudo-cliente-$D" ] && continue
+      publish_domain "$D" || echo "Aún no se pudo publicar $D (¿el CNAME ya apunta a este servidor?). Se reintenta en la próxima vuelta."
+    done
+    ;;
+  *) sed -n '2,12p' "$0"; exit 1 ;;
 esac

@@ -22,9 +22,27 @@ final class AiProvider
         'talk' => 'Escribe los puntos de una charla de seguridad de 5 minutos sobre el tema indicado.',
     ];
 
+    /** Panel › Proveedores › Asistente IA (encendida y con clave) o, si no, las variables AI_* del servidor. */
+    private static function settings(): array
+    {
+        try {
+            $p = \App\Core\Support\Providers::get('ai');
+            if ($p['live'] && $p['provider'] === 'anthropic') {
+                return ['key' => (string) $p['secrets']['api_key'], 'model' => trim((string) ($p['settings']['model'] ?? '')) ?: 'claude-opus-5-5'];
+            }
+        } catch (\Throwable) {
+            // Sin tabla o sin conexión: se usa el servidor.
+        }
+        if (config('escudo.ai.provider') === 'anthropic' && (string) config('escudo.ai.api_key') !== '') {
+            return ['key' => (string) config('escudo.ai.api_key'), 'model' => (string) config('escudo.ai.model', 'claude-opus-5-5')];
+        }
+
+        return ['key' => '', 'model' => 'claude-opus-5-5'];
+    }
+
     public static function enabled(): bool
     {
-        return config('escudo.ai.provider') === 'anthropic' && (string) config('escudo.ai.api_key') !== '';
+        return self::settings()['key'] !== '';
     }
 
     public static function name(): string
@@ -34,7 +52,7 @@ final class AiProvider
 
     public static function model(): string
     {
-        return (string) config('escudo.ai.model', 'claude-opus-5-5');
+        return self::settings()['model'];
     }
 
     /** @return list<array{title: string, detail: string}>|null  null = sin respuesta válida (se usa la guía general) */
@@ -44,7 +62,7 @@ final class AiProvider
             return null;
         }
         try {
-            $client = new Client(apiKey: (string) config('escudo.ai.api_key'));
+            $client = new Client(apiKey: self::settings()['key']);
             $message = $client->messages->create(
                 model: self::model(),
                 maxTokens: 4000,

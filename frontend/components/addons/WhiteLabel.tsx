@@ -138,7 +138,7 @@ function CustomDomain({ initial, verifiedAt }: { initial: string; verifiedAt: st
   const save = () => api<{ data: NonNullable<typeof info> }>("/con/white-label/domain", { method: "PUT", withCompany: true, body: { domain: domain.trim().toLowerCase() } })
     .then((r) => { setInfo(r.data); setVerified(null); setMsg(null); }).catch(fail);
   const verify = () => api<{ data: NonNullable<typeof info> }>("/con/white-label/domain/verify", { method: "POST", withCompany: true })
-    .then((r) => { setInfo(r.data); setVerified(r.data.verified_at); setMsg({ text: "Dominio verificado. El equipo de EscudoSST lo publicará para tus clientes.", ok: true }); }).catch(fail);
+    .then((r) => { setInfo(r.data); setVerified(r.data.verified_at); setMsg({ text: "Dominio verificado. En unos minutos tus clientes podrán entrar por él (con el CNAME ya apuntando a EscudoSST).", ok: true }); }).catch(fail);
   return (
     <div className="space-y-2 rounded-xl border border-line p-4 text-sm">
       <p className="font-semibold">Dominio propio (opcional)</p>

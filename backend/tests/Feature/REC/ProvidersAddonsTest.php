@@ -30,7 +30,7 @@ afterEach(function () {
 it('el panel guarda proveedores sin devolver las claves y exige claves para pasar a «en vivo»', function () {
     $h = authHeaders(tokenFor(ADMIN_EMAIL));
     $list = $this->getJson('/api/v1/internal/providers', $h)->assertOk()->json('data');
-    expect(collect($list)->pluck('code')->all())->toBe(['payments', 'einvoice', 'whatsapp', 'esign', 'backups']);
+    expect(collect($list)->pluck('code')->all())->toBe(['ai', 'payments', 'einvoice', 'whatsapp', 'esign', 'backups']);
 
     $this->putJson('/api/v1/internal/providers/payments', ['provider' => 'culqi', 'mode' => 'live', 'settings' => [], 'secrets' => []], $h)
         ->assertStatus(422)->assertJsonValidationErrors('mode');

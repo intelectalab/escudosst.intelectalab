@@ -159,12 +159,18 @@ class ProvidersController extends Controller
         if (! $key) {
             return [false, 'Falta la clave de la API.'];
         }
+        // Consulta gratuita (no usa tokens): que la clave sirva y que el modelo elegido exista.
+        $model = trim((string) ($p['settings']['model'] ?? '')) ?: 'claude-opus-5-5';
         try {
-            $r = Http::timeout(20)->withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->post('https://api.anthropic.com/v1/messages', [
-                'model' => $p['settings']['model'] ?? 'claude-sonnet-5-5', 'max_tokens' => 16, 'messages' => [['role' => 'user', 'content' => 'Responde solo: ok']],
-            ]);
+            (new \Anthropic\Client(apiKey: (string) $key))->models->retrieve($model);
 
-            return $r->successful() ? [true, 'Conexión correcta.'] : [false, 'El proveedor respondió '.$r->status().': '.mb_substr((string) ($r->json('error.message') ?? $r->body()), 0, 200)];
+            return [true, "Conexión correcta (modelo {$model})."];
+        } catch (\Anthropic\Core\Exceptions\AuthenticationException) {
+            return [false, 'La clave no es válida.'];
+        } catch (\Anthropic\Core\Exceptions\NotFoundException) {
+            return [false, "El modelo {$model} no existe o la clave no tiene acceso."];
+        } catch (\Anthropic\Core\Exceptions\APIStatusException $e) {
+            return [false, 'El proveedor respondió con un error: '.mb_substr($e->getMessage(), 0, 200)];
         } catch (\Throwable $e) {
             return [false, 'No se pudo conectar: '.mb_substr($e->getMessage(), 0, 200)];
         }

@@ -97,3 +97,27 @@ it('la conexión de IA está apagada por defecto y solo acepta respuestas con el
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
     expect(DB::selectOne('select provider from ai_requests where company_id = ? order by created_at desc limit 1', [HUAYLAS_ID])->provider)->toBe('escudosst_library');
 });
+
+it('lee con OCR gratuito un requerimiento escaneado (el PDF es solo una imagen)', function () {
+    // Imagen con el texto dibujado, como sale de un escáner, dentro de un PDF sin texto.
+    $lines = ['Orden de Inspeccion N 7788-2026', 'Comparecencia: 28/11/2026 a las 09:30 horas', '1. Registro de entrega de EPP'];
+    $img = imagecreatetruecolor(1700, 600);
+    imagefill($img, 0, 0, imagecolorallocate($img, 255, 255, 255));
+    foreach ($lines as $i => $l) {
+        imagettftext($img, 44, 0, 80, 150 + $i * 140, imagecolorallocate($img, 0, 0, 0), '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', $l);
+    }
+    ob_start();
+    imagejpeg($img, null, 95);
+    $jpg = (string) ob_get_clean();
+    $content = "q 612 0 0 216 0 576 cm /Im0 Do Q";
+    $pdf = "%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n"
+        ."3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >> endobj\n"
+        ."4 0 obj << /Length ".strlen($content)." >>\nstream\n{$content}\nendstream\nendobj\n"
+        ."5 0 obj << /Type /XObject /Subtype /Image /Width 1700 /Height 600 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ".strlen($jpg)." >>\nstream\n{$jpg}\nendstream\nendobj\n"
+        ."trailer << /Root 1 0 R >>\n%%EOF";
+
+    [$text, $ocr] = \App\Modules\IAA\PdfText::read($pdf);
+    expect($ocr)->toBeTrue()->and($text)->toContain('7788-2026');
+    $f = \App\Modules\IAA\IaaExtrasController::sunafilFields($text);
+    expect($f['inspection_order_number'])->toBe('7788-2026')->and($f['appearance_at'])->toBe('2026-11-28T09:30:00');
+});

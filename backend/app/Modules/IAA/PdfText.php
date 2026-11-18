@@ -9,6 +9,72 @@ namespace App\Modules\IAA;
  */
 final class PdfText
 {
+    /**
+     * Texto del PDF: primero con pdftotext (poppler, si está instalado), si no con el lector propio; si el PDF es escaneado
+     * (sin texto) se lee con OCR. Todo es software libre que corre en el servidor: no se envía el documento a nadie.
+     * @return array{0: string, 1: bool} texto y si se usó OCR
+     */
+    public static function read(string $pdf): array
+    {
+        foreach ([fn () => self::poppler($pdf), fn () => self::extract($pdf)] as $reader) {
+            $text = (string) $reader();
+            if (mb_strlen(trim($text)) >= 20) {
+                return [$text, false];
+            }
+        }
+
+        return [self::ocr($pdf), true];
+    }
+
+    /** pdftotext conserva mejor el orden de las líneas que el lector propio. null si no está instalado. */
+    public static function poppler(string $pdf): ?string
+    {
+        if (! is_executable('/usr/bin/pdftotext')) {
+            return null;
+        }
+        $in = tempnam(sys_get_temp_dir(), 'pdf');
+        file_put_contents($in, $pdf);
+        try {
+            $r = \Illuminate\Support\Facades\Process::timeout(30)->run(['/usr/bin/pdftotext', '-layout', '-l', '20', $in, '-']);
+
+            return $r->successful() ? (string) $r->output() : null;
+        } finally {
+            @unlink($in);
+        }
+    }
+
+    /**
+     * OCR gratuito (Tesseract en español) para PDF escaneados o fotos: convierte hasta 5 páginas a imagen y las lee.
+     * Devuelve '' si las herramientas no están instaladas o no se reconoce texto.
+     */
+    public static function ocr(string $pdf): string
+    {
+        if (! is_executable('/usr/bin/pdftoppm') || ! is_executable('/usr/bin/tesseract')) {
+            return '';
+        }
+        $dir = sys_get_temp_dir().'/ocr-'.bin2hex(random_bytes(6));
+        @mkdir($dir, 0700);
+        file_put_contents("{$dir}/in.pdf", $pdf);
+        try {
+            $conv = \Illuminate\Support\Facades\Process::timeout(60)->run(['/usr/bin/pdftoppm', '-r', '250', '-gray', '-png', '-l', '5', "{$dir}/in.pdf", "{$dir}/p"]);
+            if (! $conv->successful()) {
+                return '';
+            }
+            $out = [];
+            foreach (glob("{$dir}/p*.png") ?: [] as $img) {
+                $r = \Illuminate\Support\Facades\Process::timeout(60)->run(['/usr/bin/tesseract', $img, 'stdout', '-l', 'spa', '--psm', '4']);
+                if ($r->successful()) {
+                    $out[] = trim((string) $r->output());
+                }
+            }
+
+            return trim(implode("\n", $out));
+        } finally {
+            array_map('unlink', glob("{$dir}/*") ?: []);
+            @rmdir($dir);
+        }
+    }
+
     public static function extract(string $pdf): string
     {
         $out = [];
@@ -17,6 +83,11 @@ final class PdfText
         }
         foreach ($m[1] as [$raw, $offset]) {
             $dict = substr($pdf, max(0, $offset - 400), min(400, $offset));
+            // Las imágenes (fotos escaneadas) no llevan texto: sus bytes podrían parecer operadores de texto.
+            $dict = substr($dict, (int) strrpos($dict, 'obj'));
+            if (str_contains($dict, '/Image') || str_contains($dict, 'DCTDecode') || str_contains($dict, 'JPXDecode')) {
+                continue;
+            }
             $data = $raw;
             if (str_contains($dict, 'FlateDecode')) {
                 $data = @gzuncompress($raw);

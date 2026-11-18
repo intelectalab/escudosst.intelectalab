@@ -52,6 +52,8 @@ return [
     'mail_webhook_secret' => env('MAIL_WEBHOOK_SECRET', ''),
     // M-API: vigencia del token OAuth2 «client credentials» (minutos).
     'api_token_minutes' => (int) env('API_TOKEN_MINUTES', 60),
+    // Vigilante: avisa cuando el disco del servidor pasa este porcentaje.
+    'disk_alert_pct' => (int) env('DISK_ALERT_PCT', 85),
     // M-IAA: proveedor de IA opcional. Vacío = solo la biblioteca y reglas de EscudoSST (sin costo). «anthropic» + llave = se usa
     // cuando la biblioteca no tiene el tema. La llave va solo en deploy/backend.env del servidor.
     'ai' => [
