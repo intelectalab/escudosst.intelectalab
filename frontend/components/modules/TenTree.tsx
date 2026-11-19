@@ -19,6 +19,8 @@ async function all(code: string, table: string): Promise<RecordRow[]> {
 }
 
 const s = (v: unknown) => (v == null ? "" : String(v));
+// Estado de la sede en español (catálogo de sites.status).
+const SITE_STATUS: Record<string, string> = { inactive: "inactiva", closed: "cerrada" };
 
 export function TenTree({ readOnly }: { readOnly: boolean }) {
   const [sites, setSites] = useState<RecordRow[] | null>(null);
@@ -122,7 +124,7 @@ export function TenTree({ readOnly }: { readOnly: boolean }) {
             <li key={si.id}>
               <div {...dropProps(`site:${si.id}`, { site: si.id, parent: null })}
                 className={`flex items-center gap-2 rounded-lg px-2 py-1.5 font-semibold ${over === `site:${si.id}` ? "bg-brand-soft" : "bg-bg"}`}>
-                <span className="flex-1">{s(si.name)}{si.is_main ? " · principal" : ""}{si.status !== "active" ? ` · ${s(si.status)}` : ""}</span>
+                <span className="flex-1">{s(si.name)}{si.is_main ? " · principal" : ""}{si.status !== "active" ? ` · ${SITE_STATUS[s(si.status)] ?? s(si.status)}` : ""}</span>
                 <button type="button" className="text-xs font-normal text-brand underline" onClick={() => records.get("TEN", "sites", si.id).then((r) => setMapSite(r.data)).catch(() => setMapSite(si))}>Mapa</button>
               </div>
               <ul className="ml-2 mt-1 space-y-1">{(children[`site:${si.id}`] ?? []).map((a) => renderArea(a, 0))}</ul>
