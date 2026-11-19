@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { NO_CREATE, OneTimeSecret, PanelActions, RecordActions, TraceStrip, describeFilter, lockedReason } from "./Process";
 import { JSON_EDITORS } from "./JsonEditors";
 import { EvidencePicker } from "./EvidencePicker";
+import { PlanReferencePicker } from "./PlanReferencePicker";
 import { ModuleKpis } from "./ModuleKpis";
 import { SignaturePanel } from "./SignaturePanel";
 import { api, ApiError } from "@/lib/api";
@@ -635,7 +636,18 @@ export function RecordForm({
         {(isNew || ftab === "detalle") && (isNew || loaded) && (
           <>
             <div className="grid gap-4 sm:grid-cols-2">
-              {editable.map((f) => res.table === "requirement_evaluations" && f.name === "evidence_record_id" ? null : res.table === "requirement_evaluations" && f.name === "evidence_record_type" ? (
+              {editable.map((f) => res.table === "annual_plan_items" && (f.name === "reference_id" || (f.name === "reference_type" && values.item_type !== "program")) ? null
+              : res.table === "annual_plan_items" && f.name === "objective_id" && values.item_type && values.item_type !== "objective" ? null
+              : res.table === "annual_plan_items" && f.name === "reference_type" ? (
+                <div key={f.name} className="sm:col-span-2">
+                  <PlanReferencePicker planId={String(values.annual_plan_id ?? fixed?.annual_plan_id ?? "")} type={String(values.reference_type ?? "")} id={String(values.reference_id ?? "")}
+                    disabled={!canEdit} error={errors.reference_id?.[0] ?? errors.reference_type?.[0]}
+                    onChange={(t, i) => {
+                      touched.current.add("reference_type").add("reference_id");
+                      setValues((x) => ({ ...x, reference_type: t || null, reference_id: i || null }));
+                    }} />
+                </div>
+              ) : res.table === "requirement_evaluations" && f.name === "evidence_record_id" ? null : res.table === "requirement_evaluations" && f.name === "evidence_record_type" ? (
                 <div key={f.name} className="sm:col-span-2">
                   <EvidencePicker type={String(values.evidence_record_type ?? "")} id={String(values.evidence_record_id ?? "")} disabled={!canEdit}
                     error={errors.evidence_record_id?.[0] ?? errors.evidence_record_type?.[0]}

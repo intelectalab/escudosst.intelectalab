@@ -134,6 +134,9 @@ type Plan = {
     budget: { title: string; total_amount: number | null; currency: string | null } | null; meeting: { number: number | null; held_at: string | null; scheduled_at: string | null } | null };
   items: { code: string | null; description: string; goal: string | null; indicator: string | null; resources: string | null; starts_on: string | null; ends_on: string | null; responsible: string | null; objective_code: string | null; objective: string | null }[];
   signatures: Sig[];
+  baseline: { title: string; assessment_on: string | null; score_pct: number | null } | null;
+  policy: { title: string; version_number: number; effective_on: string | null; content_html: string | null } | null;
+  programs: { id: string; kind: string; title: string; year: number; status: string }[];
 };
 
 export function PlanReport({ id }: { id: string }) {
@@ -148,7 +151,27 @@ export function PlanReport({ id }: { id: string }) {
           ["Presupuesto", p.budget ? `${p.budget.title}${p.budget.total_amount != null ? ` · ${p.budget.currency ?? "PEN"} ${Number(p.budget.total_amount).toLocaleString("es-PE")}` : ""}` : "—"],
           ["Aprobación", `${p.approved_by ?? "—"} · ${fmtD(p.approved_at)}`], ["Acta de aprobación", meetingText(p.meeting)]]} />
       </Section>
-      <Section n={2} title="Objetivos y actividades">
+      <Section n={2} title="Diagnóstico de línea base">
+        {d.baseline ? <Facts rows={[["Diagnóstico", d.baseline.title], ["Fecha", fmtD(d.baseline.assessment_on)], ["Cumplimiento", d.baseline.score_pct != null ? `${Number(d.baseline.score_pct).toLocaleString("es-PE")} %` : "—"]]} />
+          : <p className="text-sm text-gray-600">Sin diagnóstico vinculado.</p>}
+      </Section>
+      <Section n={3} title="Política de seguridad y salud en el trabajo">
+        {d.policy ? (
+          <>
+            <p className="text-xs text-gray-600">{d.policy.title} · versión {d.policy.version_number} · vigente desde {fmtD(d.policy.effective_on)}</p>
+            <div className="prose max-w-none text-sm" dangerouslySetInnerHTML={{ __html: safeHtml(d.policy.content_html ?? "") }} />
+          </>
+        ) : <p className="text-sm text-gray-600">Sin política vinculada.</p>}
+      </Section>
+      <Section n={4} title="Programas vinculados">
+        {d.programs.length === 0 ? <p className="text-sm text-gray-600">Sin programas vinculados.</p> : (
+          <table className="w-full border-collapse text-sm">
+            <thead><tr className="bg-gray-100"><th className={cell}>Programa</th><th className={cell}>Título</th><th className={cell}>Año</th><th className={cell}>Estado</th></tr></thead>
+            <tbody>{d.programs.map((g) => <tr key={g.id}><td className={cell}>{g.kind}</td><td className={cell}>{g.title}</td><td className={cell}>{g.year}</td><td className={cell}>{g.status}</td></tr>)}</tbody>
+          </table>
+        )}
+      </Section>
+      <Section n={5} title="Objetivos y actividades">
         {d.items.length === 0 ? <p className="text-sm text-gray-600">Sin actividades registradas.</p> : (
           <table className="w-full border-collapse text-sm">
             <thead><tr className="bg-gray-100"><th className={cell}>Objetivo</th><th className={cell}>Actividad</th><th className={cell}>Meta e indicador</th><th className={cell}>Responsable</th><th className={cell}>Plazo</th></tr></thead>
@@ -164,7 +187,7 @@ export function PlanReport({ id }: { id: string }) {
           </table>
         )}
       </Section>
-      <Section n={3} title="Firmas"><SigBlock list={d.signatures} /></Section>
+      <Section n={6} title="Firmas"><SigBlock list={d.signatures} /></Section>
     </Sheet>
   );
 }

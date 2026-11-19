@@ -1230,12 +1230,12 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
     ],
   },
   annual_plans: {
-    help: "Borrador → revisión → aprobado (con la sesión del comité si la empresa lo tiene) → vigente → cerrado. Aprobado, sus ítems no cambian.",
+    help: "Borrador → revisión → aprobado (con la sesión del comité si la empresa lo tiene) → vigente → cerrado. Al aprobarse, su PDF queda como versión en la gestión documental y sus ítems ya no cambian. Al terminar el año se cierra y se genera el informe de cumplimiento.",
     steps: [
       { from: ["draft"], label: "Enviar a revisión", body: { status: "in_review" } },
       { from: ["draft", "in_review"], label: "Aprobar", body: { status: "approved" }, primary: true },
       { from: ["approved"], label: "Poner vigente", body: { status: "current" }, primary: true },
-      { from: ["current"], label: "Cerrar plan", body: { status: "closed" } },
+      { from: ["current"], label: "Cerrar el año", body: { status: "closed" } },
     ],
   },
   audits: {

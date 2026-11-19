@@ -95,6 +95,16 @@ class PlanningReportsController extends FieldReportsController
                 'budget' => $p->budget_id ? DB::selectOne('select title, total_planned as total_amount, currency from budgets where id = ?', [$p->budget_id]) : null, 'meeting' => $meeting],
             'items' => $items,
             'signatures' => $this->signatures('annual_plans', $id),
+            // M-PLA criterio 4: diagnóstico, política y programas vinculados.
+            ...(function () use ($id) {
+                $d = AnnualPlanDocs::data($id);
+
+                return [
+                    'baseline' => $d['baseline'] ? ['title' => $d['baseline']->title, 'assessment_on' => $d['baseline']->assessment_on, 'score_pct' => $d['baseline']->score_pct] : null,
+                    'policy' => $d['policy'] ? ['title' => $d['policy']->title, 'version_number' => $d['policy']->version_number, 'effective_on' => $d['policy']->effective_on, 'content_html' => $d['policy']->content_html] : null,
+                    'programs' => $d['programs'],
+                ];
+            })(),
         ]]);
     }
 

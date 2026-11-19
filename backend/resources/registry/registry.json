@@ -4080,6 +4080,32 @@
      "readonly": true,
      "type": "ref",
      "ref": "annual_plans"
+    },
+    {
+     "name": "document_version_id",
+     "label": "Versión publicada como documento",
+     "readonly": true,
+     "type": "ref",
+     "ref": "document_versions"
+    },
+    {
+     "name": "closed_at",
+     "label": "Cerrado el",
+     "readonly": true,
+     "type": "datetime"
+    },
+    {
+     "name": "closed_by",
+     "label": "Cerrado por",
+     "readonly": true,
+     "type": "ref",
+     "ref": "users"
+    },
+    {
+     "name": "closure_report_file_id",
+     "label": "Informe de cumplimiento",
+     "readonly": true,
+     "type": "file"
     }
    ]
   },
@@ -4088,7 +4114,8 @@
     "code",
     "description",
     "annual_plan_id",
-    "starts_on"
+    "starts_on",
+    "item_type"
    ],
    "module": "PLA",
    "tab": "Componentes",
@@ -4167,6 +4194,67 @@
      "label": "Orden",
      "type": "int",
      "default": 0
+    },
+    {
+     "name": "item_type",
+     "label": "Tipo de ítem",
+     "type": "enum",
+     "options": [
+      {
+       "value": "objective",
+       "label": "Objetivo"
+      },
+      {
+       "value": "goal",
+       "label": "Meta"
+      },
+      {
+       "value": "human_resource",
+       "label": "Recurso humano"
+      },
+      {
+       "value": "material_resource",
+       "label": "Recurso material"
+      },
+      {
+       "value": "financial_resource",
+       "label": "Recurso financiero"
+      },
+      {
+       "value": "program",
+       "label": "Programa"
+      },
+      {
+       "value": "indicator",
+       "label": "Indicador"
+      }
+     ],
+     "list": true
+    },
+    {
+     "name": "reference_type",
+     "label": "Registro vinculado (tipo)",
+     "type": "enum",
+     "options": [
+      {
+       "value": "sst_objectives",
+       "label": "Objetivo SST"
+      },
+      {
+       "value": "annual_programs",
+       "label": "Programa Anual SST (PASST)"
+      },
+      {
+       "value": "training_programs",
+       "label": "Programa de capacitación"
+      }
+     ]
+    },
+    {
+     "name": "reference_id",
+     "label": "Registro vinculado",
+     "type": "text",
+     "nosearch": true
     }
    ]
   },

@@ -13938,6 +13938,50 @@
     "comment": null
    },
    {
+    "name": "document_version_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "document_versions",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "closed_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "closed_by",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "users",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "closure_report_file_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "files",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -14144,6 +14188,51 @@
     "type": "integer",
     "not_null": true,
     "default": "0",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "item_type",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": [
+     "objective",
+     "goal",
+     "human_resource",
+     "material_resource",
+     "financial_resource",
+     "program",
+     "indicator"
+    ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "reference_type",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": [
+     "sst_objectives",
+     "annual_programs",
+     "training_programs"
+    ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "reference_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
     "values": null,
     "ref": null,
     "encrypted": false,

@@ -92,6 +92,15 @@ class ImprovementRules extends RecordRules
         if ($to === 'current') {
             DB::update("update annual_plans set status = 'closed' where id <> ? and status = 'current' and year = ? and deleted_at is null", [$current->id, $current->year]);
         }
+        // RN-PLA-08: el plan vigente se cierra al terminar su año; el informe de cumplimiento se genera al cerrarlo.
+        if ($to === 'closed') {
+            $thisYear = (int) now('America/Lima')->format('Y');
+            if ((int) $current->year >= $thisYear) {
+                $this->fail('status', "El plan {$current->year} se cierra cuando termine su año (desde el 1 de enero de ".((int) $current->year + 1).').');
+            }
+            $extra['closed_at'] = ['now()', []];
+            $extra['closed_by'] = ['?', [(string) auth()->id()]];
+        }
     }
 
     /** RN-PLA-02/05: línea base aprobada, política vigente, al menos un objetivo y el PASST del mismo año. */
@@ -126,9 +135,70 @@ class ImprovementRules extends RecordRules
 
     private function planItem(array &$values, ?object $current): void
     {
-        $st = DB::selectOne('select status from annual_plans where id = ?', [$this->value($values, $current, 'annual_plan_id')])?->status;
-        if (! in_array($st, ['draft', 'in_review'], true)) {
+        $plan = DB::selectOne('select status, year from annual_plans where id = ?', [$this->value($values, $current, 'annual_plan_id')]);
+        if (! in_array($plan?->status, ['draft', 'in_review'], true)) {
             $this->conflict('El plan ya está aprobado: sus ítems no cambian.');
+        }
+        $this->planItemReference($values, $current, (int) $plan->year);
+    }
+
+    /**
+     * RN-PLA-07: un componente de tipo objetivo o programa referencia un registro existente de la misma empresa y año, y nunca una
+     * versión obsoleta (objetivo anulado, programa cerrado o reemplazado por una versión nueva). Los demás tipos no llevan referencia.
+     */
+    private function planItemReference(array &$values, ?object $current, int $year): void
+    {
+        $objective = $this->value($values, $current, 'objective_id');
+        $type = $this->value($values, $current, 'item_type') ?: ($objective ? 'objective' : null);
+        $refType = $this->value($values, $current, 'reference_type');
+        $refId = $this->value($values, $current, 'reference_id');
+        if ($type !== ($current->item_type ?? null)) {
+            $values['item_type'] = $type;
+        }
+        if ($type === 'objective') {
+            $objective = $objective ?: ($refType === 'sst_objectives' ? $refId : null);
+            if (! $objective) {
+                $this->fail('objective_id', 'Un componente de tipo objetivo debe indicar el objetivo SST.');
+            }
+            $o = \Illuminate\Support\Str::isUuid((string) $objective) ? DB::selectOne('select year, status from sst_objectives where id = ? and deleted_at is null', [$objective]) : null;
+            if (! $o) {
+                $this->fail('objective_id', 'El objetivo no existe o es de otra empresa.');
+            }
+            if ((int) $o->year !== $year) {
+                $this->fail('objective_id', "El objetivo es de {$o->year}: el plan es de {$year}.");
+            }
+            if ($o->status === 'cancelled') {
+                $this->fail('objective_id', 'El objetivo está anulado: elige uno vigente.');
+            }
+            $values['objective_id'] = $objective;
+            $values['reference_type'] = 'sst_objectives';
+            $values['reference_id'] = $objective;
+
+            return;
+        }
+        if ($type === 'program') {
+            if (! in_array($refType, ['annual_programs', 'training_programs'], true) || ! $refId) {
+                $this->fail('reference_id', 'Un componente de tipo programa debe vincular el PASST o el programa de capacitación.');
+            }
+            $p = \Illuminate\Support\Str::isUuid((string) $refId) ? DB::selectOne("select year, status from {$refType} where id = ? and deleted_at is null", [$refId]) : null;
+            if (! $p) {
+                $this->fail('reference_id', 'El programa no existe o es de otra empresa.');
+            }
+            if ((int) $p->year !== $year) {
+                $this->fail('reference_id', "El programa es de {$p->year}: el plan y sus programas deben ser del mismo año (RN-PLA-05).");
+            }
+            $replaced = $refType === 'annual_programs'
+                && DB::selectOne('select 1 as ok from annual_programs where previous_program_id = ? and deleted_at is null', [$refId]);
+            if ($p->status === 'closed' || $replaced) {
+                $this->fail('reference_id', 'Ese programa es una versión cerrada o reemplazada: vincula la versión vigente.');
+            }
+            $values['objective_id'] = null;
+
+            return;
+        }
+        if ($refType || $refId) {
+            $values['reference_type'] = null;
+            $values['reference_id'] = null;
         }
     }
 
@@ -394,6 +464,16 @@ class ImprovementRules extends RecordRules
 
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
     {
+        // RN-PLA-04: al aprobarse, el PDF del plan se genera y se versiona en la gestión documental.
+        // RN-PLA-08: al cerrarse, se genera el informe de cumplimiento con el avance final del PASST y de los objetivos.
+        if ($res['table'] === 'annual_plans' && $op === 'update') {
+            if (($values['status'] ?? null) === 'approved') {
+                \App\Modules\REC\AnnualPlanDocs::archive($id);
+            }
+            if (($values['status'] ?? null) === 'closed') {
+                \App\Modules\REC\AnnualPlanDocs::closure($id);
+            }
+        }
         // RN-RVD-02: toda decisión con responsable genera su acción en ACR al guardarse.
         if ($res['table'] === 'management_review_outputs') {
             $o = DB::selectOne('select o.*, r.company_id as rc from management_review_outputs o join management_reviews r on r.id = o.review_id where o.id = ?', [$id]);

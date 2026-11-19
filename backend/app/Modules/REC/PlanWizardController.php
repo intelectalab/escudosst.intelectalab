@@ -61,12 +61,21 @@ class PlanWizardController extends Controller
             $n = 0;
             foreach (DB::select("select id, code, title, indicator, target_value, unit, responsible_user_id from sst_objectives where id = any(?::uuid[]) and year = ? and deleted_at is null order by code",
                 ['{'.implode(',', $d['objective_ids'] ?? []).'}', $d['year']]) as $o) {
-                $records->create($items, array_filter(['annual_plan_id' => $plan['id'], 'objective_id' => $o->id, 'code' => $o->code ?: sprintf('C%02d', $n + 1),
+                $records->create($items, array_filter(['annual_plan_id' => $plan['id'], 'item_type' => 'objective', 'objective_id' => $o->id,
+                    'reference_type' => 'sst_objectives', 'reference_id' => $o->id, 'code' => $o->code ?: sprintf('C%02d', $n + 1),
                     'description' => $o->title, 'goal' => $o->target_value !== null ? trim($o->target_value.' '.($o->unit ?? '')) : null, 'indicator' => $o->indicator,
                     'responsible_user_id' => $o->responsible_user_id, 'sort_order' => ++$n], fn ($x) => $x !== null && $x !== ''));
             }
             if (! empty($d['annual_program_id'])) {
                 DB::update('update annual_programs set annual_plan_id = ? where id = ? and year = ?', [$plan['id'], $d['annual_program_id'], $d['year']]);
+            }
+            // M-PLA §5 y flujo 2: los programas vinculados (PASST y capacitación) quedan como componentes de tipo programa.
+            foreach ([['annual_programs', $d['annual_program_id'] ?? null], ['training_programs', $d['training_program_id'] ?? null]] as [$table, $pid]) {
+                $prog = $pid ? DB::selectOne("select id, title from {$table} where id = ? and year = ? and deleted_at is null", [$pid, $d['year']]) : null;
+                if ($prog) {
+                    $records->create($items, ['annual_plan_id' => $plan['id'], 'item_type' => 'program', 'reference_type' => $table, 'reference_id' => $prog->id,
+                        'code' => sprintf('P%02d', ++$n), 'description' => $prog->title, 'sort_order' => $n]);
+                }
             }
 
             return $plan;
@@ -93,7 +102,9 @@ class PlanWizardController extends Controller
             DB::update('update annual_plans set previous_plan_id = ? where id = ?', [$p->id, $new['id']]);
             $items = Registry::resource('PLA', 'annual_plan_items');
             foreach (DB::select('select * from annual_plan_items where annual_plan_id = ? and deleted_at is null order by sort_order', [$p->id]) as $i) {
-                $records->create($items, array_filter(['annual_plan_id' => $new['id'], 'objective_id' => $i->objective_id, 'code' => $i->code, 'description' => $i->description,
+                $ref = $i->reference_type === 'annual_programs' && $i->reference_id ? self::latestProgram($i->reference_id) : $i->reference_id;
+                $records->create($items, array_filter(['annual_plan_id' => $new['id'], 'item_type' => $i->item_type, 'objective_id' => $i->objective_id,
+                    'reference_type' => $i->reference_type, 'reference_id' => $ref, 'code' => $i->code, 'description' => $i->description,
                     'goal' => $i->goal, 'indicator' => $i->indicator, 'resources' => $i->resources, 'responsible_user_id' => $i->responsible_user_id, 'starts_on' => $i->starts_on,
                     'ends_on' => $i->ends_on, 'sort_order' => $i->sort_order], fn ($x) => $x !== null && $x !== ''));
             }
@@ -121,6 +132,54 @@ class PlanWizardController extends Controller
             'training_program' => $p->training_program_id ? DB::selectOne('select title, status from training_programs where id = ?', [$p->training_program_id]) : null,
             'version_number' => (int) $p->version_number,
         ]]);
+    }
+
+    /**
+     * RN-PLA-07: registros que puede vincular un componente del plan, del mismo año y sin versiones obsoletas
+     * (objetivos no anulados; programas no cerrados ni reemplazados por una versión nueva). Sin «type», los tipos posibles.
+     */
+    public function referenceOptions(Request $request, string $id): JsonResponse
+    {
+        $this->can('pla.annual_plans.read');
+        $p = $this->plan($id);
+        $types = ['sst_objectives' => 'Objetivo SST', 'annual_programs' => 'Programa Anual SST (PASST)', 'training_programs' => 'Programa de capacitación'];
+        $type = (string) $request->query('type', '');
+        if ($type === '') {
+            return response()->json(['data' => collect($types)->map(fn ($label, $t) => ['type' => $t, 'label' => $label])->values()]);
+        }
+        $rows = match ($type) {
+            'sst_objectives' => DB::select("select id, concat_ws(' · ', code, title) as label from sst_objectives where year = ? and status <> 'cancelled' and deleted_at is null order by code", [$p->year]),
+            'annual_programs' => DB::select("select a.id, concat(a.title, ' · versión ', a.version_number) as label from annual_programs a where a.year = ? and a.status <> 'closed' and a.deleted_at is null
+                                              and not exists (select 1 from annual_programs n where n.previous_program_id = a.id and n.deleted_at is null) order by a.created_at desc", [$p->year]),
+            'training_programs' => DB::select("select id, title as label from training_programs where year = ? and status <> 'closed' and deleted_at is null order by created_at desc", [$p->year]),
+            default => throw ApiProblem::notFound('Ese tipo de registro no se vincula al plan.'),
+        };
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /** M-PLA §11 y criterio 4: Plan Anual en PDF (política, objetivos, programas vinculados y acta). */
+    public function pdf(string $id): \Illuminate\Http\Response
+    {
+        $this->can('pla.annual_plans.read');
+        $this->plan($id);
+        [$name, $bytes] = AnnualPlanDocs::pdf($id);
+
+        return response($bytes, 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'attachment; filename="'.$name.'"']);
+    }
+
+    /** RN-PLA-07: una nueva versión del plan apunta a la versión vigente del PASST (si se rehízo, la más reciente). */
+    public static function latestProgram(string $id): string
+    {
+        for ($i = 0; $i < 20; $i++) {
+            $next = DB::selectOne('select id from annual_programs where previous_program_id = ? and deleted_at is null order by created_at desc limit 1', [$id])?->id;
+            if (! $next) {
+                return $id;
+            }
+            $id = $next;
+        }
+
+        return $id;
     }
 
     private function plan(string $id): object

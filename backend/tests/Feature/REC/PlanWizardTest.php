@@ -66,7 +66,7 @@ it('arma el plan con el asistente, exige sus vínculos para enviarlo y crea nuev
     $this->patchJson("/api/v1/records/PLA/annual_plans/{$id}", ['title' => 'Otro título'], $this->h)->assertStatus(409);
 
     $ind = $this->getJson("/api/v1/pla/plans/{$id}/indicators", $this->h)->assertOk()->json('data');
-    expect($ind['items'])->toBe(1)->and($ind['objectives']['total'])->toBe(1);
+    expect($ind['items'])->toBe(2)->and($ind['objectives']['total'])->toBe(1);   // el objetivo y el PASST como programa
 
     $this->postJson("/api/v1/pla/plans/{$id}/new-version", [], $this->h)->assertStatus(409);   // hay otro borrador del año
     $this->deleteJson("/api/v1/records/PLA/annual_plans/{$bare}", [], $this->h)->assertSuccessful();

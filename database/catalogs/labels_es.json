@@ -1281,7 +1281,10 @@
   "fitness_result": "Resultado de la constancia de aptitud",
   "indicator_kpi_id": "Indicador ligado",
   "submitted_for_review_at": "Enviado a revisión el",
-  "previous_assessment_id": "Diagnóstico anterior"
+  "previous_assessment_id": "Diagnóstico anterior",
+  "reference_type": "Registro vinculado (tipo)",
+  "reference_id": "Registro vinculado",
+  "closure_report_file_id": "Informe de cumplimiento"
  },
  "values": {
   "A": "Tipo A",
@@ -1998,7 +2001,17 @@
   "principal_company": "Empresa principal",
   "sst_events.status.registered": "Clasificado",
   "not_closed": "No cerrado",
-  "inspection_overdue": "Inspección vencida"
+  "inspection_overdue": "Inspección vencida",
+  "goal": "Meta",
+  "human_resource": "Recurso humano",
+  "material_resource": "Recurso material",
+  "financial_resource": "Recurso financiero",
+  "program": "Programa",
+  "indicator": "Indicador",
+  "objective": "Objetivo",
+  "sst_objectives": "Objetivo SST",
+  "annual_programs": "Programa Anual SST (PASST)",
+  "training_programs": "Programa de capacitación"
  },
  "tables": {
   "absences": "Ausencias",

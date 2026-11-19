@@ -126,6 +126,8 @@ Route::middleware(['auth:sanctum', 'company', 'module:PLA'])->prefix('pla')->con
     Route::post('wizard', 'create');
     Route::post('plans/{id}/new-version', 'newVersion')->whereUuid('id');
     Route::get('plans/{id}/indicators', 'indicators')->whereUuid('id');
+    Route::get('plans/{id}/reference-options', 'referenceOptions')->whereUuid('id');
+    Route::get('plans/{id}/pdf', 'pdf')->whereUuid('id');
 });
 
 // Auditorías (M-AUI SCR-AUI-01/02, RN-AUI-02/07): calendario y preparación, checklist desde la plantilla y acceso del auditor externo.
