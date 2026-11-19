@@ -24,6 +24,11 @@ Route::middleware('throttle:30,1')->prefix('public/verify')->group(function () {
 
 // Programa de capacitación (M-PCA SCR-PCA-01/03): vista anual temas × meses y matriz puesto × tema.
 Route::middleware(['auth:sanctum', 'company', 'module:PCA'])->get('pca/overview', \App\Modules\CAP\ProgramOverviewController::class);
+// M-PCA flujo 1: temas mínimos y del sector propuestos para el programa en borrador.
+Route::middleware(['auth:sanctum', 'company', 'module:PCA'])->prefix('pca/programs/{id}')->whereUuid('id')->controller(\App\Modules\CAP\ProgramTopicsController::class)->group(function () {
+    Route::get('suggested-topics', 'index');
+    Route::post('suggested-topics', 'store');
+});
 
 // Firma en pantalla, vencimientos y reentrenamiento, reportes, verificación pública y disponibilidad del capacitador (M-CAP SCR-CAP-05/09/13/14, RN-CAP-16).
 Route::middleware(['auth:sanctum', 'company', 'module:CAP'])->prefix('cap')->group(function () {

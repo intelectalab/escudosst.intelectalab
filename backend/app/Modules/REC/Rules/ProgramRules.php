@@ -124,7 +124,7 @@ class ProgramRules extends RecordRules
                     $this->fail('status', "El programa debe tener al menos {$min} capacitaciones al año (Ley 29783, art. 35). Tiene {$items}.");
                 }
                 $noTarget = DB::selectOne("select count(*) as n from training_program_items where training_program_id = ? and deleted_at is null and is_mandatory_legal
-                                             and position_id is null and coalesce(target_audience, '') = ''", [$current->id])->n;
+                                             and cardinality(target_positions) = 0 and coalesce(target_audience, '') = ''", [$current->id])->n;
                 if ($noTarget > 0) {
                     $this->fail('status', "Hay {$noTarget} tema(s) obligatorio(s) sin puesto ni público objetivo.");
                 }
@@ -365,15 +365,16 @@ class ProgramRules extends RecordRules
     }
 
     /**
-     * RN-PCA-07: cada tema obligatorio con puesto y capacitación pasa a requisito (bloqueante) del fotocheck de los trabajadores de
-     * ese puesto, en cada tipo de fotocheck activo para trabajadores. No duplica los que ya existen.
+     * RN-PCA-07: cada tema obligatorio con puestos objetivo y capacitación pasa a requisito (bloqueante) del fotocheck de los trabajadores de
+     * esos puestos, en cada tipo de fotocheck activo para trabajadores. No duplica los que ya existen.
      */
     public static function syncCredentialRequirements(string $programId): int
     {
         $n = 0;
         $types = DB::select("select id from credential_types where deleted_at is null and coalesce(is_active, true) and applies_to in ('workers', 'both')");
-        $items = DB::select("select id, company_id, topic, position_id, training_id from training_program_items
-                              where training_program_id = ? and deleted_at is null and status <> 'cancelled' and is_mandatory_legal and position_id is not null and training_id is not null", [$programId]);
+        // Un requisito por cada puesto objetivo del tema (M-PCA target_positions).
+        $items = DB::select("select i.id, i.company_id, i.topic, p.position_id, i.training_id from training_program_items i cross join lateral unnest(i.target_positions) as p(position_id)
+                              where i.training_program_id = ? and i.deleted_at is null and i.status <> 'cancelled' and i.is_mandatory_legal and i.training_id is not null", [$programId]);
         foreach ($types as $t) {
             foreach ($items as $i) {
                 $n += DB::affectingStatement(

@@ -4875,6 +4875,7 @@
     {
      "name": "position_id",
      "label": "Puesto",
+     "readonly": true,
      "type": "ref",
      "ref": "positions"
     },
@@ -4960,6 +4961,12 @@
      "label": "Mes programado originalmente",
      "readonly": true,
      "type": "int"
+    },
+    {
+     "name": "target_positions",
+     "label": "Puestos objetivo",
+     "type": "refs",
+     "ref": "positions"
     }
    ]
   },

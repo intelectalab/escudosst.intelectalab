@@ -1284,7 +1284,8 @@
   "previous_assessment_id": "Diagnóstico anterior",
   "reference_type": "Registro vinculado (tipo)",
   "reference_id": "Registro vinculado",
-  "closure_report_file_id": "Informe de cumplimiento"
+  "closure_report_file_id": "Informe de cumplimiento",
+  "target_positions": "Puestos objetivo"
  },
  "values": {
   "A": "Tipo A",

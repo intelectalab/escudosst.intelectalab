@@ -89,7 +89,7 @@ it('sin comité el programa de capacitación se aprueba con la firma del supervi
     $p = $this->postJson('/api/v1/records/PCA/training_programs', ['year' => $year, 'title' => "Programa de capacitación {$year}"], $this->h)->assertCreated()->json('data.id');
     for ($i = 1; $i <= 4; $i++) {
         $this->postJson('/api/v1/records/PCA/training_program_items', ['training_program_id' => $p, 'topic' => "Tema {$i}", 'training_type' => 'specific', 'planned_month' => $i,
-            'modality' => 'in_person', 'is_mandatory_legal' => $i === 1, 'position_id' => $i === 1 ? $pos : null, 'training_id' => $i === 1 ? $tr : null, 'target_audience' => 'Todos'], $this->h)->assertCreated();
+            'modality' => 'in_person', 'is_mandatory_legal' => $i === 1, 'target_positions' => $i === 1 ? [$pos] : [], 'training_id' => $i === 1 ? $tr : null, 'target_audience' => 'Todos'], $this->h)->assertCreated();
     }
     $this->patchJson("/api/v1/records/PCA/training_programs/{$p}", ['status' => 'approved'], $this->h)->assertStatus(422)->assertJsonValidationErrors('status');
     // Firma del supervisor (el usuario de prueba pasa a supervisor y firma).

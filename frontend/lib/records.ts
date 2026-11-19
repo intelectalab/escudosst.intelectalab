@@ -4,7 +4,7 @@
 import { api } from "./api";
 import { createOrQueue } from "./offline";
 
-export type FieldType = "text" | "longtext" | "int" | "number" | "date" | "datetime" | "time" | "bool" | "enum" | "ref" | "tags" | "json" | "source" | "file";
+export type FieldType = "text" | "longtext" | "int" | "number" | "date" | "datetime" | "time" | "bool" | "enum" | "ref" | "refs" | "tags" | "json" | "source" | "file";
 
 export type RecordField = {
   name: string;
@@ -83,6 +83,10 @@ export function displayValue(f: RecordField, row: RecordRow): string {
     case "ref":
     case "file":
       return (row[`${f.name}__label`] as string) || "—";
+    case "refs": {
+      const l = row[`${f.name}__labels`] as { label: string }[] | null | undefined;
+      return Array.isArray(l) && l.length ? l.map((x) => x.label).join(", ") : "—";
+    }
     case "date": {
       const [y, m, d] = String(v).slice(0, 10).split("-");
       return `${d}/${m}/${y}`;

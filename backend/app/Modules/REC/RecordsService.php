@@ -269,7 +269,7 @@ final class RecordsService
     public function options(array $res, string $fieldName, ?string $q, ?string $id = null): array
     {
         $f = Registry::field($res, $fieldName);
-        if (! $f || $f['type'] !== 'ref') {
+        if (! $f || ! in_array($f['type'], ['ref', 'refs'], true)) {
             throw ApiProblem::notFound('Ese campo no tiene opciones.');
         }
         $target = $f['ref'];
@@ -361,12 +361,19 @@ final class RecordsService
                 continue;
             }
             $parts[] = match ($f['type']) {
-                'tags' => "array_to_json(t.\"{$c}\") as \"{$c}\"",
+                'tags', 'refs' => "array_to_json(t.\"{$c}\") as \"{$c}\"",
                 'time' => "to_char(t.\"{$c}\", 'HH24:MI') as \"{$c}\"",
                 default => "t.\"{$c}\"",
             };
             if ($f['type'] === 'file') {
                 $parts[] = "(select r.original_name from files r where r.id = t.\"{$c}\") as \"{$c}__label\"";
+            }
+            // Varias referencias (p. ej. puestos objetivo): sus nombres, en el orden guardado.
+            if ($f['type'] === 'refs' && (! $forList || ! empty($f['list']))) {
+                $target = $f['ref'];
+                $label = $target === 'users' ? 'full_name' : (Registry::labelColumn($target) ?? 'id');
+                $expr = self::labelSql($target, 'r') ?? "r.\"{$label}\"::text";
+                $parts[] = "(select json_agg(json_build_object('id', r.id, 'label', {$expr}) order by array_position(t.\"{$c}\", r.id)) from \"{$target}\" r where r.id = any(t.\"{$c}\")) as \"{$c}__labels\"";
             }
             if ($f['type'] === 'ref' && (! $forList || ! empty($f['list']))) {
                 $target = $f['ref'];
@@ -488,7 +495,7 @@ final class RecordsService
             $v = $row->{$c};
             if (! empty($f['encrypted']) && $v !== null) {
                 $v = $decrypt ? $this->decrypt($v) : '••••';
-            } elseif (in_array($f['type'], ['json', 'tags'], true) && is_string($v)) {
+            } elseif (in_array($f['type'], ['json', 'tags', 'refs'], true) && is_string($v)) {
                 $v = json_decode($v, true);
             } elseif ($f['type'] === 'bool' && $v !== null) {
                 $v = (bool) $v;
@@ -505,6 +512,9 @@ final class RecordsService
             $out[$c] = $v;
             if (property_exists($row, $c.'__label')) {
                 $out[$c.'__label'] = $row->{$c.'__label'};
+            }
+            if (property_exists($row, $c.'__labels')) {
+                $out[$c.'__labels'] = json_decode((string) $row->{$c.'__labels'}, true) ?? [];
             }
         }
 
@@ -580,6 +590,14 @@ final class RecordsService
             if ($f['type'] === 'ref' && $v !== null && ! $this->refExists($f['ref'], $v)) {
                 $errors[$c][] = "El valor elegido en «{$f['label']}» no existe.";
             }
+            if ($f['type'] === 'refs' && is_array($v)) {
+                foreach ($v as $one) {
+                    if (! $this->refExists($f['ref'], $one)) {
+                        $errors[$c][] = "Uno de los valores elegidos en «{$f['label']}» no existe.";
+                        break;
+                    }
+                }
+            }
         }
         unset($v);
         if ($errors !== []) {
@@ -642,6 +660,18 @@ final class RecordsService
             case 'ref':
             case 'source':
                 return is_string($v) && Str::isUuid($v) ? null : "Elige una opción válida en «{$label}».";
+            case 'refs':
+                if (! is_array($v)) {
+                    return "«{$label}» debe ser una lista.";
+                }
+                $v = array_values(array_unique(array_filter(array_map(fn ($x) => is_string($x) ? trim($x) : '', $v), fn ($x) => $x !== '')));
+                foreach ($v as $x) {
+                    if (! Str::isUuid($x)) {
+                        return "Elige opciones válidas en «{$label}».";
+                    }
+                }
+
+                return count($v) > 200 ? "«{$label}» admite hasta 200 elementos." : null;
             case 'json':
                 if (! is_array($v)) {
                     return "«{$label}» tiene un formato no válido.";
@@ -697,6 +727,7 @@ final class RecordsService
                 'bool' => [$c, '?::boolean', [$v ? 'true' : 'false']],
                 'json' => [$c, '?::jsonb', [json_encode($v, JSON_UNESCAPED_UNICODE)]],
                 'tags' => [$c, "array(select json_array_elements_text(?::json))::{$f['item']}[]", [json_encode($v, JSON_UNESCAPED_UNICODE)]],
+                'refs' => [$c, 'array(select json_array_elements_text(?::json))::uuid[]', [json_encode(array_values($v))]],
                 default => [$c, '?', [$v]],
             };
         }

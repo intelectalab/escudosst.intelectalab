@@ -142,9 +142,10 @@ class PlanningReportsController extends FieldReportsController
         $this->can('pca.training_programs.read');
         $p = $this->row('training_programs', $id, 'El programa no existe o es de otra empresa.');
         $items = DB::select(
-            "select i.topic, i.training_type, i.is_mandatory_legal, i.target_audience, ps.name as position, i.planned_month, i.original_month, i.duration_minutes, i.modality, i.provider,
-                    i.status, u.full_name as responsible, t.title as training
-               from training_program_items i left join positions ps on ps.id = i.position_id left join users u on u.id = i.responsible_user_id left join trainings t on t.id = i.training_id
+            "select i.topic, i.training_type, i.is_mandatory_legal, i.target_audience,
+                    (select string_agg(ps.name, ', ' order by ps.name) from positions ps where ps.id = any(i.target_positions)) as position,
+                    i.planned_month, i.original_month, i.duration_minutes, i.modality, i.provider, i.status, u.full_name as responsible, t.title as training
+               from training_program_items i left join users u on u.id = i.responsible_user_id left join trainings t on t.id = i.training_id
               where i.training_program_id = ? and i.deleted_at is null and i.status <> 'cancelled' order by i.planned_month nulls last, i.topic", [$id]);
         $meeting = $p->committee_meeting_id ? DB::selectOne('select number, meeting_type, held_at, scheduled_at from committee_meetings where id = ?', [$p->committee_meeting_id]) : null;
 
@@ -167,8 +168,9 @@ class PlanningReportsController extends FieldReportsController
             "select i.topic, coalesce(ps.name, 'Toda la empresa') as position, w.full_name, '••••'||w.document_last4 as doc,
                     (select min(s.starts_at) from training_attendances a join training_sessions s on s.id = a.session_id and s.status = 'held' and s.deleted_at is null
                       where s.training_id = i.training_id and a.worker_id = w.id and a.attended and a.deleted_at is null) as attended_at
-               from training_program_items i left join positions ps on ps.id = i.position_id
-               join workers w on w.status = 'active' and w.deleted_at is null and (i.position_id is null or w.current_position_id = i.position_id)
+               from training_program_items i
+               join workers w on w.status = 'active' and w.deleted_at is null and (cardinality(i.target_positions) = 0 or w.current_position_id = any(i.target_positions))
+               left join positions ps on ps.id = w.current_position_id and cardinality(i.target_positions) > 0
               where i.training_program_id = ? and i.deleted_at is null and i.status <> 'cancelled'
               order by i.planned_month nulls last, i.topic, w.full_name", [$id]);
         $out = [['CUMPLIMIENTO DEL PROGRAMA ANUAL DE CAPACITACIÓN '.$p->year], ["{$c['legal_name']} · RUC {$c['ruc']}"], [$p->title.' · generado '.now('America/Lima')->format('d/m/Y H:i')], [],

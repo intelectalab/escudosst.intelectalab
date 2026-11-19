@@ -30,23 +30,36 @@ class ProgramOverviewController extends Controller
         }
         $now = now('America/Lima');
         $items = DB::select(
-            "select i.id, i.topic, i.training_type, i.is_mandatory_legal, i.target_audience, i.position_id, i.planned_month, i.original_month, i.reschedule_reason, i.status,
-                    i.training_id, t.title as training, ps.name as position,
+            "select i.id, i.topic, i.training_type, i.is_mandatory_legal, i.target_audience, array_to_json(i.target_positions) as target_positions, i.planned_month, i.original_month,
+                    i.reschedule_reason, i.status, i.training_id, t.title as training,
+                    (select string_agg(ps.name, ', ' order by ps.name) from positions ps where ps.id = any(i.target_positions)) as position,
                     exists (select 1 from training_sessions s where s.training_id = i.training_id and s.status = 'held' and s.deleted_at is null) as held
-               from training_program_items i left join trainings t on t.id = i.training_id left join positions ps on ps.id = i.position_id
+               from training_program_items i left join trainings t on t.id = i.training_id
               where i.training_program_id = ? and i.deleted_at is null and i.status <> 'cancelled' order by i.planned_month nulls last, i.topic", [$p->id]);
         foreach ($items as $it) {
             $closed = $it->planned_month && ($p->year < (int) $now->format('Y') || ($p->year == (int) $now->format('Y') && $it->planned_month < (int) $now->format('n')));
             $it->state = $it->held || $it->status === 'done' ? 'executed' : ($it->training_id ? ($closed ? 'not_executed' : 'scheduled') : ($closed ? 'not_executed' : 'pending'));
-            // RN-PCA-03: objetivo = trabajadores activos del puesto (o toda la empresa si el tema no tiene puesto).
-            $target = $it->position_id
-                ? (int) DB::selectOne("select count(*) as n from workers where current_position_id = ? and status = 'active' and deleted_at is null", [$it->position_id])->n
-                : (int) DB::selectOne("select count(*) as n from workers where status = 'active' and deleted_at is null")->n;
+            // RN-PCA-03: objetivo = trabajadores activos de los puestos objetivo (o toda la empresa si el tema no tiene puestos).
+            $pos = json_decode((string) $it->target_positions, true) ?: [];
+            $posSql = $pos ? ' and current_position_id = any(?::uuid[])' : '';
+            $posBind = $pos ? ['{'.implode(',', $pos).'}'] : [];
+            $target = (int) DB::selectOne("select count(*) as n from workers where status = 'active' and deleted_at is null{$posSql}", $posBind)->n;
             $done = $it->training_id ? (int) DB::selectOne(
                 "select count(distinct a.worker_id) as n from training_attendances a join training_sessions s on s.id = a.session_id and s.status = 'held' and s.deleted_at is null
                    join workers w on w.id = a.worker_id and w.status = 'active' and w.deleted_at is null
-                  where s.training_id = ? and a.attended and a.deleted_at is null".($it->position_id ? ' and w.current_position_id = ?' : ''),
-                $it->position_id ? [$it->training_id, $it->position_id] : [$it->training_id])->n : 0;
+                  where s.training_id = ? and a.attended and a.deleted_at is null".($pos ? ' and w.current_position_id = any(?::uuid[])' : ''),
+                array_merge([$it->training_id], $posBind))->n : 0;
+            $it->target_positions = $pos;
+            // SCR-PCA-03: cumplimiento de cada puesto objetivo en este tema (para la matriz puesto × tema).
+            $it->by_position = (object) [];
+            foreach ($pos as $one) {
+                $t = (int) DB::selectOne("select count(*) as n from workers where status = 'active' and deleted_at is null and current_position_id = ?", [$one])->n;
+                $d = $it->training_id ? (int) DB::selectOne(
+                    "select count(distinct a.worker_id) as n from training_attendances a join training_sessions s on s.id = a.session_id and s.status = 'held' and s.deleted_at is null
+                       join workers w on w.id = a.worker_id and w.status = 'active' and w.deleted_at is null and w.current_position_id = ?
+                      where s.training_id = ? and a.attended and a.deleted_at is null", [$one, $it->training_id])->n : 0;
+                $it->by_position->{$one} = ['target' => $t, 'done' => $d, 'pct' => $t ? (int) round($d * 100 / $t) : null];
+            }
             $it->target = $target;
             $it->done = $done;
             $it->pct = $target ? (int) round($done * 100 / $target) : null;
@@ -56,7 +69,7 @@ class ProgramOverviewController extends Controller
         $num = array_sum(array_column($items, 'done'));
         $positions = DB::select(
             "select ps.id, ps.name, (select count(*) from workers w where w.current_position_id = ps.id and w.status = 'active' and w.deleted_at is null) as workers
-               from positions ps where ps.id in (select position_id from training_program_items where training_program_id = ? and deleted_at is null and position_id is not null)
+               from positions ps where ps.id in (select unnest(target_positions) from training_program_items where training_program_id = ? and deleted_at is null)
               order by ps.name", [$p->id]);
 
         return response()->json(['data' => [

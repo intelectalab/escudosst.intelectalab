@@ -9,7 +9,7 @@ import { downloadFile } from "@/lib/records";
 import { Button } from "@/components/ui/Button";
 import { Card, Kpi } from "./Summary";
 
-type Item = { id: string; topic: string; is_mandatory_legal: boolean; position_id: string | null; position: string | null; planned_month: number | null; original_month: number | null;
+type Item = { id: string; topic: string; is_mandatory_legal: boolean; target_positions: string[]; by_position: Record<string, { target: number; done: number; pct: number | null }>; position: string | null; planned_month: number | null; original_month: number | null;
   reschedule_reason: string | null; training: string | null; state: "executed" | "scheduled" | "pending" | "not_executed"; target: number; done: number; pct: number | null };
 type Data = {
   programs: { id: string; year: number; title: string; status: string }[];
@@ -30,9 +30,10 @@ export function PcaOverview() {
   const [programId, setProgramId] = useState("");
   const [d, setD] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     api<{ data: Data }>(`/pca/overview${programId ? `?program_id=${programId}` : ""}`, { withCompany: true }).then((r) => setD(r.data)).catch((e: ApiError) => setError(e.detail ?? e.title));
-  }, [programId]);
+  }, [programId, tick]);
 
   if (error) return <p className="rounded-xl border border-line bg-surface p-4 text-sm text-muted">{error}</p>;
   if (!d) return <div className="h-28 animate-pulse rounded-xl bg-surface" />;
@@ -47,6 +48,7 @@ export function PcaOverview() {
           {d.programs.map((x) => <option key={x.id} value={x.id}>{x.year} · {x.title} ({STATUS[x.status] ?? x.status})</option>)}
         </select>
       </div>
+      {p.status === "draft" && <SuggestedTopics programId={p.id} onAdded={() => setTick((t) => t + 1)} />}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Cumplimiento del programa" value={p.pct == null ? "—" : `${p.pct}%`} sub="Trabajadores objetivo con asistencia" />
         <Kpi label="Temas ejecutados" value={`${count("executed")} de ${d.items.length}`} />
@@ -91,15 +93,18 @@ export function PcaOverview() {
           <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Matriz puesto por tema">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-line text-xs font-semibold text-muted">
-                <tr><th className="min-w-[180px] px-3 py-2">Puesto</th>{d.items.filter((i) => i.position_id).map((i) => <th key={i.id} className="min-w-[110px] px-3 py-2"><span className="line-clamp-2">{i.topic}</span></th>)}</tr>
+                <tr><th className="min-w-[180px] px-3 py-2">Puesto</th>{d.items.filter((i) => i.target_positions.length > 0).map((i) => <th key={i.id} className="min-w-[110px] px-3 py-2"><span className="line-clamp-2">{i.topic}</span></th>)}</tr>
               </thead>
               <tbody>
                 {d.positions.map((ps) => (
                   <tr key={ps.id} className="border-b border-line last:border-0">
                     <td className="px-3 py-2"><b>{ps.name}</b><span className="block text-xs text-muted">{ps.workers} trabajador(es)</span></td>
-                    {d.items.filter((i) => i.position_id).map((i) => (
-                      <td key={i.id} className="px-3 py-2 text-xs">{i.position_id === ps.id ? <span className={`rounded px-2 py-1 font-semibold ${STATE[i.state].cls}`}>{i.pct == null ? STATE[i.state].label : `${i.pct}%`}</span> : <span className="text-muted">—</span>}</td>
-                    ))}
+                    {d.items.filter((i) => i.target_positions.length > 0).map((i) => {
+                      const c = i.by_position[ps.id];
+                      return (
+                        <td key={i.id} className="px-3 py-2 text-xs">{c ? <span className={`rounded px-2 py-1 font-semibold ${STATE[i.state].cls}`} title={`${c.done} de ${c.target} trabajador(es)`}>{c.pct == null ? STATE[i.state].label : `${c.pct}%`}</span> : <span className="text-muted">—</span>}</td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
@@ -108,5 +113,54 @@ export function PcaOverview() {
         </Card>
       )}
     </div>
+  );
+}
+
+type Topic = { key: string; topic: string; source: string; present: boolean };
+
+/** M-PCA flujo 1: temas mínimos y del sector propuestos; se agregan como obligatorios para asignarles después puestos, mes y modalidad. */
+function SuggestedTopics({ programId, onAdded }: { programId: string; onAdded: () => void }) {
+  const [topics, setTopics] = useState<Topic[] | null>(null);
+  const [pick, setPick] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  useEffect(() => {
+    api<{ data: { topics: Topic[] } }>(`/pca/programs/${programId}/suggested-topics`, { withCompany: true })
+      .then((r) => { setTopics(r.data.topics); setPick(r.data.topics.filter((t) => !t.present).map((t) => t.key)); })
+      .catch(() => setTopics([]));
+  }, [programId]);
+  if (!topics || topics.every((t) => t.present)) return null;
+  const add = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api<{ data: { added: number; topics: Topic[] } }>(`/pca/programs/${programId}/suggested-topics`, { method: "POST", withCompany: true, body: { keys: pick } });
+      setTopics(r.data.topics);
+      setPick([]);
+      setMsg({ tone: "ok", text: `Se agregaron ${r.data.added} tema(s). Asígnales los puestos objetivo, el mes y la modalidad en la pestaña de temas.` });
+      onAdded();
+    } catch (e) {
+      setMsg({ tone: "bad", text: (e as ApiError).detail ?? (e as ApiError).title });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card title="Temas propuestos para el programa">
+      <p className="mb-3 text-sm text-muted">Los temas mínimos y, si instalaste un paquete sectorial, los de tu sector. Marca los que quieres agregar.</p>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {topics.map((t) => (
+          <li key={t.key}>
+            <label className={`flex items-start gap-2 rounded-lg border border-line p-2 text-sm ${t.present ? "bg-bg" : ""}`}>
+              <input type="checkbox" className="mt-1" disabled={t.present} checked={t.present || pick.includes(t.key)}
+                onChange={(e) => setPick((x) => (e.target.checked ? [...x, t.key] : x.filter((k) => k !== t.key)))} />
+              <span><b>{t.topic}</b><span className="block text-xs text-muted">{t.present ? "Ya está en el programa" : t.source}</span></span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      {msg && <p role="status" className={`mt-3 rounded-lg px-3 py-2 text-sm ${msg.tone === "ok" ? "bg-ok-soft text-ok" : "bg-bad-soft text-bad"}`}>{msg.text}</p>}
+      <div className="mt-3"><Button size="sm" icon="plus" disabled={busy || pick.length === 0} loading={busy} onClick={() => void add()}>Agregar temas marcados</Button></div>
+    </Card>
   );
 }

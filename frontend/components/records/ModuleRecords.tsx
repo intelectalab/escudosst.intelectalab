@@ -664,6 +664,7 @@ export function RecordForm({
                     f={f}
                     value={values[f.name]}
                     initialLabel={full ? (full[`${f.name}__label`] as string | undefined) : undefined}
+                    initialLabels={full ? (full[`${f.name}__labels`] as { id: string; label: string }[] | undefined) : undefined}
                     disabled={!canEdit}
                     error={errors[f.name]?.[0]}
                     onChange={(v) => {
@@ -707,6 +708,7 @@ function initial(res: RecordResource, row: RecordRow | null): Values {
     const v = row ? row[f.name] : f.default;
     if (f.type === "datetime") out[f.name] = toLocalInput(v);
     else if (f.type === "tags") out[f.name] = Array.isArray(v) ? v.join(", ") : "";
+    else if (f.type === "refs") out[f.name] = Array.isArray(v) ? v : [];
     else if (f.type === "json") out[f.name] = JSON_EDITORS[`${res.table}.${f.name}`] ? (v ?? []) : listText(v);
     else if (f.type === "bool") out[f.name] = v === undefined || v === null ? false : !!v;
     else out[f.name] = v ?? "";
@@ -727,6 +729,7 @@ function same(f: RecordField, v: unknown, old: unknown, table = ""): boolean {
   if (f.type === "json" && JSON_EDITORS[`${table}.${f.name}`]) return JSON.stringify(v ?? []) === JSON.stringify(old ?? []);
   if (f.type === "datetime") return v === toLocalInput(old);
   if (f.type === "tags") return v === (Array.isArray(old) ? old.join(", ") : "");
+  if (f.type === "refs") return JSON.stringify([...((v as string[]) ?? [])].sort()) === JSON.stringify([...((old as string[]) ?? [])].sort());
   if (f.type === "json") return String(v ?? "").trim() === listText(old);
   if (f.type === "date") return String(v ?? "") === String(old ?? "").slice(0, 10);
   if (f.type === "bool") return !!v === !!old;
@@ -739,6 +742,7 @@ function Input({
   f,
   value,
   initialLabel,
+  initialLabels,
   disabled,
   error,
   onChange,
@@ -748,6 +752,7 @@ function Input({
   f: RecordField;
   value: unknown;
   initialLabel?: string;
+  initialLabels?: { id: string; label: string }[];
   disabled: boolean;
   error?: string;
   onChange: (v: unknown) => void;
@@ -781,6 +786,9 @@ function Input({
       break;
     case "ref":
       control = <RefSelect code={code} table={table} f={f} value={str} initialLabel={initialLabel} disabled={disabled} invalid={!!error} onChange={onChange} />;
+      break;
+    case "refs":
+      control = <RefMulti code={code} table={table} f={f} value={Array.isArray(value) ? (value as string[]) : []} initialLabels={initialLabels} disabled={!!disabled} onChange={onChange} />;
       break;
     case "file":
       control = <FileInput code={code} value={str} initialLabel={initialLabel} disabled={disabled} onChange={onChange} />;
@@ -825,6 +833,59 @@ function Input({
 }
 
 /** Selector con búsqueda para una referencia (sede, área, trabajador…). */
+/** Varias referencias (tipo «refs», p. ej. puestos objetivo de un tema): chips con su nombre y un buscador para agregar. */
+function RefMulti({ code, table, f, value, initialLabels, disabled, onChange }: {
+  code: string; table: string; f: RecordField; value: string[]; initialLabels?: { id: string; label: string }[]; disabled: boolean; onChange: (v: unknown) => void;
+}) {
+  const [names, setNames] = useState<Record<string, string>>(() => Object.fromEntries((initialLabels ?? []).map((x) => [x.id, x.label])));
+  const [text, setText] = useState("");
+  const [open, setOpen] = useState(false);
+  const [opts, setOpts] = useState<{ id: string; label: string }[]>([]);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (initialLabels) setNames((n) => ({ ...n, ...Object.fromEntries(initialLabels.map((x) => [x.id, x.label])) }));
+  }, [initialLabels]);
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => { records.options(code, table, f.name, { q: text }).then((r) => setOpts(r.data)).catch(() => setOpts([])); }, 250);
+    return () => clearTimeout(t);
+  }, [open, text, code, table, f.name]);
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+  const add = (o: { id: string; label: string }) => {
+    setNames((n) => ({ ...n, [o.id]: o.label }));
+    if (!value.includes(o.id)) onChange([...value, o.id]);
+    setText("");
+  };
+  return (
+    <div ref={box} className="relative">
+      <div className="flex min-h-11 flex-wrap items-center gap-1.5 rounded-lg border border-line bg-surface px-2 py-1.5">
+        {value.map((id) => (
+          <span key={id} className="inline-flex items-center gap-1 rounded-full bg-brand-soft px-2.5 py-1 text-xs font-semibold text-brand-strong">
+            {names[id] ?? "…"}
+            {!disabled && <button type="button" aria-label={`Quitar ${names[id] ?? ""}`} className="text-brand-strong hover:text-bad" onClick={() => onChange(value.filter((x) => x !== id))}>×</button>}
+          </span>
+        ))}
+        {!disabled && (
+          <input className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm outline-none" aria-label={`Agregar a «${f.label}»`} placeholder={value.length ? "Agregar otro…" : "Escribe para buscar…"}
+            value={text} onFocus={() => setOpen(true)} onChange={(e) => { setText(e.target.value); setOpen(true); }} />
+        )}
+      </div>
+      {open && !disabled && (
+        <ul role="listbox" aria-label={f.label} className="absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-line bg-surface shadow-lg">
+          {opts.filter((o) => !value.includes(o.id)).length === 0 ? <li className="px-3 py-2 text-sm text-muted">Sin opciones</li>
+            : opts.filter((o) => !value.includes(o.id)).map((o) => (
+              <li key={o.id} role="option" aria-selected={false} tabIndex={0} className="cursor-pointer px-3 py-2 text-sm hover:bg-bg" onMouseDown={(e) => e.preventDefault()} onClick={() => add(o)} onKeyDown={(e) => { if (e.key === "Enter") add(o); }}>{o.label}</li>
+            ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function RefSelect({
   code,
   table,

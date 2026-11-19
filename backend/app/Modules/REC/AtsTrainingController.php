@@ -44,7 +44,7 @@ class AtsTrainingController extends Controller
                  or t.id in (select i.training_id from training_program_items i join training_programs g on g.id = i.training_program_id
                               where g.deleted_at is null and g.status in ('approved', 'in_execution') and i.deleted_at is null and i.status <> 'cancelled'
                                 and i.is_mandatory_legal and i.training_id is not null
-                                and i.position_id = (select current_position_id from workers where id = ?)))", [$atsId, $workerId]);
+                                and (select current_position_id from workers where id = ?) = any(i.target_positions)))", [$atsId, $workerId]);
         $miss = [];
         foreach ($required as $t) {
             $ok = DB::selectOne("select 1 as ok from training_certificates where worker_id = ? and training_id = ? and status = 'validated' and deleted_at is null
