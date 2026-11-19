@@ -11,13 +11,14 @@ import { records } from "@/lib/records";
 const COLOR: Record<Kpi["color"], string> = { brand: "text-brand", ok: "text-ok", amber: "text-amber-ink", bad: "text-bad", orange: "text-[#b45309]", teal: "text-[#0f766e]" };
 const resolve = (f: Record<string, string> = {}) => Object.fromEntries(Object.entries(f).map(([k, v]) => [k, resolveDate(v)]));
 
-export function ModuleKpis({ code }: { code: string }) {
+export function ModuleKpis({ code, refresh = 0 }: { code: string; refresh?: number }) {
   const kpis = MODULE_KPIS[code.toUpperCase()];
   const [values, setValues] = useState<(number | null)[] | null>(null);
 
   useEffect(() => {
     if (!kpis) return;
-    setValues(null);
+    // La primera vez se muestran los esqueletos; al volver a contar se dejan los números anteriores hasta tener los nuevos.
+    if (refresh === 0) setValues(null);
     const count = (table: string, filters?: Record<string, string>) =>
       records.list(code, table, { filters: resolve(filters) }).then((r) => r.meta.total).catch(() => null);
     Promise.all(
@@ -28,7 +29,7 @@ export function ModuleKpis({ code }: { code: string }) {
         return d ? Math.round((n / d) * 100) : null;
       }),
     ).then(setValues);
-  }, [code, kpis]);
+  }, [code, kpis, refresh]);
 
   if (!kpis) return null;
   return (

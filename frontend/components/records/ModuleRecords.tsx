@@ -26,6 +26,8 @@ export function ModuleRecords({ code, readOnly }: { code: string; readOnly: bool
   const [schema, setSchema] = useState<ModuleSchema | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<string | null>(null);
+  // Sube cada vez que se guarda o cambia un registro: las tarjetas de indicadores se vuelven a contar.
+  const [kpiTick, setKpiTick] = useState(0);
   const params = useSearchParams();
   const urlTab = params.get("t");
   const urlFilters = useMemo(() => filtersFromUrl(params), [params]);
@@ -80,7 +82,7 @@ export function ModuleRecords({ code, readOnly }: { code: string; readOnly: bool
 
   return (
     <div className="space-y-4">
-      <ModuleKpis code={code} />
+      <ModuleKpis code={code} refresh={kpiTick} />
       {tabs.length > 1 && (
         <div role="tablist" aria-label="Registros del módulo" className="flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
           {tabs.map((r) => (
@@ -106,6 +108,7 @@ export function ModuleRecords({ code, readOnly }: { code: string; readOnly: bool
         initialFilters={current.table === urlTab ? urlFilters : {}}
         openId={current.table === urlTab ? urlOpen : null}
         childrenOf={childrenOf}
+        onDataChanged={() => setKpiTick((t) => t + 1)}
       />
     </div>
   );
@@ -130,6 +133,7 @@ export function ResourcePanel({
   fixed,
   nested = false,
   childrenOf,
+  onDataChanged,
 }: {
   code: string;
   res: RecordResource;
@@ -141,6 +145,8 @@ export function ResourcePanel({
   /** Lista dentro de la ficha del padre: cabecera compacta. */
   nested?: boolean;
   childrenOf?: (table: string) => { res: RecordResource; fk: string }[];
+  /** Se avisa al cerrar o guardar la ficha (p. ej. para volver a contar los indicadores). */
+  onDataChanged?: () => void;
 }) {
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
@@ -407,12 +413,14 @@ export function ResourcePanel({
           onClose={() => {
             setEditing(null);
             load();
+            onDataChanged?.();
           }}
           onSaved={(msg, saved) => {
             setEditing(null);
             setToast(msg);
             if (typeof saved?.secret === "string") setSecret({ table: res.table, value: saved.secret });
             load();
+            onDataChanged?.();
           }}
         />
       )}
@@ -455,7 +463,11 @@ export function RecordForm({
 }) {
   const hide = fixed ? [...hideProp, ...Object.keys(fixed)] : hideProp;
   const [full, setFull] = useState<RecordRow | null>(row);
-  const [values, setValues] = useState<Values>(() => initial(res, null));
+  const [values, setValues] = useState<Values>(() => initial(res, row));
+  // Hasta que llega el detalle completo no se guarda: el formulario aún no tiene todos los campos y se enviarían vacíos.
+  const [loaded, setLoaded] = useState(row === null);
+  // Campos que la persona ya cambió: si el detalle se vuelve a leer, no se pisan.
+  const touched = useRef(new Set<string>());
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [detail, setDetail] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -471,7 +483,12 @@ export function RecordForm({
       .get(code, res.table, row.id)
       .then((r) => {
         setFull(r.data);
-        setValues(initial(res, r.data));
+        const base = initial(res, r.data);
+        setValues((prev) => {
+          for (const k of touched.current) base[k] = prev[k];
+          return base;
+        });
+        setLoaded(true);
       })
       .catch((e: ApiError) => setDetail(e.detail ?? e.title));
   }, [code, res, row, version]);
@@ -484,6 +501,7 @@ export function RecordForm({
   const computed = res.fields.filter((f) => (f.readonly || (f.type === "json" && !isList(res.table, f))) && !isNew && !hide.includes(f.name));
 
   const save = async () => {
+    if (!loaded) return;
     setBusy(true);
     setErrors({});
     setDetail(null);
@@ -568,7 +586,7 @@ export function RecordForm({
           <div className="flex gap-2">
             <Button onClick={onClose}>{canEdit ? "Cancelar" : "Cerrar"}</Button>
             {canEdit && (
-              <Button variant="primary" loading={busy} onClick={save} disabled={!isNew && !full}>
+              <Button variant="primary" loading={busy} onClick={save} disabled={!loaded}>
                 {isNew ? "Crear" : "Guardar"}
               </Button>
             )}
@@ -613,14 +631,18 @@ export function RecordForm({
           </div>
         )}
 
-        {(isNew || ftab === "detalle") && (isNew || full) && (
+        {!isNew && ftab === "detalle" && !loaded && !detail && <p className="py-6 text-center text-sm text-muted">Cargando…</p>}
+        {(isNew || ftab === "detalle") && (isNew || loaded) && (
           <>
             <div className="grid gap-4 sm:grid-cols-2">
               {editable.map((f) => res.table === "requirement_evaluations" && f.name === "evidence_record_id" ? null : res.table === "requirement_evaluations" && f.name === "evidence_record_type" ? (
                 <div key={f.name} className="sm:col-span-2">
                   <EvidencePicker type={String(values.evidence_record_type ?? "")} id={String(values.evidence_record_id ?? "")} disabled={!canEdit}
                     error={errors.evidence_record_id?.[0] ?? errors.evidence_record_type?.[0]}
-                    onChange={(t, i) => setValues((x) => ({ ...x, evidence_record_type: t || null, evidence_record_id: i || null }))} />
+                    onChange={(t, i) => {
+                      touched.current.add("evidence_record_type").add("evidence_record_id");
+                      setValues((x) => ({ ...x, evidence_record_type: t || null, evidence_record_id: i || null }));
+                    }} />
                 </div>
               ) : (
                 <div key={f.name} className={f.type === "longtext" || f.type === "tags" || f.type === "json" ? "sm:col-span-2" : ""}>
@@ -632,7 +654,10 @@ export function RecordForm({
                     initialLabel={full ? (full[`${f.name}__label`] as string | undefined) : undefined}
                     disabled={!canEdit}
                     error={errors[f.name]?.[0]}
-                    onChange={(v) => setValues((x) => ({ ...x, [f.name]: v }))}
+                    onChange={(v) => {
+                      touched.current.add(f.name);
+                      setValues((x) => ({ ...x, [f.name]: v }));
+                    }}
                   />
                 </div>
               ))}

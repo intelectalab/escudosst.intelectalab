@@ -342,6 +342,8 @@ const ACR_STEPS: [string, string][] = [
   ["verified", "Verificada"],
 ];
 
+const EVIDENCE_TYPE: Record<string, string> = { photo: "Foto", document: "Documento", record: "Registro", other: "Otro" };
+
 function CorrectiveFlow({ row, canEdit, onChanged }: { row: RecordRow; canEdit: boolean; onChanged: () => void }) {
   const status = String(row.status);
   const [evidences, setEvidences] = useState<RecordRow[]>([]);
@@ -351,10 +353,12 @@ function CorrectiveFlow({ row, canEdit, onChanged }: { row: RecordRow; canEdit: 
   const [msg, setMsg] = useState<string | null>(null);
   const [dialog, setDialog] = useState<"verify" | "cancel" | null>(null);
   const [text, setText] = useState("");
+  // Agregar una evidencia no cambia la acción: este contador vuelve a leer la lista.
+  const [evVersion, setEvVersion] = useState(0);
 
   useEffect(() => {
     records.list("ACR", "action_evidences", { filters: { corrective_action_id: row.id } }).then((r) => setEvidences(r.data)).catch(() => setEvidences([]));
-  }, [row.id, row.updated_at]);
+  }, [row.id, row.updated_at, evVersion]);
 
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -399,7 +403,7 @@ function CorrectiveFlow({ row, canEdit, onChanged }: { row: RecordRow; canEdit: 
         <p className="text-sm font-semibold">Evidencias ({evidences.length})</p>
         {evidences.map((e) => (
           <p key={e.id} className="rounded-lg bg-bg px-3 py-2 text-sm">
-            {String(e.description ?? "Evidencia")} <span className="text-xs text-muted">· {String(e.evidence_type ?? "")}</span>
+            {String(e.description ?? "Evidencia")} <span className="text-xs text-muted">· {EVIDENCE_TYPE[String(e.evidence_type)] ?? String(e.evidence_type ?? "")}</span>
             {e.file_id ? (
               <button type="button" className="ml-2 text-xs font-semibold text-brand hover:underline" onClick={() => downloadFile(`/files/${e.file_id}`, String(e.file_id__label ?? "evidencia"))}>
                 📎 {String(e.file_id__label ?? "archivo")}
@@ -427,6 +431,7 @@ function CorrectiveFlow({ row, canEdit, onChanged }: { row: RecordRow; canEdit: 
                   });
                   setDesc("");
                   setFile(null);
+                  setEvVersion((v) => v + 1);
                 })
               }
             >

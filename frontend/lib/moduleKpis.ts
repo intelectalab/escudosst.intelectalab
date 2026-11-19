@@ -55,7 +55,7 @@ export const MODULE_KPIS: Record<string, Kpi[]> = {
     { label: "Plantillas activas", table: "inspection_templates", filters: { status: "active" }, color: "teal" },
   ],
   ACT: [
-    { label: "Reportes del mes", table: "substandard_reports", filters: { occurred_at__gte: "monthStart" }, color: "brand" },
+    { label: "Reportes del mes", table: "substandard_reports", filters: { reported_at__gte: "monthStart" }, color: "brand" },
     { label: "Sin revisar", table: "substandard_reports", filters: { status: "received" }, color: "bad" },
     { label: "Con acción", table: "substandard_reports", filters: { status: "action_assigned" }, color: "amber" },
     { label: "Cerrados", table: "substandard_reports", filters: { status: "closed" }, color: "ok" },
