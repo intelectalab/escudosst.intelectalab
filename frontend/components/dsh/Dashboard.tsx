@@ -4,6 +4,7 @@
 // Cada tarjeta explica de dónde sale su valor (numerador / denominador) y lleva al módulo de sus registros.
 
 import { BoardEditor, useBoards } from "./Boards";
+import { BoardCharts } from "./BoardCharts";
 import { KpiHistory } from "./KpiHistory";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -96,7 +97,9 @@ export function Dashboard() {
   const active = data?.kpis.filter((k) => !k.locked) ?? [];
 
   const chosen = boards?.boards.find((b) => b.id === board);
-  const inBoard = chosen ? chosen.kpis.map((c) => active.find((k) => k.code === c)).filter((k): k is (typeof active)[number] => !!k) : active;
+  // Los indicadores marcados como línea, barras o semáforo se ven como gráfico; en la grilla quedan las tarjetas.
+  const cardCodes = chosen ? (chosen.widgets?.filter((w) => w.type === "card").map((w) => w.code) ?? chosen.kpis) : null;
+  const inBoard = cardCodes ? cardCodes.map((c) => active.find((k) => k.code === c)).filter((k): k is (typeof active)[number] => !!k) : active;
   const filtered = colorFilter ? inBoard.filter((k) => (colorFilter === "none" ? !k.color : k.color === colorFilter)) : inBoard;
   const groupOf = (code: string) => modules.find((m) => m.code === code)?.group_number ?? 9;
   const groups = [...new Set(filtered.map((k) => groupOf(k.module)))].sort((a, b) => a - b);
@@ -177,6 +180,7 @@ export function Dashboard() {
                 ))}
               </div>
             </div>
+            {chosen?.widgets && <BoardCharts widgets={chosen.widgets.filter((w) => active.some((k) => k.code === w.code))} year={data.year} site={site} />}
             <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-4">
               {groups.flatMap((g) => filtered.filter((k) => groupOf(k.module) === g)).map((k) => {
                 const c = k.color ? COLORS[k.color] : null;
@@ -212,7 +216,7 @@ export function Dashboard() {
                 );
               })}
             </div>
-            {filtered.length === 0 && <p className="rounded-xl bg-bg px-4 py-3 text-sm text-muted">No hay indicadores con ese estado.</p>}
+            {filtered.length === 0 && !(chosen?.widgets?.some((w) => w.type !== "card")) && <p className="rounded-xl bg-bg px-4 py-3 text-sm text-muted">No hay indicadores con ese estado.</p>}
           </section>
           <KpiHistory year={data.year} site={site} />
           {boards?.can_edit && <BoardEditor data={boards} onSaved={() => void reloadBoards()} />}

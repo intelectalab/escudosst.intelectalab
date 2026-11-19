@@ -24,6 +24,9 @@ use Illuminate\Support\Str;
  */
 class DashboardController extends Controller
 {
+    /** Tipos de widget que se pueden elegir en el editor (M-DSH §5 y SCR-DSH-03). */
+    private const WIDGETS = ['card', 'line', 'bar', 'traffic_light'];
+
     public function __construct(private KpiService $kpis) {}
 
     public function overview(Request $request): JsonResponse
@@ -152,11 +155,18 @@ class DashboardController extends Controller
         $site = $request->query('site_id');
         $site = $site && Str::isUuid((string) $site) ? $site : null;
         $code = $request->query('code');
+        // M-DSH: historia por área (además de por sede o de toda la empresa). Un jefe de área solo ve las suyas (RN-DSH-04).
+        $area = $request->query('area_id');
+        $area = $area && Str::isUuid((string) $area) ? $area : null;
+        $mine = $this->leadAreas();
+        if ($mine && (! $area || ! in_array($area, $mine, true))) {
+            $area = $mine[0];
+        }
         $rows = DB::select(
             "select k.code, k.name, k.unit, extract(month from s.period_start)::int as month, s.value, s.numerator, s.denominator, s.status_color, s.period_end
                from kpi_snapshots s join kpi_definitions k on k.id = s.kpi_definition_id
-              where s.deleted_at is null and extract(year from s.period_start) = ? and s.site_id is not distinct from ?::uuid".($code ? ' and k.code = ?' : '').'
-              order by k.name, month', $code ? [$year, $site, $code] : [$year, $site]);
+              where s.deleted_at is null and extract(year from s.period_start) = ?".($area ? ' and s.area_id = ?::uuid' : ' and s.site_id is not distinct from ?::uuid and s.area_id is null').($code ? ' and k.code = ?' : '').'
+              order by k.name, month', array_merge([$year, $area ?? $site], $code ? [$code] : []));
         $series = [];
         foreach ($rows as $r) {
             $series[$r->code] ??= ['code' => $r->code, 'name' => $r->name, 'unit' => $r->unit, 'points' => []];
@@ -167,7 +177,7 @@ class DashboardController extends Controller
             $months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
             $c = DB::selectOne('select legal_name, ruc from companies where id = ?', [app(\App\Core\Tenancy\CompanyContext::class)->companyId]);
             $sheet = [['INDICADORES SST '.$year.' (ACUMULADO DEL AÑO AL CIERRE DE CADA MES)'], ["{$c->legal_name} · RUC ".trim((string) $c->ruc)
-                .($site ? ' · Sede: '.DB::selectOne('select name from sites where id = ?', [$site])?->name : ' · Toda la empresa')], [], array_merge(['Indicador', 'Unidad'], $months)];
+                .($area ? ' · Área: '.DB::selectOne('select name from areas where id = ?', [$area])?->name : ($site ? ' · Sede: '.DB::selectOne('select name from sites where id = ?', [$site])?->name : ' · Toda la empresa'))], [], array_merge(['Indicador', 'Unidad'], $months)];
             foreach ($series as $s) {
                 $byMonth = array_column($s['points'], 'value', 'month');
                 $sheet[] = array_merge([$s['name'], $s['unit']], array_map(fn ($m) => $byMonth[$m] ?? null, range(1, 12)));
@@ -179,7 +189,9 @@ class DashboardController extends Controller
             ]);
         }
 
-        return response()->json(['data' => ['year' => $year, 'site_id' => $site, 'series' => array_values($series)]]);
+        return response()->json(['data' => ['year' => $year, 'site_id' => $site, 'area_id' => $area, 'series' => array_values($series),
+            'areas' => DB::select("select a.id, a.name, s.name as site from areas a left join sites s on s.id = a.site_id where a.deleted_at is null".($mine ? " and a.id = any(?::uuid[])" : '')." order by s.name nulls last, a.name",
+                $mine ? ['{'.implode(',', $mine).'}'] : [])]]);
     }
 
     /**
@@ -194,8 +206,11 @@ class DashboardController extends Controller
             'select id, name, audience_role, is_default, owner_user_id from dashboards where deleted_at is null'.($edit ? '' : ' and (audience_role is null or audience_role = ?)')
             .' order by is_default desc, name', $edit ? [] : [$role]);
         foreach ($boards as $b) {
-            $b->kpis = array_column(DB::select(
-                'select k.code from dashboard_widgets w join kpi_definitions k on k.id = w.kpi_definition_id where w.dashboard_id = ? and w.deleted_at is null order by w.position, w.created_at', [$b->id]), 'code');
+            $w = DB::select(
+                'select k.code, w.widget_type as type from dashboard_widgets w join kpi_definitions k on k.id = w.kpi_definition_id where w.dashboard_id = ? and w.deleted_at is null order by w.position, w.created_at', [$b->id]);
+            $b->kpis = array_column($w, 'code');
+            // M-DSH §5 widget_type: cada indicador del tablero se muestra como tarjeta, línea, barras o semáforo.
+            $b->widgets = array_map(fn ($x) => ['code' => $x->code, 'type' => in_array($x->type, self::WIDGETS, true) ? $x->type : 'card'], $w);
             $b->mine = $b->audience_role === null || $b->audience_role === $role;
         }
 
@@ -203,7 +218,7 @@ class DashboardController extends Controller
             'kpis' => DB::select('select distinct on (code) code, name from kpi_definitions where deleted_at is null and is_active order by code, company_id nulls last')]]);
     }
 
-    /** POST /dsh/boards {id?, name, audience_role?, kpi_codes[]} — editor de tableros: nombre, para qué rol y qué indicadores en qué orden. */
+    /** POST /dsh/boards {id?, name, audience_role?, kpi_codes[], widget_types{code: tipo}?} — editor de tableros: nombre, para qué rol y qué indicadores en qué orden. */
     public function saveBoard(Request $request): JsonResponse
     {
         if (! in_array('dsh.dashboards.update', \App\Core\Auth\Permissions::effective(), true)) {
@@ -212,6 +227,7 @@ class DashboardController extends Controller
         $d = $request->validate([
             'id' => ['nullable', 'uuid'], 'name' => ['required', 'string', 'max:120'], 'audience_role' => ['nullable', 'string', 'max:60'],
             'kpi_codes' => ['required', 'array', 'min:1', 'max:40'], 'kpi_codes.*' => ['string', 'max:80'],
+            'widget_types' => ['nullable', 'array'], 'widget_types.*' => ['string', 'in:'.implode(',', self::WIDGETS)],
         ], ['name.required' => 'Escribe el nombre del tablero.', 'kpi_codes.required' => 'Elige al menos un indicador.', 'kpi_codes.min' => 'Elige al menos un indicador.']);
         $company = app(\App\Core\Tenancy\CompanyContext::class)->companyId;
         $uid = (string) auth()->id();
@@ -229,8 +245,8 @@ class DashboardController extends Controller
             foreach (array_values(array_unique($d['kpi_codes'])) as $pos => $code) {
                 $k = DB::selectOne('select id, name from kpi_definitions where code = ? and deleted_at is null and is_active order by company_id nulls last limit 1', [$code]);
                 if ($k) {
-                    DB::insert("insert into dashboard_widgets (company_id, dashboard_id, kpi_definition_id, widget_type, title, position, created_by, updated_by) values (?, ?, ?, 'card', ?, ?, ?, ?)",
-                        [$company, $id, $k->id, $k->name, $pos, $uid, $uid]);
+                    DB::insert('insert into dashboard_widgets (company_id, dashboard_id, kpi_definition_id, widget_type, title, position, created_by, updated_by) values (?, ?, ?, ?, ?, ?, ?, ?)',
+                        [$company, $id, $k->id, $d['widget_types'][$code] ?? 'card', $k->name, $pos, $uid, $uid]);
                 }
             }
 

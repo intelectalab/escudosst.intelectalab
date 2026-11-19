@@ -202,7 +202,7 @@ final class KpiService
                             and d.deleted_at is null and d.status = 'delivered' and (d.expires_on is null or d.expires_on >= ?))) as ok
                      from req q group by q.worker_id) t", [$this->today],
                 'trabajadores con todo el EPP obligatorio de su puesto vigente'),
-            'emo_valid_pct' => $this->health($this->ratio(
+            'emo_valid_pct' => $this->health(fn () => $this->ratio(
                 "select count(*) filter (where f.status in ('fit','fit_with_restrictions') and (f.valid_until is null or f.valid_until >= ?)) as num, count(*) as den
                    from workers w left join fitness_status f on f.worker_id = w.id and f.is_current and f.deleted_at is null
                   where w.deleted_at is null and w.status = 'active'".$this->siteSql('w.current_site_id').$this->areaSql('w.current_area_id'), [$this->today],
@@ -276,16 +276,44 @@ final class KpiService
             'basis' => $r->den === null ? "{$num} {$basis}." : "{$num} de {$r->den} {$basis}."];
     }
 
-    /** RN-DSH-05: los KPI de salud no se muestran con grupos menores a min_group_size (evita reidentificar). */
-    private function health(array $r): array
+    /**
+     * RN-DSH-05 y criterio 5: un KPI de salud no se muestra con un grupo menor a min_group_size (evita reidentificar). Calculado por
+     * área, se agrega al nivel superior: la sede del área y, si aún es pequeño, toda la empresa; si ni así alcanza, «No aplica».
+     */
+    private function health(callable $calc): array
     {
         $min = (int) LegalParams::number('min_group_size', 5);
-        if ($r['denominator'] > 0 && $r['denominator'] < $min) {
-            return ['value' => null, 'numerator' => null, 'denominator' => null, 'label' => 'No aplica',
-                'basis' => "Grupo menor a {$min} personas: no se muestra para proteger datos de salud."];
+        $small = fn (array $r) => $r['denominator'] > 0 && $r['denominator'] < $min;
+        $r = $calc();
+        if (! $small($r)) {
+            return $r;
+        }
+        [$areas, $site] = [$this->areas, $this->site];
+        try {
+            $levels = [];
+            if ($areas) {
+                $sites = array_column(DB::select("select distinct site_id from areas where id = any(?::uuid[]) and site_id is not null", ['{'.implode(',', $areas).'}']), 'site_id');
+                if (count($sites) === 1 || $site) {
+                    $levels[] = [$site ?? $sites[0], 'de la sede '.(DB::selectOne('select name from sites where id = ?', [$site ?? $sites[0]])?->name ?? '')];
+                }
+            }
+            if ($site || $areas) {
+                $levels[] = [null, 'de toda la empresa'];
+            }
+            foreach ($levels as [$lvSite, $label]) {
+                $this->areas = [];
+                $this->site = $lvSite;
+                $up = $calc();
+                if (! $small($up) && $up['value'] !== null) {
+                    return array_merge($up, ['aggregated' => true, 'basis' => trim($up['basis'].' Valor '.trim($label).": el grupo es menor a {$min} personas y se suma al nivel superior para proteger los datos de salud.")]);
+                }
+            }
+        } finally {
+            [$this->areas, $this->site] = [$areas, $site];
         }
 
-        return $r;
+        return ['value' => null, 'numerator' => null, 'denominator' => null, 'label' => 'No aplica',
+            'basis' => "Grupo menor a {$min} personas: no se muestra para proteger datos de salud."];
     }
 
     private function color(object $d, array $r): ?string
