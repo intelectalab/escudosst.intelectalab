@@ -106,7 +106,7 @@ export function PasTools({ readOnly }: { readOnly: boolean }) {
             <span className="text-xs text-muted"> Una ejecución parcial cuenta {prog.partial_weight}.</span></p>
           <div className="mb-3 grid grid-cols-6 gap-1 text-center text-xs sm:grid-cols-12">
             {prog.by_month.map((m) => (
-              <div key={m.month} className={`rounded border border-line p-1 ${m.month > prog.cut_month ? "opacity-50" : ""}`}>
+              <div key={m.month} className={`rounded border border-line p-1 ${m.month > prog.cut_month ? "border-dashed bg-bg text-muted" : ""}`}>
                 <p className="font-semibold">{MONTHS[m.month - 1]}</p><p>{m.planned ? `${m.executed}/${m.planned}` : "—"}</p><p className="text-muted">{m.pct != null ? `${m.pct} %` : ""}</p>
               </div>
             ))}

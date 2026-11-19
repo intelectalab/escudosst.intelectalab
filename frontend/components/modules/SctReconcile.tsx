@@ -115,7 +115,7 @@ export function SctReconcile({ readOnly }: { readOnly: boolean }) {
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <div className="text-sm">
           <span className="mb-1 block text-xs font-semibold text-muted">Lista de asegurados (Excel o CSV)</span>
-          <input ref={input} type="file" accept=".xlsx,.csv" className="block w-full text-sm" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setRes(null); }} />
+          <input ref={input} type="file" accept=".xlsx,.csv" aria-label="Lista de asegurados (Excel o CSV)" className="block w-full text-sm" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setRes(null); }} />
           <p className="mt-1 text-xs text-muted">Se toma, en cada fila, la primera celda con un número de documento (8 a 12 caracteres).</p>
         </div>
         <label className="text-sm">

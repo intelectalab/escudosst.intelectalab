@@ -118,7 +118,7 @@ export function BackupsSection({ onToast }: { onToast: (t: string) => void }) {
         </li>
       </ul>
 
-      <div className="max-h-72 overflow-y-auto">
+      <div className="max-h-72 overflow-y-auto" tabIndex={0} role="region" aria-label="Copias de seguridad">
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-surface text-left text-xs uppercase tracking-wide text-muted">
             <tr className="border-b border-line">
