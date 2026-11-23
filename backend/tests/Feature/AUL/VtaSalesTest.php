@@ -194,3 +194,49 @@ it('al pagar crea el portal del comprador y del representante, que solo ve y lib
     $this->getJson("/api/v1/vta/licenses/{$lic}/assignments", $hl)->assertNotFound();
     DB::delete("delete from personal_access_tokens where name = 'e2e-vp'");
 });
+
+it('asigna cupos desde un CSV: revisa primero y asigna solo las filas válidas (SCR-VTA-19)', function () {
+    $o = $this->postJson('/api/v1/vta/sell', ['course_offer_id' => $this->offer, 'buyer_type' => 'company', 'document_type' => 'RUC', 'document_number' => '20545454541',
+        'legal_name' => 'Cliente Excel SAC', 'ruc' => '20545454541', 'email' => 'compras.xl@example.com', 'seats' => 2], $this->h)->assertCreated()->json('data');
+    $this->postJson("/api/v1/vta/orders/{$o['id']}/pay", ['method' => 'transfer', 'reference' => 'XL-0001', 'evidence_file_id' => evidenceFile($this->h, 'VTA')], $this->h)->assertOk();
+    $lic = vtaQuery('select course_license_id as id from order_items where order_id = ?', [$o['id']])[0]->id;
+    $csv = "Tipo de documento,Número de documento,Nombres,Apellidos,Correo\nDNI,71717171,Rosa,Cupo,rosa.xl@example.com\nDNI,71717171,Rosa,Repetida,rosa2.xl@example.com\n"
+        ."DNI,71717172,Sin,Correo,no-es-correo\nDNI,71717173,Juan,Cupo,juan.xl@example.com\nDNI,71717174,Tercero,Cupo,t.xl@example.com\n";
+    $file = fn () => \Illuminate\Http\UploadedFile::fake()->createWithContent('cupos.csv', $csv);
+    $rev = $this->post("/api/v1/vta/licenses/{$lic}/assignments/import", ['file' => $file()], $this->h)->assertOk()->json('data');
+    expect(array_column($rev['rows'], 'action'))->toBe(['assign', 'error', 'error', 'assign', 'error'])
+        ->and($rev['rows'][4]['errors'][0])->toContain('No quedan cupos');
+    expect($this->getJson("/api/v1/vta/licenses/{$lic}/assignments", $this->h)->json('data.license.used'))->toBe(0);
+    $ok = $this->post("/api/v1/vta/licenses/{$lic}/assignments/import", ['file' => $file(), 'apply' => '1'], $this->h)->assertOk()->json('data');
+    expect($ok['saved'])->toBe(2)->and($this->getJson("/api/v1/vta/licenses/{$lic}/assignments", $this->h)->json('data.license.used'))->toBe(2);
+    $this->get("/api/v1/vta/licenses/{$lic}/assignments/template.xlsx", $this->h)->assertOk();
+});
+
+it('muestra al participante sus «Recomendados para ti» y registra el clic y el descarte (SCR-VTA-13)', function () {
+    $n = random_int(100000, 999999);
+    $o = $this->postJson('/api/v1/vta/sell', vtaPerson(['course_offer_id' => $this->offer, 'document_number' => '76767676', 'email' => "rec.vp{$n}@example.com"]), $this->h)->json('data');
+    $this->postJson("/api/v1/vta/orders/{$o['id']}/pay", ['method' => 'yape', 'reference' => 'RC-0001', 'evidence_file_id' => evidenceFile($this->h, 'VTA')], $this->h)->assertOk();
+    $user = DB::connection('platform')->selectOne('select id from users where email = ?', ["rec.vp{$n}@example.com"])->id;
+    $me = DB::connection('platform')->selectOne('select id from users where email = ?', [CORPORATIVO_EMAIL])->id;
+    [$r1, $r2] = DB::transaction(function () use ($user, $me) {
+        DbContext::setCompany(HUAYLAS_ID);
+        $l = DB::selectOne('select id from external_learners where user_id = ?', [$user])->id;
+        $mk = fn ($k) => DB::selectOne("insert into course_recommendations (company_id, course_id, external_learner_id, source, recommended_by, target_scope, reason_code, message, channel, status, sent_at, dedupe_key)
+                                        values (?, ?, ?, 'manual', ?, 'person', 'manual', 'Te puede servir', 'in_app', 'sent', now(), ?) returning id", [HUAYLAS_ID, $this->course, $l, $me, $k.$l])->id;
+        $out = [$mk('a'), $mk('b')];
+        DbContext::setCompany(null);
+
+        return $out;
+    });
+    app('auth')->forgetGuards();
+    Permissions::flush();
+    $hl = authHeaders(vtaToken($user), HUAYLAS_ID);
+    $p = $this->getJson('/api/v1/vta/portal', $hl)->assertOk()->json('data');
+    expect(collect($p['recommendations'])->pluck('id'))->toContain($r1, $r2)->and($p['recommendations'][0]['offer_slug'])->not->toBeNull();
+    $this->postJson("/api/v1/vta/portal/recommendations/{$r1}", ['action' => 'click'], $hl)->assertOk();
+    $this->postJson("/api/v1/vta/portal/recommendations/{$r2}", ['action' => 'dismiss', 'reason' => 'Ya lo llevé'], $hl)->assertOk();
+    $st = vtaQuery('select id, status from course_recommendations where id in (?, ?)', [$r1, $r2]);
+    expect(collect($st)->pluck('status', 'id')->all())->toBe([$r1 => 'clicked', $r2 => 'dismissed'] + collect($st)->pluck('status', 'id')->all());
+    expect(collect($this->getJson('/api/v1/vta/portal', $hl)->json('data.recommendations'))->pluck('id'))->not->toContain($r2);
+    DB::delete("delete from personal_access_tokens where name = 'e2e-vp'");
+});

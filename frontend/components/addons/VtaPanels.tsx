@@ -7,8 +7,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { api, ApiError } from "@/lib/api";
-import { uploadFile, type RecordRow } from "@/lib/records";
+import { api, ApiError, API_URL } from "@/lib/api";
+import { session } from "@/lib/session";
+import { downloadFile, uploadFile, type RecordRow } from "@/lib/records";
 import { useProviders } from "./TestModeBanner";
 
 const errText = (e: unknown) => Object.values((e as ApiError).errors ?? {})[0]?.[0] ?? (e as ApiError).detail ?? (e as ApiError).title;
@@ -197,6 +198,7 @@ export function LicenseSeats({ row }: { row: RecordRow }) {
           <Button size="sm" variant="primary" onClick={assign}>Asignar cupo</Button>
         </div>
       )}
+      {free > 0 && d.license.status === "active" && <SeatsImport licenseId={String(row.id)} onSaved={() => setTick((t) => t + 1)} />}
       {d.assignments.length > 0 && (
         <ul className="divide-y divide-line">{d.assignments.map((a) => (
           <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
@@ -209,6 +211,63 @@ export function LicenseSeats({ row }: { row: RecordRow }) {
       )}
       {msg && <p className={msg.ok ? "text-ok" : "text-bad"}>{msg.text}</p>}
     </section>
+  );
+}
+
+type SeatRow = { row: number; name: string; document: string; email: string; action: "assign" | "assigned" | "error"; errors: string[] };
+
+/** SCR-VTA-19 «importar Excel»: revisa el archivo (datos, repetidos, cupos que quedan) y asigna las filas válidas. */
+function SeatsImport({ licenseId, onSaved }: { licenseId: string; onSaved: () => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [res, setRes] = useState<{ applied: boolean; saved: number; seats_left: number; rows: SeatRow[] } | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const send = async (apply: boolean) => {
+    if (!file) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      if (apply) body.append("apply", "1");
+      const headers: Record<string, string> = { Accept: "application/json" };
+      const t = session.getToken();
+      const c = session.getCompanyId();
+      if (t) headers.Authorization = `Bearer ${t}`;
+      if (c) headers["X-Company-Id"] = c;
+      const r = await fetch(`${API_URL}/api/v1/vta/licenses/${licenseId}/assignments/import`, { method: "POST", headers, body });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { setMsg({ ok: false, text: data.detail ?? data.title ?? "No se pudo leer el archivo." }); return; }
+      setRes(data.data);
+      if (apply) { setMsg({ ok: true, text: `Se asignaron ${data.data.saved} cupo(s).` }); onSaved(); }
+    } finally {
+      setBusy(false);
+    }
+  };
+  const ready = res && !res.applied ? res.rows.filter((r) => r.action === "assign").length : 0;
+  return (
+    <details className="rounded-lg border border-line">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold">Asignar varios desde Excel</summary>
+      <div className="space-y-2 border-t border-line p-3 text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" icon="download" onClick={() => downloadFile(`/vta/licenses/${licenseId}/assignments/template.xlsx`, "asignar-cupos.xlsx")}>Plantilla</Button>
+          <input type="file" accept=".xlsx,.csv" aria-label="Archivo de cupos (Excel o CSV)" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setRes(null); setMsg(null); }} />
+          <Button size="sm" disabled={!file || busy} onClick={() => void send(false)}>Revisar</Button>
+        </div>
+        {res && (
+          <>
+            <ul className="divide-y divide-line">{res.rows.map((r) => (
+              <li key={r.row} className="py-1">
+                Fila {r.row}: {r.name} · {r.document} · {r.email} · <b className={r.action === "error" ? "text-bad" : "text-ok"}>{r.action === "error" ? "Con error" : r.action === "assigned" ? "Asignado" : "Se asignará"}</b>
+                {r.errors.length > 0 && <span className="block text-bad">{r.errors.join(" ")}</span>}
+              </li>
+            ))}</ul>
+            {!res.applied && <Button size="sm" variant="primary" disabled={!ready || busy} onClick={() => void send(true)}>Asignar {ready} cupo(s)</Button>}
+          </>
+        )}
+        {msg && <p className={msg.ok ? "text-ok" : "text-bad"}>{msg.text}</p>}
+      </div>
+    </details>
   );
 }
 
@@ -334,6 +393,8 @@ export function VtaCampaign() {
 }
 
 type Portal = {
+  recommendations: { id: string; message: string; course_id: string; title: string; hours: number | null; offer_slug: string | null }[];
+  company_slug: string | null;
   learner: { first_name: string; last_name: string; email: string; document: string; marketing_consent: boolean; data_consent_at: string | null } | null;
   certificates: { id: string; certificate_code: string; course_title: string; issued_on: string; expires_on: string | null; status: string }[];
   orders: { id: string; order_number: string; created_at: string; status: string; total: number; refunded_total: number; items: string | null }[];
@@ -356,6 +417,30 @@ export function VtaPortal() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">Tus cursos están en <Link href="/m/aul" className="font-semibold text-brand underline">Aula virtual</Link>.</p>
+      {d.recommendations.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="font-display text-lg font-semibold">Recomendados para ti</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {d.recommendations.map((r) => (
+              <article key={r.id} className="space-y-2 rounded-xl border border-line bg-surface p-4 text-sm">
+                <p className="font-semibold">{r.title}{r.hours ? <span className="font-normal text-muted"> · {Number(r.hours)} h</span> : null}</p>
+                <p className="text-muted">{r.message}</p>
+                <div className="flex flex-wrap gap-3">
+                  {r.offer_slug && d.company_slug && (
+                    <a href={`/cursos/${d.company_slug}/${r.offer_slug}`} className="font-semibold text-brand underline"
+                      onClick={() => { void api(`/vta/portal/recommendations/${r.id}`, { method: "POST", withCompany: true, body: { action: "click" } }).catch(() => undefined); }}>Ver curso y comprar</a>
+                  )}
+                  <button type="button" className="text-muted underline" onClick={() => {
+                    const reason = window.prompt("¿Por qué no te interesa? (opcional)") ?? "";
+                    void api(`/vta/portal/recommendations/${r.id}`, { method: "POST", withCompany: true, body: { action: "dismiss", reason } })
+                      .then(() => setD({ ...d, recommendations: d.recommendations.filter((x) => x.id !== r.id) })).catch((e) => setMsg(errText(e)));
+                  }}>No me interesa</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
       {d.licenses.length > 0 && (
         <section className="space-y-2">
           <h2 className="font-display text-lg font-semibold">Cupos de tu empresa</h2>

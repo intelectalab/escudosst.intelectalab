@@ -18,12 +18,16 @@ Route::middleware(['auth:sanctum', 'company', 'module:VTA'])->prefix('vta')->gro
     Route::post('orders/{id}/refund', [VtaSalesController::class, 'refund'])->whereUuid('id');
     Route::get('licenses/{id}/assignments', [VtaSalesController::class, 'assignments'])->whereUuid('id');
     Route::post('licenses/{id}/assignments', [VtaSalesController::class, 'assign'])->whereUuid('id')->middleware('throttle:60,1');
+    // SCR-VTA-19: asignar cupos importando un Excel (plantilla, revisión y guardado).
+    Route::get('licenses/{id}/assignments/template.xlsx', [VtaSalesController::class, 'assignTemplate'])->whereUuid('id');
+    Route::post('licenses/{id}/assignments/import', [VtaSalesController::class, 'assignImport'])->whereUuid('id')->middleware('throttle:20,1');
     Route::post('license-assignments/{id}/release', [VtaSalesController::class, 'release'])->whereUuid('id');
     Route::get('dashboard', [VtaSalesController::class, 'dashboard']);
     Route::get('reports.xlsx', [VtaSalesController::class, 'report']);
     Route::post('campaigns', [VtaSalesController::class, 'campaign'])->middleware('throttle:10,1');
     Route::get('portal', [VtaPortalController::class, 'show']);
     Route::put('portal/consents', [VtaPortalController::class, 'consents'])->middleware('throttle:20,1');
+    Route::post('portal/recommendations/{id}', [VtaPortalController::class, 'recommendation'])->whereUuid('id')->middleware('throttle:60,1');
     Route::get('catalog', [VtaCatalogController::class, 'link']);
     Route::put('catalog', [VtaCatalogController::class, 'setSlug']);
 });

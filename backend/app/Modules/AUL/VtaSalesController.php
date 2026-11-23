@@ -124,13 +124,129 @@ class VtaSalesController extends Controller
     {
         $this->can('vta.license_assignments.create');
         $lic = $this->license($id);
-        $d = $request->validate([
-            'document_type' => ['required', 'in:DNI,CE,PTP,PASSPORT'],
-            'document_number' => ['required', 'string', 'min:6', 'max:20', 'regex:/^[A-Za-z0-9]+$/'],
-            'first_name' => ['required', 'string', 'max:80'],
-            'last_name' => ['required', 'string', 'max:80'],
-            'email' => ['required', 'email:rfc', 'max:160'],
-        ], ['*.required' => 'Completa este dato.', 'document_number.regex' => 'Escribe el documento sin espacios ni guiones.']);
+        $d = $request->validate(self::PERSON, ['*.required' => 'Completa este dato.', 'document_number.regex' => 'Escribe el documento sin espacios ni guiones.']);
+
+        return response()->json(['data' => $this->assignOne($lic, $d)], 201);
+    }
+
+    private const PERSON = [
+        'document_type' => ['required', 'in:DNI,CE,PTP,PASSPORT'],
+        'document_number' => ['required', 'string', 'min:6', 'max:20', 'regex:/^[A-Za-z0-9]+$/'],
+        'first_name' => ['required', 'string', 'max:80'],
+        'last_name' => ['required', 'string', 'max:80'],
+        'email' => ['required', 'email:rfc', 'max:160'],
+    ];
+
+    /** Plantilla para asignar cupos desde Excel (SCR-VTA-19). */
+    public function assignTemplate(string $id): \Illuminate\Http\Response
+    {
+        $this->can('vta.license_assignments.create');
+        $lic = $this->license($id);
+        $rows = [['ASIGNACIÓN DE CUPOS · '.$lic->license_code], ['Tipo de documento: DNI, CE, PTP o PASSPORT. Una persona por fila.'], [],
+            ['Tipo de documento', 'Número de documento', 'Nombres', 'Apellidos', 'Correo']];
+
+        return response(\App\Core\Support\Xlsx::build('Cupos', $rows, 4), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="asignar-cupos.xlsx"',
+        ]);
+    }
+
+    /**
+     * SCR-VTA-19 «importar Excel»: revisa cada fila (datos válidos, persona repetida, cupos que quedan, RN-VTA-15) y con «apply»
+     * asigna las válidas con las mismas reglas que la asignación de a uno (matrícula, cuenta y aviso).
+     */
+    public function assignImport(Request $request, string $id): JsonResponse
+    {
+        $this->can('vta.license_assignments.create');
+        $lic = $this->license($id);
+        $request->validate(['file' => ['required', 'file', 'max:5120']], ['file.required' => 'Elige el archivo de Excel.']);
+        $file = $request->file('file');
+        if (! in_array(strtolower($file->getClientOriginalExtension()), ['xlsx', 'csv'], true)) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa el archivo', 'Sube el archivo en Excel (.xlsx) o CSV.', ['errors' => ['file' => ['Sube el archivo en Excel (.xlsx) o CSV.']]]);
+        }
+        try {
+            $sheet = \App\Modules\TRB\SheetReader::read($file->getRealPath(), $file->getClientOriginalName());
+        } catch (\Throwable) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa el archivo', 'No pudimos leer el archivo.', ['errors' => ['file' => ['No pudimos leer el archivo.']]]);
+        }
+        $titles = ['document_type' => 'tipo de documento', 'document_number' => 'número de documento', 'first_name' => 'nombres', 'last_name' => 'apellidos', 'email' => 'correo'];
+        $map = null;
+        $header = 0;
+        foreach ($sheet as $n => $cells) {
+            $c = array_map(fn ($x) => mb_strtolower(trim((string) $x)), $cells);
+            if (in_array('número de documento', $c, true)) {
+                $map = [];
+                foreach ($titles as $k => $t) {
+                    if (($i = array_search($t, $c, true)) !== false) {
+                        $map[$k] = $i;
+                    }
+                }
+                $header = $n;
+                break;
+            }
+        }
+        if (! $map || count($map) < 5) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa el archivo', 'No encontramos la fila de títulos (Tipo de documento, Número de documento, Nombres, Apellidos, Correo). Usa la plantilla.',
+                ['errors' => ['file' => ['No encontramos la fila de títulos. Usa la plantilla.']]]);
+        }
+        $apply = $request->boolean('apply');
+        $left = (int) $lic->seats_purchased - (int) $lic->seats_used;
+        $seen = [];
+        $out = [];
+        $saved = 0;
+        foreach ($sheet as $n => $cells) {
+            if ($n <= $header) {
+                continue;
+            }
+            $d = [];
+            foreach ($map as $k => $i) {
+                $d[$k] = trim((string) ($cells[$i] ?? ''));
+            }
+            if (implode('', $d) === '') {
+                continue;
+            }
+            $d['document_type'] = strtoupper($d['document_type'] ?: 'DNI');
+            $v = validator($d, self::PERSON, ['*.required' => 'Falta :attribute.', 'document_number.regex' => 'El documento no debe tener espacios ni guiones.'],
+                ['document_type' => 'el tipo de documento', 'document_number' => 'el número de documento', 'first_name' => 'los nombres', 'last_name' => 'los apellidos', 'email' => 'el correo']);
+            $err = $v->fails() ? array_values(array_map(fn ($m) => $m[0], $v->errors()->toArray())) : [];
+            $key = $d['document_type'].':'.$d['document_number'];
+            if (! $err && isset($seen[$key])) {
+                $err[] = 'Esta persona ya está en otra fila del archivo.';
+            }
+            $seen[$key] = true;
+            if (! $err && DB::selectOne("select 1 as ok from license_assignments a join external_learners l on l.id = a.external_learner_id
+                                          where a.course_license_id = ? and a.status <> 'revoked' and a.deleted_at is null and l.document_number_hash = decode(?, 'hex')",
+                [$lic->id, hash_hmac('sha256', strtoupper($d['document_number']), (string) config('app.key'))])) {
+                $err[] = 'Esta persona ya tiene un cupo de esta compra.';
+            }
+            if (! $err && $left <= 0) {
+                $err[] = "No quedan cupos (se compraron {$lic->seats_purchased}).";
+            }
+            $row = ['row' => $n + 1, 'name' => trim($d['first_name'].' '.$d['last_name']), 'document' => $d['document_type'].' ***'.substr($d['document_number'], -4), 'email' => $d['email'],
+                'action' => $err ? 'error' : 'assign', 'errors' => $err];
+            if (! $err) {
+                $left--;
+                if ($apply) {
+                    try {
+                        $this->assignOne($this->license($id), $d);
+                        $saved++;
+                        $row['action'] = 'assigned';
+                    } catch (ApiProblem $e) {
+                        $row['action'] = 'error';
+                        $row['errors'][] = $e->getMessage() ?: 'No se pudo asignar.';
+                        $left++;
+                    }
+                }
+            }
+            $out[] = $row;
+        }
+
+        return response()->json(['data' => ['applied' => $apply, 'saved' => $saved, 'seats_left' => max(0, $left), 'rows' => $out]]);
+    }
+
+    /** Asigna un cupo a una persona: participante, asignación, matrícula, contador de cupos, cuenta y aviso (RN-VTA-15). */
+    private function assignOne(object $lic, array $d): array
+    {
         if ($lic->status === 'voided' || $lic->status === 'expired' || ($lic->expires_at && strtotime($lic->expires_at) <= time())) {
             throw new ApiProblem(409, 'conflict', 'Cupos no disponibles', 'Estos cupos ya no se pueden asignar (vencidos o anulados).');
         }
@@ -160,7 +276,7 @@ class VtaSalesController extends Controller
             report($e);
         }
 
-        return response()->json(['data' => $res], 201);
+        return $res;
     }
 
     public function release(Request $request, string $id): JsonResponse
