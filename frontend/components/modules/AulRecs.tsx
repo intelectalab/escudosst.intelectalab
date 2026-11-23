@@ -26,10 +26,10 @@ type Item = {
 type Rule = {
   id: string; code: string; name: string; rule_type: string; audience: string; channels: string[]; is_active: boolean; max_sends_per_person: number; send_period_days: number;
   last_run_at: string | null; last_run_status: string | null; last_run_count: number | null; sent_total: number; course_ids: string[]; requires_consent: boolean;
-  parameters: { lead_days?: number; requires_approval?: boolean; position_ids?: string[]; after_course_ids?: string[] };
+  parameters: { lead_days?: number; lookback_days?: number; requires_approval?: boolean; position_ids?: string[]; after_course_ids?: string[] };
 };
 type RunResult = { supported: boolean; reached: number; created: number; skipped: number; sent_external: number; portal_only: number; preview: { name: string; course: string; reason: string; channel: string }[] };
-const SUPPORTED = ["certificate_expiring", "matrix_gap", "complementary", "learning_path_next"];
+const SUPPORTED = ["certificate_expiring", "matrix_gap", "complementary", "learning_path_next", "inspection_finding", "incident_related", "similar_buyers"];
 type Data = { funnel: Funnel; items: Item[]; rules: Rule[] };
 
 const STATUS: Record<string, [string, ChipTone]> = {
@@ -237,7 +237,7 @@ function RuleModal({ rule, onClose, onDone }: { rule: Rule | null; onClose: () =
   const [courses, setCourses] = useState<CourseCard[] | null>(null);
   const [f, setF] = useState({
     code: rule?.code ?? "", name: rule?.name ?? "", rule_type: rule?.rule_type ?? "certificate_expiring", audience: rule?.audience ?? "workers", channels: rule?.channels ?? ["in_app"],
-    max_sends_per_person: String(rule?.max_sends_per_person ?? 1), send_period_days: String(rule?.send_period_days ?? 30), lead_days: String(rule?.parameters?.lead_days ?? 30),
+    max_sends_per_person: String(rule?.max_sends_per_person ?? 1), send_period_days: String(rule?.send_period_days ?? 30), lead_days: String(rule?.parameters?.lead_days ?? 30), lookback_days: String(rule?.parameters?.lookback_days ?? 30),
     requires_approval: !!rule?.parameters?.requires_approval, requires_consent: rule?.requires_consent ?? true, course_ids: rule?.course_ids ?? [], after_course_ids: rule?.parameters?.after_course_ids ?? [],
   });
   const [errors, setErrors] = useState<Record<string, string[]>>({});
@@ -247,6 +247,7 @@ function RuleModal({ rule, onClose, onDone }: { rule: Rule | null; onClose: () =
   }, []);
   const set = (p: Partial<typeof f>) => setF((x) => ({ ...x, ...p }));
   const chained = f.rule_type === "complementary" || f.rule_type === "learning_path_next";
+  const byArea = f.rule_type === "inspection_finding" || f.rule_type === "incident_related";
   const save = async () => {
     setBusy(true);
     setErrors({});
@@ -256,7 +257,7 @@ function RuleModal({ rule, onClose, onDone }: { rule: Rule | null; onClose: () =
         body: {
           code: f.code, name: f.name, rule_type: f.rule_type, audience: f.audience, channels: f.channels, max_sends_per_person: Number(f.max_sends_per_person) || 1,
           send_period_days: Number(f.send_period_days) || 30, requires_consent: f.requires_consent, is_active: rule?.is_active ?? false, course_ids: f.course_ids,
-          parameters: { requires_approval: f.requires_approval, ...(f.rule_type === "certificate_expiring" ? { lead_days: Number(f.lead_days) || 30 } : {}), ...(chained ? { after_course_ids: f.after_course_ids } : {}) },
+          parameters: { requires_approval: f.requires_approval, ...(f.rule_type === "certificate_expiring" ? { lead_days: Number(f.lead_days) || 30 } : {}), ...(byArea ? { lookback_days: Number(f.lookback_days) || 30 } : {}), ...(chained ? { after_course_ids: f.after_course_ids } : {}) },
         },
       });
       onDone();
@@ -278,12 +279,13 @@ function RuleModal({ rule, onClose, onDone }: { rule: Rule | null; onClose: () =
           <FormField label="Audiencia" error={errors.audience?.[0]}>
             <select className="input" value={f.audience} onChange={(e) => set({ audience: e.target.value })}>{Object.entries(AUDIENCE).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
           </FormField>
+          {byArea && <FormField label="Hallazgos o eventos de los últimos (días)"><input className="input" inputMode="numeric" value={f.lookback_days} onChange={(e) => set({ lookback_days: e.target.value })} /></FormField>}
           {f.rule_type === "certificate_expiring" && <FormField label="Anticipación (días)"><input className="input" inputMode="numeric" value={f.lead_days} onChange={(e) => set({ lead_days: e.target.value })} /></FormField>}
           <FormField label="Envíos por persona"><input className="input" inputMode="numeric" value={f.max_sends_per_person} onChange={(e) => set({ max_sends_per_person: e.target.value })} /></FormField>
           <FormField label="Cada (días)"><input className="input" inputMode="numeric" value={f.send_period_days} onChange={(e) => set({ send_period_days: e.target.value })} /></FormField>
         </div>
         {chained && <FormField label="Para quienes aprobaron *" hint="Curso o cursos ya aprobados."><CoursePick courses={courses} value={f.after_course_ids} onChange={(v) => set({ after_course_ids: v })} /></FormField>}
-        <FormField label={chained ? "Cursos que se recomiendan *" : "Cursos de la regla (opcional)"} hint={chained ? undefined : f.rule_type === "matrix_gap" ? "Vacío: todos los cursos que exige cada puesto." : "Vacío: todos los cursos con certificado."} error={errors.course_ids?.[0]}>
+        <FormField label={chained || byArea || f.rule_type === "similar_buyers" ? "Cursos que se recomiendan *" : "Cursos de la regla (opcional)"} hint={chained ? undefined : f.rule_type === "matrix_gap" ? "Vacío: todos los cursos que exige cada puesto." : "Vacío: todos los cursos con certificado."} error={errors.course_ids?.[0]}>
           <CoursePick courses={courses} value={f.course_ids} onChange={(v) => set({ course_ids: v })} />
         </FormField>
         <FormField label="Canales" error={errors.channels?.[0]}>

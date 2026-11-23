@@ -14412,7 +14412,8 @@
    "columns": [
     "title",
     "course_id",
-    "section_number"
+    "unlock_on",
+    "unlock_rule"
    ],
    "module": "AUL",
    "tab": "Secciones",
@@ -14444,8 +14445,7 @@
      "name": "section_number",
      "label": "N.º de sección",
      "type": "int",
-     "required": true,
-     "list": true
+     "required": true
     },
     {
      "name": "title",
@@ -14470,6 +14470,32 @@
      "label": "Visible",
      "type": "bool",
      "default": true
+    },
+    {
+     "name": "unlock_rule",
+     "label": "Se desbloquea",
+     "type": "enum",
+     "options": [
+      {
+       "value": "always",
+       "label": "Siempre"
+      },
+      {
+       "value": "after_previous",
+       "label": "Al completar la sección anterior"
+      },
+      {
+       "value": "from_date",
+       "label": "Desde una fecha"
+      }
+     ],
+     "list": true
+    },
+    {
+     "name": "unlock_on",
+     "label": "Se desbloquea el",
+     "type": "date",
+     "list": true
     }
    ]
   },

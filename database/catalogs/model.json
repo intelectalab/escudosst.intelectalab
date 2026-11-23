@@ -34342,6 +34342,32 @@
     "comment": null
    },
    {
+    "name": "unlock_rule",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": [
+     "always",
+     "after_previous",
+     "from_date"
+    ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "unlock_on",
+    "type": "date",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,

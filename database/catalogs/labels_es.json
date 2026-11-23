@@ -1289,7 +1289,9 @@
   "effective_from": "Vigente desde",
   "effective_to": "Vigente hasta",
   "out_of_hours": "Fuera del horario de trabajo",
-  "out_of_hours_reason": "Motivo de la sesión fuera de horario"
+  "out_of_hours_reason": "Motivo de la sesión fuera de horario",
+  "unlock_rule": "Se desbloquea",
+  "unlock_on": "Se desbloquea el"
  },
  "values": {
   "A": "Tipo A",
@@ -2016,7 +2018,10 @@
   "objective": "Objetivo",
   "sst_objectives": "Objetivo SST",
   "annual_programs": "Programa Anual SST (PASST)",
-  "training_programs": "Programa de capacitación"
+  "training_programs": "Programa de capacitación",
+  "always": "Siempre",
+  "after_previous": "Al completar la sección anterior",
+  "from_date": "Desde una fecha"
  },
  "tables": {
   "absences": "Ausencias",

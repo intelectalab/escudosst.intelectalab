@@ -562,11 +562,11 @@ class AulToolsController extends Controller
     {
         $d = $request->validate([
             'code' => ['required', 'string', 'max:30', 'regex:/^[A-Za-z0-9\-_]+$/'], 'name' => ['required', 'string', 'max:160'], 'description' => ['nullable', 'string', 'max:1000'],
-            'rule_type' => ['required', 'in:'.implode(',', RecommendationEngine::SUPPORTED).',inspection_finding,incident_related,similar_buyers'],
+            'rule_type' => ['required', 'in:'.implode(',', RecommendationEngine::SUPPORTED)],
             'audience' => ['required', 'in:workers,external_learners,buyer_companies'], 'course_ids' => ['nullable', 'array', 'max:20'], 'course_ids.*' => ['uuid'],
             'channels' => ['required', 'array', 'min:1'], 'channels.*' => ['in:in_app,email,whatsapp'], 'max_sends_per_person' => ['nullable', 'integer', 'min:1', 'max:50'],
             'send_period_days' => ['nullable', 'integer', 'min:1', 'max:365'], 'requires_consent' => ['boolean'], 'priority' => ['nullable', 'integer', 'min:1', 'max:999'], 'is_active' => ['boolean'],
-            'parameters' => ['nullable', 'array'], 'parameters.lead_days' => ['nullable', 'integer', 'min:1', 'max:365'], 'parameters.requires_approval' => ['nullable', 'boolean'],
+            'parameters' => ['nullable', 'array'], 'parameters.lead_days' => ['nullable', 'integer', 'min:1', 'max:365'], 'parameters.lookback_days' => ['nullable', 'integer', 'min:1', 'max:365'], 'parameters.requires_approval' => ['nullable', 'boolean'],
             'parameters.position_ids' => ['nullable', 'array'], 'parameters.position_ids.*' => ['uuid'], 'parameters.after_course_ids' => ['nullable', 'array'], 'parameters.after_course_ids.*' => ['uuid'],
         ], ['code.required' => 'Escribe el código.', 'name.required' => 'Escribe el nombre.', 'channels.required' => 'Elige al menos un canal.']);
         $code = strtoupper($d['code']);
@@ -584,7 +584,11 @@ class AulToolsController extends Controller
         if (in_array($d['rule_type'], ['complementary', 'learning_path_next'], true) && (empty($p['after_course_ids']) || ! $courses)) {
             $this->fail('course_ids', 'Elige el curso aprobado y los cursos que se recomiendan después.');
         }
-        $params = array_filter(['lead_days' => isset($p['lead_days']) ? (int) $p['lead_days'] : ($d['rule_type'] === 'certificate_expiring' ? 30 : null),
+        if (in_array($d['rule_type'], ['inspection_finding', 'incident_related', 'similar_buyers'], true) && ! $courses) {
+            $this->fail('course_ids', 'Elige los cursos que se recomiendan.');
+        }
+        $params = array_filter(['lookback_days' => in_array($d['rule_type'], ['inspection_finding', 'incident_related'], true) ? (int) ($p['lookback_days'] ?? 30) : null,
+            'lead_days' => isset($p['lead_days']) ? (int) $p['lead_days'] : ($d['rule_type'] === 'certificate_expiring' ? 30 : null),
             'requires_approval' => (bool) ($p['requires_approval'] ?? false), 'position_ids' => array_values($p['position_ids'] ?? []) ?: null,
             'after_course_ids' => array_values($p['after_course_ids'] ?? []) ?: null], fn ($x) => $x !== null);
 

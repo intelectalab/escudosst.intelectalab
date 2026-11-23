@@ -41,7 +41,7 @@ type Answers = Record<string, string | string[]>;
 type Attempt = { id: string; attempt_number: number; started_at: string; expires_at: string | null; questions: Question[]; answers: Answers };
 type Lesson = {
   id: string; section_id: string | null; title: string; lesson_type: string; content_html: string | null; video_external_id: string | null; external_url: string | null;
-  is_required: boolean; done: boolean; best_score: number | null; max_attempts: number | null; time_limit_minutes: number | null;
+  is_required: boolean; done: boolean; locked?: boolean; locked_reason?: string | null; best_score: number | null; max_attempts: number | null; time_limit_minutes: number | null;
   num_questions?: number | null; attempts_used?: number; pending_review?: boolean; open_attempt?: Attempt | null;
   last_result?: { score_pct: number | null; label: string | null; passed: boolean; feedback: string | null } | null;
 };
@@ -160,8 +160,8 @@ export function CoursePlayer({ id, preview = false }: { id: string; preview?: bo
               <li key={x.id}>
                 <button type="button" onClick={() => { setActive(x.id); setMsg(null); }}
                   className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left ${active === x.id ? "bg-brand-soft font-semibold" : "hover:bg-bg"}`}>
-                  <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] ${x.done ? "bg-ok text-white" : "border border-line"}`}>{x.done ? "✓" : i + 1}</span>
-                  {x.title}{x.lesson_type === "exam" ? " (evaluación)" : ""}
+                  <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] ${x.done ? "bg-ok text-white" : "border border-line"}`}>{x.done ? "✓" : x.locked ? "🔒" : i + 1}</span>
+                  <span className={x.locked ? "text-muted" : ""}>{x.title}{x.lesson_type === "exam" ? " (evaluación)" : ""}</span>
                 </button>
               </li>
             ))}
@@ -170,6 +170,7 @@ export function CoursePlayer({ id, preview = false }: { id: string; preview?: bo
         {l && (
           <section className="min-w-0 space-y-4 rounded-2xl border border-line bg-surface p-5">
             <h2 className="font-display text-xl font-semibold">{l.title}</h2>
+            {l.locked && !preview && <p role="status" className="rounded-lg bg-amber-soft px-3 py-2 text-sm text-amber-ink">🔒 Lección bloqueada. {l.locked_reason}</p>}
             {l.lesson_type === "text" && <div className="prose max-w-none text-sm" dangerouslySetInnerHTML={{ __html: l.content_html ?? "" }} />}
             {l.lesson_type === "video" && l.video_external_id && (
               <div className="aspect-video overflow-hidden rounded-xl bg-black"><iframe className="h-full w-full" src={`https://player.vimeo.com/video/${l.video_external_id}?dnt=1`} title={l.title} allow="fullscreen" /></div>
@@ -179,7 +180,7 @@ export function CoursePlayer({ id, preview = false }: { id: string; preview?: bo
             {l.lesson_type === "exam" ? (
               preview ? <PreviewExam key={l.id} courseId={id} lesson={l} /> : <Exam key={l.id} enrollmentId={id} lesson={l} onDone={load} />
             ) : preview ? <p className="text-sm text-muted">Quien aprende marca aquí la lección como vista.</p>
-              : l.done ? <p className="text-sm text-ok">Lección vista ✓</p> : <Button variant="primary" onClick={done}>Marcar como vista</Button>}
+              : l.done ? <p className="text-sm text-ok">Lección vista ✓</p> : <Button variant="primary" disabled={!!l.locked} onClick={done}>Marcar como vista</Button>}
             {msg && <p className={msg.ok ? "text-ok" : "text-bad"}>{msg.text}</p>}
           </section>
         )}

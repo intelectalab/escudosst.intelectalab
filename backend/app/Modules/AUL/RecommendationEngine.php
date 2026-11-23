@@ -19,11 +19,18 @@ use Illuminate\Support\Facades\DB;
  * publicidad del participante externo (RN-AUL-29) y el límite `max_sends_per_person` por `send_period_days`
  * (RN-AUL-28); fuera de eso la recomendación solo se publica en el portal. Con `parameters.requires_approval` nace
  * «sugerida» y espera la bandeja; si no, se publica («enviada») y avisa en la campana. Ningún filtro usa datos médicos
- * (RN-AUL-27). Tipos sin datos de origen todavía (hallazgos, accidentes, perfil de compra) se omiten.
+ * (RN-AUL-27).
+ *  - inspection_finding / incident_related: hallazgo de inspección o evento de seguridad del área en los últimos
+ *    `parameters.lookback_days` días (30 si la regla no lo fija) → los cursos de la regla a los trabajadores activos del
+ *    área; el motivo no nombra al afectado ni trae datos de salud (RN-AUL-27/32).
+ *  - similar_buyers: participantes externos que comparten un curso con quienes tomaron el curso de la regla → ese curso,
+ *    con el motivo «Participantes con tu perfil también tomaron…» (RN-AUL-32). No aplica a trabajadores.
+ * Límite global (RN-AUL-28): si la empresa fija `recommendation_max_messages_per_period`, al alcanzarlo en el periodo de la
+ * regla los envíos por correo o WhatsApp pasan a solo portal.
  */
 final class RecommendationEngine
 {
-    public const SUPPORTED = ['certificate_expiring', 'matrix_gap', 'complementary', 'learning_path_next'];
+    public const SUPPORTED = ['certificate_expiring', 'matrix_gap', 'complementary', 'learning_path_next', 'inspection_finding', 'incident_related', 'similar_buyers'];
 
     private const ACTIVE = ['suggested', 'sent', 'viewed', 'clicked'];
 
@@ -80,6 +87,8 @@ final class RecommendationEngine
         $channels = $this->uuids($rule->channels, false);
         $preferred = in_array('email', $channels, true) ? 'email' : (in_array('whatsapp', $channels, true) ? 'whatsapp' : 'in_app');
         $approval = ! empty($params['requires_approval']);
+        // RN-AUL-28: límite global de la empresa, solo si lo fija el parámetro (la ficha no da un valor).
+        $globalMax = $this->optionalParam($db, $company, 'recommendation_max_messages_per_period');
         $published = array_column($db->select("select id from courses where deleted_at is null and status = 'published' and company_id is not null"), 'id');
 
         foreach ($this->candidates($db, $rule, $params, $courses) as $c) {
@@ -105,7 +114,9 @@ final class RecommendationEngine
                 $consent = $c['worker_id'] ? true : (bool) $db->selectOne('select 1 as ok from external_learners where id = ? and marketing_consent and deleted_at is null', [$person]);
                 $sent = (int) $db->selectOne("select count(*) as n from course_recommendations where {$col} = ? and deleted_at is null and channel in ('email', 'whatsapp')
                                                and sent_at > now() - make_interval(days => ?::int)", [$person, (int) $rule->send_period_days])->n;
-                if (($rule->requires_consent && ! $consent) || $sent >= (int) $rule->max_sends_per_person) {
+                $global = $globalMax !== null && (int) $db->selectOne("select count(*) as n from course_recommendations where deleted_at is null and channel in ('email', 'whatsapp')
+                                                                          and sent_at > now() - make_interval(days => ?::int)", [(int) $rule->send_period_days])->n >= $globalMax;
+                if (($rule->requires_consent && ! $consent) || $sent >= (int) $rule->max_sends_per_person || $global) {
                     $channel = 'in_app';   // RN-AUL-28/29: solo en el portal
                 }
             }
@@ -210,9 +221,65 @@ final class RecommendationEngine
                     }
                 }
                 break;
+            case 'inspection_finding':
+            case 'incident_related':
+                if (! $workers || ! $courses) {
+                    break;
+                }
+                $days = max(1, min(365, (int) ($params['lookback_days'] ?? 30)));
+                $areaSql = $rule->rule_type === 'inspection_finding'
+                    ? "select f.area_id, max(f.created_at)::date as at from findings f where f.deleted_at is null and f.area_id is not null and f.created_at >= current_date - ?::int and f.status <> 'dismissed' group by f.area_id"
+                    : "select e.area_id, max(e.occurred_at)::date as at from sst_events e where e.deleted_at is null and e.area_id is not null and e.occurred_at >= current_date - ?::int and e.status <> 'discarded' group by e.area_id";
+                $rows = $db->select(
+                    "select w.id as worker_id, w.full_name as name, a.name as area, x.at from ({$areaSql}) x join areas a on a.id = x.area_id
+                       join workers w on w.current_area_id = x.area_id and w.deleted_at is null and w.status = 'active'", [$days]);
+                $titles = collect($db->select('select id, title from courses where id in ('.implode(',', array_fill(0, count($courses), '?')).')', $courses))->pluck('title', 'id');
+                foreach ($rows as $r) {
+                    foreach ($courses as $cid) {
+                        if (! isset($titles[$cid])) {
+                            continue;
+                        }
+                        $what = $rule->rule_type === 'inspection_finding' ? 'un hallazgo de inspección' : 'un evento de seguridad';
+                        $out[] = ['worker_id' => $r->worker_id, 'external_learner_id' => null, 'name' => (string) $r->name, 'course_id' => $cid, 'course_title' => $titles[$cid],
+                            'reason_code' => $rule->rule_type, 'recert' => false, 'key_extra' => ':'.$r->at,
+                            'message' => "En tu área «{$r->area}» se registró {$what} el ".date('d/m/Y', strtotime($r->at)).": este curso ayuda a prevenirlo."];
+                    }
+                }
+                break;
+            case 'similar_buyers':
+                if ($workers || ! $courses) {
+                    break;
+                }
+                foreach ($courses as $cid) {
+                    $rows = $db->select(
+                        "select distinct xl.id as person, coalesce(xl.first_name || ' ' || xl.last_name, 'Participante') as name, c.title
+                           from course_enrollments mine
+                           join course_enrollments peer on peer.course_id = mine.course_id and peer.external_learner_id <> mine.external_learner_id and peer.deleted_at is null
+                           join course_enrollments took on took.external_learner_id = peer.external_learner_id and took.course_id = ? and took.deleted_at is null
+                           join external_learners xl on xl.id = mine.external_learner_id and xl.deleted_at is null
+                           join courses c on c.id = ?
+                          where mine.deleted_at is null and mine.external_learner_id is not null and mine.course_id <> ?", [$cid, $cid, $cid]);
+                    foreach ($rows as $r) {
+                        $out[] = ['worker_id' => null, 'external_learner_id' => $r->person, 'name' => (string) $r->name, 'course_id' => $cid, 'course_title' => $r->title,
+                            'reason_code' => 'similar_buyers', 'recert' => false, 'message' => "Participantes con tu perfil también tomaron «{$r->title}»."];
+                    }
+                }
+                break;
         }
 
         return $out;
+    }
+
+    /** Parámetro sin valor por defecto: null si la empresa no lo fijó. */
+    private function optionalParam(ConnectionInterface $db, string $company, string $key): ?int
+    {
+        $v = $db->selectOne(
+            'select value from legal_parameters where key = ? and (company_id is null or company_id = ?) and valid_from <= current_date
+                and (valid_to is null or valid_to >= current_date) and deleted_at is null order by company_id nulls last, valid_from desc limit 1',
+            [$key, $company]
+        );
+
+        return is_numeric($v->value ?? null) ? max(0, (int) $v->value) : null;
     }
 
     private function col(bool $workers): string

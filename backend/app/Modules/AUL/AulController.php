@@ -154,7 +154,7 @@ class AulController extends Controller
     {
         $course = DB::selectOne('select id, title, summary, description, hours, passing_score, sequential, min_active_time_pct, completion_commitment from courses where id = ?', [$courseId]);
         $progress = $e ? (json_decode($e->lesson_progress ?? '{}', true) ?: []) : [];
-        $sections = DB::select('select id, section_number, title, description from course_sections where course_id = ? and deleted_at is null and is_visible order by sort_order, section_number', [$courseId]);
+        $sections = DB::select('select id, section_number, title, description, unlock_rule, unlock_on from course_sections where course_id = ? and deleted_at is null and is_visible order by sort_order, section_number', [$courseId]);
         $lessons = DB::select('select id, course_id, section_id, lesson_number, title, lesson_type, content_html, video_provider, video_external_id, external_url, file_id, duration_minutes, is_required,
                                       question_bank_id, exam_config, passing_score, max_attempts, time_limit_minutes from course_lessons where course_id = ? and deleted_at is null order by sort_order, lesson_number', [$courseId]);
         foreach ($lessons as $l) {
@@ -175,10 +175,69 @@ class AulController extends Controller
             }
             unset($l->exam_config, $l->question_bank_id, $l->course_id);
         }
+        foreach (self::locks($course, $sections, $lessons, $progress) as $lid => $why) {
+            foreach ($lessons as $l) {
+                if ($l->id === $lid) {
+                    $l->locked = $why !== null;
+                    $l->locked_reason = $why;
+                }
+            }
+        }
 
         return ['enrollment' => $e ? ['id' => $e->id, 'status' => $e->status, 'progress_pct' => (float) $e->progress_pct, 'final_score' => $e->final_score, 'final_score_label' => $e->final_score_label,
             'passed' => $e->passed, 'certificate_id' => $e->certificate_id, 'active_seconds_total' => (int) $e->active_seconds_total] : null,
             'course' => $course, 'sections' => $sections, 'lessons' => $lessons, 'heartbeat_seconds' => Heartbeats::beatSeconds()];
+    }
+
+    /**
+     * RN-AUL-05: qué lección está bloqueada y por qué. Cada sección respeta su unlock_rule (siempre, al completar las obligatorias de
+     * la sección anterior, o desde una fecha); con recorrido secuencial, una lección obligatoria se abre al completar la obligatoria
+     * anterior. @return array<string, ?string> id de lección => motivo del bloqueo (null = abierta)
+     */
+    public static function locks(object $course, array $sections, array $lessons, array $progress): array
+    {
+        $done = fn ($l) => ! empty($progress[$l->id]['done']);
+        $order = array_flip(array_map(fn ($s) => $s->id, $sections));
+        usort($lessons, fn ($a, $b) => ($order[$a->section_id] ?? -1) <=> ($order[$b->section_id] ?? -1));
+        $today = now('America/Lima')->format('Y-m-d');
+        $sectionOpen = [];
+        $prevDone = true;
+        foreach ($sections as $s) {
+            $required = array_filter($lessons, fn ($l) => $l->section_id === $s->id && $l->is_required);
+            $why = match ($s->unlock_rule ?? 'always') {
+                'after_previous' => $prevDone ? null : 'Se abre al completar la sección anterior.',
+                'from_date' => $s->unlock_on && $s->unlock_on > $today ? 'Se abre el '.date('d/m/Y', strtotime($s->unlock_on)).'.' : null,
+                default => null,
+            };
+            $sectionOpen[$s->id] = $why;
+            $prevDone = $why === null && ! array_filter($required, fn ($l) => ! $done($l));
+        }
+        $out = [];
+        $blockedBy = null;
+        foreach ($lessons as $l) {
+            $why = $l->section_id ? ($sectionOpen[$l->section_id] ?? null) : null;
+            if ($why === null && $course->sequential && $blockedBy) {
+                $why = 'Se abre al completar «'.$blockedBy.'».';
+            }
+            $out[$l->id] = $why;
+            if ($course->sequential && $l->is_required && ! $done($l) && ! $blockedBy) {
+                $blockedBy = $l->title;
+            }
+        }
+
+        return $out;
+    }
+
+    /** RN-AUL-05/09: el servidor no acepta avance en una lección bloqueada. */
+    private function assertOpen(object $e, object $l): void
+    {
+        $course = DB::selectOne('select sequential from courses where id = ?', [$e->course_id]);
+        $sections = DB::select('select id, unlock_rule, unlock_on from course_sections where course_id = ? and deleted_at is null and is_visible order by sort_order, section_number', [$e->course_id]);
+        $lessons = DB::select('select id, section_id, title, is_required from course_lessons where course_id = ? and deleted_at is null order by sort_order, lesson_number', [$e->course_id]);
+        $why = self::locks($course, $sections, $lessons, json_decode($e->lesson_progress ?? '{}', true) ?: [])[$l->id] ?? null;
+        if ($why !== null) {
+            throw new ApiProblem(409, 'locked', 'Lección bloqueada', $why);
+        }
     }
 
     public static function attemptView(object $a): array
@@ -197,6 +256,7 @@ class AulController extends Controller
             throw new ApiProblem(409, 'conflict', 'Es un examen', 'Esta lección es un examen: se completa al aprobarlo.');
         }
         $this->requireCommitment($e);
+        $this->assertOpen($e, $l);
         // RN-AUL-04/09: el servidor comprueba que la lección se vio: texto y documento con su permanencia mínima, video con su % reproducido.
         $seen = DB::selectOne('select coalesce(sum(active_seconds), 0) as active, coalesce(max(video_max_position_seconds), 0) as pos, coalesce(sum(video_seconds), 0) as video
                                  from learning_activity_sessions where enrollment_id = ? and lesson_id = ? and deleted_at is null and not is_flagged', [$e->id, $l->id]);
@@ -223,6 +283,7 @@ class AulController extends Controller
         $e = $this->enrollment($id);
         $this->requireCommitment($e);
         $l = $this->examLesson($e, $lesson);
+        $this->assertOpen($e, $l);
         $a = DB::transaction(fn () => ExamEngine::start($e, $l));
 
         return response()->json(['data' => self::attemptView($a)], 201);

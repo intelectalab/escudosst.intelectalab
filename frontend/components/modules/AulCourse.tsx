@@ -27,7 +27,7 @@ type Course = {
   min_active_time_pct: string | number | null; certificate_enabled: boolean; certificate_validity_months: number | null; public_verification_enabled: boolean; grading_scale_id: string | null;
   scale_name: string | null; published_at: string | null;
 };
-type Section = { id: string; section_number: number; title: string; sort_order: number };
+type Section = { id: string; section_number: number; title: string; sort_order: number; unlock_rule?: string; unlock_on?: string | null };
 type Lesson = {
   id: string; section_id: string | null; title: string; lesson_type: string; content_html: string | null; video_external_id: string | null; external_url: string | null; file_id: string | null;
   duration_minutes: number | null; is_required: boolean; question_bank_id: string | null; bank_name: string | null; bank_questions: number; passing_score: string | number | null;
@@ -297,13 +297,17 @@ function IconBtn({ icon, label, onClick, disabled, rotate }: { icon: string; lab
 
 function SectionName({ section, courseId, onClose, onSaved }: { section: Section | null; courseId: string; onClose: () => void; onSaved: () => void }) {
   const [title, setTitle] = useState(section?.title ?? "");
+  // RN-AUL-05: la sección se abre siempre, al completar la anterior o desde una fecha.
+  const [rule, setRule] = useState(section?.unlock_rule ?? "always");
+  const [on, setOn] = useState(section?.unlock_on ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
     try {
-      if (section) await records.update("AUL", "course_sections", section.id, { title });
-      else await api(`/aul/admin/courses/${courseId}/sections`, { method: "POST", withCompany: true, body: { title } });
+      const body = { title, unlock_rule: rule, unlock_on: rule === "from_date" ? on || null : null };
+      if (section) await records.update("AUL", "course_sections", section.id, body);
+      else await api(`/aul/admin/courses/${courseId}/sections`, { method: "POST", withCompany: true, body });
       onSaved();
     } catch (e) {
       setError(errorText(e));
@@ -311,9 +315,15 @@ function SectionName({ section, courseId, onClose, onSaved }: { section: Section
     }
   };
   return (
-    <Modal title={section ? "Renombrar sección" : "Nueva sección"} icon="pen" size="sm" onClose={onClose}
+    <Modal title={section ? "Editar sección" : "Nueva sección"} icon="pen" size="sm" onClose={onClose}
       footer={<div className="flex w-full justify-end gap-2"><Button onClick={onClose}>Cancelar</Button><Button variant="primary" loading={busy} onClick={save}>Guardar</Button></div>}>
       <FormField label="Nombre de la sección *" error={error ?? undefined}><input className="input" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} /></FormField>
+      <FormField label="Se abre">
+        <select className="input" value={rule} onChange={(e) => setRule(e.target.value)}>
+          <option value="always">Siempre</option><option value="after_previous">Al completar la sección anterior</option><option value="from_date">Desde una fecha</option>
+        </select>
+      </FormField>
+      {rule === "from_date" && <FormField label="Fecha en que se abre *"><input type="date" className="input" value={on} onChange={(e) => setOn(e.target.value)} /></FormField>}
     </Modal>
   );
 }

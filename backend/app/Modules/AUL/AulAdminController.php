@@ -102,7 +102,7 @@ class AulAdminController extends Controller
     public function course(string $id): JsonResponse
     {
         $c = $this->find($id);
-        $sections = DB::select('select id, section_number, title, description, sort_order, is_visible from course_sections where course_id = ? and deleted_at is null order by sort_order, section_number', [$id]);
+        $sections = DB::select('select id, section_number, title, description, sort_order, is_visible, unlock_rule, unlock_on from course_sections where course_id = ? and deleted_at is null order by sort_order, section_number', [$id]);
         $lessons = DB::select(
             "select l.id, l.section_id, l.lesson_number, l.title, l.lesson_type, l.content_html, l.file_id, l.video_external_id, l.external_url, l.duration_minutes,
                     l.is_required, l.min_view_pct, l.question_bank_id, l.exam_config, l.passing_score, l.max_attempts, l.time_limit_minutes, l.sort_order, b.name as bank_name,
@@ -220,7 +220,10 @@ class AulAdminController extends Controller
     public function addSection(Request $request, string $id): JsonResponse
     {
         $this->find($id);
-        $d = $request->validate(['title' => ['required', 'string', 'max:200'], 'description' => ['nullable', 'string', 'max:2000']], ['title.required' => 'Escribe el nombre de la sección.']);
+        $d = $request->validate(['title' => ['required', 'string', 'max:200'], 'description' => ['nullable', 'string', 'max:2000'],
+            'unlock_rule' => ['nullable', 'in:always,after_previous,from_date'], 'unlock_on' => ['nullable', 'date_format:Y-m-d', 'required_if:unlock_rule,from_date']],
+            ['title.required' => 'Escribe el nombre de la sección.', 'unlock_on.required_if' => 'Indica desde qué fecha se abre la sección.']);
+        $d = array_filter($d, fn ($v) => $v !== null);
         $n = DB::selectOne('select coalesce(max(section_number), 0) + 1 as n, coalesce(max(sort_order), 0) + 1 as o from course_sections where course_id = ?', [$id]);
         $row = $this->records->create(Registry::resource('AUL', 'course_sections'), $d + ['course_id' => $id, 'section_number' => (int) $n->n, 'sort_order' => (int) $n->o, 'is_visible' => true]);
 
