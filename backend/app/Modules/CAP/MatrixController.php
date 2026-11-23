@@ -13,9 +13,28 @@ use Illuminate\Support\Facades\DB;
  */
 class MatrixController extends Controller
 {
-    public function __invoke(): JsonResponse
+    /**
+     * RN-CAP-06: filas de la matriz vigentes a una fecha (la versión que regía ese día, aunque después se haya cambiado o quitado).
+     * Sin fecha, las vigentes hoy.
+     */
+    private static function rows(?string $asOf): string
     {
-        $today = DB::selectOne("select (now() at time zone 'America/Lima')::date as d")->d;
+        return $asOf
+            ? "coalesce(q.effective_from, (q.created_at at time zone 'America/Lima')::date) <= '{$asOf}'::date and coalesce(q.effective_to, (q.deleted_at at time zone 'America/Lima')::date - 1, 'infinity'::date) >= '{$asOf}'::date"
+            : 'q.deleted_at is null';
+    }
+
+    private static function asOf(\Illuminate\Http\Request $request): ?string
+    {
+        $d = $request->validate(['as_of' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today']], ['as_of.before_or_equal' => 'La fecha no puede ser futura.'])['as_of'] ?? null;
+
+        return $d ?: null;
+    }
+
+    public function __invoke(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $asOf = self::asOf($request);
+        $today = $asOf ?? DB::selectOne("select (now() at time zone 'America/Lima')::date as d")->d;
         $year = (int) substr($today, 0, 4);
 
         $cells = DB::select(
@@ -29,7 +48,7 @@ class MatrixController extends Controller
                            and (q.renewal_months is null or (s.starts_at at time zone 'America/Lima')::date >= ?::date - make_interval(months => q.renewal_months)))) as done
                from position_training_requirements q
                left join workers w on w.current_position_id = q.position_id and w.deleted_at is null and w.status = 'active'
-              where q.deleted_at is null and coalesce(q.is_active, true) and q.training_id is not null
+              where ".self::rows($asOf)." and coalesce(q.is_active, true) and q.training_id is not null
               group by q.position_id, q.training_id, q.requirement_level", [$today, $today]);
 
         $posIds = array_values(array_unique(array_column($cells, 'position_id')));
@@ -54,6 +73,7 @@ class MatrixController extends Controller
                from training_certificates where deleted_at is null", [$today, $today]);
 
         return response()->json(['data' => [
+            'as_of' => $asOf,
             'positions' => array_map(fn ($p) => ['id' => $p->id, 'name' => $p->name, 'workers' => (int) $p->workers], $positions),
             'trainings' => $trainings,
             'cells' => array_map(fn ($c) => ['position_id' => $c->position_id, 'training_id' => $c->training_id, 'level' => $c->level,
@@ -76,7 +96,8 @@ class MatrixController extends Controller
     public function compliance(\Illuminate\Http\Request $request): JsonResponse
     {
         $f = $request->validate(['site_id' => ['nullable', 'uuid'], 'area_id' => ['nullable', 'uuid'], 'position_id' => ['nullable', 'uuid']]);
-        $today = DB::selectOne("select (now() at time zone 'America/Lima')::date as d")->d;
+        $asOf = self::asOf($request);
+        $today = $asOf ?? DB::selectOne("select (now() at time zone 'America/Lima')::date as d")->d;
         $soon = (int) \App\Core\Support\LegalParams::number('training_expiry_notice_days', 30);
         $where = ["w.deleted_at is null", "w.status = 'active'"];
         $bind = [$today, $soon, $today, $today];
@@ -95,7 +116,7 @@ class MatrixController extends Controller
                          when q.due_within_days is not null and w.hire_on is not null and w.hire_on + q.due_within_days >= ?::date then 'in_window'
                          else 'missing' end as state
                from workers w
-               join position_training_requirements q on q.position_id = w.current_position_id and q.deleted_at is null and coalesce(q.is_active, true)
+               join position_training_requirements q on q.position_id = w.current_position_id and ".self::rows($asOf)." and coalesce(q.is_active, true)
                 and q.training_id is not null and q.requirement_level <> 'suggested'
                join trainings t on t.id = q.training_id and t.deleted_at is null
                left join positions p on p.id = w.current_position_id

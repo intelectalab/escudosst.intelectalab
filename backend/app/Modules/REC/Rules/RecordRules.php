@@ -36,6 +36,7 @@ abstract class RecordRules
         'training_program_items' => ProgramRules::class,
         'trainings' => ProgramRules::class,
         'training_sessions' => ProgramRules::class,
+        'position_training_requirements' => ProgramRules::class,
         'training_attendances' => ProgramRules::class,
         'training_certificates' => ProgramRules::class,
         'training_evaluations' => ProgramRules::class,

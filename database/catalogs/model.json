@@ -31879,6 +31879,28 @@
     "comment": null
    },
    {
+    "name": "out_of_hours",
+    "type": "boolean",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "out_of_hours_reason",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -33581,6 +33603,28 @@
     "type": "boolean",
     "not_null": true,
     "default": "true",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "effective_from",
+    "type": "date",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "effective_to",
+    "type": "date",
+    "not_null": false,
+    "default": null,
     "values": null,
     "ref": null,
     "encrypted": false,

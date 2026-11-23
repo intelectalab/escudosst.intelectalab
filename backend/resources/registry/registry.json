@@ -13238,6 +13238,17 @@
      ],
      "default": "scheduled",
      "list": true
+    },
+    {
+     "name": "out_of_hours",
+     "label": "Fuera del horario de trabajo",
+     "readonly": true,
+     "type": "bool"
+    },
+    {
+     "name": "out_of_hours_reason",
+     "label": "Motivo de la sesión fuera de horario",
+     "type": "longtext"
     }
    ]
   },
@@ -14064,6 +14075,18 @@
      "label": "Activo",
      "type": "bool",
      "default": true
+    },
+    {
+     "name": "effective_from",
+     "label": "Vigente desde",
+     "readonly": true,
+     "type": "date"
+    },
+    {
+     "name": "effective_to",
+     "label": "Vigente hasta",
+     "readonly": true,
+     "type": "date"
     }
    ]
   },

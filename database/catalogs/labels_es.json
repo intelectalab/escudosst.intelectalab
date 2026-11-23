@@ -1285,7 +1285,11 @@
   "reference_type": "Registro vinculado (tipo)",
   "reference_id": "Registro vinculado",
   "closure_report_file_id": "Informe de cumplimiento",
-  "target_positions": "Puestos objetivo"
+  "target_positions": "Puestos objetivo",
+  "effective_from": "Vigente desde",
+  "effective_to": "Vigente hasta",
+  "out_of_hours": "Fuera del horario de trabajo",
+  "out_of_hours_reason": "Motivo de la sesión fuera de horario"
  },
  "values": {
   "A": "Tipo A",

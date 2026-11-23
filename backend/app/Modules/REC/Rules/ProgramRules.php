@@ -38,7 +38,8 @@ class ProgramRules extends RecordRules
             'training_program_items' => $this->programItem($op, $values, $current, $extra),
             'activity_executions' => $this->execution($op, $values, $current, $extra),
             'trainings' => $this->training($op, $values),
-            'training_sessions' => $this->session($op, $values, $current),
+            'training_sessions' => $this->session($op, $values, $current, $extra),
+            'position_training_requirements' => $this->matrixVersion($op, $values, $current, $extra),
             'training_attendances' => $this->attendance($values, $current),
             'training_certificates' => $this->certificate($op, $values, $current, $extra),
             'training_evaluations' => $this->evaluation($values, $current),
@@ -250,15 +251,69 @@ class ProgramRules extends RecordRules
         }
     }
 
-    private function session(string $op, array &$values, ?object $current): void
+    private function session(string $op, array &$values, ?object $current, array &$extra): void
     {
         if ($current && $current->status === 'cancelled' && $values !== []) {
             $this->conflict('La sesión está anulada.');
+        }
+        // RN-CAP-17: una sesión fuera del horario de trabajo de la sede (sus turnos activos) queda marcada y se registra con advertencia.
+        if (array_intersect(array_keys($values), ['starts_at', 'ends_at', 'site_id']) || $op === 'create') {
+            $start = $this->value($values, $current, 'starts_at');
+            $end = $this->value($values, $current, 'ends_at') ?: $start;
+            $site = $this->value($values, $current, 'site_id');
+            $extra['out_of_hours'] = [self::outOfHours($start, $end, $site) ? 'true' : 'false', []];
         }
         if (($values['status'] ?? null) === 'held'
             && ! DB::selectOne('select 1 as ok from training_attendances where session_id = ? and attended and deleted_at is null', [$current?->id])) {
             $this->fail('status', 'Registra al menos una asistencia antes de marcar la sesión como realizada.');
         }
+    }
+
+
+    /** RN-CAP-17: ¿la sesión cae fuera de todos los turnos activos de la sede (o de la empresa)? Sin turnos registrados no se marca. */
+    public static function outOfHours(?string $start, ?string $end, ?string $site): bool
+    {
+        if (! $start) {
+            return false;
+        }
+        $shifts = DB::select("select start_time, end_time from work_shifts where deleted_at is null and coalesce(status, 'active') = 'active'
+                                 and start_time is not null and end_time is not null".($site ? ' and (site_id = ? or site_id is null)' : ''), $site ? [$site] : []);
+        if (! $shifts) {
+            return false;
+        }
+        $t = DB::selectOne("select ((?::timestamptz) at time zone 'America/Lima')::time as a, ((?::timestamptz) at time zone 'America/Lima')::time as b,
+                                   ((?::timestamptz) at time zone 'America/Lima')::date = ((?::timestamptz) at time zone 'America/Lima')::date as same_day", [$start, $end, $start, $end]);
+        foreach ($shifts as $sh) {
+            $in = fn (string $x) => $sh->start_time <= $sh->end_time ? ($x >= $sh->start_time && $x <= $sh->end_time) : ($x >= $sh->start_time || $x <= $sh->end_time);
+            if ($in($t->a) && $in($t->b) && ($t->same_day || $sh->start_time > $sh->end_time)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * RN-CAP-06: la matriz por cargo no se pisa. Si cambia lo que exige (tema, curso, nivel, renovación o plazo), la versión anterior
+     * se guarda archivada con su fin de vigencia (ayer) y la fila actual rige desde hoy; así el cumplimiento se puede ver a una fecha.
+     */
+    private function matrixVersion(string $op, array &$values, ?object $current, array &$extra): void
+    {
+        if ($op !== 'update' || ! $current) {
+            return;
+        }
+        $keys = ['position_id', 'training_id', 'course_id', 'requirement_level', 'renewal_months', 'due_within_days', 'applies_to_contractors', 'is_active'];
+        $changed = array_filter($keys, fn ($k) => array_key_exists($k, $values) && (string) $values[$k] !== (string) ($current->{$k} ?? ''));
+        $today = DB::selectOne("select (now() at time zone 'America/Lima')::date as d")->d;
+        if (! $changed || (string) ($current->effective_from ?? substr((string) $current->created_at, 0, 10)) >= $today) {
+            return;
+        }
+        $cols = array_column(DB::select("select column_name from information_schema.columns where table_schema = 'public' and table_name = 'position_training_requirements'
+                                          and column_name not in ('id', 'effective_to', 'deleted_at', 'created_at', 'updated_at')"), 'column_name');
+        $list = implode(', ', array_map(fn ($c) => '"'.$c.'"', $cols));
+        DB::insert("insert into position_training_requirements ({$list}, effective_to, deleted_at, created_at, updated_at)
+                    select {$list}, (?::date - 1), now(), created_at, now() from position_training_requirements where id = ?", [$today, $current->id]);
+        $extra['effective_from'] = ['?::date', [$today]];
     }
 
     private function attendance(array &$values, ?object $current): void

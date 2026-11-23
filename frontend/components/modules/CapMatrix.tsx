@@ -10,6 +10,7 @@ import { recordsHref } from "@/lib/records";
 import { Icon } from "@/components/ui/Icon";
 import { Card, Dot, Kpi, fmtNum, toneOf, TONE_CHIP } from "./Summary";
 import { CapCompliance, CapToValidate } from "./CapCompliance";
+import { CapMatrixImport } from "./CapMatrixImport";
 
 type Matrix = {
   positions: { id: string; name: string; workers: number }[];
@@ -22,11 +23,14 @@ export function CapMatrix() {
   const [data, setData] = useState<Matrix | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
+  // RN-CAP-06: la matriz y su cumplimiento se pueden ver como estaban a una fecha pasada.
+  const [asOf, setAsOf] = useState("");
+  const [tick, setTick] = useState(0);
   useEffect(() => {
-    api<{ data: Matrix }>("/cap/matrix", { withCompany: true })
-      .then((r) => setData(r.data))
+    api<{ data: Matrix }>(`/cap/matrix${asOf ? `?as_of=${asOf}` : ""}`, { withCompany: true })
+      .then((r) => { setData(r.data); setError(null); })
       .catch((e: ApiError) => setError(e.detail ?? e.title));
-  }, []);
+  }, [asOf, tick]);
   const cell = useMemo(() => new Map((data?.cells ?? []).map((c) => [`${c.position_id}|${c.training_id}`, c])), [data]);
 
   if (error) return <p className="rounded-xl border border-line bg-surface p-4 text-sm text-muted">{error}</p>;
@@ -50,11 +54,17 @@ export function CapMatrix() {
       </div>
 
       <Card
-        title="Matriz por cargo"
+        title={asOf ? `Matriz por cargo al ${asOf.split("-").reverse().join("/")}` : "Matriz por cargo"}
         action={
+          <span className="flex items-center gap-3">
+          <label className="flex items-center gap-1 text-xs text-muted">Ver al
+            <input type="date" className="input !h-8 !w-auto !py-0 text-xs" aria-label="Ver la matriz a una fecha" value={asOf} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setAsOf(e.target.value)} />
+          </label>
+          {asOf && <button type="button" className="text-xs font-semibold text-brand underline" onClick={() => setAsOf("")}>Hoy</button>}
           <button type="button" className="inline-flex items-center gap-1 text-sm font-semibold text-brand" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
             {open ? "Ocultar" : "Mostrar"} <Icon name={open ? "collapse" : "expand"} size={16} />
           </button>
+          </span>
         }
       >
         {open &&
@@ -114,6 +124,7 @@ export function CapMatrix() {
             </>
           ))}
       </Card>
+      <CapMatrixImport onSaved={() => setTick((t) => t + 1)} />
       <CapToValidate />
       <CapCompliance />
     </div>

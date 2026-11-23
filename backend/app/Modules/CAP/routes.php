@@ -7,6 +7,9 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'company', 'module:CAP', 'permission:cap.trainings.read'])->prefix('cap')->group(function () {
     Route::get('matrix', \App\Modules\CAP\MatrixController::class);
     Route::get('compliance', [\App\Modules\CAP\MatrixController::class, 'compliance']);
+    // SCR-CAP-07: matriz por cargo desde Excel (plantilla, revisión y guardado).
+    Route::get('matrix/template.xlsx', [\App\Modules\CAP\MatrixImportController::class, 'template']);
+    Route::post('matrix/import', [\App\Modules\CAP\MatrixImportController::class, 'import']);
     Route::post('sessions/{id}/invite', [\App\Modules\CAP\MatrixController::class, 'invite'])->whereUuid('id');
     Route::post('certificates/validate', [CertificatesController::class, 'validateBatch']);
     Route::post('trainings/{training}/certificates', [CertificatesController::class, 'issue'])->whereUuid('training');

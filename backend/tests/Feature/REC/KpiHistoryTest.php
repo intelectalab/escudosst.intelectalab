@@ -22,8 +22,8 @@ it('guarda los indicadores del año por mes y los devuelve como series y en Exce
     // Correr de nuevo no duplica: actualiza el mes en curso.
     $again = app(KpiSnapshots::class)->forCompany(HUAYLAS_ID);
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
-    $dups = DB::selectOne("select count(*) as n from (select kpi_definition_id, period_start, site_id, count(*) from kpi_snapshots where deleted_at is null
-                           group by 1, 2, 3 having count(*) > 1) x")->n;
+    $dups = DB::selectOne("select count(*) as n from (select kpi_definition_id, period_start, site_id, area_id, count(*) from kpi_snapshots where deleted_at is null
+                           group by 1, 2, 3, 4 having count(*) > 1) x")->n;
     DB::select("select set_config('app.company_id', '', false)");
     expect((int) $dups)->toBe(0)->and($again)->toBeGreaterThan(0);
 
