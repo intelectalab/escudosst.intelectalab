@@ -158,3 +158,23 @@ it('entrega el paquete sin conexión con su tamaño y sin datos médicos', funct
         expect($json)->not->toContain($word);
     }
 });
+
+it('cuenta el conflicto abierto en su dispositivo y lo resuelve fusionando los valores del teléfono y del servidor', function () {
+    $h = offH();
+    $uid = 'pwa-fusion-'.substr(md5(uniqid()), 0, 6);
+    $talk = $this->postJson('/api/v1/records/CH5/safety_talks', ['topic' => 'Orden y limpieza', 'talk_on' => now()->toDateString()], $h)->assertCreated()->json('data.id');
+    $version = (int) DB::selectOne('select version from safety_talks where id = ?', [$talk])->version;
+    $this->patchJson("/api/v1/records/CH5/safety_talks/{$talk}", ['topic' => 'Orden y limpieza (servidor)'], $h)->assertOk();
+    $op = offOp('safety_talks', ['topic' => 'Orden y limpieza (teléfono)'], ['op' => 'update', 'entity_id' => $talk, 'base_version' => $version]);
+    expect($this->postJson('/api/v1/sync/batches', offBatch([$op], $uid), $h)->json('data.results.0.result'))->toBe('conflict');
+
+    $d = collect($this->getJson('/api/v1/sync/devices', $h)->json('data'))->firstWhere('device_uid', $uid);
+    expect((int) $d['open_conflicts'])->toBe(1);
+
+    $c = collect($this->getJson('/api/v1/sync/conflicts', $h)->json('data'))->firstWhere('entity_id', $talk);
+    $this->postJson("/api/v1/sync/conflicts/{$c['id']}/resolve", ['resolution' => 'merged'], $h)->assertStatus(422);
+    $this->postJson("/api/v1/sync/conflicts/{$c['id']}/resolve", ['resolution' => 'merged', 'payload' => ['topic' => 'Orden y limpieza (combinado)']], $h)->assertOk();
+    expect(DB::selectOne('select topic from safety_talks where id = ?', [$talk])->topic)->toBe('Orden y limpieza (combinado)');
+    $d = collect($this->getJson('/api/v1/sync/devices', $h)->json('data'))->firstWhere('device_uid', $uid);
+    expect((int) $d['open_conflicts'])->toBe(0);
+});

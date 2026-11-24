@@ -27,7 +27,7 @@ class DevicesController extends Controller
         $this->can('off.devices.read');
         $rows = DB::select("select d.id, d.device_uid, d.platform, d.model, d.app_version, d.status, d.registered_at, d.last_sync_at, d.revoked_at, d.revoke_reason,
                                    u.full_name as user_name,
-                                   (select count(*) from sync_conflicts c join sync_batches cb on cb.id = c.sync_batch_id where cb.device_id = d.id and c.resolution is null and c.deleted_at is null) as open_conflicts,
+                                   (select count(*) from sync_conflicts c join sync_batches cb on cb.id = c.sync_batch_id where cb.device_id = d.id and c.resolution = 'pending' and c.deleted_at is null) as open_conflicts,
                                    (select coalesce(sum(b.rejected_count), 0) from sync_batches b where b.device_id = d.id and b.deleted_at is null) as rejected
                               from devices d left join users u on u.id = d.user_id where d.deleted_at is null
                              order by d.status, u.full_name, d.last_sync_at desc nulls last");

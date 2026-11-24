@@ -12,7 +12,8 @@ import { PlanReferencePicker } from "./PlanReferencePicker";
 import { ModuleKpis } from "./ModuleKpis";
 import { SignaturePanel } from "./SignaturePanel";
 import { api, ApiError } from "@/lib/api";
-import { displayValue, downloadFile, records, statusTone, toLocalInput, uploadFile, type ModuleSchema, type RecordField, type RecordPage, type RecordResource, type RecordRow } from "@/lib/records";
+import { displayValue, downloadFile, records, statusTone, toLocalInput, type ModuleSchema, type RecordField, type RecordPage, type RecordResource, type RecordRow } from "@/lib/records";
+import { isQueuedFile, uploadOrQueue } from "@/lib/offline";
 import { Button } from "@/components/ui/Button";
 import { Chip, EmptyState } from "@/components/ui/Display";
 import { FilterBar, FilterSelect, SearchInput } from "@/components/ui/FilterBar";
@@ -791,7 +792,7 @@ function Input({
       control = <RefMulti code={code} table={table} f={f} value={Array.isArray(value) ? (value as string[]) : []} initialLabels={initialLabels} disabled={!!disabled} onChange={onChange} />;
       break;
     case "file":
-      control = <FileInput code={code} value={str} initialLabel={initialLabel} disabled={disabled} onChange={onChange} />;
+      control = <FileInput code={code} table={table} value={str} initialLabel={initialLabel} disabled={disabled} onChange={onChange} />;
       break;
     case "json":
       if (JSON_EDITORS[`${table}.${f.name}`]) {
@@ -847,9 +848,9 @@ function RefMulti({ code, table, f, value, initialLabels, disabled, onChange }: 
   }, [initialLabels]);
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => { records.options(code, table, f.name, { q: text }).then((r) => setOpts(r.data)).catch(() => setOpts([])); }, 250);
+    const t = setTimeout(() => { records.options(code, table, f.name, { q: text }, f.ref).then((r) => setOpts(r.data)).catch(() => setOpts([])); }, 250);
     return () => clearTimeout(t);
-  }, [open, text, code, table, f.name]);
+  }, [open, text, code, table, f.name, f.ref]);
   useEffect(() => {
     const onDoc = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
     document.addEventListener("mousedown", onDoc);
@@ -917,7 +918,7 @@ export function RefSelect({
       setLabel(initialLabel);
       setText(initialLabel);
     } else if (value && !label) {
-      records.options(code, table, f.name, { id: value }).then((r) => {
+      records.options(code, table, f.name, { id: value }, f.ref).then((r) => {
         const l = r.data[0]?.label ?? "";
         setLabel(l);
         setText(l);
@@ -933,12 +934,12 @@ export function RefSelect({
     }
     const t = setTimeout(() => {
       records
-        .options(code, table, f.name, { q: text === label ? "" : text })
+        .options(code, table, f.name, { q: text === label ? "" : text }, f.ref)
         .then((r) => setOpts(r.data))
         .finally(() => setLoading(false));
     }, 250);
     return () => clearTimeout(t);
-  }, [open, text, label, code, table, f.name]);
+  }, [open, text, label, code, table, f.name, f.ref]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -1014,7 +1015,7 @@ export function RefSelect({
 
 
 /** Campo de archivo: sube a la empresa y guarda el id; muestra el nombre y permite abrirlo. */
-function FileInput({ code, value, initialLabel, disabled, onChange }: { code: string; value: string; initialLabel?: string; disabled: boolean; onChange: (v: unknown) => void }) {
+function FileInput({ code, table, value, initialLabel, disabled, onChange }: { code: string; table?: string; value: string; initialLabel?: string; disabled: boolean; onChange: (v: unknown) => void }) {
   const [name, setName] = useState(initialLabel ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1023,7 +1024,14 @@ function FileInput({ code, value, initialLabel, disabled, onChange }: { code: st
   }, [initialLabel]);
   return (
     <div className="space-y-1">
-      {value && (
+      {value && isQueuedFile(value) && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="font-semibold">📎 {name || "Archivo"}</span>
+          <span className="text-xs text-muted">Guardado en el equipo: se sube al sincronizar.</span>
+          {!disabled && <button type="button" className="text-xs text-muted hover:text-bad" onClick={() => { onChange(null); setName(""); }}>Quitar</button>}
+        </div>
+      )}
+      {value && !isQueuedFile(value) && (
         <div className="flex items-center gap-2 text-sm">
           <button type="button" className="font-semibold text-brand hover:underline" onClick={() => downloadFile(`/files/${value}`, name || "archivo").catch((e: ApiError) => setError(e.detail ?? e.title))}>
             📎 {name || "Ver archivo"}
@@ -1054,7 +1062,7 @@ function FileInput({ code, value, initialLabel, disabled, onChange }: { code: st
             setBusy(true);
             setError(null);
             try {
-              const r = await uploadFile(file, code);
+              const r = await uploadOrQueue(file, code, table);
               onChange(r.id);
               setName(r.original_name);
             } catch (err) {

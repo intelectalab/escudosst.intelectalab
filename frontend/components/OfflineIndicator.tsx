@@ -37,6 +37,45 @@ const fmt = (iso: string) => {
   }
 };
 
+/**
+ * SCR-OFF-04: comparación lado a lado; por cada campo se elige el valor del teléfono o el del servidor y se guarda
+ * la combinación (se aplica con las mismas validaciones que una edición en línea).
+ */
+function MergeTable({ c, busy, onMerge }: { c: SyncConflict; busy: boolean; onMerge: (payload: Record<string, unknown>) => void }) {
+  const fields = Object.keys(c.client_payload ?? {});
+  const [pick, setPick] = useState<Record<string, "phone" | "server">>(() => Object.fromEntries(fields.map((k) => [k, "server"])));
+  const canMerge = c.conflict_type !== "deleted_on_server" && !!c.server_snapshot;
+  const show = (v: unknown) => (v == null || v === "" ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v));
+  return (
+    <div className="mt-1 space-y-1.5">
+      <table className="w-full text-left text-xs">
+        <thead className="text-muted"><tr><th className="pr-3 font-normal">Campo</th><th className="pr-3 font-normal">En el teléfono</th><th className="font-normal">En el servidor</th></tr></thead>
+        <tbody>
+          {fields.map((k) => (
+            <tr key={k} className="align-top">
+              <td className="pr-3">{k}</td>
+              {(["phone", "server"] as const).map((side) => (
+                <td key={side} className="pr-3">
+                  <label className="inline-flex items-start gap-1">
+                    {canMerge && <input type="radio" name={`${c.id}-${k}`} checked={pick[k] === side} onChange={() => setPick({ ...pick, [k]: side })} aria-label={`${k}: ${side === "phone" ? "valor del teléfono" : "valor del servidor"}`} />}
+                    <span>{show(side === "phone" ? c.client_payload?.[k] : c.server_snapshot?.[k])}</span>
+                  </label>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {canMerge && fields.length > 1 && (
+        <button className="rounded-md border border-line px-2 py-0.5 hover:bg-bg" disabled={busy}
+          onClick={() => onMerge(Object.fromEntries(fields.map((k) => [k, pick[k] === "phone" ? c.client_payload?.[k] : c.server_snapshot?.[k]])))}>
+          Guardar la combinación elegida
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function OfflineIndicator() {
   const { user, company, modules } = useApp();
   const enabled = modules.some((m) => m.code === "OFF" && m.mode === "enabled");
@@ -180,14 +219,7 @@ export function OfflineIndicator() {
                       <span className="text-muted">{CONFLICT_TEXT[c.conflict_type] ?? c.conflict_type} · {fmt(c.created_at)}{c.user_name ? ` · ${c.user_name}` : ""}</span>
                     </div>
                     {c.operation === "update" && c.client_payload && (
-                      <dl className="mt-1 grid grid-cols-[auto_1fr_1fr] gap-x-3 text-xs">
-                        <dt className="text-muted">Campo</dt><dd className="text-muted">En el teléfono</dd><dd className="text-muted">En el servidor</dd>
-                        {Object.entries(c.client_payload).map(([k, v]) => (
-                          <div key={k} className="contents">
-                            <dt>{k}</dt><dd>{String(v ?? "—")}</dd><dd>{String(c.server_snapshot?.[k] ?? "—")}</dd>
-                          </div>
-                        ))}
-                      </dl>
+                      <MergeTable c={c} busy={busy === c.id} onMerge={(payload) => act(c.id, () => resolveConflict(c.id, "merged", payload))} />
                     )}
                     <div className="mt-1.5 flex flex-wrap gap-2">
                       {c.operation === "update" && c.conflict_type !== "deleted_on_server" && (

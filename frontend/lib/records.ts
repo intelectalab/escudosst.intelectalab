@@ -2,7 +2,7 @@
 // El backend describe cada tabla (campos, tipos, opciones y permisos) y esta app arma la pantalla.
 
 import { api } from "./api";
-import { createOrQueue } from "./offline";
+import { createOrQueue, offlineOptions } from "./offline";
 
 export type FieldType = "text" | "longtext" | "int" | "number" | "date" | "datetime" | "time" | "bool" | "enum" | "ref" | "refs" | "tags" | "json" | "source" | "file";
 
@@ -61,11 +61,19 @@ export const records = {
   update: (code: string, table: string, id: string, body: Record<string, unknown>) =>
     api<{ data: RecordRow }>(`${base(code, table)}/${id}`, { method: "PATCH", body, withCompany: true }),
   remove: (code: string, table: string, id: string) => api<void>(`${base(code, table)}/${id}`, { method: "DELETE", withCompany: true }),
-  options: (code: string, table: string, field: string, params: { q?: string; id?: string }) => {
+  options: async (code: string, table: string, field: string, params: { q?: string; id?: string }, ref?: string) => {
     const qs = new URLSearchParams();
     if (params.q) qs.set("q", params.q);
     if (params.id) qs.set("id", params.id);
-    return api<{ data: { id: string; label: string }[] }>(`${base(code, table)}/options/${field}?${qs}`, { withCompany: true });
+    try {
+      return await api<{ data: { id: string; label: string }[] }>(`${base(code, table)}/options/${field}?${qs}`, { withCompany: true });
+    } catch (e) {
+      // Sin señal: trabajadores, plantillas y EPP salen del paquete guardado en el equipo (M-OFF SCR-OFF-02).
+      if ((e as { status?: number }).status !== 0) throw e;
+      const local = await offlineOptions(ref, field, params);
+      if (!local) throw e;
+      return local;
+    }
   },
 };
 

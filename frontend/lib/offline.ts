@@ -325,6 +325,12 @@ const isNetwork = (e: unknown) => e instanceof ApiError && e.status === 0;
 
 /** Alta de un registro: en línea va directo; sin señal (y con OFF) queda en la cola con su id definitivo. */
 export async function createOrQueue<T extends { id: string }>(table: string, send: () => Promise<{ data: T }>, body: Record<string, unknown>): Promise<{ data: T }> {
+  // Con una foto guardada en el equipo, el registro va por la cola: al sincronizar se sube la foto y luego el registro.
+  if (canQueue(table) && Object.values(body).some((v) => typeof v === "string" && v.startsWith(LOCAL_FILE))) {
+    const op = await enqueue({ entity: table, payload: body });
+    if (typeof navigator !== "undefined" && navigator.onLine) void syncNow();
+    return { data: { ...body, id: op.entity_id, own: true, offline_pending: true } as unknown as T };
+  }
   try {
     return await send();
   } catch (e) {
@@ -441,8 +447,8 @@ export async function loadConflicts(): Promise<SyncConflict[]> {
   }
 }
 
-export async function resolveConflict(id: string, resolution: "server_wins" | "client_wins" | "discarded"): Promise<void> {
-  await api(`/sync/conflicts/${id}/resolve`, { method: "POST", withCompany: true, body: { resolution } });
+export async function resolveConflict(id: string, resolution: "server_wins" | "client_wins" | "discarded" | "merged", payload?: Record<string, unknown>): Promise<void> {
+  await api(`/sync/conflicts/${id}/resolve`, { method: "POST", withCompany: true, body: payload ? { resolution, payload } : { resolution } });
   await loadConflicts();
 }
 
@@ -542,4 +548,50 @@ export async function readPackage<T = Record<string, unknown>>(): Promise<T | nu
   } catch {
     return null;
   }
+}
+
+/**
+ * Sube el archivo; sin señal, y si el registro se puede capturar sin conexión, lo guarda cifrado en el equipo (comprimido
+ * según offline_photo_max_kb, RN-OFF-06) y se sube al sincronizar. queued = true cuando quedó en el equipo.
+ */
+export async function uploadOrQueue(file: File, module: string | undefined, table?: string): Promise<{ id: string; original_name: string; queued: boolean }> {
+  const queueable = !!table && canQueue(table);
+  if (queueable && typeof navigator !== "undefined" && !navigator.onLine) return { id: await queueFile(file, module), original_name: file.name, queued: true };
+  const { uploadFile } = await import("./records");
+  try {
+    return { ...(await uploadFile(file, module)), queued: false };
+  } catch (e) {
+    if (queueable && (e instanceof TypeError || isNetwork(e))) return { id: await queueFile(file, module), original_name: file.name, queued: true };
+    throw e;
+  }
+}
+
+export const isQueuedFile = (v: unknown) => typeof v === "string" && v.startsWith(LOCAL_FILE);
+
+/** Tabla del paquete sin conexión que corresponde a un campo de referencia (por su ref o, si no llega, por el nombre). */
+function packageList(ref: string | undefined, field: string): { key: string; label: (r: Record<string, unknown>) => string } | null {
+  const t = ref ?? (field.endsWith("worker_id") ? "workers" : field.endsWith("template_id") ? "inspection_templates" : field === "ppe_item_id" ? "ppe_items" : "");
+  if (t === "workers") return { key: "workers", label: (r) => `${r.full_name}${r.document_last4 ? ` · ***${r.document_last4}` : ""}` };
+  if (t === "inspection_templates") return { key: "inspection_templates", label: (r) => String(r.code ? `${r.code} · ${r.name}` : r.name) };
+  if (t === "ppe_items") return { key: "ppe_items", label: (r) => String(r.code ? `${r.code} · ${r.name}` : r.name) };
+  return null;
+}
+
+/**
+ * SCR-OFF-02: sin señal, las opciones de trabajadores, plantillas y EPP salen del paquete guardado en el equipo.
+ * null = ese campo no está en el paquete (o no hay paquete).
+ */
+export async function offlineOptions(ref: string | undefined, field: string, params: { q?: string; id?: string }): Promise<{ data: { id: string; label: string }[] } | null> {
+  const list = packageList(ref, field);
+  if (!list) return null;
+  const pkg = await readPackage<Record<string, Record<string, unknown>[]>>();
+  const rows = pkg?.[list.key];
+  if (!rows) return null;
+  const norm = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const q = params.q ? norm(params.q.trim()) : "";
+  const out = rows
+    .filter((r) => (params.id ? r.id === params.id : !q || norm(list.label(r)).includes(q)))
+    .slice(0, 50)
+    .map((r) => ({ id: String(r.id), label: list.label(r) }));
+  return { data: out };
 }
