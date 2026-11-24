@@ -7961,6 +7961,18 @@
      "label": "Aprobado el",
      "readonly": true,
      "type": "datetime"
+    },
+    {
+     "name": "original_value",
+     "label": "Valor medido (unidad original)",
+     "readonly": true,
+     "type": "number"
+    },
+    {
+     "name": "original_unit",
+     "label": "Unidad original",
+     "readonly": true,
+     "type": "text"
     }
    ]
   },

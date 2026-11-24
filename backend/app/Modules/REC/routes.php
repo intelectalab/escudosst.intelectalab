@@ -84,6 +84,15 @@ Route::middleware(['auth:sanctum', 'company', 'module:ATS'])->prefix('ats/forms/
     Route::post('copy', 'copy')->middleware('throttle:30,1');
 });
 
+// Monitoreo de agentes (M-MAG SCR-MAG-01/02, RN-MAG-04/07): mapa de puntos con semáforo, calendario y conversión de unidades.
+Route::middleware(['auth:sanctum', 'company', 'module:MAG'])->prefix('mag')->controller(\App\Modules\REC\MagOverviewController::class)->group(function () {
+    Route::get('points', 'points');
+    Route::get('calendar', 'calendar');
+    Route::get('unit-conversions', 'conversions');
+    Route::post('unit-conversions', 'storeConversion');
+    Route::delete('unit-conversions/{id}', 'deleteConversion')->whereUuid('id');
+});
+
 // Monitoreo de agentes (M-MAG SCR-MAG-03/05): carga masiva de mediciones desde Excel y tendencia por punto.
 Route::middleware(['auth:sanctum', 'company', 'module:MAG'])->prefix('mag')->controller(\App\Modules\REC\MeasurementsController::class)->group(function () {
     Route::get('import/template', 'template');

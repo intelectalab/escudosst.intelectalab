@@ -31,7 +31,7 @@ class ImprovementRules extends RecordRules
             'audit_findings' => $this->auditFinding($values, $current),
             'management_reviews' => $this->review($values, $current, $extra),
             'management_review_outputs' => $this->reviewOutput($values, $current),
-            'measurements' => $this->measurement($values, $current),
+            'measurements' => $this->measurement($values, $current, $extra),
             'change_requests' => $this->change($op, $values, $current),
             'monitoring_campaigns' => $this->campaign($values, $current),
             'ergonomic_assessments' => $this->ergonomic($values, $current),
@@ -131,6 +131,21 @@ class ImprovementRules extends RecordRules
         if ($tp && (int) (DB::selectOne('select year from training_programs where id = ?', [$tp])?->year ?? $year) !== $year) {
             $this->fail('training_program_id', 'El programa de capacitación vinculado es de otro año.');
         }
+    }
+
+    /** RN-MAG-04: conversión registrada de una unidad a otra (primero la del agente, luego la general; vale también la inversa). */
+    public static function unitConversion(?string $agent, string $from, string $to): ?object
+    {
+        $f = mb_strtolower(trim($from));
+        $t = mb_strtolower(trim($to));
+        $row = DB::selectOne(
+            "select id, factor, lower(trim(from_unit)) = ? as direct from unit_conversions
+              where deleted_at is null and ((lower(trim(from_unit)) = ? and lower(trim(to_unit)) = ?) or (lower(trim(from_unit)) = ? and lower(trim(to_unit)) = ?))
+                and (agent_type_id is null or agent_type_id = ?::uuid)
+              order by (agent_type_id is not null) desc, (company_id is not null) desc limit 1",
+            [$f, $f, $t, $t, $f, $agent]);
+
+        return $row ? (object) ['id' => $row->id, 'factor' => $row->direct ? (float) $row->factor : 1 / (float) $row->factor] : null;
     }
 
     private function planItem(array &$values, ?object $current): void
@@ -360,7 +375,7 @@ class ImprovementRules extends RecordRules
         ];
     }
 
-    private function measurement(array &$values, ?object $current): void
+    private function measurement(array &$values, ?object $current, array &$extra): void
     {
         // RN-MAG-08: aprobada no cambia (solo se anula con motivo); anulada no cambia.
         if ($current && $current->status === 'voided' && $values !== []) {
@@ -415,10 +430,21 @@ class ImprovementRules extends RecordRules
         if ($limit && (($limit->valid_from && $limit->valid_from > $at) || ($limit->valid_to && $limit->valid_to < $at))) {
             $this->fail('exposure_limit_id', 'Ese límite no estaba vigente en la fecha de la medición: elige el límite vigente.');
         }
-        // RN-MAG-04: la medición se compara en la misma unidad del límite.
+        // RN-MAG-04: la medición se compara en la unidad del límite; si viene en otra, se convierte con la tabla de conversión
+        // registrada (del agente o general, en un sentido o en el inverso) y se guardan el valor y la unidad originales.
         $unit = $this->value($values, $current, 'unit');
-        if ($unit && $limit?->unit && mb_strtolower(trim($unit)) !== mb_strtolower(trim($limit->unit))) {
-            $this->fail('unit', "La medición está en «{$unit}» y el límite en «{$limit->unit}»: regístrala en la unidad del límite.");
+        if ($unit && $limit?->unit && mb_strtolower(trim($unit)) !== mb_strtolower(trim($limit->unit))
+            && (array_key_exists('value', $values) || array_key_exists('unit', $values) || array_key_exists('exposure_limit_id', $values))) {
+            $conv = self::unitConversion($agent ?? $this->value($values, $current, 'agent_type_id'), $unit, $limit->unit);
+            if (! $conv) {
+                $this->fail('unit', "La medición está en «{$unit}» y el límite en «{$limit->unit}», y no hay una conversión registrada entre esas unidades: regístrala o anota la medición en «{$limit->unit}».");
+            }
+            $values['original_value'] = (float) $value;
+            $values['original_unit'] = $unit;
+            $extra['unit_conversion_id'] = ['?::uuid', [$conv->id]];
+            $value = round((float) $value * $conv->factor, 8);
+            $values['value'] = $value;
+            $values['unit'] = $limit->unit;
         }
         if (! $unit && $limit?->unit) {
             $values['unit'] = $limit->unit;

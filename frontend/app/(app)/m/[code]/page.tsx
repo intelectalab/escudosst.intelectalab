@@ -38,6 +38,7 @@ import { EmoProtocols } from "@/components/modules/EmoProtocols";
 import { SimRun } from "@/components/modules/SimRun";
 import { AtsCopy } from "@/components/modules/AtsCopy";
 import { MagFollowUp, MagTools } from "@/components/modules/MagTools";
+import { MagOverview } from "@/components/modules/MagOverview";
 import { ErgoSummary, PsiInstruments, Rm375Form, RulaForm } from "@/components/modules/PsiTools";
 import { ObsModule } from "@/components/modules/ObsModule";
 import { RebaForm } from "@/components/modules/RebaForm";
@@ -361,6 +362,7 @@ function MagPage({ readOnly }: { readOnly: boolean }) {
   const [v, setV] = useState(0);
   return (
     <div className="space-y-6">
+      <MagOverview key={`o${v}`} readOnly={readOnly} />
       <MagTools readOnly={readOnly} onSaved={() => setV((x) => x + 1)} />
       <MagFollowUp />
       <ModuleRecords key={v} code="MAG" readOnly={readOnly} />

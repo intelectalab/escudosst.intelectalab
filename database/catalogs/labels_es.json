@@ -1291,7 +1291,10 @@
   "out_of_hours": "Fuera del horario de trabajo",
   "out_of_hours_reason": "Motivo de la sesión fuera de horario",
   "unlock_rule": "Se desbloquea",
-  "unlock_on": "Se desbloquea el"
+  "unlock_on": "Se desbloquea el",
+  "original_value": "Valor medido (unidad original)",
+  "original_unit": "Unidad original",
+  "unit_conversion_id": "Conversión de unidades usada"
  },
  "values": {
   "A": "Tipo A",
