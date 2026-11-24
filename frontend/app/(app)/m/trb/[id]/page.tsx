@@ -3,7 +3,7 @@
 // Ficha 360° del trabajador (M-TRB, SCR-TRB-02): cabecera con nombre, documento enmascarado, puesto, sede y chip
 // «Habilitado / No habilitado» (semáforo de requisitos), y pestañas Datos · Asignaciones · Capacitaciones · EPP ·
 // Aptitud (solo el estado, nunca datos clínicos) · SCTR · Eventos · Documentos. Cada pestaña lista los registros del
-// trabajador en su módulo (f[worker_id]) y enlaza al módulo de origen.
+// trabajador en su módulo (f[worker_id]) y enlaza al módulo de origen. En «Datos», el estado del consentimiento de datos.
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -12,6 +12,7 @@ import { useApp } from "@/components/AppContext";
 import { Icon } from "@/components/ui/Icon";
 import { EnabledChip, RequirementChips, useRequirements } from "@/components/modules/WorkerChecks";
 import { WorkerAppActivation } from "@/components/worker/WorkerAppActivation";
+import { WorkerConsentStatus } from "@/components/records/WorkerExtras";
 import { displayValue, records, recordsHref, type ModuleSchema, type RecordField, type RecordRow } from "@/lib/records";
 
 type Tab = { key: string; label: string; module: string; table: string; columns?: string[] };
@@ -111,14 +112,17 @@ export default function WorkerPage() {
 
       <div role="tabpanel">
         {current?.key === "data" ? (
-          <dl className="grid gap-x-6 gap-y-3 rounded-xl border border-line bg-surface p-4 sm:grid-cols-2 lg:grid-cols-3">
-            {DATA_FIELDS.map((k) => fields.find((f) => f.name === k)).filter((f): f is RecordField => !!f).map((f) => (
-              <div key={f.name}>
-                <dt className="text-xs text-muted">{f.label}</dt>
-                <dd className="text-sm font-medium">{displayValue(f, worker)}</dd>
-              </div>
-            ))}
-          </dl>
+          <div className="space-y-3">
+            <dl className="grid gap-x-6 gap-y-3 rounded-xl border border-line bg-surface p-4 sm:grid-cols-2 lg:grid-cols-3">
+              {DATA_FIELDS.map((k) => fields.find((f) => f.name === k)).filter((f): f is RecordField => !!f).map((f) => (
+                <div key={f.name}>
+                  <dt className="text-xs text-muted">{f.label}</dt>
+                  <dd className="text-sm font-medium">{displayValue(f, worker)}</dd>
+                </div>
+              ))}
+            </dl>
+            <WorkerConsentStatus workerId={id} />
+          </div>
         ) : current ? (
           <WorkerTab key={current.key} tab={current} workerId={id} />
         ) : null}

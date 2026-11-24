@@ -1,6 +1,6 @@
 "use client";
 
-// «Mi cuenta» › tus datos: nombre, correo (con confirmación al correo nuevo) y contraseña (pide la actual).
+// «Mi cuenta» › tus datos: nombre, correo (con confirmación al correo nuevo), contraseña (pide la actual) e idioma (SCR-USR-05).
 // Sirve igual para el equipo de la plataforma y para los usuarios de las empresas.
 
 import { FormEvent, useState } from "react";
@@ -12,9 +12,26 @@ import { api, ApiError } from "@/lib/api";
 
 type Mode = "idle" | "name" | "email" | "password";
 
-export function AccountEditor({ name, email, roleLabel, roleValue, platform }: { name: string; email: string; roleLabel: string; roleValue: string; platform: boolean }) {
+/** Idiomas de la interfaz: hoy solo existe español (Perú) (docs/00 y docs/02 §7). */
+const LOCALES: [string, string][] = [["es-PE", "Español (Perú)"]];
+
+export function AccountEditor({ name, email, roleLabel, roleValue, platform, locale = "es-PE" }: { name: string; email: string; roleLabel: string; roleValue: string; platform: boolean; locale?: string }) {
   const [mode, setMode] = useState<Mode>("idle");
   const [notice, setNotice] = useState<string | null>(null);
+  const [lang, setLang] = useState(locale);
+  const [langError, setLangError] = useState<string | null>(null);
+
+  async function saveLang(v: string) {
+    const prev = lang;
+    setLang(v);
+    setLangError(null);
+    try {
+      await api("/me/profile", { method: "PATCH", body: { locale: v } });
+    } catch (x) {
+      setLang(prev);
+      setLangError(x instanceof ApiError ? (x.errors?.locale?.[0] ?? x.message) : "No se pudo guardar.");
+    }
+  }
 
   const row = (icon: string, label: string, value: string, edit?: Mode, action?: string) => (
     <div className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
@@ -64,6 +81,18 @@ export function AccountEditor({ name, email, roleLabel, roleValue, platform }: {
       ) : (
         row("lock", "Contraseña", "••••••••••", "password")
       )}
+      <div className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-2.5">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-bg text-muted">
+          <Icon name="globe" size={16} />
+        </span>
+        <label className="min-w-0 flex-1">
+          <span className="block text-xs text-muted">Idioma</span>
+          <select className="input mt-1 !h-9" value={lang} onChange={(e) => void saveLang(e.target.value)}>
+            {LOCALES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          {langError && <span className="mt-1 block text-xs text-bad">{langError}</span>}
+        </label>
+      </div>
       {row("shield", roleLabel, roleValue)}
       {platform && (
         <p className="flex items-start gap-2 rounded-xl bg-amber-soft/70 px-3.5 py-2.5 text-xs text-amber-ink">

@@ -5,6 +5,7 @@ namespace App\Modules\TRB;
 use App\Core\Http\ApiProblem;
 use App\Core\Tenancy\CompanyContext;
 use App\Http\Controllers\Controller;
+use App\Modules\FIR\SignatureController;
 use App\Modules\FIR\SignatureImages;
 use App\Modules\FIR\SignatureService;
 use App\Modules\PSI\PsychosocialSurvey;
@@ -179,10 +180,11 @@ class WorkerSelfController extends Controller
         if (! in_array($kind, self::KINDS, true) || ! Str::isUuid($id)) {
             throw ApiProblem::notFound('No encontramos ese pendiente.');
         }
-        [, , $meta] = $this->subject($kind, $id, $w);
+        [$table, , $meta] = $this->subject($kind, $id, $w);
         unset($meta['request']);
 
-        return response()->json(['data' => $meta + ['kind' => $kind, 'id' => $id]]);
+        // SCR-FIR-01 / RN-FIR-08: si el método mínimo del tipo de registro lo permite, basta el trazo (sin PIN).
+        return response()->json(['data' => $meta + ['kind' => $kind, 'id' => $id, 'stroke_allowed' => SignatureController::allows($table, 'stroke')]]);
     }
 
     public function sign(Request $request): JsonResponse
@@ -202,17 +204,25 @@ class WorkerSelfController extends Controller
             && ($miss = \App\Modules\REC\AtsTrainingController::missing((string) $row->ats_form_id, $w->id))) {
             throw new ApiProblem(409, 'conflict', 'Falta capacitación', 'No puedes firmar este ATS: te falta la capacitación «'.implode('», «', $miss).'». Consulta con el área de SST.');
         }
-        WorkerAppAccess::requirePin($w->id, $request->input('pin'));
+        // SCR-FIR-01: «He leído» antes de firmar. RN-FIR-08: con PIN, o solo con el trazo si el método mínimo del tipo de registro lo permite.
+        if (! $request->boolean('read_confirmed')) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Marca «He leído» antes de firmar.', ['errors' => ['read_confirmed' => ['Marca «He leído» antes de firmar.']]]);
+        }
+        $image = $request->input('image') ?: null;
+        $method = ! $request->filled('pin') && $image ? 'stroke' : 'pin';
+        SignatureController::assertMinMethod($table, $method);
+        if ($method === 'pin') {
+            WorkerAppAccess::requirePin($w->id, $request->input('pin'));
+        }
         $ctx = app(CompanyContext::class);
         $uid = (string) auth()->id();
-        $image = $request->input('image') ?: null;
 
         if ($kind === 'signature') {
             $hash = SignatureService::hash($table, $row);
             if (! hash_equals(bin2hex(WorkerAppAccess::bytes($meta['request']->document_hash)), $hash)) {
                 throw new ApiProblem(409, 'conflict', 'El registro cambió', 'El registro cambió después de pedir tu firma. Pide al área de SST que vuelva a enviarla.');
             }
-            $sig = $this->signature($ctx->companyId, $meta['request']->id, $table, $row->id, $w, $uid, $hash, $image);
+            $sig = $this->signature($ctx->companyId, $meta['request']->id, $table, $row->id, $w, $uid, $hash, $image, $method);
             DB::update("update signature_requests set status = 'signed', signed_at = now(), updated_by = ? where id = ?", [$uid, $meta['request']->id]);
             \App\Modules\NOT\FichaEvents::signed($meta['request']->id);
         } else {
@@ -223,7 +233,7 @@ class WorkerSelfController extends Controller
                     sequence_order, status, requested_by, signed_at, created_by, updated_by)
                  values (?, ?, ?, ?, decode(?, 'hex'), ?, ?, 'worker', ?, 'signed', ?, now(), ?, ?) returning id",
                 [$ctx->companyId, $table, $row->id, Registry::data()['resources'][$table]['module'] ?? null, $hash, $uid, $w->id, $order, $uid, $uid, $uid])->id;
-            $sig = $this->signature($ctx->companyId, $req, $table, $row->id, $w, $uid, $hash, $image);
+            $sig = $this->signature($ctx->companyId, $req, $table, $row->id, $w, $uid, $hash, $image, $method);
             match ($kind) {
                 'document' => DB::insert("insert into document_acknowledgements (company_id, document_version_id, worker_id, user_id, method, signature_id, acknowledged_at, ip, user_agent, created_by)
                                           values (?, ?, ?, ?, 'app_signature', ?, now(), ?::inet, ?, ?)",
@@ -243,10 +253,10 @@ class WorkerSelfController extends Controller
         }
         DB::insert("insert into audit_logs (company_id, actor_user_id, actor_role, actor_type, action, module_code, entity_type, entity_id, changes, ip, user_agent)
                     values (?, ?, 'worker', 'user', 'signature_signed', ?, ?, ?, ?::jsonb, ?::inet, ?)",
-            [$ctx->companyId, $uid, Registry::data()['resources'][$table]['module'] ?? 'FIR', $table, $row->id, json_encode(['signature' => $sig, 'method' => 'pin', 'app' => 'worker']),
+            [$ctx->companyId, $uid, Registry::data()['resources'][$table]['module'] ?? 'FIR', $table, $row->id, json_encode(['signature' => $sig, 'method' => $method, 'app' => 'worker']),
                 $request->ip(), mb_substr((string) $request->userAgent(), 0, 300)]);
 
-        return response()->json(['data' => ['status' => 'signed', 'signature_id' => $sig]]);
+        return response()->json(['data' => ['status' => 'signed', 'signature_id' => $sig, 'method' => $method]]);
     }
 
     /** GET /me/worker/iperc — Mi IPERC (M-IPC SCR-IPC-08). */
@@ -669,11 +679,11 @@ class WorkerSelfController extends Controller
         }
     }
 
-    private function signature(string $company, string $requestId, string $table, string $subjectId, object $w, string $uid, string $hash, ?string $image): string
+    private function signature(string $company, string $requestId, string $table, string $subjectId, object $w, string $uid, string $hash, ?string $image, string $method = 'pin'): string
     {
         $req = request();
         $doc = $w->document_last4 ? '****'.$w->document_last4 : null;
-        $evidence = ['request_id' => $requestId, 'method' => 'pin', 'channel' => 'worker_app', 'signed_by_user_id' => $uid, 'signer_worker_id' => $w->id, 'signer' => $w->full_name,
+        $evidence = ['request_id' => $requestId, 'method' => $method, 'channel' => 'worker_app', 'read_confirmed' => true, 'signed_by_user_id' => $uid, 'signer_worker_id' => $w->id, 'signer' => $w->full_name,
             'subject' => "{$table}/{$subjectId}", 'document_hash' => $hash, 'hash_scope' => SignatureService::scope($table), 'ip' => $req->ip(),
             'user_agent' => mb_substr((string) $req->userAgent(), 0, 300), 'at' => now()->toIso8601String()];
         [$lat, $lng, $device] = SignatureService::place($req, $uid);
@@ -681,8 +691,8 @@ class WorkerSelfController extends Controller
         $id = DB::selectOne(
             "insert into signatures (company_id, signature_request_id, subject_type, subject_id, signer_user_id, signer_worker_id, signer_name, signer_document_masked, method,
                 document_hash, evidence_hash, evidence, ip, user_agent, signed_at, geo_lat, geo_lng, device_id, created_by)
-             values (?, ?, ?, ?, ?, ?, ?, ?, 'pin', decode(?, 'hex'), decode(?, 'hex'), ?::jsonb, ?::inet, ?, now(), ?, ?, ?, ?) returning id",
-            [$company, $requestId, $table, $subjectId, $uid, $w->id, $w->full_name, $doc, $hash, hash('sha256', json_encode($evidence)), json_encode($evidence, JSON_UNESCAPED_UNICODE),
+             values (?, ?, ?, ?, ?, ?, ?, ?, ?, decode(?, 'hex'), decode(?, 'hex'), ?::jsonb, ?::inet, ?, now(), ?, ?, ?, ?) returning id",
+            [$company, $requestId, $table, $subjectId, $uid, $w->id, $w->full_name, $doc, $method, $hash, hash('sha256', json_encode($evidence)), json_encode($evidence, JSON_UNESCAPED_UNICODE),
                 $req->ip(), mb_substr((string) $req->userAgent(), 0, 300), $lat, $lng, $device, $uid])->id;
         if ($image) {
             SignatureImages::stamp($id, $company, null, $image);

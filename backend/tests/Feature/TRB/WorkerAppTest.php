@@ -129,12 +129,12 @@ it('devuelve solo los datos propios: el id de otro trabajador responde 404', fun
     expect(collect($this->getJson('/api/v1/me/worker/ppe', $h)->assertOk()->json('data'))->pluck('id')->all())->toBe([$mine]);
 
     $this->getJson("/api/v1/me/worker/items/ppe/{$theirs}", $h)->assertNotFound();
-    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ppe', 'id' => $theirs, 'pin' => '397154'], $h)->assertNotFound();
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ppe', 'id' => $theirs, 'pin' => '397154', 'read_confirmed' => true], $h)->assertNotFound();
 
     $this->getJson("/api/v1/me/worker/items/ppe/{$mine}", $h)->assertOk()->assertJsonPath('data.signed', false);
-    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ppe', 'id' => $mine, 'pin' => '000000'], $h)->assertStatus(422)->assertJsonValidationErrors('pin');
-    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ppe', 'id' => $mine, 'pin' => '397154'], $h)->assertOk()->assertJsonPath('data.status', 'signed');
-    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ppe', 'id' => $mine, 'pin' => '397154'], $h)->assertStatus(409);
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ppe', 'id' => $mine, 'pin' => '000000', 'read_confirmed' => true], $h)->assertStatus(422)->assertJsonValidationErrors('pin');
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ppe', 'id' => $mine, 'pin' => '397154', 'read_confirmed' => true], $h)->assertOk()->assertJsonPath('data.status', 'signed');
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ppe', 'id' => $mine, 'pin' => '397154', 'read_confirmed' => true], $h)->assertStatus(409);
     $sig = wappAs(HUAYLAS_ID, fn () => DB::selectOne('select s.method, s.signer_worker_id from ppe_deliveries d join signatures s on s.id = d.signature_id where d.id = ?', [$mine]));
     expect($sig->method)->toBe('pin')->and($sig->signer_worker_id)->toBe($a);
 
@@ -244,9 +244,9 @@ it('pone las charlas y los ATS por firmar en sus pendientes y los firma con el P
 
     $this->getJson("/api/v1/me/worker/items/ats/{$part}", $h)->assertOk()->assertJsonPath('data.signed', false)
         ->assertJsonPath('data.content_html', fn ($v) => str_contains($v, 'Bloquear energía') && str_contains($v, 'Candado y tarjeta'));
-    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'talk', 'id' => $att, 'pin' => '628417'], $h)->assertOk();
-    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ats', 'id' => $part, 'pin' => '628417'], $h)->assertOk();
-    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ats', 'id' => $part, 'pin' => '628417'], $h)->assertStatus(409);
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'talk', 'id' => $att, 'pin' => '628417', 'read_confirmed' => true], $h)->assertOk();
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ats', 'id' => $part, 'pin' => '628417', 'read_confirmed' => true], $h)->assertOk();
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ats', 'id' => $part, 'pin' => '628417', 'read_confirmed' => true], $h)->assertStatus(409);
 
     $after = collect($this->getJson('/api/v1/me/worker/pending', $h)->json('data'))->pluck('kind')->all();
     expect($after)->not->toContain('talk')->not->toContain('ats');
@@ -281,8 +281,8 @@ it('muestra Mi IPERC con los riesgos de su puesto y firma «Lo conozco» con el 
     expect(collect($this->getJson('/api/v1/me/worker/pending', $h)->json('data'))->map(fn ($i) => $i['kind'].':'.$i['id']))->toContain("iperc:{$ver}");
     $this->getJson("/api/v1/me/worker/items/iperc/{$ver}", $h)->assertOk()->assertJsonPath('data.content_html', fn ($v) => str_contains($v, 'Careta de soldar'));
 
-    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'iperc', 'id' => $ver, 'pin' => '591736'], $h)->assertOk();
-    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'iperc', 'id' => $ver, 'pin' => '591736'], $h)->assertStatus(409);
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'iperc', 'id' => $ver, 'pin' => '591736', 'read_confirmed' => true], $h)->assertOk();
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'iperc', 'id' => $ver, 'pin' => '591736', 'read_confirmed' => true], $h)->assertStatus(409);
     expect(collect($this->getJson('/api/v1/me/worker/iperc', $h)->json('data.matrices'))->firstWhere('version_id', $ver)['signed'])->toBeTrue();
 });
 
@@ -351,4 +351,39 @@ it('el trabajador ve el mapa de riesgos vigente de su sede y su plano, no los de
     \Illuminate\Support\Facades\Storage::disk('local')->put(wappAs(HUAYLAS_ID, fn () => DB::selectOne('select object_key from files where id = ?', [$file])->object_key), 'png');
     $this->get("/api/v1/files/{$file}", $h)->assertOk();
     $this->get("/api/v1/files/{$draftFile}", $h)->assertForbidden();
+});
+
+it('SCR-FIR-01: exige «He leído» y acepta solo el trazo si el método mínimo del registro lo permite (RN-FIR-08)', function () {
+    $dni = (string) random_int(79000000, 79999999);
+    $w = wappWorker($dni, 'Trazo');
+    $s = wappActivate($dni, wappIssue($w)['code'], '264817');
+    [$a, $b] = wappAs(HUAYLAS_ID, function () use ($w) {
+        $item = DB::selectOne("insert into ppe_items (company_id, code, name, category) values (?, ?, 'Casco', 'head') returning id", [HUAYLAS_ID, 'EPP-TRZ-'.random_int(1000, 999999)])->id;
+        $ins = fn () => DB::selectOne("insert into ppe_deliveries (company_id, worker_id, ppe_item_id, quantity, delivered_at, expires_on, status) values (?, ?, ?, 1, now(), current_date + 90, 'pending_signature') returning id",
+            [HUAYLAS_ID, $w, $item])->id;
+
+        return [$ins(), $ins()];
+    });
+    $h = authHeaders($s['token'], HUAYLAS_ID);
+    $png = 'data:image/png;base64,'.base64_encode(base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='));
+
+    // Sin «He leído» no se firma.
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ppe', 'id' => $a, 'image' => $png], $h)->assertStatus(422)->assertJsonValidationErrors('read_confirmed');
+    // Sin método mínimo configurado, basta el trazo.
+    $this->getJson("/api/v1/me/worker/items/ppe/{$a}", $h)->assertOk()->assertJsonPath('data.stroke_allowed', true);
+    $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ppe', 'id' => $a, 'image' => $png, 'read_confirmed' => true], $h)->assertOk()->assertJsonPath('data.method', 'stroke');
+    expect(wappAs(HUAYLAS_ID, fn () => DB::selectOne('select s.method from ppe_deliveries d join signatures s on s.id = d.signature_id where d.id = ?', [$a])->method))->toBe('stroke');
+
+    // Si el tipo de registro exige PIN, el trazo solo no alcanza.
+    companyParamForTests(HUAYLAS_ID, 'fir_min_method_by_type', json_encode(['ppe_deliveries' => 'pin']), 'json');
+    try {
+        app('auth')->forgetGuards();
+        $this->getJson("/api/v1/me/worker/items/ppe/{$b}", $h)->assertOk()->assertJsonPath('data.stroke_allowed', false);
+        $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ppe', 'id' => $b, 'image' => $png, 'read_confirmed' => true], $h)
+            ->assertStatus(422)->assertJsonPath('detail', 'Este registro exige firmar con contraseña o PIN.');
+        $this->postJson('/api/v1/me/worker/sign', ['kind' => 'ppe', 'id' => $b, 'image' => $png, 'pin' => '264817', 'read_confirmed' => true], $h)->assertOk()->assertJsonPath('data.method', 'pin');
+    } finally {
+        wappAs(HUAYLAS_ID, fn () => DB::update("update legal_parameters set deleted_at = now() where company_id = ? and key = 'fir_min_method_by_type' and deleted_at is null", [HUAYLAS_ID]));
+        \Illuminate\Support\Facades\Cache::flush();
+    }
 });

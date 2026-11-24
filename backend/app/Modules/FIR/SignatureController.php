@@ -31,6 +31,9 @@ class SignatureController extends Controller
     /** Anular una firma: no hay permiso propio en el catálogo; lo hace quien gestiona (edita) las solicitudes de firma. */
     public const VOID_PERMISSION = 'fir.signature_requests.update';
 
+    /** RN-FIR-08: orden de los métodos, de menor a mayor exigencia. */
+    public const RANK = ['stroke' => 1, 'assisted_in_person' => 2, 'pin' => 3, 'otp' => 4];
+
     private const ROLES =['attendee', 'responsible', 'approver', 'reviewer', 'worker', 'witness', 'committee_member', 'doctor'];
 
     public function subject(string $table, string $id): JsonResponse
@@ -155,7 +158,7 @@ class SignatureController extends Controller
             }
             // RN-FIR-08 / flujo §7.3: firma con código de un solo uso (OTP) enviado al correo, o con la contraseña.
             if ($request->filled('otp')) {
-                Otp::check("fir-otp:{$r->id}:{$uid}", (string) $request->input('otp'));
+                $otpChannel = Otp::check("fir-otp:{$r->id}:{$uid}", (string) $request->input('otp'));
                 $method = 'otp';
             } else {
                 $password = (string) $request->input('password');
@@ -194,12 +197,7 @@ class SignatureController extends Controller
             }
         }
         // RN-FIR-08: método mínimo por tipo de registro (configurable).
-        $rank = ['stroke' => 1, 'assisted_in_person' => 2, 'pin' => 3, 'otp' => 4];
-        $min = (json_decode(\App\Core\Support\LegalParams::text('fir_min_method_by_type', '{}'), true) ?: [])[$r->subject_type] ?? null;
-        if ($min && ($rank[$method] ?? 0) < ($rank[$min] ?? 0)) {
-            $labels = ['stroke' => 'trazo', 'assisted_in_person' => 'firma asistida', 'pin' => 'contraseña', 'otp' => 'código OTP'];
-            throw new ApiProblem(422, 'validation_failed', 'Método de firma insuficiente', 'Este registro exige firmar con '.($labels[$min] ?? $min).'.', ['errors' => ['method' => ['Método de firma insuficiente.']]]);
-        }
+        self::assertMinMethod($r->subject_type, $method);
         // RN-FIR-07: firma capturada sin conexión: vale si al sincronizar no excede offline_signature_max_age.
         $offline = $request->input('offline_captured_at');
         if ($offline) {
@@ -220,16 +218,17 @@ class SignatureController extends Controller
         $evidence = ['request_id' => $r->id, 'method' => $method, 'signed_by_user_id' => $uid, 'signer' => $name, 'subject' => "{$r->subject_type}/{$r->subject_id}",
             'document_hash' => $current, 'hash_scope' => SignatureService::scope($r->subject_type), 'ip' => $request->ip(), 'user_agent' => mb_substr((string) $request->userAgent(), 0, 300), 'at' => now()->toIso8601String()]
             + ($method === 'assisted_in_person' ? ['identity' => $identity ?? null, 'witness_user_id' => $uid] : [])
-            + ($offline ? ['offline_captured_at' => date(DATE_ATOM, strtotime((string) $offline))] : []);
+            + ($offline ? ['offline_captured_at' => date(DATE_ATOM, strtotime((string) $offline))] : [])
+            + (isset($otpChannel) ? ['otp_channel' => $otpChannel] : []);
         [$lat, $lng, $device] = SignatureService::place($request, $uid);
         $evidence += ($lat !== null ? ['geo' => [$lat, $lng]] : []) + ($device ? ['device_id' => $device] : []);
         $sigId = DB::selectOne(
             "insert into signatures (company_id, signature_request_id, subject_type, subject_id, signer_user_id, signer_worker_id, signer_name, signer_document_masked, method,
-                document_hash, evidence_hash, evidence, ip, user_agent, signed_at, client_created_at, geo_lat, geo_lng, device_id, created_by)
-             values (?, ?, ?, ?, ?, ?, ?, ?, ?, decode(?, 'hex'), decode(?, 'hex'), ?::jsonb, ?::inet, ?, now(), ?, ?, ?, ?, ?) returning id",
+                document_hash, evidence_hash, evidence, ip, user_agent, signed_at, client_created_at, geo_lat, geo_lng, device_id, created_by, otp_channel)
+             values (?, ?, ?, ?, ?, ?, ?, ?, ?, decode(?, 'hex'), decode(?, 'hex'), ?::jsonb, ?::inet, ?, now(), ?, ?, ?, ?, ?, ?) returning id",
             [$r->company_id, $r->id, $r->subject_type, $r->subject_id, $r->signer_user_id, $r->signer_worker_id, $name, $doc, $method, $current,
                 hash('sha256', json_encode($evidence)), json_encode($evidence, JSON_UNESCAPED_UNICODE), $request->ip(), mb_substr((string) $request->userAgent(), 0, 300),
-                $offline ? date(DATE_ATOM, strtotime((string) $offline)) : null, $lat, $lng, $device, $uid]
+                $offline ? date(DATE_ATOM, strtotime((string) $offline)) : null, $lat, $lng, $device, $uid, $otpChannel ?? null]
         )->id;
         // Imagen de la firma en el documento: la guardada del usuario, o la que el trabajador dibujó en la pantalla.
         SignatureImages::stamp($sigId, $r->company_id, $r->signer_user_id ? $uid : null, $request->input('image') ?: null);
@@ -268,6 +267,32 @@ class SignatureController extends Controller
         $accounts->audit((string) auth()->id(), 'signature_declined', $r->subject_type, $r->subject_id, ['request' => $r->id]);
 
         return response()->json(['data' => ['status' => 'declined']]);
+    }
+
+    /** RN-FIR-08: método mínimo configurado para el tipo de registro (fir_min_method_by_type), o null si no hay. */
+    public static function minMethod(string $table): ?string
+    {
+        $min = (json_decode(\App\Core\Support\LegalParams::text('fir_min_method_by_type', '{}'), true) ?: [])[$table] ?? null;
+
+        return is_string($min) && isset(self::RANK[$min]) ? $min : null;
+    }
+
+    /** ¿El método alcanza el mínimo del tipo de registro? */
+    public static function allows(string $table, string $method): bool
+    {
+        $min = self::minMethod($table);
+
+        return ! $min || (self::RANK[$method] ?? 0) >= self::RANK[$min];
+    }
+
+    /** RN-FIR-08: 422 si el método no alcanza el mínimo del tipo de registro. */
+    public static function assertMinMethod(string $table, string $method): void
+    {
+        if (! self::allows($table, $method)) {
+            $min = self::minMethod($table);
+            $labels = ['stroke' => 'trazo', 'assisted_in_person' => 'firma asistida', 'pin' => 'contraseña o PIN', 'otp' => 'código OTP'];
+            throw new ApiProblem(422, 'validation_failed', 'Método de firma insuficiente', 'Este registro exige firmar con '.($labels[$min] ?? $min).'.', ['errors' => ['method' => ['Método de firma insuficiente.']]]);
+        }
     }
 
     /** Huella del registro: sus columnas (sin fechas de actualización ni versión), ordenadas. */

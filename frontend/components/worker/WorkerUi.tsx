@@ -94,13 +94,17 @@ export function PinField({ id, label, value, onChange, error, autoFocus }: { id:
   );
 }
 
-/** Firmar con el dedo y el PIN: lee lo que firmas, dibuja tu firma (opcional) y confirma con tu PIN. */
+/**
+ * SCR-FIR-01: lee lo que firmas, marca «He leído» y firma con tu trazo o tu PIN. Si el tipo de registro exige un método
+ * mayor que el trazo (RN-FIR-08), el PIN es obligatorio; el servidor lo vuelve a verificar.
+ */
 export function SignSheet({ kind, id, onClose, onSigned }: { kind: SignKind; id: string; onClose: () => void; onSigned: () => void }) {
   const [item, setItem] = useState<SignItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pinError, setPinError] = useState<string | null>(null);
   const [pin, setPin] = useState("");
   const [image, setImage] = useState<string | null>(null);
+  const [read, setRead] = useState(false);
   const [busy, setBusy] = useState(false);
   const onImage = useCallback((d: string | null) => setImage(d), []);
 
@@ -113,7 +117,7 @@ export function SignSheet({ kind, id, onClose, onSigned }: { kind: SignKind; id:
     setError(null);
     setPinError(null);
     try {
-      await workerApi("/sign", { method: "POST", body: { kind, id, pin, image, device_id: workerDevice.get()?.device_id, ...(await signPlace()) } });
+      await workerApi("/sign", { method: "POST", body: { kind, id, pin: pin || undefined, image, read_confirmed: read, device_id: workerDevice.get()?.device_id, ...(await signPlace()) } });
       onSigned();
     } catch (e) {
       const msg = errorText(e);
@@ -127,7 +131,7 @@ export function SignSheet({ kind, id, onClose, onSigned }: { kind: SignKind; id:
 
   return (
     <Modal title={item?.title ?? "Firmar"} subtitle={item?.subtitle ?? undefined} onClose={onClose}
-      footer={item && !item.signed ? <BigButton onClick={sign} loading={busy} disabled={pin.length < 4}>Firmar</BigButton> : <BigButton variant="secondary" onClick={onClose}>Cerrar</BigButton>}>
+      footer={item && !item.signed ? <BigButton onClick={sign} loading={busy} disabled={!read || !(pin.length >= 4 || (item.stroke_allowed && !!image))}>Firmar</BigButton> : <BigButton variant="secondary" onClick={onClose}>Cerrar</BigButton>}>
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
         {!item && !error && <Loading />}
@@ -144,10 +148,14 @@ export function SignSheet({ kind, id, onClose, onSigned }: { kind: SignKind; id:
             )}
             <p className="rounded-xl bg-brand-soft px-4 py-3 text-sm">{item.declaration}</p>
             <div className="space-y-1">
-              <p className="text-sm font-semibold">Firma con tu dedo (opcional)</p>
-              <SignaturePad onChange={onImage} height={150} />
+              <p className="text-sm font-semibold">{item.stroke_allowed ? "Firma con tu dedo" : "Firma con tu dedo (opcional)"}</p>
+              <SignaturePad onChange={onImage} height={item.stroke_allowed ? 200 : 150} />
             </div>
-            <PinField id="sign-pin" label="Tu PIN" value={pin} onChange={setPin} error={pinError} />
+            <PinField id="sign-pin" label={item.stroke_allowed ? "Tu PIN (si no dibujas tu firma)" : "Tu PIN"} value={pin} onChange={setPin} error={pinError} />
+            <label className="flex min-h-12 items-start gap-3 rounded-xl border border-line px-4 py-3 text-sm">
+              <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0" checked={read} onChange={(e) => setRead(e.target.checked)} />
+              <span>He leído lo que firmo.</span>
+            </label>
             <p className="text-xs text-muted">Se guardan la fecha, la hora y tu equipo. La firma no se puede cambiar.</p>
           </>
         )}

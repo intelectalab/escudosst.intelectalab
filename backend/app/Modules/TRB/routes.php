@@ -8,6 +8,10 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'company', 'module:TRB'])->prefix('trb')->group(function () {
     Route::get('workers/requirements', WorkerRequirements::class)->middleware('permission:trb.workers.read');
     Route::get('workers/{id}/legajo', [\App\Modules\TRB\WorkerFileController::class, 'legajo'])->whereUuid('id');
+    // SCR-TRB-03: consentimiento de datos del trabajador (worker_consents) con la versión del texto vigente.
+    Route::get('consent-text', [\App\Modules\TRB\WorkerConsentController::class, 'text']);
+    Route::get('workers/{id}/consents', [\App\Modules\TRB\WorkerConsentController::class, 'index'])->whereUuid('id');
+    Route::post('workers/{id}/consents', [\App\Modules\TRB\WorkerConsentController::class, 'store'])->whereUuid('id')->middleware('throttle:30,1');
     Route::middleware('permission:trb.workers.create')->group(function () {
         Route::get('imports/template', [WorkerImport::class, 'template']);
         Route::post('imports/preview', [WorkerImport::class, 'preview'])->middleware('throttle:30,1');

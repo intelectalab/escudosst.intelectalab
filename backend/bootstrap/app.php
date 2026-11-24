@@ -48,6 +48,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->group('company', [
             ResolveCompany::class,
             SetTenantContext::class,
+            // M-AUD RN-AUD-05: cada exportación (Excel, PDF, imprimible) queda en la bitácora con filtros y filas.
+            \App\Core\Http\Middleware\AuditExports::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

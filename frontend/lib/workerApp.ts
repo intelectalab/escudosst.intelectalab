@@ -75,6 +75,8 @@ export type SignKind = "signature" | "document" | "risst" | "ppe" | "talk" | "at
 export type SignItem = {
   kind: SignKind; id: string; title: string; subtitle: string | null; signed: boolean; declaration: string;
   content_html: string | null; file_id: string | null; expires_on?: string | null;
+  /** RN-FIR-08: el método mínimo del tipo de registro permite firmar solo con el trazo (sin PIN). */
+  stroke_allowed?: boolean;
 };
 
 export const workerApi = <T>(path: string, opts: { method?: "GET" | "POST" | "PATCH"; body?: unknown; headers?: Record<string, string> } = {}) =>

@@ -10,6 +10,8 @@ final class Xlsx
     /** Libro .xlsx mínimo (Office Open XML) con texto en línea; la fila $headerRow va en negrita. */
     public static function build(string $sheet, array $rows, int $headerRow): string
     {
+        // M-AUD RN-AUD-05: número de filas exportadas (las que siguen a la fila de títulos) para la bitácora.
+        \App\Core\Http\Middleware\AuditExports::$rows = max(0, count($rows) - $headerRow);
         $esc = fn ($s) => htmlspecialchars((string) $s, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $col = function (int $i): string {
             $s = '';

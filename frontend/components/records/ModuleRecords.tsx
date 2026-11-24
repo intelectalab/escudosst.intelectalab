@@ -11,6 +11,7 @@ import { EvidencePicker } from "./EvidencePicker";
 import { PlanReferencePicker } from "./PlanReferencePicker";
 import { ModuleKpis } from "./ModuleKpis";
 import { SignaturePanel } from "./SignaturePanel";
+import { EMPTY_CONSENT, PhotoCropInput, saveWorkerConsent, WorkerConsentField, type ConsentValue } from "./WorkerExtras";
 import { api, ApiError } from "@/lib/api";
 import { displayValue, downloadFile, isReserved, records, statusTone, toLocalInput, type ModuleSchema, type RecordField, type RecordPage, type RecordResource, type RecordRow } from "@/lib/records";
 import { isQueuedFile, uploadOrQueue } from "@/lib/offline";
@@ -477,6 +478,9 @@ export function RecordForm({
 
   const [version, setVersion] = useState(0);
   const [ftab, setFtab] = useState("resumen");
+  // SCR-TRB-03: consentimiento de datos en el alta del trabajador.
+  const [consent, setConsent] = useState<ConsentValue>(EMPTY_CONSENT);
+  const workerConsent = row === null && code.toUpperCase() === "TRB" && res.table === "workers";
 
   // El detalle trae todos los campos (la lista solo los visibles). Se vuelve a leer tras una acción del proceso.
   useEffect(() => {
@@ -518,8 +522,21 @@ export function RecordForm({
           : f.type === "json" ? (JSON_EDITORS[`${res.table}.${f.name}`] ? v : String(v ?? "").split("\n").map((s) => s.trim()).filter(Boolean))
           : v === "" ? null : v;
       }
+      if (workerConsent && consent.choice === "paper" && !consent.file_id) {
+        setErrors({ consent: ["Adjunta el consentimiento firmado en papel."] });
+        setDetail("Adjunta el consentimiento firmado en papel.");
+        return;
+      }
       const saved = isNew ? await records.create(code, res.table, body) : await records.update(code, res.table, full!.id, body);
-      onSaved(isNew ? "Registro creado." : "Cambios guardados.", saved.data);
+      let note = "";
+      if (workerConsent && consent.choice) {
+        try {
+          await saveWorkerConsent(String(saved.data.id), consent);
+        } catch (ce) {
+          note = ` No se registró el consentimiento: ${(ce as ApiError).detail ?? (ce as ApiError).title}. Regístralo desde la ficha.`;
+        }
+      }
+      onSaved(isNew ? `Registro creado.${note}` : "Cambios guardados.", saved.data);
     } catch (e) {
       const err = e as ApiError;
       setErrors(err.errors ?? {});
@@ -675,6 +692,7 @@ export function RecordForm({
                   />
                 </div>
               ))}
+              {workerConsent && <WorkerConsentField value={consent} onChange={setConsent} disabled={!canEdit} />}
             </div>
             {full && computed.length > 0 && (
               <div className="grid gap-3 rounded-xl bg-bg p-4 text-sm sm:grid-cols-2">
@@ -792,7 +810,10 @@ function Input({
       control = <RefMulti code={code} table={table} f={f} value={Array.isArray(value) ? (value as string[]) : []} initialLabels={initialLabels} disabled={!!disabled} onChange={onChange} />;
       break;
     case "file":
-      control = <FileInput code={code} table={table} value={str} initialLabel={initialLabel} disabled={disabled} onChange={onChange} />;
+      // SCR-TRB-03: foto del trabajador con recorte cuadrado.
+      control = table === "workers" && f.name === "photo_file_id"
+        ? <PhotoCropInput value={str} initialLabel={initialLabel} disabled={!!disabled} onChange={onChange} />
+        : <FileInput code={code} table={table} value={str} initialLabel={initialLabel} disabled={disabled} onChange={onChange} />;
       break;
     case "json":
       if (JSON_EDITORS[`${table}.${f.name}`]) {

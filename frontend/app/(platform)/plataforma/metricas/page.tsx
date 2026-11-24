@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/Display";
 import { SearchInput } from "@/components/ui/FilterBar";
 import { Icon } from "@/components/ui/Icon";
+import { PlatformReportDownload } from "@/components/platform/PlatformReportDownload";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, formatMoney } from "@/lib/accounts";
 import { CATALOG_GROUPS, PLAN_ACCENT } from "@/lib/plans";
@@ -137,6 +138,7 @@ export default function MetricasPage() {
         icon="grid"
         title="Métricas"
         description="Altas, pruebas, ingresos y módulos más contratados."
+        aside={<PlatformReportDownload report="accounts" />}
       />
 
       <section

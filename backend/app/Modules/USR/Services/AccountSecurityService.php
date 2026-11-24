@@ -57,6 +57,15 @@ class AccountSecurityService
 
     // ------------------------------------------------------------ Mi cuenta
 
+    /** Idiomas de la interfaz (users.locale). Solo existe español (Perú): docs/00 «Interfaz en español (Perú)», docs/02 §7. */
+    public const LOCALES = ['es-PE' => 'Español (Perú)'];
+
+    public function updateLocale(string $userId, string $locale): void
+    {
+        $this->updateOwn($userId, 'update users set locale = ?, updated_at = now(), updated_by = ? where id = ?', [$locale, $userId, $userId]);
+        $this->audit($userId, 'profile_updated', $userId, ['field' => 'locale', 'locale' => $locale]);
+    }
+
     public function updateName(string $userId, string $name): void
     {
         $this->updateOwn($userId, 'update users set full_name = ?, updated_at = now(), updated_by = ? where id = ?', [trim($name), $userId, $userId]);

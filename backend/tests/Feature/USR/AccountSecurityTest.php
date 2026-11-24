@@ -135,3 +135,11 @@ it('no se queda sin Dueño ni se desactiva a sí mismo', function () {
     $this->postJson("/api/v1/internal/team/{$me}/disable", [], $h)->assertStatus(422);
     $this->patchJson("/api/v1/internal/team/{$me}", ['platform_role' => 'support'], $h)->assertStatus(422);
 });
+
+it('SCR-USR-05: guarda el idioma de la interfaz; solo acepta los idiomas que existen (español de Perú)', function () {
+    $h = authHeaders(tokenFor(ESENCIAL_EMAIL));
+    $this->patchJson('/api/v1/me/profile', ['locale' => 'en-US'], $h)->assertStatus(422)->assertJsonValidationErrors('locale');
+    $this->patchJson('/api/v1/me/profile', ['locale' => 'es-PE'], $h)->assertNoContent();
+    expect(userRow(ESENCIAL_EMAIL)->locale)->toBe('es-PE');
+    $this->patchJson('/api/v1/me/profile', [], $h)->assertStatus(422)->assertJsonValidationErrors('full_name');
+});

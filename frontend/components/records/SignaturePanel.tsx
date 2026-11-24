@@ -86,7 +86,7 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
       err(e);
     }
   }
-  // Firma con código de un solo uso enviado al correo (OTP).
+  // Firma con código de un solo uso (OTP) por WhatsApp o correo.
   async function sendOtp(r: Req) {
     setMsg(null);
     try {
@@ -135,14 +135,14 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
               {r.status === "pending" && mine && (
                 <>
                   {otp[r.id] !== undefined ? (
-                    <input className="input !h-8 !w-32" inputMode="numeric" maxLength={6} placeholder="Código" aria-label="Código recibido por correo" value={otp[r.id]}
+                    <input className="input !h-8 !w-32" inputMode="numeric" maxLength={6} placeholder="Código" aria-label="Código recibido" value={otp[r.id]}
                       onChange={(e) => setOtp({ ...otp, [r.id]: e.target.value.replace(/\D/g, "") })} />
                   ) : (
                     <input type="password" className="input !h-8 !w-40" placeholder="Tu contraseña" aria-label="Contraseña para firmar" value={pwd[r.id] ?? ""}
                       onChange={(e) => setPwd({ ...pwd, [r.id]: e.target.value })} />
                   )}
                   <Button size="sm" variant="primary" onClick={() => sign(r)}>Firmar</Button>
-                  {otp[r.id] === undefined && <button type="button" className="text-xs text-brand underline" onClick={() => void sendOtp(r)}>Firmar con código por correo</button>}
+                  {otp[r.id] === undefined && <button type="button" className="text-xs text-brand underline" onClick={() => void sendOtp(r)}>Firmar con código (correo o WhatsApp)</button>}
                 </>
               )}
               {r.status === "pending" && !r.signer_user_id && assist?.id !== r.id && (

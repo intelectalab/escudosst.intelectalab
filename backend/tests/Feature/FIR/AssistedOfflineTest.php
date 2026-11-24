@@ -44,7 +44,7 @@ it('respeta el método mínimo por tipo de registro', function () {
 
     $req = ($this->request)('FIR mínimo');
     $this->postJson("/api/v1/fir/requests/{$req}/sign", ['assisted' => true, 'dni' => $this->dni, 'pin' => '482915'], $this->h)
-        ->assertStatus(422)->assertJsonPath('detail', 'Este registro exige firmar con contraseña.');
+        ->assertStatus(422)->assertJsonPath('detail', 'Este registro exige firmar con contraseña o PIN.');
 });
 
 it('acepta una firma sin conexión reciente y rechaza una que pasó la antigüedad máxima', function () {

@@ -9,6 +9,7 @@ import { Chip, Code, EmptyState, PageHeader, StatCard } from "@/components/ui/Di
 import { Button } from "@/components/ui/Button";
 import { FilterBar, FilterSelect, SearchInput } from "@/components/ui/FilterBar";
 import { Icon } from "@/components/ui/Icon";
+import { PlatformReportDownload } from "@/components/platform/PlatformReportDownload";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, formatMoney, PAYMENT_METHODS, STATUS, type SubscriptionStatus } from "@/lib/accounts";
 
@@ -109,6 +110,7 @@ export default function FacturacionPage() {
         icon="file"
         title="Facturación"
         description="Pagos registrados y empresas con deuda."
+        aside={<PlatformReportDownload report="invoices" />}
       />
 
       <section aria-label="Resumen" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">

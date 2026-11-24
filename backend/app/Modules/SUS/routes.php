@@ -42,6 +42,9 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal')->group(funct
     Route::post('accounts/{account}/companies/{company}/admins/{user}/resend', [AccountsController::class, 'resendInvitation']);
     Route::get('billing', [BillingController::class, 'index']);
     Route::get('metrics', [MetricsController::class, 'index']);
+    // M-SUS §11: cuentas por plan; altas y bajas · comprobantes por periodo (Excel).
+    Route::get('reports/accounts.xlsx', [\App\Modules\SUS\Http\Controllers\PlatformReportsController::class, 'accounts'])->middleware('throttle:20,1');
+    Route::get('reports/invoices.xlsx', [\App\Modules\SUS\Http\Controllers\PlatformReportsController::class, 'invoices'])->middleware('throttle:20,1');
 
     // SCR-SUS-08 · Catálogos globales
     Route::prefix('catalogs')->group(function () {

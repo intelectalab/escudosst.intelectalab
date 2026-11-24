@@ -334,7 +334,7 @@ export function AccountPanel({
               </span>
               Tus datos y acceso
             </h2>
-            <AccountEditor name={user.full_name} email={user.email} roleLabel={roleLabel} roleValue={roleValue} platform={user.is_platform_staff} />
+            <AccountEditor name={user.full_name} email={user.email} roleLabel={roleLabel} roleValue={roleValue} platform={user.is_platform_staff} locale={user.locale} />
           </section>
 
           <section className="space-y-4 rounded-2xl border border-line bg-surface p-6 shadow-sm">

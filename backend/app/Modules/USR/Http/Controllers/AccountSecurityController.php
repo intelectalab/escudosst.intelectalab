@@ -40,8 +40,17 @@ class AccountSecurityController extends Controller
 
     public function profile(Request $request): Response
     {
-        $d = $request->validate(['full_name' => ['required', 'string', 'min:3', 'max:120']], self::MESSAGES);
-        $this->svc->updateName($request->user()->id, $d['full_name']);
+        // SCR-USR-05: nombre e idioma. Solo hay interfaz en español (Perú) (docs/00 y docs/02 §7): es el único idioma aceptado.
+        $d = $request->validate([
+            'full_name' => ['required_without:locale', 'string', 'min:3', 'max:120'],
+            'locale' => ['sometimes', 'string', 'in:'.implode(',', array_keys(\App\Modules\USR\Services\AccountSecurityService::LOCALES))],
+        ], self::MESSAGES + ['full_name.required_without' => 'Completa este campo.', 'locale.in' => 'Ese idioma no está disponible.']);
+        if (isset($d['full_name'])) {
+            $this->svc->updateName($request->user()->id, $d['full_name']);
+        }
+        if (isset($d['locale'])) {
+            $this->svc->updateLocale($request->user()->id, $d['locale']);
+        }
 
         return response()->noContent();
     }
