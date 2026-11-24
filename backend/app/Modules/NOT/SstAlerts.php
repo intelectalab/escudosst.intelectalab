@@ -771,6 +771,7 @@ final class SstAlerts
     public function forCompany(ConnectionInterface $db, string $company, ?bool $digest = null): int
     {
         $enabled = array_column($db->select("select module_code from feature_flags where mode = 'enabled' and deleted_at is null"), 'module_code');
+        \App\Core\Auth\Scope::flush();   // el alcance de los destinatarios se lee de nuevo en cada corrida
         $this->refreshStatuses($db);
         $week = date('o-W');
         $created = 0;
@@ -816,9 +817,13 @@ final class SstAlerts
                 "select m.user_id from memberships m join roles r on r.id = m.role_id where m.company_id = ? and m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = any(?::text[])",
                 [$company, '{'.implode(',', $roles).'}']
             ), 'user_id') : [];
+            // M-NOT §4 / docs/05 §2: los roles reciben el aviso de un registro de sede o área solo si su alcance lo cubre
+            // (el registro del aviso es la tabla del enlace «?t=»); el responsable del registro lo recibe siempre.
+            $subjectTable = preg_match('/[?&]t=([a-z_]+)/', $link, $mt) && \App\Modules\REC\Registry::has($mt[1]) ? $mt[1] : null;
             foreach ($rows as $r) {
                 $workerUser = isset($r->worker) && $r->worker ? $db->selectOne('select user_id from workers where id = ?', [$r->worker])?->user_id : null;
-                $to = array_diff(array_unique(array_filter([...$team, $r->owner, $r->owner2 ?? null, $r->owner3 ?? null])), array_filter([$workerUser]));
+                $roleTeam = $subjectTable && $team ? \App\Core\Auth\Scope::usersSeeing($team, $subjectTable, (string) $r->id, $db) : $team;
+                $to = array_diff(array_unique(array_filter([...$roleTeam, $r->owner, $r->owner2 ?? null, $r->owner3 ?? null])), array_filter([$workerUser]));
                 $dedupe = $event.':'.$r->id.(isset($r->dk) ? ':'.$r->dk : '').($weekly ? ':'.$week : '');
                 foreach ($to as $user) {
                     // La llave única de la tabla es (empresa, dedupe_key): incluye a la persona para avisar a cada una sin chocar.

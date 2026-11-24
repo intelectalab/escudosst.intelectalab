@@ -61,7 +61,7 @@ final class FichaEvents
     private static function toRoles(array $roles, string $event, string $module, string $id, string $title, string $sql, string $link): bool
     {
         $r = DB::selectOne($sql, [$id]);
-        Notify::users(Notify::roles($roles), $event, $module, $id, $title, "«{$r->name}» se envió a aprobación.", $link.$id, 'normal', $event.':'.$id);
+        Notify::users(Notify::roles($roles, self::linkTable($link), $id), $event, $module, $id, $title, "«{$r->name}» se envió a aprobación.", $link.$id, 'normal', $event.':'.$id);
 
         return true;
     }
@@ -169,7 +169,7 @@ final class FichaEvents
                 'Tienes un examen médico ocupacional el '.date('d/m/Y H:i', strtotime($o->scheduled_at)).'.', '/mi/salud', 'normal', 'emo.appointment:'.$id.':'.date('YmdHi', strtotime($o->scheduled_at)));
         }
         if (self::entered($values, $current, 'no_show')) {
-            Notify::users([...Notify::roles(['occupational_doctor', 'health_staff']), self::areaLead($o->current_area_id)], 'emo.no_show', 'EMO', $id, 'Inasistencia a examen médico',
+            Notify::users([...Notify::roles(['occupational_doctor', 'health_staff'], 'medical_exam_orders', $id), self::areaLead($o->current_area_id)], 'emo.no_show', 'EMO', $id, 'Inasistencia a examen médico',
                 "{$o->full_name} no asistió a su cita de examen médico ocupacional.", '/m/emo?t=medical_exam_orders&open='.$id, 'normal', 'emo.no_show:'.$id);
         }
 
@@ -187,7 +187,7 @@ final class FichaEvents
             return false;
         }
         $what = $f->status === 'unfit' ? 'no apto' : 'apto con restricciones'.($f->work_restrictions ? ': '.mb_substr((string) $f->work_restrictions, 0, 200) : '');
-        Notify::users([...Notify::roles(['sst_manager', 'hr']), self::areaLead($f->current_area_id)], 'emo.fitness_restricted', 'EMO', $id, 'Resultado de aptitud',
+        Notify::users([...Notify::roles(['sst_manager', 'hr'], 'fitness_status', $id), self::areaLead($f->current_area_id)], 'emo.fitness_restricted', 'EMO', $id, 'Resultado de aptitud',
             "{$f->full_name} quedó {$what}.", '/m/emo?t=fitness_status&open='.$id, 'high', 'emo.fitness_restricted:'.$id);
 
         return true;
@@ -201,7 +201,7 @@ final class FichaEvents
         if ($m->result !== 'exceeds_limit' || $current?->result === 'exceeds_limit') {
             return false;
         }
-        Notify::users([...Notify::roles(['sst_manager', 'occupational_doctor']), self::areaLead($m->area_id)], 'mag.exceeds_limit', 'MAG', $id, 'Medición sobre el límite',
+        Notify::users([...Notify::roles(['sst_manager', 'occupational_doctor'], 'measurements', $id), self::areaLead($m->area_id)], 'mag.exceeds_limit', 'MAG', $id, 'Medición sobre el límite',
             trim(($m->agent ?? 'Agente').' en '.($m->point ?? 'el punto').": {$m->value} {$m->unit}, sobre el límite permitido."), '/m/mag?t=measurements&open='.$id, 'high', 'mag.exceeds_limit:'.$id);
 
         return true;
@@ -263,7 +263,7 @@ final class FichaEvents
             foreach (DB::select("select id, title from risk_maps where deleted_at is null and status = 'current'
                                   and ((?::uuid is not null and area_id = ?::uuid) or (?::uuid is not null and site_id = ?::uuid))", [$m->area_id, $m->area_id, $m->site_id, $m->site_id]) as $map) {
                 DB::update("update risk_maps set status = 'review_required', review_reason = ? where id = ? and status = 'current'", ["Se aprobó una nueva versión del IPERC {$m->code}", $map->id]);
-                Notify::users(Notify::roles(['sst_manager']), 'map.review_needed', 'MAP', $map->id, 'Mapa de riesgos por revisar',
+                Notify::users(Notify::roles(['sst_manager'], 'risk_maps', $map->id), 'map.review_needed', 'MAP', $map->id, 'Mapa de riesgos por revisar',
                     "Cambió la matriz IPERC {$m->code}: revisa el mapa «{$map->title}».", '/m/map?t=risk_maps&open='.$map->id, 'normal', 'map.review_needed:'.$map->id.':'.$versionId);
             }
         } catch (\Throwable) {
@@ -281,7 +281,7 @@ final class FichaEvents
             $missing = array_values(array_filter($req['checks'] ?? [], fn ($c) => $c['status'] === 'bad'));
             if ($missing) {
                 $w = DB::selectOne('select full_name from workers where id = ?', [$id]);
-                Notify::users(Notify::roles(['sst_manager']), 'trb.new_worker_pending', 'TRB', $id, 'Trabajador nuevo con requisitos pendientes',
+                Notify::users(Notify::roles(['sst_manager'], 'workers', $id), 'trb.new_worker_pending', 'TRB', $id, 'Trabajador nuevo con requisitos pendientes',
                     "{$w->full_name} ingresó con pendientes: ".implode(', ', array_slice(array_column($missing, 'label'), 0, 6)).'.', '/m/trb?t=workers&open='.$id, 'normal', 'trb.new_worker_pending:'.$id);
             }
         }
@@ -289,10 +289,16 @@ final class FichaEvents
         return true;
     }
 
+    /** Tabla del registro del aviso según su enlace («?t=»), para filtrar los destinatarios por alcance. */
+    private static function linkTable(string $link): ?string
+    {
+        return preg_match('/[?&]t=([a-z_]+)/', $link, $m) && \App\Modules\REC\Registry::has($m[1]) ? $m[1] : null;
+    }
+
     private static function submitted(string $id, string $event, string $module, string $title, string $sql, string $link): bool
     {
         $r = DB::selectOne($sql, [$id]);
-        Notify::users(Notify::roles(self::REVIEWERS), $event, $module, $id, $title, "«{$r->name}» se envió a revisión.", $link.$id, 'normal', $event.':'.$id);
+        Notify::users(Notify::roles(self::REVIEWERS, self::linkTable($link), $id), $event, $module, $id, $title, "«{$r->name}» se envió a revisión.", $link.$id, 'normal', $event.':'.$id);
 
         return true;
     }
@@ -323,7 +329,7 @@ final class FichaEvents
             return false;
         }
         $e = DB::selectOne('select e.method, p.name as position from ergonomic_assessments e left join positions p on p.id = e.position_id where e.id = ?', [$id]);
-        Notify::users(Notify::roles(['sst_manager']), 'psi.ergonomic_high', 'PSI', $id, 'Evaluación ergonómica con nivel alto',
+        Notify::users(Notify::roles(['sst_manager'], 'ergonomic_assessments', $id), 'psi.ergonomic_high', 'PSI', $id, 'Evaluación ergonómica con nivel alto',
             'Una evaluación ergonómica'.($e->position ? " del puesto {$e->position}" : '').' salió con riesgo '.($level === 'very_high' ? 'muy alto' : 'alto').': revisa sus recomendaciones.',
             '/m/psi?t=ergonomic_assessments&open='.$id, 'high', 'psi.ergonomic_high:'.$id.':'.$level);
 

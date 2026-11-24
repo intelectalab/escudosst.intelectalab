@@ -113,15 +113,25 @@ class DashboardController extends Controller
                         and starts_on <= current_date and (ends_on is null or ends_on >= current_date)")) {
                     continue;
                 }
-                $svc = new KpiService;
-                $kpis = array_values(array_map(fn ($k) => array_intersect_key($k, array_flip(['code', 'name', 'module', 'locked', 'value', 'label', 'basis', 'color', 'link'])),
-                    $svc->overview($year, null)));
-                $alerts = $year === $current ? $svc->alerts() : [];
+                // docs/03 §3: en cada empresa se aplica el alcance por sede/área de la membresía que el usuario tiene en ella.
+                $prevCtx = app(CompanyContext::class);
+                app()->instance(CompanyContext::class, new CompanyContext($m->company_id, $m->membership_id, $m->role_code, (string) $m->company_name, trim((string) $m->ruc)));
+                Scope::flush();
+                try {
+                    $svc = (new KpiService)->forAreas(Scope::areaMode() ? Scope::areaIds() : [])->forSites(Scope::siteIds());
+                    $kpis = array_values(array_map(fn ($k) => array_intersect_key($k, array_flip(['code', 'name', 'module', 'locked', 'value', 'label', 'basis', 'color', 'link'])),
+                        $svc->overview($year, null)));
+                    $alerts = $year === $current ? $svc->alerts() : [];
+                    $workers = $svc->counts()['workers'];
+                } finally {
+                    app()->instance(CompanyContext::class, $prevCtx);
+                    Scope::flush();
+                }
                 $red = count(array_filter($kpis, fn ($k) => ($k['color'] ?? null) === 'red'));
                 $amber = count(array_filter($kpis, fn ($k) => ($k['color'] ?? null) === 'amber'));
                 $rows[] = [
                     'company_id' => $m->company_id, 'name' => $m->company_name, 'ruc' => trim($m->ruc), 'role' => $m->role_code, 'is_active' => $m->company_id === $active,
-                    'workers' => $svc->counts()['workers'], 'red' => $red, 'amber' => $amber,
+                    'workers' => $workers, 'red' => $red, 'amber' => $amber,
                     'alerts' => array_sum(array_column($alerts, 'count')), 'alert_items' => $alerts, 'kpis' => $kpis,
                 ];
             }

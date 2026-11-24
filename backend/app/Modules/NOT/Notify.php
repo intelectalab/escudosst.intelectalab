@@ -54,29 +54,29 @@ final class Notify
         return $n;
     }
 
-    /** Usuarios activos de la empresa con alguno de esos roles (por su rol base). @return list<string> */
-    public static function roles(array $roles): array
+    /**
+     * Usuarios activos de la empresa con alguno de esos roles (por su rol base). Con $table e $id (aviso de un registro de
+     * una sede o área), solo los que ven ese registro por el alcance de su membresía (M-NOT §4, App\Core\Auth\Scope).
+     * @return list<string>
+     */
+    public static function roles(array $roles, ?string $table = null, ?string $id = null): array
     {
-        return array_column(DB::select(
+        $users = array_column(DB::select(
             "select distinct m.user_id from memberships m join roles r on r.id = m.role_id
               where m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = any(?::text[])",
             ['{'.implode(',', $roles).'}']
         ), 'user_id');
+
+        return $table ? \App\Core\Auth\Scope::usersSeeing($users, $table, $id) : $users;
     }
 
     /**
-     * Usuarios con esos roles que ven la sede: sin alcance de sede (ven todo) o con la sede entre sus alcances.
+     * Usuarios con esos roles que ven la sede: sin alcance (ven todo) o con la sede (o un área de ella) en su alcance.
      * @return list<string>
      */
     public static function siteTeam(array $roles, ?string $siteId): array
     {
-        return array_column(DB::select(
-            "select distinct m.user_id from memberships m join roles r on r.id = m.role_id
-              where m.status = 'active' and m.deleted_at is null and coalesce(r.base_role_code, r.code) = any(?::text[])
-                and (not exists (select 1 from membership_scopes s where s.membership_id = m.id and s.scope_type = 'site' and s.deleted_at is null)
-                     or exists (select 1 from membership_scopes s where s.membership_id = m.id and s.scope_type = 'site' and s.site_id = ? and s.deleted_at is null))",
-            ['{'.implode(',', $roles).'}', $siteId]
-        ), 'user_id');
+        return self::roles($roles, 'sites', $siteId);
     }
 
     /** M-ACT §10: «nuevo reporte en mi sede» al supervisor y al Jefe SST que ven esa sede (desde la app, el QR o WhatsApp). */

@@ -24,7 +24,7 @@ final class IpercReview
         self::flagProcedures($m->id, $m->code, $sourceId);
         try {
             $lead = $m->area_id ? DB::selectOne('select w.user_id from areas a join workers w on w.id = a.manager_worker_id where a.id = ?', [$m->area_id])?->user_id : null;
-            Notify::users([...Notify::roles(['sst_manager']), $lead], 'ipc.review_required', 'IPC', $m->id, 'IPERC por revisar',
+            Notify::users([...Notify::roles(['sst_manager'], 'iperc_matrices', $m->id), $lead], 'ipc.review_required', 'IPC', $m->id, 'IPERC por revisar',
                 "La matriz {$m->code} · {$m->title} requiere revisión: {$reason}.", '/m/ipc?t=matrices&matriz='.$m->id, 'high', 'ipc.review_required:'.$m->id.':'.$sourceId);
         } catch (\Throwable) {
         }
@@ -41,7 +41,7 @@ final class IpercReview
         foreach ($procs as $p) {
             DB::update("update procedures set next_review_on = least(coalesce(next_review_on, current_date), current_date) where id = ?", [$p->id]);
             try {
-                Notify::users(Notify::roles(['sst_manager']), 'pet.review_required', 'PET', $p->id, 'PETS por revisar',
+                Notify::users(Notify::roles(['sst_manager'], 'procedures', $p->id), 'pet.review_required', 'PET', $p->id, 'PETS por revisar',
                     "El PETS {$p->code} · {$p->title} debe revisarse: cambió la matriz IPERC {$code} con la que está ligado.", '/m/pet?t=procedures&open='.$p->id, 'normal',
                     'pet.review_required:'.$p->id.':'.$sourceId);
             } catch (\Throwable) {

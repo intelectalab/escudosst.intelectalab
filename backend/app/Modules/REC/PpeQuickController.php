@@ -34,6 +34,7 @@ final class PpeQuickController
         if (! $who || $who['type'] !== 'worker') {
             throw ApiProblem::notFound($who ? 'Es personal de un contratista: su EPP lo entrega su empresa.' : 'No encontramos a un trabajador con ese DNI o fotocheck.');
         }
+        \App\Core\Auth\ScopeRoutes::assertWorker($who['id']);   // el trabajador debe estar en el alcance de la membresía
         $w = DB::selectOne(
             "select w.id, w.full_name, w.document_last4, w.status, w.current_site_id as site_id, w.current_position_id as position_id, p.name as position, s.name as site,
                     w.pin_hash is not null as has_pin
@@ -79,6 +80,7 @@ final class PpeQuickController
         if (! Str::isUuid($d['worker_id']) || ! DB::selectOne('select 1 as ok from workers where id = ? and deleted_at is null', [$d['worker_id']])) {
             throw ApiProblem::notFound('El trabajador no existe.');
         }
+        \App\Core\Auth\ScopeRoutes::assertWorker($d['worker_id']);
         $res = Registry::resource('EPP', 'ppe_deliveries');
         $ids = DB::transaction(function () use ($records, $res, $d, $request) {
             $ids = [];

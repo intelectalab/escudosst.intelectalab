@@ -43,9 +43,10 @@ class MonthlyStatsController extends Controller
         $company = app(CompanyContext::class)->companyId;
         $user = (string) auth()->id();
 
-        $sites = array_column(DB::select("select id from sites where deleted_at is null and status = 'active'"), 'id');
+        // Con alcance por sede/área se calculan solo las sedes del alcance; el total de la empresa (sin sede) no se toca.
+        $sites = array_column(DB::select("select id from sites t where deleted_at is null and status = 'active'".\App\Core\Auth\Scope::andTable('sites')), 'id');
         $rows = [];
-        foreach ([...$sites, null] as $site) {
+        foreach ([...$sites, ...(\App\Core\Auth\Scope::restricted() ? [] : [null])] as $site) {
             $closed = DB::selectOne('select is_closed from monthly_statistics where period_year = ? and period_month = ? and site_id is not distinct from ? and deleted_at is null',
                 [$year, $month, $site]);
             if ($closed?->is_closed) {

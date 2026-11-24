@@ -60,7 +60,7 @@ class AcrRules extends RecordRules
         if ($res['table'] === 'action_evidences' && $op === 'create') {
             $a = DB::selectOne('select c.id, c.code, c.title, c.created_by from corrective_actions c join action_evidences e on e.corrective_action_id = c.id where e.id = ?', [$id]);
             if ($a) {
-                \App\Modules\NOT\Notify::users([$a->created_by, ...\App\Modules\NOT\Notify::roles(['sst_manager'])], 'acr.evidence', 'ACR', $a->id, 'Evidencia de acción para verificar',
+                \App\Modules\NOT\Notify::users([$a->created_by, ...\App\Modules\NOT\Notify::roles(['sst_manager'], 'corrective_actions', $a->id)], 'acr.evidence', 'ACR', $a->id, 'Evidencia de acción para verificar',
                     "Se subió evidencia de {$a->code} · {$a->title}: revísala para verificar la acción.", '/m/acr?t=corrective_actions&open='.$a->id, 'normal', 'acr.evidence:'.$id);
             }
         }

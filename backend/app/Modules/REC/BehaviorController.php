@@ -130,7 +130,8 @@ class BehaviorController extends Controller
         $year = (int) $request->query('year', now('America/Lima')->format('Y'));
         $base = "from behavior_observation_items i join behavior_observations o on o.id = i.observation_id and o.deleted_at is null and o.status in ('submitted', 'reviewed')
                  left join areas a on a.id = o.area_id
-                 where i.deleted_at is null and i.result in ('safe', 'at_risk') and extract(year from o.observed_on) = ?";
+                 where i.deleted_at is null and i.result in ('safe', 'at_risk') and extract(year from o.observed_on) = ?"
+                 .\App\Core\Auth\Scope::andTable('behavior_observations', 'o');
         $pct = fn ($rows) => array_map(function ($r) {
             $r->safe = (int) $r->safe;
             $r->total = (int) $r->total;
@@ -147,7 +148,8 @@ class BehaviorController extends Controller
                                           group by a.name order by a.name nulls last", [$year])),
             'by_month' => $pct(DB::select("select extract(month from o.observed_on)::int as key, count(*) filter (where i.result = 'safe') as safe, count(*) as total {$base}
                                            group by 1 order by 1", [$year])),
-            'observations' => (int) DB::selectOne("select count(*) as n from behavior_observations where deleted_at is null and status in ('submitted', 'reviewed') and extract(year from observed_on) = ?", [$year])->n,
+            'observations' => (int) DB::selectOne("select count(*) as n from behavior_observations o where deleted_at is null and status in ('submitted', 'reviewed') and extract(year from observed_on) = ?"
+                .\App\Core\Auth\Scope::andTable('behavior_observations', 'o'), [$year])->n,
         ]]);
     }
 

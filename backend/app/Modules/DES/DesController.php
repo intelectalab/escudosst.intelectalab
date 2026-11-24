@@ -59,9 +59,9 @@ class DesController extends Controller
                     sum(greatest(0, least(a.ends_on, (m.ms + interval '1 month - 1 day')::date) - greatest(a.starts_on, m.ms) + 1)) as days
                from m join absences a on a.starts_on <= (m.ms + interval '1 month - 1 day')::date and a.ends_on >= m.ms
                join workers w on w.id = a.worker_id
-              where a.deleted_at is null and a.status <> 'cancelled'
+              where a.deleted_at is null and a.status <> 'cancelled'".\App\Core\Auth\Scope::andTable('workers', 'w')."
               group by 1, 2, 3", [$from, $start]);
-        $heads = DB::select("select current_area_id as area_id, count(*) as n from workers where deleted_at is null and status in ('active', 'on_leave') group by 1");
+        $heads = DB::select("select current_area_id as area_id, count(*) as n from workers w where deleted_at is null and status in ('active', 'on_leave')".\App\Core\Auth\Scope::andTable('workers', 'w')." group by 1");
         $headByArea = [];
         foreach ($heads as $h) {
             $headByArea[$h->area_id ?? ''] = (int) $h->n;
@@ -131,7 +131,7 @@ class DesController extends Controller
             "select a.id, a.worker_id, w.full_name as worker, ar.name as area, a.absence_type, a.starts_on, a.ends_on, a.days, a.status, a.is_work_related,
                     a.sst_event_id, a.certificate_received, (a.medical_leave_ref is not null) as has_medical
                from absences a join workers w on w.id = a.worker_id left join areas ar on ar.id = w.current_area_id
-              where a.deleted_at is null order by a.starts_on desc limit 100");
+              where a.deleted_at is null".\App\Core\Auth\Scope::andTable('workers', 'w')." order by a.starts_on desc limit 100");
 
         return response()->json(['data' => array_map(fn ($a) => (array) $a + ['type_label' => self::TYPES[$a->absence_type] ?? $a->absence_type,
             'active' => $a->status !== 'cancelled' && $a->starts_on <= date('Y-m-d') && $a->ends_on >= date('Y-m-d')], $rows)]);

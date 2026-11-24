@@ -23,7 +23,7 @@ class EventReportController extends Controller
         }
         $from = (string) ($request->query('from') ?: now('America/Lima')->startOfYear()->toDateString());
         $to = (string) ($request->query('to') ?: now('America/Lima')->toDateString());
-        $range = "e.deleted_at is null and (e.occurred_at at time zone 'America/Lima')::date between ? and ?";
+        $range = "e.deleted_at is null and (e.occurred_at at time zone 'America/Lima')::date between ? and ?".\App\Core\Auth\Scope::andTable('sst_events', 'e');
         $labels = fn (string $field) => collect(Registry::data()['resources']['sst_events']['fields'])->firstWhere('name', $field)['options'] ?? [];
         $map = fn (string $field) => collect($labels($field))->pluck('label', 'value')->all();
         $type = $map('event_type');

@@ -155,3 +155,94 @@ it('el auditor externo limitado a AUI y DOC no entra a otro módulo ni lo ve en 
     expect(collect($perms)->filter(fn ($p) => str_starts_with($p, 'ins.'))->all())->toBe([])
         ->and($perms)->toContain('doc.documents.read');
 });
+
+/** Evento en la sede indicada con su investigación (tabla hija de dos niveles: causa → investigación → evento). */
+function scpInvestigation(array $boss, string $site): string
+{
+    $event = test()->postJson('/api/v1/records/ACC/sst_events', ['event_type' => 'incident', 'occurred_at' => now()->subDay()->toIso8601String(), 'site_id' => $site,
+        'description' => 'Incidente para probar el alcance por sede'], $boss)->assertCreated()->json('data.id');
+
+    return test()->postJson('/api/v1/records/INV/investigations', ['event_id' => $event, 'method' => 'cause_tree'], $boss)->assertCreated()->json('data.id');
+}
+
+it('las tablas hijas sin sede propia se ven y se crean según la sede de su registro padre', function () {
+    $s = scpSetup();
+    $boss = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
+    $invA = scpInvestigation($boss, $s['a']);
+    $invB = scpInvestigation($boss, $s['b']);
+    $cause = fn (string $inv, string $txt, array $h) => $this->postJson('/api/v1/records/INV/investigation_causes', ['investigation_id' => $inv, 'cause_level' => 'immediate', 'description' => $txt], $h);
+    $cA = $cause($invA, 'Piso resbaloso en la sede A', $boss)->assertCreated()->json('data.id');
+    $cB = $cause($invB, 'Piso resbaloso en la sede B', $boss)->assertCreated()->json('data.id');
+
+    $h = scpScoped();
+    $ids = collect($this->getJson('/api/v1/records/INV/investigation_causes?per_page=100', $h)->assertOk()->json('data'))->pluck('id');
+    expect($ids)->toContain($cA)->not->toContain($cB);
+    $invs = collect($this->getJson('/api/v1/records/INV/investigations?per_page=100', $h)->assertOk()->json('data'))->pluck('id');
+    expect($invs)->toContain($invA)->not->toContain($invB);
+    $this->getJson("/api/v1/records/INV/investigation_causes/{$cB}", $h)->assertNotFound();
+    $this->patchJson("/api/v1/records/INV/investigation_causes/{$cB}", ['description' => 'Cambio fuera del alcance'], $h)->assertNotFound();
+    $cause($invB, 'Causa nueva fuera del alcance', $h)->assertStatus(422)->assertJsonStructure(['errors' => ['investigation_id']]);
+    $cause($invA, 'Causa nueva dentro del alcance', $h)->assertCreated();
+    $this->getJson("/api/v1/inv/investigations/{$invA}/tree", $h)->assertOk();
+
+    // Sin alcance ve las dos.
+    Permissions::flush();
+    $boss = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
+    $all = collect($this->getJson('/api/v1/records/INV/investigation_causes?per_page=100', $boss)->assertOk()->json('data'))->pluck('id');
+    expect($all)->toContain($cA)->toContain($cB);
+});
+
+it('los endpoints propios que reciben un id responden 404 fuera del alcance y 200 sin alcance', function () {
+    $s = scpSetup();
+    $boss = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
+    $inv = scpInvestigation($boss, $s['b']);
+    $talk = $this->postJson('/api/v1/records/CH5/safety_talks', ['topic' => 'Orden y limpieza', 'talk_on' => now('America/Lima')->toDateString(), 'site_id' => $s['b']], $boss)
+        ->assertCreated()->json('data.id');
+    $dni = (string) random_int(40000000, 49999999);
+    $this->postJson('/api/v1/records/TRB/workers', ['document_number' => $dni, 'first_name' => 'Rosa', 'paternal_last_name' => 'Fuera', 'current_site_id' => $s['b']], $boss)->assertCreated();
+
+    $h = scpScoped();
+    $this->getJson("/api/v1/inv/investigations/{$inv}/tree", $h)->assertNotFound();
+    $this->getJson("/api/v1/ch5/talks/{$talk}/attendances", $h)->assertNotFound();
+    $this->getJson("/api/v1/reports/inspections/{$s['ins_b']}", $h)->assertNotFound();
+    $this->getJson("/api/v1/reports/inspections/{$s['ins_a']}", $h)->assertOk();
+    $this->getJson("/api/v1/fir/subject/inspections/{$s['ins_b']}", $h)->assertNotFound();
+    $this->getJson('/api/v1/epp/quick/lookup?code='.$dni, $h)->assertNotFound();
+
+    Permissions::flush();
+    $boss = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
+    $this->getJson("/api/v1/inv/investigations/{$inv}/tree", $boss)->assertOk();
+    $this->getJson("/api/v1/ch5/talks/{$talk}/attendances", $boss)->assertOk();
+    $this->getJson("/api/v1/reports/inspections/{$s['ins_b']}", $boss)->assertOk();
+    $this->getJson("/api/v1/fir/subject/inspections/{$s['ins_b']}", $boss)->assertOk();
+    $this->getJson('/api/v1/epp/quick/lookup?code='.$dni, $boss)->assertOk();
+});
+
+it('los avisos por rol de un registro de sede llegan solo a quien tiene esa sede en su alcance', function () {
+    $s = scpSetup();
+    $uid = scpDb(fn () => DB::selectOne('select id from app_auth_lookup_user(?)', [ESENCIAL_EMAIL])->id);
+    $toA = scpDb(fn () => \App\Modules\NOT\Notify::roles(['sst_supervisor'], 'inspections', $s['ins_a']));
+    $toB = scpDb(fn () => \App\Modules\NOT\Notify::roles(['sst_supervisor'], 'inspections', $s['ins_b']));
+    $siteB = scpDb(fn () => \App\Modules\NOT\Notify::siteTeam(['sst_supervisor'], $s['b']));
+    $all = scpDb(fn () => \App\Modules\NOT\Notify::roles(['sst_supervisor']));
+    expect($toA)->toContain($uid)
+        ->and($toB)->not->toContain($uid)
+        ->and($siteB)->not->toContain($uid)
+        ->and($all)->toContain($uid);
+});
+
+it('el auditor externo solo ve los registros con fecha dentro del periodo de su auditoría', function () {
+    $s = scpSetup();
+    $boss = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
+    $old = $this->postJson('/api/v1/records/INS/inspections', ['title' => 'Inspección de 2020', 'inspection_type' => 'planned', 'site_id' => $s['a'], 'scheduled_on' => '2020-06-15'], $boss)
+        ->assertCreated()->json('data.id');
+    $ms = scpMembership(CORPORATIVO_EMAIL, 'external_auditor', ['INS']);
+    scpDb(fn () => DB::update("update memberships set audit_period_from = '2020-01-01', audit_period_to = '2020-12-31' where id = ?", [$ms]));
+    Permissions::flush();
+    $h = authHeaders(tokenFor(CORPORATIVO_EMAIL), ANDINAS_ID);
+
+    $ids = collect($this->getJson('/api/v1/records/INS/inspections?per_page=100', $h)->assertOk()->json('data'))->pluck('id');
+    expect($ids)->toContain($old)->not->toContain($s['ins_a'])->not->toContain($s['ins_b']);
+    $this->getJson("/api/v1/records/INS/inspections/{$old}", $h)->assertOk();
+    $this->getJson("/api/v1/records/INS/inspections/{$s['ins_a']}", $h)->assertNotFound();
+});

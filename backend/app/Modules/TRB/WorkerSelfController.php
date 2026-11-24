@@ -386,7 +386,7 @@ class WorkerSelfController extends Controller
         $uid = (string) auth()->id();
         $rid = DB::selectOne('insert into ppe_replacement_requests (company_id, worker_id, ppe_delivery_id, ppe_item_id, reason, notes, created_by, updated_by) values (?, ?, ?, ?, ?, ?, ?, ?) returning id',
             [app(CompanyContext::class)->companyId, $w->id, $d->id, $d->ppe_item_id, $in['reason'], $in['notes'] ?? null, $uid, $uid])->id;
-        \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['sst_manager', 'sst_supervisor']), 'epp.replacement_requested', 'EPP', $rid, 'Solicitud de reposición de EPP',
+        \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['sst_manager', 'sst_supervisor'], 'workers', $w->id), 'epp.replacement_requested', 'EPP', $rid, 'Solicitud de reposición de EPP',
             "{$w->full_name} pide reponer «{$d->name}».", '/m/epp', 'normal', 'epp.replacement:'.$rid);
 
         return response()->json(['data' => ['id' => $rid]], 201);
@@ -458,7 +458,7 @@ class WorkerSelfController extends Controller
         $status = ! empty($in['done']) ? 'pending_verification' : ($a->status === 'open' ? 'in_progress' : $a->status);
         DB::update('update corrective_actions set status = ?, completed_at = case when ? then now() else completed_at end, updated_by = ?, updated_at = now() where id = ?',
             [$status, $status === 'pending_verification' ? 'true' : 'false', $uid, $a->id]);
-        \App\Modules\NOT\Notify::users([$a->created_by, ...\App\Modules\NOT\Notify::roles(['sst_manager'])], 'acr.evidence', 'ACR', $a->id, 'Evidencia de acción para verificar',
+        \App\Modules\NOT\Notify::users([$a->created_by, ...\App\Modules\NOT\Notify::roles(['sst_manager'], 'corrective_actions', $a->id)], 'acr.evidence', 'ACR', $a->id, 'Evidencia de acción para verificar',
             "{$w->full_name} subió evidencia de {$a->code} · {$a->title}.", '/m/acr?t=corrective_actions&open='.$a->id, 'normal', 'acr.evidence:'.$eid);
 
         return response()->json(['data' => ['evidence_id' => $eid, 'status' => $status]], 201);

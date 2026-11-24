@@ -109,7 +109,7 @@ class PpeCommitteeRules extends RecordRules
             if (! \App\Core\Support\LegalParams::flag('allow_negative_stock', false)) {
                 $this->fail('quantity', "No hay stock suficiente de «{$item->name}» en la sede (quedan {$stock}). Registra primero el ingreso en «Movimientos de stock».");
             }
-            \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['sst_manager', 'sst_supervisor']), 'epp.negative_stock', 'EPP', $values['ppe_item_id'], 'Stock de EPP en negativo',
+            \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['sst_manager', 'sst_supervisor'], 'sites', $values['site_id'] ?? null), 'epp.negative_stock', 'EPP', $values['ppe_item_id'], 'Stock de EPP en negativo',
                 "Se entregó «{$item->name}» sin stock suficiente en la sede (quedaban {$stock}).", '/m/epp?t=ppe_stock_movements', 'high', 'epp.negative:'.$values['ppe_item_id'].':'.date('Y-m-d'));
         }
     }

@@ -517,7 +517,7 @@ class ImprovementRules extends RecordRules
                                   left join agent_types a on a.id = m.agent_type_id where m.id = ?', [$id]);
             // RN-MAG-06: aprobada sobre el límite, se avisa al médico ocupacional para la vigilancia de los expuestos (solo la marca).
             if ($m && $m->result === 'exceeds_limit' && $m->status === 'approved' && ($values['status'] ?? null) === 'approved') {
-                \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['occupational_doctor']), 'mag.exposed', 'MAG', $id, 'Trabajadores expuestos sobre el límite',
+                \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['occupational_doctor'], 'measurements', $id), 'mag.exposed', 'MAG', $id, 'Trabajadores expuestos sobre el límite',
                     'Medición de '.($m->agent ?? 'agente').' en '.($m->point ?? 'un punto').' sobre el límite: revisa la lista de expuestos para la vigilancia médica.', '/m/mag', 'high', 'mag.exposed:'.$id);
             }
             if ($m && $m->result === 'exceeds_limit' && ! $m->corrective_action_id) {

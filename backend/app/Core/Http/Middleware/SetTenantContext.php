@@ -31,6 +31,8 @@ class SetTenantContext
         try {
             DbContext::setCompany($context->companyId, local: true);
             DbContext::setUser($request->user()->getAuthIdentifier(), local: true);
+            // Alcance por sede/área de los registros que llegan por id en la ruta (docs/05 §2).
+            \App\Core\Auth\ScopeRoutes::check($request);
 
             $response = $next($request);
         } catch (Throwable $e) {

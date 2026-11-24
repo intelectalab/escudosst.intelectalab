@@ -46,7 +46,7 @@ class DiagnosticRules extends RecordRules
         if ($res['table'] === 'baseline_assessments' && in_array($values['status'] ?? null, ['in_review', 'draft'], true) && ($current?->status ?? null) !== ($values['status'] ?? null)) {
             $a = DB::selectOne('select id, title, evaluator_user_id, created_by from baseline_assessments where id = ?', [$id]);
             $review = $values['status'] === 'in_review';
-            \App\Modules\NOT\Notify::users($review ? \App\Modules\NOT\Notify::roles(['committee_member']) : array_filter([$a->evaluator_user_id, $a->created_by]),
+            \App\Modules\NOT\Notify::users($review ? \App\Modules\NOT\Notify::roles(['committee_member'], 'baseline_assessments', $a->id) : array_filter([$a->evaluator_user_id, $a->created_by]),
                 $review ? 'lba.review_requested' : 'lba.review_returned', 'LBA', $id, $review ? 'Diagnóstico de línea base para revisar' : 'Diagnóstico de línea base devuelto',
                 $review ? "Revisa el diagnóstico «{$a->title}» y apruébalo o devuélvelo con observaciones." : "El comité devolvió «{$a->title}» con observaciones.",
                 '/m/lba?t=baseline_assessments&open='.$id, 'normal', 'lba.review:'.$id.':'.$values['status'].':'.date('YmdHi'));

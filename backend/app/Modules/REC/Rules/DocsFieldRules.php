@@ -152,7 +152,7 @@ class DocsFieldRules extends RecordRules
             $d = DB::selectOne("select d.id, d.code, d.title, coalesce(c.requires_approval_by, 'sst') as req_by from document_versions v join documents d on d.id = v.document_id
                                   left join document_categories c on c.id = d.category_id where v.id = ?", [$id]);
             [$roles] = \App\Modules\DOC\ApprovalController::APPROVERS[$d->req_by] ?? \App\Modules\DOC\ApprovalController::APPROVERS['sst'];
-            \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles($roles), 'doc.review_pending', 'DOC', $d->id, 'Documento por aprobar',
+            \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles($roles, 'documents', $d->id), 'doc.review_pending', 'DOC', $d->id, 'Documento por aprobar',
                 "{$d->code} · {$d->title} se envió a revisión.", '/m/doc?t=documents&open='.$d->id, 'normal', 'doc.review_pending:'.$id);
         }
         // M-PET RN-PET-03: la versión aprobada deja su capacitación pendiente para los puestos vinculados en CAP.

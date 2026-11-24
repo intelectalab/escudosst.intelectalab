@@ -121,6 +121,8 @@ class SignatureController extends Controller
             'expires_days' => ['nullable', 'integer', 'min:1', 'max:60'],
         ], ['*.required_without' => 'Elige a quién se le pide la firma.', 'role_in_document.in' => 'Elige en calidad de qué firma.']);
         [$res, $row] = $this->subjectRow($d['subject_table'], $d['subject_id']);
+        // Alcance por sede/área: solo se piden firmas de registros del alcance (docs/05 §2).
+        \App\Core\Auth\Scope::assertRecord($d['subject_table'], $d['subject_id']);
         $company = app(CompanyContext::class)->companyId;
         if (! empty($d['signer_user_id']) && ! DB::selectOne("select 1 as ok from memberships where user_id = ? and company_id = ? and status = 'active' and deleted_at is null", [$d['signer_user_id'], $company])) {
             $this->fail('signer_user_id', 'Esa persona no es usuaria de la empresa.');

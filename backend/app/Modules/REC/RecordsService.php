@@ -308,6 +308,16 @@ final class RecordsService
 
             return;
         }
+        // Tabla hija (sin sede ni área propias): el registro padre elegido debe estar en el alcance.
+        if ($t !== 'areas' && Scope::columns($t) === [null, null]) {
+            if (! Scope::allowsParentOf($t, $row)) {
+                $field = Scope::parent($t)[0];
+                $msg = 'El registro elegido es de toda la empresa o de una sede o área fuera del alcance de tu acceso.';
+                throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', $msg, ['errors' => [$field => [$msg]]]);
+            }
+
+            return;
+        }
         [$sc, $ac] = $t === 'areas' ? ['site_id', 'parent_area_id'] : Scope::columns($t);
         $site = $sc ? ($row[$sc] ?? null) : null;
         $area = $ac ? ($row[$ac] ?? null) : null;

@@ -36,7 +36,7 @@ class EstToolsController extends Controller
         $first = sprintf('%d-%02d-01', $year, $month);
         $last = date('Y-m-t', strtotime($first));
         $out = [];
-        foreach (DB::select("select id, name from sites where deleted_at is null and status = 'active' order by name") as $s) {
+        foreach (DB::select("select id, name from sites t where deleted_at is null and status = 'active'".\App\Core\Auth\Scope::andTable('sites').' order by name') as $s) {
             $shift = DB::selectOne("select name, hours_per_day, days_pattern from work_shifts where site_id = ? and deleted_at is null and coalesce(status, 'active') = 'active' order by created_at limit 1", [$s->id]);
             $workers = (int) DB::selectOne("select count(*) as n from workers where deleted_at is null and status in ('active', 'on_leave') and current_site_id = ?", [$s->id])->n;
             $days = null;
@@ -191,19 +191,20 @@ class EstToolsController extends Controller
                     (select i.status from investigations i where i.event_id = e.id and i.deleted_at is null limit 1) as investigation
                from sst_events e left join sites s on s.id = e.site_id
               where e.deleted_at is null and e.status <> 'discarded' and extract(year from e.occurred_at at time zone 'America/Lima') = ?
-                and extract(month from e.occurred_at at time zone 'America/Lima') = ? order by e.occurred_at", [$year, $month]);
+                and extract(month from e.occurred_at at time zone 'America/Lima') = ?".\App\Core\Auth\Scope::andTable('sst_events', 'e').' order by e.occurred_at', [$year, $month]);
         foreach ($events as $e) {
             $e->pending = in_array($e->status, ['reported', 'pending_verification', 'draft'], true) || (str_contains((string) $e->event_type, 'accident') && ! $e->investigation);
         }
         $sites = DB::select(
             "select m.id, coalesce(s.name, 'Toda la empresa') as site, m.hours_worked, m.accidents_fatal + m.accidents_disabling as lost_time, m.lost_days, m.frequency_index, m.severity_index,
                     m.accident_rate_index, m.is_closed
-               from monthly_statistics m left join sites s on s.id = m.site_id where m.period_year = ? and m.period_month = ? and m.deleted_at is null
+               from monthly_statistics m left join sites s on s.id = m.site_id where m.period_year = ? and m.period_month = ? and m.deleted_at is null"
+              .\App\Core\Auth\Scope::andTable('monthly_statistics', 'm')."
               order by m.site_id nulls last, s.name", [$year, $month]);
         $hours = DB::select(
             "select h.id, coalesce(s.name, 'Toda la empresa') as site, h.hours_worked, h.contractor_hours, h.source, h.validated_at, u.full_name as validated_by
                from man_hours h left join sites s on s.id = h.site_id left join users u on u.id = h.validated_by
-              where h.period_year = ? and h.period_month = ? and h.deleted_at is null order by s.name", [$year, $month]);
+              where h.period_year = ? and h.period_month = ? and h.deleted_at is null".\App\Core\Auth\Scope::andTable('man_hours', 'h').' order by s.name', [$year, $month]);
 
         return response()->json(['data' => ['events' => $events, 'sites' => $sites, 'man_hours' => $hours]]);
     }

@@ -134,7 +134,7 @@ class PeopleRules extends RecordRules
                       and person_role in ('injured', 'affected', 'ill')) where id = ?", [$event, $event]);
         $after = (int) (DB::selectOne('select lost_days from sst_events where id = ?', [$event])?->lost_days ?? 0);
         if ($after !== $before) {
-            \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['sst_manager']), 'des.event_days', 'DES', $event, 'Días perdidos actualizados',
+            \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['sst_manager'], 'sst_events', $event), 'des.event_days', 'DES', $event, 'Días perdidos actualizados',
                 "Los días perdidos del evento pasaron de {$before} a {$after} según los descansos médicos ligados.", '/m/acc?t=sst_events&open='.$event, 'low',
                 'des.event_days:'.$event.':'.$absenceId.':'.$after);
         }
@@ -173,12 +173,12 @@ class PeopleRules extends RecordRules
             if ($values['status'] === 'pending_approval') {
                 $role = DB::selectOne("select approver_role from permit_approvals where work_permit_id = ? and decision = 'pending' and deleted_at is null order by step_order limit 1", [$id])?->approver_role;
                 if ($role) {
-                    \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles([$role]), 'ptr.approval_pending', 'PTR', $id, 'Permiso de trabajo por aprobar',
+                    \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles([$role], 'work_permits', $id), 'ptr.approval_pending', 'PTR', $id, 'Permiso de trabajo por aprobar',
                         "El permiso {$p->code} · ".mb_substr((string) $p->work_description, 0, 120).' espera tu aprobación.', $link, 'high', 'ptr.approval_pending:'.$id);
                 }
             }
             if ($values['status'] === 'suspended') {
-                \App\Modules\NOT\Notify::users([$p->requested_by, ...\App\Modules\NOT\Notify::roles(['sst_manager', 'sst_supervisor'])], 'ptr.suspended', 'PTR', $id, 'Permiso de trabajo suspendido',
+                \App\Modules\NOT\Notify::users([$p->requested_by, ...\App\Modules\NOT\Notify::roles(['sst_manager', 'sst_supervisor'], 'work_permits', $id)], 'ptr.suspended', 'PTR', $id, 'Permiso de trabajo suspendido',
                     "Se suspendió el permiso {$p->code}: ".mb_substr((string) $p->suspended_reason, 0, 200), $link, 'high');
                 // M-PTR §12: la suspensión queda como reporte de condición subestándar en ACT (ya revisado, riesgo alto).
                 if (DB::selectOne("select 1 as ok from feature_flags where module_code = 'ACT' and mode = 'enabled' and deleted_at is null")) {
@@ -203,7 +203,7 @@ class PeopleRules extends RecordRules
                 [$a->work_permit_id, $a->step_order]) : null;
             if ($next) {
                 $p = DB::selectOne('select code, work_description from work_permits where id = ?', [$a->work_permit_id]);
-                \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles([$next->approver_role]), 'ptr.approval_pending', 'PTR', $a->work_permit_id, 'Permiso de trabajo por aprobar',
+                \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles([$next->approver_role], 'work_permits', $a->work_permit_id), 'ptr.approval_pending', 'PTR', $a->work_permit_id, 'Permiso de trabajo por aprobar',
                     "El permiso {$p->code} · ".mb_substr((string) $p->work_description, 0, 120).' espera tu aprobación (siguiente paso).', '/m/ptr?t=work_permits&open='.$a->work_permit_id,
                     'high', 'ptr.approval_pending:'.$a->work_permit_id.':'.$next->approver_role);
             }
@@ -217,7 +217,7 @@ class PeopleRules extends RecordRules
             $what = ['accredited' => 'quedó acreditada', 'suspended' => 'quedó suspendida', 'observed' => 'tiene observaciones', 'rejected' => 'fue rechazada'][$values['status']];
             $why = $a->suspended_reason ?? $a->observations ?? $a->rejection_reason;
             // También a quien la solicitó (el jefe de área que la registró).
-            \App\Modules\NOT\Notify::users([...$portal, $a->created_by, ...\App\Modules\NOT\Notify::roles(['sst_supervisor'])], 'ctr.accreditation_'.$values['status'], 'CTR', $id,
+            \App\Modules\NOT\Notify::users([...$portal, $a->created_by, ...\App\Modules\NOT\Notify::roles(['sst_supervisor'], 'contractor_accreditations', $id)], 'ctr.accreditation_'.$values['status'], 'CTR', $id,
                 'Acreditación de contratista: '.$what, "La acreditación de {$a->legal_name} para «".mb_substr((string) $a->service_description, 0, 80)."» {$what}".($why && $values['status'] !== 'accredited' ? ": {$why}" : '').'.',
                 '/m/ctr?t=contractor_accreditations&open='.$id, $values['status'] === 'accredited' ? 'normal' : 'high', 'ctr.accreditation:'.$id.':'.$values['status']);
         }

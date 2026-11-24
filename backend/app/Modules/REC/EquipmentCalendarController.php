@@ -28,14 +28,15 @@ class EquipmentCalendarController extends Controller
                cross join lateral (values ('recharge', e.next_recharge_on), ('hydrostatic_test', e.next_hydrostatic_test_on), ('inspection', e.next_inspection_on),
                                           ('maintenance', e.next_maintenance_on)) as x(kind, due)
               where e.deleted_at is null and e.status <> 'retired' and x.due is not null and (extract(year from x.due) = ? or x.due < ?::date)
-              order by x.due", [$year, $today]);
+              ".\App\Core\Auth\Scope::andTable('emergency_equipment', 'e').
+              " order by x.due", [$year, $today]);
         foreach ($items as $i) {
             $i->overdue = $i->due < $today;
         }
         $sites = DB::select(
             "select s.id, s.name, s.min_extinguishers,
                     (select count(*) from emergency_equipment e where e.site_id = s.id and e.deleted_at is null and e.equipment_type = 'fire_extinguisher' and e.status = 'operational') as operational
-               from sites s where s.deleted_at is null and s.status = 'active' order by s.name");
+               from sites s where s.deleted_at is null and s.status = 'active'".\App\Core\Auth\Scope::andTable('sites', 's').' order by s.name');
         foreach ($sites as $s) {
             $s->operational = (int) $s->operational;
             $s->gap = $s->min_extinguishers !== null && $s->operational < (int) $s->min_extinguishers;

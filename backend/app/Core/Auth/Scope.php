@@ -35,7 +35,7 @@ final class Scope
 
     private const NONE = '00000000-0000-0000-0000-000000000000';
 
-    /** @var array<string, array{restricted: bool, sites: list<string>, areas: list<string>, area_mode: bool, modules: ?list<string>}> */
+    /** @var array<string, array{restricted: bool, sites: list<string>, areas: list<string>, area_mode: bool, modules: ?list<string>, period: ?array{0: string, 1: string}}> */
     private static array $cache = [];
 
     public static function flush(): void
@@ -43,22 +43,22 @@ final class Scope
         self::$cache = [];
     }
 
-    /** @return array{restricted: bool, sites: list<string>, areas: list<string>, area_mode: bool, modules: ?list<string>} */
+    /** @return array{restricted: bool, sites: list<string>, areas: list<string>, area_mode: bool, modules: ?list<string>, period: ?array{0: string, 1: string}} */
     public static function current(): array
     {
         if (! app()->bound(CompanyContext::class)) {
-            return ['restricted' => false, 'sites' => [], 'areas' => [], 'area_mode' => false, 'modules' => null];
+            return ['restricted' => false, 'sites' => [], 'areas' => [], 'area_mode' => false, 'modules' => null, 'period' => null];
         }
         $ctx = app(CompanyContext::class);
 
-        return self::$cache[$ctx->membershipId] ??= self::load($ctx);
+        return self::$cache[$ctx->membershipId] ??= self::load(DB::connection(), $ctx->membershipId, $ctx->roleCode);
     }
 
-    private static function load(CompanyContext $ctx): array
+    private static function load(\Illuminate\Database\ConnectionInterface $db, string $membershipId, string $roleCode): array
     {
-        $m = DB::selectOne('select is_support_session, allowed_modules::text as mods from memberships where id = ?', [$ctx->membershipId]);
-        $rows = DB::select("select scope_type, site_id, area_id, trim(module_code) as module_code from membership_scopes
-                             where membership_id = ? and deleted_at is null and scope_type in ('site', 'area', 'module')", [$ctx->membershipId]);
+        $m = $db->selectOne('select is_support_session, allowed_modules::text as mods, audit_period_from::text as pf, audit_period_to::text as pt from memberships where id = ?', [$membershipId]);
+        $rows = $db->select("select scope_type, site_id, area_id, trim(module_code) as module_code from membership_scopes
+                             where membership_id = ? and deleted_at is null and scope_type in ('site', 'area', 'module')", [$membershipId]);
 
         $modules = null;
         $listed = $m && $m->mods !== null ? array_values(array_filter(array_map(fn ($x) => trim($x, ' "'), explode(',', trim($m->mods, '{}'))))) : null;
@@ -66,9 +66,11 @@ final class Scope
         if ($listed !== null || $scoped !== []) {
             $modules = array_values(array_unique(array_merge(array_map('strtoupper', $listed ?? []), $scoped, self::BASE_MODULES)));
         }
+        // docs/05 §4.5: el auditor externo ve los registros del periodo de su auditoría (desde/hasta).
+        $period = $roleCode === 'external_auditor' && ($m->pf ?? null) && ($m->pt ?? null) ? [(string) $m->pf, (string) $m->pt] : null;
 
-        $out = ['restricted' => false, 'sites' => [], 'areas' => [], 'area_mode' => false, 'modules' => $modules];
-        if (($m->is_support_session ?? false) || in_array($ctx->roleCode, self::UNSCOPED_ROLES, true)) {
+        $out = ['restricted' => false, 'sites' => [], 'areas' => [], 'area_mode' => false, 'modules' => $modules, 'period' => $period];
+        if (($m->is_support_session ?? false) || in_array($roleCode, self::UNSCOPED_ROLES, true)) {
             return $out;
         }
         $siteScopes = array_values(array_unique(array_filter(array_map(fn ($r) => $r->scope_type === 'site' ? $r->site_id : null, $rows))));
@@ -77,13 +79,13 @@ final class Scope
             return $out;
         }
         $arr = fn (array $l) => '{'.implode(',', $l).'}';
-        $subtree = $areaRoots ? array_column(DB::select(
+        $subtree = $areaRoots ? array_column($db->select(
             'with recursive t as (select id from areas where id = any(?::uuid[]) and deleted_at is null
                                   union select a.id from areas a join t on a.parent_area_id = t.id where a.deleted_at is null) select id from t',
             [$arr($areaRoots)]), 'id') : [];
-        $areaSites = $areaRoots ? array_column(DB::select('select distinct site_id from areas where id = any(?::uuid[])', [$arr($areaRoots)]), 'site_id') : [];
+        $areaSites = $areaRoots ? array_column($db->select('select distinct site_id from areas where id = any(?::uuid[])', [$arr($areaRoots)]), 'site_id') : [];
         $fullSites = array_values(array_diff($siteScopes, $areaSites));
-        $siteAreas = $fullSites ? array_column(DB::select('select id from areas where site_id = any(?::uuid[]) and deleted_at is null', [$arr($fullSites)]), 'id') : [];
+        $siteAreas = $fullSites ? array_column($db->select('select id from areas where site_id = any(?::uuid[]) and deleted_at is null', [$arr($fullSites)]), 'id') : [];
 
         return [
             'restricted' => true,
@@ -92,6 +94,7 @@ final class Scope
             // Hay áreas en el alcance: lo de nivel sede de esas sedes se ve, pero no las demás áreas de la sede.
             'area_mode' => $areaRoots !== [],
             'modules' => $modules,
+            'period' => $period,
         ];
     }
 
@@ -157,10 +160,46 @@ final class Scope
         return [$site, $area];
     }
 
-    /** La tabla se recorta por alcance (tiene sede o área, o es la de sedes o áreas). */
+    /** La tabla se recorta por alcance (tiene sede o área, es la de sedes o áreas, o es hija de una que se recorta). */
     public static function appliesTo(string $table): bool
     {
-        return in_array($table, ['sites', 'areas'], true) || self::columns($table) !== [null, null];
+        return in_array($table, ['sites', 'areas'], true) || self::columns($table) !== [null, null] || self::parent($table) !== null;
+    }
+
+    /** @var array<string, array{0: string, 1: string}|false> */
+    private static array $parents = [];
+
+    /**
+     * Registro padre de una tabla hija sin sede ni área propias (ítems, asistencias, participantes, causas, filas IPERC…):
+     * el primer campo de referencia obligatorio del registro cuyo destino se recorta por alcance (con sede/área propias o,
+     * a su vez, hijo de uno). Así el hijo hereda el alcance del padre. Las referencias a usuarios no cuentan.
+     *
+     * @return array{0: string, 1: string}|null [columna, tabla padre]
+     */
+    public static function parent(string $table, int $depth = 0): ?array
+    {
+        if (isset(self::$parents[$table])) {
+            return self::$parents[$table] ?: null;
+        }
+        $res = Registry::data()['resources'][$table] ?? null;
+        if (! $res || $depth > 4 || in_array($table, ['sites', 'areas', 'membership_scopes'], true) || self::columns($table) !== [null, null]) {
+            return null;
+        }
+        $found = false;
+        foreach ($res['fields'] as $f) {
+            if (($f['type'] ?? '') !== 'ref' || empty($f['required']) || in_array($f['ref'], ['users', $table, 'sites', 'areas'], true)) {
+                continue;
+            }
+            if (self::columns($f['ref']) !== [null, null] || self::parent($f['ref'], $depth + 1) !== null) {
+                $found = [$f['name'], $f['ref']];
+                break;
+            }
+        }
+        if ($depth === 0 || $found) {
+            self::$parents[$table] = $found;
+        }
+
+        return $found ?: null;
     }
 
     /**
@@ -171,18 +210,119 @@ final class Scope
      */
     public static function condition(string $table, string $alias = 't', bool $strict = false): ?array
     {
-        if (! self::restricted()) {
+        return self::conditionFor($table, $alias, $strict, true);
+    }
+
+    /** @return array{0: string, 1: list<string>}|null */
+    private static function conditionFor(string $table, string $alias, bool $strict, bool $withPeriod): ?array
+    {
+        $restricted = self::restricted();
+        $period = $withPeriod ? self::period() : null;
+        if (! $restricted && $period === null) {
             return null;
         }
-        if ($table === 'sites') {
-            return ["{$alias}.id = any(?::uuid[])", [self::arr(self::siteIds())]];
-        }
-        if ($table === 'areas') {
-            return ["{$alias}.id = any(?::uuid[])", [self::arr(self::areaIds())]];
+        if ($table === 'sites' || $table === 'areas') {
+            return $restricted ? ["{$alias}.id = any(?::uuid[])", [self::arr($table === 'sites' ? self::siteIds() : self::areaIds())]] : null;
         }
         [$site, $area] = self::columns($table);
+        $own = $site !== null || $area !== null;
+        $date = $period ? self::dateExpr($table, $alias) : null;
+        $parts = [];
+        $bind = [];
+        if ($restricted && $own && ($c = self::sql($site ? "{$alias}.\"{$site}\"" : null, $area ? "{$alias}.\"{$area}\"" : null, $strict))) {
+            $parts[] = $c[0];
+            array_push($bind, ...$c[1]);
+        }
+        if ($date) {
+            // docs/05 §4.5: el auditor externo ve los registros del periodo de su auditoría (fecha principal del registro).
+            $parts[] = "({$date} is null or {$date} between ?::date and ?::date)";
+            array_push($bind, $period[0], $period[1]);
+        }
+        // Tabla hija: hereda del padre lo que no tiene propio (sede/área y, sin fecha propia, el periodo).
+        $needSite = $restricted && ! $own;
+        $needPeriod = $period !== null && $date === null;
+        if (($needSite || $needPeriod) && ($p = self::parent($table))
+            && ($pc = self::conditionFor($p[1], $alias.'_p', $strict, $needPeriod))) {
+            $parts[] = "exists (select 1 from \"{$p[1]}\" {$alias}_p where {$alias}_p.id = {$alias}.\"{$p[0]}\" and {$pc[0]})";
+            array_push($bind, ...$pc[1]);
+        }
 
-        return self::sql($site ? "{$alias}.\"{$site}\"" : null, $area ? "{$alias}.\"{$area}\"" : null, $strict);
+        return $parts ? ['('.implode(' and ', $parts).')', $bind] : null;
+    }
+
+    /**
+     * Fecha principal de los registros con fecha propia (eventos, inspecciones, charlas, permisos, entregas…) para el
+     * periodo del auditor externo (docs/05 §4.5, M-AUI RN-AUI-08). Los datos maestros (trabajadores, sedes, documentos,
+     * matrices, procedimientos) no se recortan por fecha. «@month»: tablas por periodo (año y mes).
+     */
+    private const PERIOD_DATES = [
+        'sst_events' => 'occurred_at', 'substandard_reports' => 'occurred_at', 'investigations' => 'started_on',
+        'inspections' => 'scheduled_on', 'findings' => 'created_at', 'corrective_actions' => 'created_at',
+        'safety_talks' => 'talk_on', 'ats_forms' => 'performed_on', 'work_permits' => 'valid_from',
+        'behavior_observations' => 'observed_on', 'ppe_deliveries' => 'delivered_at', 'ppe_stock_movements' => 'moved_at',
+        'drills' => 'scheduled_at', 'training_sessions' => 'starts_at', 'audits' => 'starts_on',
+        'measurements' => 'measured_at', 'committee_meetings' => 'scheduled_at', 'equipment_checks' => 'checked_at',
+        'access_events' => 'occurred_at', 'absences' => 'starts_on', 'ergonomic_assessments' => 'assessed_on',
+        'activity_executions' => 'executed_on', 'budget_executions' => 'executed_on', 'requirement_evaluations' => 'evaluated_on',
+        'baseline_assessments' => 'assessment_on', 'change_requests' => 'requested_on', 'management_reviews' => 'review_on',
+        'self_diagnostics' => 'diagnostic_on', 'vendor_evaluations' => 'evaluated_on', 'risst_deliveries' => 'delivered_on',
+        'waste_records' => 'generated_on', 'man_hours' => '@month', 'monthly_statistics' => '@month',
+    ];
+
+    private static function dateExpr(string $table, string $alias): ?string
+    {
+        $col = self::PERIOD_DATES[$table] ?? null;
+        if ($col === null) {
+            return null;
+        }
+        if ($col === '@month') {
+            return "make_date({$alias}.period_year, {$alias}.period_month, 1)";
+        }
+        $res = Registry::data()['resources'][$table] ?? null;
+        $type = $res ? (Registry::field($res, $col)['type'] ?? 'datetime') : 'datetime';
+
+        return $type === 'date' ? "{$alias}.\"{$col}\"" : "({$alias}.\"{$col}\" at time zone 'America/Lima')::date";
+    }
+
+    /** Periodo de auditoría del auditor externo (memberships.audit_period_from/to). @return array{0: string, 1: string}|null */
+    public static function period(): ?array
+    {
+        return self::current()['period'] ?? null;
+    }
+
+    /** Hay algún recorte de registros (sede/área o periodo de auditoría). */
+    public static function filtersRecords(): bool
+    {
+        return self::restricted() || self::period() !== null;
+    }
+
+    /**
+     * Al crear o mover un registro hijo: el padre elegido debe estar en el alcance y no ser de toda la empresa.
+     * true si la tabla no es hija o no hay recorte.
+     */
+    public static function allowsParentOf(string $table, array $row): bool
+    {
+        if (! self::restricted() || self::columns($table) !== [null, null] || ! ($p = self::parent($table))) {
+            return true;
+        }
+        $pid = $row[$p[0]] ?? null;
+        if (! is_string($pid) || ! \Illuminate\Support\Str::isUuid($pid)) {
+            return true; // la validación del campo obligatorio responde
+        }
+        $c = self::condition($p[1], 'x', strict: true);
+
+        return ! $c || (bool) DB::selectOne("select 1 as ok from \"{$p[1]}\" x where x.id = ? and {$c[0]}", array_merge([$pid], $c[1]));
+    }
+
+    /**
+     * Para los endpoints propios de cada módulo que reciben un id: 404 si el registro (o, en una tabla hija, su padre) está
+     * fuera del alcance; con $write, además 403 si es de toda la empresa (assertRowWritable).
+     */
+    public static function assertRecord(string $table, ?string $id, bool $write = false): void
+    {
+        if ($id !== null && $id !== '') {
+            $write ? self::assertRowWritable($table, $id) : self::assertRow($table, $id);
+        }
     }
 
     /**
@@ -216,6 +356,21 @@ final class Scope
     public static function andSql(?string $siteExpr, ?string $areaExpr, bool $strict = false): string
     {
         $c = self::sql($siteExpr, $areaExpr, $strict);
+        if (! $c) {
+            return '';
+        }
+        $sql = $c[0];
+        foreach ($c[1] as $v) {
+            $sql = preg_replace('/\?/', "'".str_replace("'", "''", $v)."'", $sql, 1);
+        }
+
+        return ' and '.$sql;
+    }
+
+    /** Como condition() pero como texto « and (...)» con los valores ya escritos (tablas del registro, incluidas las hijas). */
+    public static function andTable(string $table, string $alias = 't', bool $strict = false): string
+    {
+        $c = self::condition($table, $alias, $strict);
         if (! $c) {
             return '';
         }
@@ -270,6 +425,69 @@ final class Scope
             && ! DB::selectOne("select 1 as ok from \"{$table}\" t where t.id = ? and {$c[0]}", array_merge([$id], $c[1]))) {
             throw ApiProblem::forbidden('Este registro es de toda la empresa: tu acceso está limitado a algunas sedes o áreas.');
         }
+    }
+
+    // ── Destinatarios de avisos ──────────────────────────────────────────────
+
+    /**
+     * M-NOT §4 («los permisos se acotan además por membership_scopes») y docs/05 §2: de los usuarios que recibirían un aviso
+     * por su rol, deja solo a quienes ven el registro del aviso por el alcance de su membresía en la empresa (el resto de
+     * la empresa no recibe avisos de sedes o áreas que no ve). Los registros de toda la empresa llegan a todos. Sirve
+     * también fuera de una petición (alertas diarias) con la conexión de la empresa.
+     *
+     * @param  list<?string>  $users
+     * @return list<string>
+     */
+    public static function usersSeeing(array $users, string $table, ?string $id, ?\Illuminate\Database\ConnectionInterface $db = null): array
+    {
+        $users = array_values(array_unique(array_filter($users)));
+        if ($users === [] || ! $id || ! \Illuminate\Support\Str::isUuid($id) || ! self::appliesTo($table)) {
+            return $users;
+        }
+        $db ??= DB::connection();
+        $loc = self::location($db, $table, $id);
+        if ($loc === null || ($loc[0] === null && $loc[1] === null)) {
+            return $users;
+        }
+        $members = $db->select("select m.id, m.user_id, coalesce(r.base_role_code, r.code) as role from memberships m join roles r on r.id = m.role_id
+                                 where m.user_id = any(?::uuid[]) and m.status = 'active' and m.deleted_at is null
+                                   and m.company_id = nullif(current_setting('app.company_id', true), '')::uuid", [self::arr($users)]);
+        $hidden = [];
+        foreach ($members as $m) {
+            $s = self::$cache[$m->id] ??= self::load($db, $m->id, $m->role);
+            $sees = ! $s['restricted'] || ($loc[1] !== null ? in_array($loc[1], $s['areas'], true) : in_array($loc[0], $s['sites'], true));
+            $hidden[$m->user_id] = ($hidden[$m->user_id] ?? true) && ! $sees;
+        }
+
+        return array_values(array_filter($users, fn ($u) => ! ($hidden[$u] ?? false)));
+    }
+
+    /** Sede y área de un registro (propias o de su registro padre). null si la tabla no tiene alcance o no existe. @return array{0: ?string, 1: ?string}|null */
+    private static function location(\Illuminate\Database\ConnectionInterface $db, string $table, string $id, int $depth = 0): ?array
+    {
+        if ($depth > 5) {
+            return null;
+        }
+        if ($table === 'sites') {
+            return [$id, null];
+        }
+        if ($table === 'areas') {
+            $a = $db->selectOne('select site_id from areas where id = ?', [$id]);
+
+            return $a ? [$a->site_id, $id] : null;
+        }
+        [$site, $area] = self::columns($table);
+        if ($site !== null || $area !== null) {
+            $r = $db->selectOne('select '.($site ? "\"{$site}\"" : 'null').' as s, '.($area ? "\"{$area}\"" : 'null')." as a from \"{$table}\" where id = ?", [$id]);
+
+            return $r ? [$r->s, $r->a] : null;
+        }
+        if (! ($p = self::parent($table))) {
+            return null;
+        }
+        $fk = $db->selectOne("select \"{$p[0]}\" as v from \"{$table}\" where id = ?", [$id])?->v;
+
+        return $fk ? self::location($db, $p[1], (string) $fk, $depth + 1) : null;
     }
 
     private static function arr(array $l): string

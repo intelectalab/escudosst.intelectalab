@@ -30,6 +30,7 @@ class TalksController extends Controller
     {
         $this->can('ch5.talk_attendances.read');
         $area = (string) $request->query('area_id');
+        \App\Core\Auth\Scope::assertRecord('areas', $area);
         if (! Str::isUuid($area)) {
             throw ApiProblem::badRequest('Elige el área.');
         }
@@ -163,7 +164,8 @@ class TalksController extends Controller
                         and (t.signature_id is not null or t.method <> 'signature')) as attended,
                     (select count(*) from safety_talks k where k.area_id = a.id and k.talk_on = ?::date and k.status <> 'cancelled' and k.deleted_at is null) as talks
                from areas a left join sites s on s.id = a.site_id
-              where a.deleted_at is null and coalesce(a.status, 'active') = 'active' order by s.name nulls last, a.name", [$date, $date]);
+              where a.deleted_at is null and coalesce(a.status, 'active') = 'active'".\App\Core\Auth\Scope::andTable('areas', 'a').'
+              order by s.name nulls last, a.name', [$date, $date]);
         foreach ($rows as $r) {
             $r->workers = (int) $r->workers;
             $r->attended = (int) $r->attended;
@@ -187,7 +189,8 @@ class TalksController extends Controller
                     (select count(*) from talk_attendances t where t.safety_talk_id = k.id and t.deleted_at is null and (t.signature_id is not null or t.method <> 'signature')) as signed
                from safety_talks k left join areas a on a.id = k.area_id left join sites s on s.id = k.site_id
                left join users u on u.id = k.speaker_user_id left join workers w on w.id = k.speaker_worker_id
-              where k.deleted_at is null and k.talk_on between ?::date and ?::date order by k.talk_on, a.name", [$from, $to]);
+              where k.deleted_at is null and k.talk_on between ?::date and ?::date".\App\Core\Auth\Scope::andTable('safety_talks', 'k').'
+              order by k.talk_on, a.name', [$from, $to]);
         $status = ['scheduled' => 'Programada', 'held' => 'Realizada', 'cancelled' => 'Anulada'];
         $out = [['Charlas de cinco minutos'], ["Del {$from} al {$to}."], [], ['Fecha', 'Tema', 'Sede', 'Área', 'Expositor', 'Minutos', 'Asistentes', 'Con firma', 'Estado']];
         foreach ($rows as $r) {

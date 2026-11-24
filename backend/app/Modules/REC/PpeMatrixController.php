@@ -71,7 +71,7 @@ class PpeMatrixController extends Controller
         return response()->json(['data' => DB::select(
             "select q.id, q.reason, q.notes, q.status, q.created_at, q.resolution_note, q.resolved_at, w.id as worker_id, w.full_name as worker, i.id as ppe_item_id, i.name as item
                from ppe_replacement_requests q join workers w on w.id = q.worker_id join ppe_items i on i.id = q.ppe_item_id
-              where q.deleted_at is null order by (q.status = 'pending') desc, q.created_at desc limit 200")]);
+              where q.deleted_at is null".\App\Core\Auth\Scope::andTable('workers', 'w')." order by (q.status = 'pending') desc, q.created_at desc limit 200")]);
     }
 
     public function resolve(Request $request, string $id): JsonResponse
