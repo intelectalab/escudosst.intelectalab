@@ -11,7 +11,8 @@ import { Card } from "./Summary";
 
 type Hom = { rating: string | null; total_score: number | null; valid_until: string | null; status: string };
 type Ctr = { id: string; ruc: string; legal_name: string; status: string; homologation: Hom | null };
-const LETTER: Record<string, [string, string, string]> = { approved: ["A", "Aprobado", "bg-ok-soft text-ok"], conditionally_approved: ["B", "Aprobado con condiciones", "bg-amber-soft text-amber-ink"], rejected: ["C", "No aprobado", "bg-bad-soft text-bad"] };
+export const HOM_MAX_SCORE = 5;
+export const LETTER: Record<string, [string, string, string]> = { approved: ["A", "Aprobado", "bg-ok-soft text-ok"], conditionally_approved: ["B", "Aprobado con condiciones", "bg-amber-soft text-amber-ink"], rejected: ["C", "No aprobado", "bg-bad-soft text-bad"] };
 const fmt = (d: string | null) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "—");
 
 export function HomRatings() {
@@ -68,7 +69,7 @@ export function HomSelfAssessment() {
       <ul className="space-y-3">
         {rows.map((e) => (
           <li key={e.id} className="rounded-lg border border-line p-3 text-sm">
-            <p className="font-semibold">{e.template} · {STATUS[e.status] ?? e.status}{e.rating && LETTER[e.rating] ? ` · Calificación ${LETTER[e.rating][0]}` : ""}{e.valid_until ? ` · vigente hasta ${fmt(e.valid_until)}` : ""}</p>
+            <p className="font-semibold">{e.template} · {STATUS[e.status] ?? e.status}{e.rating && LETTER[e.rating] ? ` · Calificación ${LETTER[e.rating][0]} · ${LETTER[e.rating][1]}` : ""}{e.valid_until ? ` · vigente hasta ${fmt(e.valid_until)}` : ""}</p>
             {e.status === "draft" && (
               <div className="mt-2 space-y-2">
                 {e.criteria.map((c) => {
@@ -76,14 +77,15 @@ export function HomSelfAssessment() {
                   return (
                     <div key={c.name} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_minmax(0,1fr)_auto] sm:items-center">
                       <span>{c.name} <span className="text-xs text-muted">(peso {c.weight})</span></span>
-                      <input type="number" min={0} className="input" aria-label={`Puntaje ${c.name}`} value={a?.score ?? ""} onChange={(ev) => set(e.id, c.name, { score: ev.target.value })} />
+                      <input type="number" min={0} max={HOM_MAX_SCORE} step="0.5" className="input" aria-label={`Puntaje ${c.name} (0 a ${HOM_MAX_SCORE})`} placeholder={`0 a ${HOM_MAX_SCORE}`} value={a?.score ?? ""} onChange={(ev) => set(e.id, c.name, { score: ev.target.value })} />
                       <input className="input" placeholder="Comentario" value={a?.comment ?? ""} onChange={(ev) => set(e.id, c.name, { comment: ev.target.value })} />
                       <label className="cursor-pointer text-xs font-semibold text-brand-strong underline">{a?.fileName || "Evidencia"}
                         <input type="file" className="hidden" onChange={async (ev) => { const f = ev.target.files?.[0]; if (!f) return; const up = await uploadFile(f, "HOM"); set(e.id, c.name, { file: up.id, fileName: up.original_name }); }} /></label>
                     </div>
                   );
                 })}
-                <Button variant="primary" disabled={e.criteria.some((c) => !ans[e.id]?.[c.name]?.score)} onClick={() => send(e)}>Enviar autoevaluación</Button>
+                <p className="text-xs text-muted">Califica cada criterio de 0 (no cumple) a {HOM_MAX_SCORE} (cumple totalmente).</p>
+                <Button variant="primary" disabled={e.criteria.some((c) => { const s = ans[e.id]?.[c.name]?.score; return !s || Number.isNaN(Number(s)) || Number(s) < 0 || Number(s) > HOM_MAX_SCORE; })} onClick={() => send(e)}>Enviar autoevaluación</Button>
               </div>
             )}
           </li>

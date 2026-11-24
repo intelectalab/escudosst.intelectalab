@@ -23097,19 +23097,20 @@
     {
      "name": "rating",
      "label": "Calificación",
+     "readonly": true,
      "type": "enum",
      "options": [
       {
        "value": "approved",
-       "label": "Aprobado"
+       "label": "A · Aprobado"
       },
       {
        "value": "conditionally_approved",
-       "label": "Aprobado con condiciones"
+       "label": "B · Aprobado con condiciones"
       },
       {
        "value": "rejected",
-       "label": "Rechazado"
+       "label": "C · No aprobado"
       }
      ],
      "list": true

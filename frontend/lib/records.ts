@@ -79,8 +79,16 @@ export const records = {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
+/** Campo que el servidor no muestra a este rol (llega vacío y listado en «_reserved»). */
+export function isReserved(row: RecordRow | null | undefined, name: string): boolean {
+  const r = row?._reserved;
+  return Array.isArray(r) && r.includes(name);
+}
+
 /** Texto para mostrar un valor en la lista o en modo lectura. */
 export function displayValue(f: RecordField, row: RecordRow): string {
+  // RN-ACT-08: el servidor oculta la identidad de quien reporta a los roles que no son SST.
+  if (isReserved(row, f.name)) return "Reservado";
   const v = row[f.name];
   if (v === null || v === undefined || v === "") return "—";
   switch (f.type) {

@@ -174,7 +174,7 @@ final class WhatsAppIntake
                     reported_at, is_anonymous, reporter_contact, whatsapp_conversation_id, status)
                  values (?, ?, ?, 'whatsapp', ?, ?, ?, ?, ?, ?, now(), ?, ?, ?, 'received')",
                 [$s['company'], $code, $s['type'], $p->id, $p->site_id, $p->area_id, $s['description'], $p->location_description, $photo,
-                    $s['anonymous'] ? 'true' : 'false', $s['anonymous'] ? null : $s['name'].' · +'.preg_replace('/\D/', '', $from), self::phoneHash($from)]
+                    $s['anonymous'] ? 'true' : 'false', $s['anonymous'] ? null : \App\Modules\REC\RecordsService::encryptValue($s['name'].' · +'.preg_replace('/\D/', '', $from)), self::phoneHash($from)]
             );
             DB::update('update report_points set report_count = report_count + 1, last_used_at = now() where id = ?', [$p->id]);
             \App\Modules\NOT\Notify::newReport($s['company'], $code);

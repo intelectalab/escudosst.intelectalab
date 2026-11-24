@@ -45,6 +45,44 @@ final class RecordsService
         'access_events' => "concat(to_char({a}.occurred_at at time zone 'America/Lima', 'DD/MM/YYYY HH24:MI'), ' · ', case {a}.direction when 'in' then 'Ingreso' when 'out' then 'Salida' else {a}.direction end)",
     ];
 
+    /**
+     * M-ACT RN-ACT-08: la identidad de quien reporta (nombre/contacto, trabajador o usuario) solo la ven los roles SST.
+     * Para los demás se devuelve vacía y marcada en «_reserved»; la interfaz la muestra como «Reservado».
+     */
+    public const RESERVED_FIELDS = ['substandard_reports' => ['reporter_contact', 'reporter_worker_id', 'reporter_user_id']];
+
+    public const SST_ROLES = ['sst_manager', 'sst_supervisor', 'consultant'];
+
+    /** Campos de la tabla que el rol activo no puede ver (ni filtrar ni cambiar). */
+    public static function reservedFields(string $table): array
+    {
+        $fields = self::RESERVED_FIELDS[$table] ?? [];
+        if ($fields === [] || in_array(app(CompanyContext::class)->roleCode, self::SST_ROLES, true)) {
+            return [];
+        }
+
+        return $fields;
+    }
+
+    /** Cifrado de los campos [CIFRADO EN APLICACIÓN]: el mismo para el motor de registros y las altas directas (QR, WhatsApp). */
+    public static function encryptValue(string $v): string
+    {
+        return Crypt::encryptString($v);
+    }
+
+    /** Descifra un campo cifrado; null si no se puede (valor dañado o con otra clave). */
+    public static function decryptValue(?string $v): ?string
+    {
+        if ($v === null) {
+            return null;
+        }
+        try {
+            return Crypt::decryptString($v);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     public static function labelSql(string $table, string $alias): ?string
     {
         return isset(self::LABEL_SQL[$table]) ? str_replace('{a}', $alias, self::LABEL_SQL[$table]) : null;
@@ -271,6 +309,7 @@ final class RecordsService
                 ($res['updated_by'] ?? $res['stamps']) ? [(string) auth()->id(), $id] : [$id])
             : DB::delete('delete from "'.$res['table'].'" where id = ?', [$id]));
 
+        RecordRules::for($res['table'])?->afterDelete($res, $current);
         $label = $res['label'] !== 'id' ? ($current->{$res['label']} ?? null) : null;
         $this->audit($res, 'delete', $id, ['label' => $label]);
     }
@@ -442,6 +481,10 @@ final class RecordsService
         if ($value === '' || $value === null || is_array($value)) {
             return [$where, $bind];
         }
+        // RN-ACT-08: quien no ve la identidad del reportante tampoco puede deducirla filtrando por ella.
+        if (in_array(preg_replace('/__(lt|lte|gt|gte|null)$/', '', $key), self::reservedFields($res['table']), true)) {
+            return [$where, $bind];
+        }
         $value = (string) $value;
         [$name, $op] = array_pad(explode('__', $key, 2), 2, null);
         if ($name === 'source_id' && $op === null && Registry::field($res, 'source_type') && Str::isUuid($value)) {
@@ -494,6 +537,10 @@ final class RecordsService
     private function present(array $res, object $row, bool $forList = false, bool $decrypt = false): array
     {
         $out = ['id' => $row->id, 'own' => $row->company_id !== null];
+        $reserved = self::reservedFields($res['table']);
+        if ($reserved !== []) {
+            $out['_reserved'] = $reserved;
+        }
         if (property_exists($row, 'updated_at')) {
             $out['updated_at'] = $row->updated_at;
         }
@@ -504,7 +551,7 @@ final class RecordsService
             }
             $v = $row->{$c};
             if (! empty($f['encrypted']) && $v !== null) {
-                $v = $decrypt ? $this->decrypt($v) : '••••';
+                $v = $decrypt ? self::decryptValue($v) : '••••';
             } elseif (in_array($f['type'], ['json', 'tags', 'refs'], true) && is_string($v)) {
                 $v = json_decode($v, true);
             } elseif ($f['type'] === 'bool' && $v !== null) {
@@ -519,6 +566,14 @@ final class RecordsService
                 && ! in_array(app(CompanyContext::class)->roleCode, ['occupational_doctor', 'health_staff'], true)) {
                 $v = \App\Modules\ING\GateController::safeReasons($v);
             }
+            if (in_array($c, $reserved, true)) {
+                $out[$c] = null;
+                if (property_exists($row, $c.'__label')) {
+                    $out[$c.'__label'] = null;
+                }
+
+                continue;
+            }
             $out[$c] = $v;
             if (property_exists($row, $c.'__label')) {
                 $out[$c.'__label'] = $row->{$c.'__label'};
@@ -529,15 +584,6 @@ final class RecordsService
         }
 
         return $out;
-    }
-
-    private function decrypt(string $v): ?string
-    {
-        try {
-            return Crypt::decryptString($v);
-        } catch (\Throwable) {
-            return null;
-        }
     }
 
     // ── Escritura ─────────────────────────────────────────────────────────────
@@ -551,9 +597,11 @@ final class RecordsService
     {
         $errors = [];
         $values = [];
+        // RN-ACT-08: quien no ve la identidad del reportante no la cambia (en edición, esos campos se ignoran).
+        $reserved = $creating ? [] : self::reservedFields($res['table']);
         foreach ($res['fields'] as $f) {
             $c = $f['name'];
-            if (! empty($f['readonly'])) {
+            if (! empty($f['readonly']) || in_array($c, $reserved, true)) {
                 continue;
             }
             $present = array_key_exists($c, $input);
@@ -729,7 +777,7 @@ final class RecordsService
                 continue;
             }
             if (! empty($f['encrypted'])) {
-                $parts[] = [$c, '?', [Crypt::encryptString((string) $v)]];
+                $parts[] = [$c, '?', [self::encryptValue((string) $v)]];
 
                 continue;
             }

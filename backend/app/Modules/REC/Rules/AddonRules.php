@@ -284,41 +284,23 @@ class AddonRules extends RecordRules
                 ?? \App\Core\Support\LegalParams::number('vendor_validity_months', 12));
             $values['valid_until'] = date('Y-m-d', strtotime(($this->value($values, $current, 'evaluated_on') ?? date('Y-m-d'))." +{$months} months"));
         }
-        if ($current === null) {
-            $extra['scores'] = ["'{}'::jsonb", []];   // se califican después con «Calificar» o con la autoevaluación del proveedor
-        }
-        $scores = $this->value($values, $current, 'scores');
+        // RN-HOM-01/02: con los puntajes por criterio se calculan el total y la calificación A/B/C (VendorScoring, el mismo
+        // cálculo que «Calificar» y la autoevaluación del portal). La calificación no se escribe a mano.
+        unset($values['rating'], $values['total_score']);
+        $scores = $values['scores'] ?? null;
         if (is_string($scores)) {
             $scores = json_decode($scores, true);
         }
-        // RN-HOM-01: puntaje total = suma ponderada por los pesos de la plantilla (sin plantilla o sin pesos, promedio simple).
         if (is_array($scores) && $scores !== []) {
-            $tpl = DB::selectOne('select criteria, passing_score from vendor_evaluation_templates where id = ?', [$this->value($values, $current, 'template_id')]);
-            $weights = [];
-            foreach (json_decode((string) ($tpl->criteria ?? '[]'), true) ?: [] as $c) {
-                $weights[$c['name'] ?? ''] = (float) ($c['weight'] ?? 0);
-            }
-            $num = 0.0;
-            $den = 0.0;
-            $plain = [];
-            foreach ($scores as $name => $v) {
-                $sc = is_array($v) ? ($v['score'] ?? null) : $v;
-                if (! is_numeric($sc)) {
-                    continue;
-                }
-                $plain[] = (float) $sc;
-                $w = $weights[$name] ?? 0;
-                $num += (float) $sc * $w;
-                $den += $w;
-            }
-            if ($plain) {
-                $total = round($den > 0 ? $num / $den : array_sum($plain) / count($plain), 2);
-                $values['total_score'] = $total;
-                if ($tpl?->passing_score !== null && ! array_key_exists('rating', $values)) {
-                    // RN-HOM-02: aprueba si llega al puntaje mínimo (A); B «con condiciones» la pone SST; C no aprueba.
-                    $values['rating'] = $total >= (float) $tpl->passing_score ? 'approved' : 'rejected';
-                }
-            }
+            $by = app(\App\Core\Tenancy\CompanyContext::class)->roleCode === 'contractor_admin' ? 'proveedor' : 'sst';
+            $r = \App\Modules\HOM\VendorScoring::score($this->value($values, $current, 'template_id'), $scores,
+                $current ? (json_decode((string) $current->scores, true) ?: []) : [], $by);
+            $values['scores'] = $r['scores'];
+            $values['total_score'] = $r['total_score'];
+            $values['rating'] = $r['rating'];
+        } elseif ($current === null) {
+            unset($values['scores']);
+            $extra['scores'] = ["'{}'::jsonb", []];   // se califican después con «Calificar» o con la autoevaluación del proveedor
         }
         if ($current === null) {
             $values['evaluator_user_id'] ??= (string) auth()->id();

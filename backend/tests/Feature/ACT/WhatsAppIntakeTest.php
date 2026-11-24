@@ -96,7 +96,8 @@ it('con nombre guarda el contacto; sin código de punto no registra nada; un có
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
     $rows = DB::select('select * from substandard_reports where report_point_id = ?', [$point]);
     expect($rows)->toHaveCount(1)->and($rows[0]->is_anonymous)->toBeFalse()->and($rows[0]->report_type)->toBe('unsafe_act')
-        ->and($rows[0]->reporter_contact)->toBe('Rosa Quispe · +51911222333');
+        ->and($rows[0]->reporter_contact)->not->toContain('Rosa')   // [CIFRADO EN APLICACIÓN]
+        ->and(\App\Modules\REC\RecordsService::decryptValue($rows[0]->reporter_contact))->toBe('Rosa Quispe · +51911222333');
 });
 
 it('el formulario del QR ofrece el enlace de WhatsApp solo con WhatsApp en vivo', function () {

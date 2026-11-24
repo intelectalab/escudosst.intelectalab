@@ -132,7 +132,7 @@ class ReportPointController extends Controller
                     is_anonymous, reporter_contact, ip_hash, status)
                  values (?, ?, ?, 'qr', ?, ?, ?, ?, ?, now(), ?, ?, decode(?, 'hex'), 'received')",
                 [$p->company_id, $code, $d['report_type'], $p->id, $p->site_id, $p->area_id, $d['description'], $d['location_text'] ?? $p->location_description,
-                    $anonymous ? 'true' : 'false', $contact, hash_hmac('sha256', (string) $request->ip(), (string) config('app.key'))]
+                    $anonymous ? 'true' : 'false', $contact === null ? null : \App\Modules\REC\RecordsService::encryptValue($contact), hash_hmac('sha256', (string) $request->ip(), (string) config('app.key'))]
             );
             DB::update('update report_points set report_count = report_count + 1, last_used_at = now() where id = ?', [$p->id]);
             if ($request->hasFile('photo') && ($fid = self::cleanPhoto($p->company_id, $request->file('photo')))) {

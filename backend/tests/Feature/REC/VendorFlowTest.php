@@ -21,10 +21,10 @@ it('calcula el puntaje ponderado, exige pesos que sumen 100 y deja la aprobació
     $tpl = $this->postJson('/api/v1/records/HOM/vendor_evaluation_templates', ['code' => 'T'.random_int(1000, 99999), 'name' => 'Plantilla RR', 'passing_score' => 70, 'validity_months' => 6,
         'criteria' => [['name' => 'Gestión SST', 'weight' => 70], ['name' => 'Accidentabilidad', 'weight' => 30]]], $this->h)->assertCreated()->json('data.id');
     $ev = $this->postJson('/api/v1/records/HOM/vendor_evaluations', ['template_id' => $tpl, 'vendor_name' => 'Proveedor RR', 'vendor_ruc' => '20100070970', 'evaluated_on' => '2031-01-10'], $this->h)->assertCreated()->json('data.id');
-    // 90 × 70 % + 40 × 30 % = 75 (promedio simple sería 65).
-    $r = $this->patchJson("/api/v1/records/HOM/vendor_evaluations/{$ev}", ['scores' => ['Gestión SST' => ['score' => 90], 'Accidentabilidad' => ['score' => 40]], 'status' => 'completed'], $this->h)
+    // Puntajes de 0 a 5: 4,5/5 × 70 + 2/5 × 30 = 75 (promedio simple sería 65); aprueba (≥ 70) sin llegar a A → B.
+    $r = $this->patchJson("/api/v1/records/HOM/vendor_evaluations/{$ev}", ['scores' => ['Gestión SST' => ['score' => 4.5], 'Accidentabilidad' => ['score' => 2]], 'status' => 'completed'], $this->h)
         ->assertOk()->json('data');
-    expect((float) $r['total_score'])->toEqual(75)->and($r['rating'])->toBe('approved');
+    expect((float) $r['total_score'])->toEqual(75)->and($r['rating'])->toBe('conditionally_approved');
     // El Jefe SST no aprueba la homologación: la aprueba gerencia.
     $this->patchJson("/api/v1/records/HOM/vendor_evaluations/{$ev}", ['status' => 'approved'], $this->h)->assertStatus(422)->assertJsonValidationErrors('status');
     DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);

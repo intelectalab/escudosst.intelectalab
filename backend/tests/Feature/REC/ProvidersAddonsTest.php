@@ -79,7 +79,7 @@ it('homologación: criterios que suman 100 y puntaje ponderado con resultado', f
         ->assertCreated()->json('data.id');
     $this->putJson("/api/v1/hom/evaluations/{$e}/scores", ['scores' => ['SST' => 5]], $h)->assertStatus(422);
     $this->putJson("/api/v1/hom/evaluations/{$e}/scores", ['scores' => ['SST' => 4, 'Calidad' => 3]], $h)->assertOk()
-        ->assertJsonPath('data.total_score', 72)->assertJsonPath('data.rating', 'approved');
+        ->assertJsonPath('data.total_score', 72)->assertJsonPath('data.rating', 'conditionally_approved');
 });
 
 it('ISO evalúa las cláusulas con los datos de los módulos y PSE aplica el paquete del sector una sola vez', function () {

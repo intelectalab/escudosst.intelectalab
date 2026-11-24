@@ -1,11 +1,13 @@
 "use client";
 
-// Homologación de proveedores (HOM): criterios de la plantilla con su peso y calificación de cada evaluación (0 a 5).
+// Homologación de proveedores (HOM): criterios de la plantilla con su peso y calificación de cada evaluación (0 a 5),
+// con resultado A · Aprobado, B · Aprobado con condiciones o C · No aprobado.
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/lib/api";
 import { records, type RecordRow } from "@/lib/records";
+import { HOM_MAX_SCORE, LETTER } from "@/components/modules/HomViews";
 
 type Criterion = { name: string; weight: number };
 const parse = <T,>(v: unknown, fallback: T): T => (typeof v === "string" ? (JSON.parse(v || "null") ?? fallback) : ((v as T) ?? fallback));
@@ -46,7 +48,10 @@ export function CriteriaEditor({ row, canEdit, onChanged }: { row: RecordRow; ca
 
 export function ScoreForm({ row, canEdit, onChanged }: { row: RecordRow; canEdit: boolean; onChanged: () => void }) {
   const [criteria, setCriteria] = useState<Criterion[] | null>(null);
-  const [scores, setScores] = useState<Record<string, number>>(() => parse<Record<string, number>>(row.scores, {}));
+  // Forma única de «scores»: {criterio: {score, comment?, evidence_file_id?}}; se muestra lo que respondió el proveedor.
+  const saved = parse<Record<string, { score?: number; comment?: string } | number>>(row.scores, {});
+  const [scores, setScores] = useState<Record<string, number>>(() =>
+    Object.fromEntries(Object.entries(saved).map(([k, v]) => [k, Number(typeof v === "object" && v ? v.score : v)]).filter(([, v]) => !Number.isNaN(v))));
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   useEffect(() => {
     if (!row.template_id) return;
@@ -56,16 +61,17 @@ export function ScoreForm({ row, canEdit, onChanged }: { row: RecordRow; canEdit
   if (criteria.length === 0) return <p className="rounded-xl bg-bg px-4 py-3 text-sm text-muted">La plantilla aún no tiene criterios: agrégalos en la plantilla.</p>;
   const save = () =>
     api<{ data: { total_score: number; rating: string; passing_score: number } }>(`/hom/evaluations/${row.id}/scores`, { method: "PUT", withCompany: true, body: { scores } })
-      .then((r) => { setMsg({ text: `Puntaje ${r.data.total_score} de 100 (mínimo ${r.data.passing_score}): ${r.data.rating === "approved" ? "aprobado" : "no aprobado"}.`, ok: r.data.rating === "approved" }); onChanged(); })
+      .then((r) => { const l = LETTER[r.data.rating]; setMsg({ text: `Puntaje ${r.data.total_score} de 100 (mínimo ${r.data.passing_score}): ${l ? `${l[0]} · ${l[1]}` : r.data.rating}.`, ok: r.data.rating !== "rejected" }); onChanged(); })
       .catch((e) => setMsg({ text: errText(e), ok: false }));
   return (
     <section className="space-y-2 rounded-xl border border-line px-4 py-3 text-sm">
-      <p className="font-semibold">Calificación (0 = no cumple · 5 = cumple totalmente)</p>
+      <p className="font-semibold">Calificación (0 = no cumple · {HOM_MAX_SCORE} = cumple totalmente)</p>
       {criteria.map((c) => (
         <div key={c.name} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-bg px-3 py-2">
-          <span>{c.name} <span className="text-xs text-muted">· peso {c.weight}</span></span>
+          <span>{c.name} <span className="text-xs text-muted">· peso {c.weight}</span>
+            {typeof saved[c.name] === "object" && (saved[c.name] as { comment?: string }).comment && <span className="block text-xs text-muted">Proveedor: {(saved[c.name] as { comment?: string }).comment}</span>}</span>
           <span className="flex gap-1">
-            {[0, 1, 2, 3, 4, 5].map((n) => (
+            {Array.from({ length: HOM_MAX_SCORE + 1 }, (_, n) => n).map((n) => (
               <button key={n} type="button" disabled={!canEdit} onClick={() => setScores({ ...scores, [c.name]: n })}
                 className={`h-8 w-8 rounded-md text-sm font-semibold ${scores[c.name] === n ? "bg-brand text-white" : "border border-line"}`}>{n}</button>
             ))}

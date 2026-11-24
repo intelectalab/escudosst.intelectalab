@@ -141,6 +141,9 @@ abstract class RecordRules
 
     public function prepareDelete(array $res, object $current): void {}
 
+    /** Después de archivar o borrar un registro (p. ej. recalcular totales que dependían de él). */
+    public function afterDelete(array $res, object $current): void {}
+
     /** Datos que se entregan una sola vez en la respuesta de creación (p. ej. un secreto recién generado). */
     public function reveal(array $res, string $id): array
     {

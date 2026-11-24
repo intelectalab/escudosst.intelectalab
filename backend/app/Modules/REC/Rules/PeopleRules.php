@@ -104,6 +104,42 @@ class PeopleRules extends RecordRules
         }
     }
 
+    /** Descanso archivado: sus días dejan de contar en el evento al que estaba ligado. */
+    public function afterDelete(array $res, object $current): void
+    {
+        if ($res['table'] === 'absences') {
+            self::syncLeave(DB::connection(), $current->worker_id);
+            if ($current->sst_event_id) {
+                self::syncEventLostDays((string) $current->sst_event_id, [$current->worker_id], (string) $current->id);
+            }
+        }
+    }
+
+    /**
+     * M-DES flujo §7.3 / RN-ACC-07: los días perdidos de la persona afectada salen de sus descansos ligados al evento
+     * («alimentados por DES cuando existe»): la suma de los vigentes (no anulados ni archivados; RN-DES-04 impide que se
+     * solapen, y cada uno ya cuenta sus días según RN-DES-01). Se recalcula desde cero, así que al acortar o anular un
+     * descanso (o desligarlo del evento) los días bajan. Solo se recalculan las personas cuyo descanso cambió (lo tienen o lo
+     * tuvieron ligado): a quien no tiene ninguno (p. ej. personal de contratista) se le mantiene el valor escrito a mano. El total del evento es la suma de sus afectados.
+     */
+    public static function syncEventLostDays(string $event, array $workers, string $absenceId): void
+    {
+        foreach ($workers as $w) {
+            DB::update("update event_people p set lost_days = (select coalesce(sum(a.days) filter (where a.deleted_at is null and a.status <> 'cancelled'), 0)
+                          from absences a where a.sst_event_id = p.event_id and a.worker_id = p.worker_id)
+                         where p.event_id = ? and p.worker_id = ? and p.deleted_at is null and p.person_role in ('injured', 'affected', 'ill')", [$event, $w]);
+        }
+        $before = (int) (DB::selectOne('select lost_days from sst_events where id = ?', [$event])?->lost_days ?? 0);
+        DB::update("update sst_events set lost_days = (select coalesce(sum(greatest(lost_days, 0)), 0) from event_people where event_id = ? and deleted_at is null
+                      and person_role in ('injured', 'affected', 'ill')) where id = ?", [$event, $event]);
+        $after = (int) (DB::selectOne('select lost_days from sst_events where id = ?', [$event])?->lost_days ?? 0);
+        if ($after !== $before) {
+            \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['sst_manager']), 'des.event_days', 'DES', $event, 'Días perdidos actualizados',
+                "Los días perdidos del evento pasaron de {$before} a {$after} según los descansos médicos ligados.", '/m/acc?t=sst_events&open='.$event, 'low',
+                'des.event_days:'.$event.':'.$absenceId.':'.$after);
+        }
+    }
+
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
     {
         // RN-CTR-05: la constancia de aptitud aprobada actualiza la aptitud y su vigencia en la ficha del trabajador contratista.
@@ -188,19 +224,9 @@ class PeopleRules extends RecordRules
         if ($res['table'] === 'absences') {
             $ab = DB::selectOne('select worker_id, sst_event_id from absences where id = ?', [$id]);
             self::syncLeave(DB::connection(), $ab->worker_id);
-            // M-DES flujo §7.3 / §12: los días de descanso ligados a un evento se suman a los días perdidos de esa persona y del evento (EST/ACC).
-            $events = array_filter(array_unique([$ab->sst_event_id, $current?->sst_event_id]));
-            foreach ($events as $ev) {
-                DB::update("update event_people p set lost_days = greatest(coalesce(p.lost_days, 0), (select coalesce(sum(a.days), 0) from absences a
-                              where a.sst_event_id = p.event_id and a.worker_id = p.worker_id and a.deleted_at is null and a.status <> 'cancelled'))
-                             where p.event_id = ? and p.worker_id = ? and p.deleted_at is null and p.person_role in ('injured', 'affected', 'ill')", [$ev, $ab->worker_id]);
-                $before = (int) (DB::selectOne('select lost_days from sst_events where id = ?', [$ev])?->lost_days ?? 0);
-                DB::update("update sst_events set lost_days = (select coalesce(sum(greatest(lost_days, 0)), 0) from event_people where event_id = ? and deleted_at is null
-                              and person_role in ('injured', 'affected', 'ill')) where id = ?", [$ev, $ev]);
-                if ((int) (DB::selectOne('select lost_days from sst_events where id = ?', [$ev])?->lost_days ?? 0) !== $before) {
-                    \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['sst_manager']), 'des.event_days', 'DES', $ev, 'Días perdidos actualizados',
-                        'Se sumaron días de descanso médico a los días perdidos del evento.', '/m/acc?t=sst_events&open='.$ev, 'low', 'des.event_days:'.$ev.':'.$id);
-                }
+            $workers = array_filter(array_unique([$ab->worker_id, $current?->worker_id]));
+            foreach (array_filter(array_unique([$ab->sst_event_id, $current?->sst_event_id])) as $ev) {
+                self::syncEventLostDays((string) $ev, $workers, $id);
             }
         }
         if (in_array($res['table'], ['budget_lines', 'budget_executions'], true)) {

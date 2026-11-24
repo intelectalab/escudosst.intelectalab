@@ -15,7 +15,7 @@ use Illuminate\Support\Str;
 /**
  * Autoevaluación del proveedor (M-HOM flujo 1), desde el portal del contratista:
  *  GET  /ctr/portal/homologations        evaluaciones de mi empresa por responder o ya resueltas, con los criterios de su plantilla
- *  POST /ctr/portal/homologations/{id}   responde {scores: {criterio: {score, comment?, evidence_file_id?}}} y la envía a SST (submitted)
+ *  POST /ctr/portal/homologations/{id}   responde {scores: {criterio: {score (0 a 5), comment?, evidence_file_id?}}} y la envía a SST (submitted)
  */
 class VendorSelfController extends Controller
 {
@@ -47,19 +47,12 @@ class VendorSelfController extends Controller
         if ($e->status !== 'draft') {
             throw new ApiProblem(409, 'conflict', 'Ya enviada', 'La autoevaluación ya se envió.');
         }
-        $d = $request->validate(['scores' => ['required', 'array'], 'scores.*.score' => ['required', 'numeric', 'min:0'], 'scores.*.comment' => ['nullable', 'string', 'max:1000'],
-            'scores.*.evidence_file_id' => ['nullable', 'uuid']], ['scores.*.score.required' => 'Califica cada criterio.']);
-        $names = array_column(json_decode((string) $e->criteria, true) ?: [], 'name');
-        $missing = array_diff($names, array_keys($d['scores']));
-        if ($missing) {
-            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Falta calificar: '.implode(', ', $missing).'.', ['errors' => ['scores' => ['Falta calificar: '.implode(', ', $missing).'.']]]);
-        }
-        $scores = [];
-        foreach ($names as $n) {
-            $scores[$n] = array_filter(['score' => (float) $d['scores'][$n]['score'], 'comment' => $d['scores'][$n]['comment'] ?? null, 'evidence_file_id' => $d['scores'][$n]['evidence_file_id'] ?? null,
-                'by' => 'proveedor'], fn ($x) => $x !== null);
-        }
-        $records->update(Registry::resource('HOM', 'vendor_evaluations'), $id, ['scores' => $scores, 'status' => 'submitted']);
+        $max = \App\Modules\HOM\VendorScoring::MAX;
+        $d = $request->validate(['scores' => ['required', 'array'], 'scores.*.score' => ['required', 'numeric', 'min:0', 'max:'.$max], 'scores.*.comment' => ['nullable', 'string', 'max:1000'],
+            'scores.*.evidence_file_id' => ['nullable', 'uuid']], ['scores.*.score.required' => 'Califica cada criterio.', 'scores.*.score.min' => "Cada puntaje va de 0 a {$max}.",
+                'scores.*.score.max' => "Cada puntaje va de 0 a {$max}."]);
+        // El total y la calificación A/B/C los calcula VendorScoring (el mismo cálculo que «Calificar» de SST).
+        $records->update(Registry::resource('HOM', 'vendor_evaluations'), $id, ['scores' => $d['scores'], 'status' => 'submitted']);
 
         return response()->json(['data' => ['id' => $id, 'status' => 'submitted']]);
     }

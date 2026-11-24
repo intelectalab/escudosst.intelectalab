@@ -196,7 +196,7 @@ it('al cerrarse un reporte por QR, quien dejó su celular recibe por WhatsApp el
             [ANDINAS_ID, 'QR-'.random_int(1000, 999999), $site])->id;
 
         return $db->selectOne("insert into substandard_reports (company_id, code, report_type, origin, report_point_id, description, reporter_contact, status, closed_at)
-             values (?, 'REP-QR-0001', 'unsafe_condition', 'qr', ?, 'Escalera rota', 'Luis · 987 654 321', 'closed', now()) returning id", [ANDINAS_ID, $point])->id;
+             values (?, 'REP-QR-0001', 'unsafe_condition', 'qr', ?, 'Escalera rota', ?, 'closed', now()) returning id", [ANDINAS_ID, $point, \App\Modules\REC\RecordsService::encryptValue('Luis · 987 654 321')])->id;
     });
 
     deliveryRun();

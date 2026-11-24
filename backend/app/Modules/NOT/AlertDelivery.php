@@ -409,7 +409,7 @@ final class AlertDelivery
                 and reporter_user_id is null and reporter_worker_id is null and coalesce(reporter_contact, '') <> ''"
         );
         foreach ($guests as $g) {
-            $contact = (string) $g->reporter_contact;
+            $contact = (string) \App\Modules\REC\RecordsService::decryptValue($g->reporter_contact);   // [CIFRADO EN APLICACIÓN]
             $phone = str_contains($contact, '·') ? trim((string) \Illuminate\Support\Str::afterLast($contact, '·')) : $contact;
             if (! WhatsAppCloud::normalize($phone)) {
                 $db->update('update substandard_reports set feedback_sent_at = now() where id = ?', [$g->id]);   // sin celular válido: no se reintenta

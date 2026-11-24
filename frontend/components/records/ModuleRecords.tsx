@@ -12,7 +12,7 @@ import { PlanReferencePicker } from "./PlanReferencePicker";
 import { ModuleKpis } from "./ModuleKpis";
 import { SignaturePanel } from "./SignaturePanel";
 import { api, ApiError } from "@/lib/api";
-import { displayValue, downloadFile, records, statusTone, toLocalInput, type ModuleSchema, type RecordField, type RecordPage, type RecordResource, type RecordRow } from "@/lib/records";
+import { displayValue, downloadFile, isReserved, records, statusTone, toLocalInput, type ModuleSchema, type RecordField, type RecordPage, type RecordResource, type RecordRow } from "@/lib/records";
 import { isQueuedFile, uploadOrQueue } from "@/lib/offline";
 import { Button } from "@/components/ui/Button";
 import { Chip, EmptyState } from "@/components/ui/Display";
@@ -499,8 +499,8 @@ export function RecordForm({
   const foreign = !!full && res.hybrid && !full.own;
   const locked = !isNew && full ? lockedReason(res.table, full) : null;
   const canEdit = !readOnly && !foreign && !locked && (isNew ? res.can.create : res.can.update);
-  const editable = res.fields.filter((f) => !f.readonly && (f.type !== "json" || isList(res.table, f)) && f.type !== "source" && !hide.includes(f.name));
-  const computed = res.fields.filter((f) => (f.readonly || (f.type === "json" && !isList(res.table, f))) && !isNew && !hide.includes(f.name));
+  const editable = res.fields.filter((f) => !f.readonly && (f.type !== "json" || isList(res.table, f)) && f.type !== "source" && !hide.includes(f.name) && !isReserved(full, f.name));
+  const computed = res.fields.filter((f) => (f.readonly || (f.type === "json" && !isList(res.table, f)) || isReserved(full, f.name)) && !isNew && !hide.includes(f.name));
 
   const save = async () => {
     if (!loaded) return;
