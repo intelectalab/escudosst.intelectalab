@@ -28,9 +28,11 @@ final class SectorPacks
         'hazard' => 'Peligros del catálogo', 'ppe_item' => 'EPP', 'legal_requirement' => 'Requisito legal', 'kpi' => 'Indicador',
         'document_template' => 'Formato de documento', 'credential_requirement' => 'Requisito de fotocheck',
         'risk_criteria' => 'Criterios IPERC del sector', 'legal_parameter' => 'Valor legal del sector',
+        'pets_model' => 'PETS modelo', 'record_format' => 'Formato de registro',
     ];
 
-    private const SUPPORTED = ['training_topic', 'inspection_template', 'permit_type', 'hazard', 'ppe_item', 'legal_requirement', 'kpi', 'credential_requirement', 'risk_criteria', 'legal_parameter'];
+    private const SUPPORTED = ['training_topic', 'inspection_template', 'permit_type', 'hazard', 'ppe_item', 'legal_requirement', 'kpi', 'credential_requirement', 'risk_criteria', 'legal_parameter',
+        'pets_model', 'record_format'];
 
     private function company(): string
     {
@@ -297,6 +299,8 @@ final class SectorPacks
             'ppe_item' => DB::selectOne('select id from ppe_items where company_id = ? and code = ? and deleted_at is null limit 1', [$this->company(), (string) ($pl['code'] ?? $it->code)])?->id,
             'kpi' => DB::selectOne('select id from kpi_definitions where company_id = ? and code = ? and deleted_at is null limit 1', [$this->company(), (string) ($pl['code'] ?? $it->code)])?->id,
             'risk_criteria' => DB::selectOne('select id from risk_criteria where company_id = ? and code = ? and deleted_at is null limit 1', [$this->company(), (string) ($pl['code'] ?? $it->code)])?->id,
+            'pets_model' => DB::selectOne('select id from procedures where company_id = ? and code = ? and deleted_at is null limit 1', [$this->company(), (string) ($pl['code'] ?? $it->code)])?->id,
+            'record_format' => DB::selectOne('select id from documents where company_id = ? and code = ? and deleted_at is null limit 1', [$this->company(), (string) ($pl['code'] ?? $it->code)])?->id,
             'legal_requirement' => DB::selectOne('select r.id from legal_requirements r join legal_norms n on n.id = r.legal_norm_id where r.company_id = ? and n.number = ? and r.article is not distinct from ? and r.deleted_at is null limit 1',
                 [$this->company(), (string) ($pl['norm_number'] ?? ''), $pl['article'] ?? null])?->id,
             default => null,
@@ -412,6 +416,40 @@ final class SectorPacks
                     [$c, $type->id, (string) $pl['requirement_type'], $pl['worker_document_kind'] ?? null, $pl['description'] ?? $it->name, ($pl['is_blocking'] ?? true) ? 'true' : 'false', $pl['grace_days'] ?? null, $u, $u])->id;
 
                 return [[$id], false];
+            case 'pets_model':
+                // PETS modelo: queda como PETS de la empresa con su versión 1 en borrador (sigue la revisión y aprobación de siempre).
+                if (empty($pl['title']) || (empty($pl['content_html']) && empty($pl['steps']))) {
+                    return [[], false];
+                }
+                $type = in_array($pl['procedure_type'] ?? 'pets', ['pets', 'standard', 'instruction', 'emergency_plan', 'other'], true) ? ($pl['procedure_type'] ?? 'pets') : 'pets';
+                $id = DB::selectOne("insert into procedures (company_id, code, title, procedure_type, is_critical_task, status, created_by, updated_by)
+                                     values (?, ?, ?, ?, ?, 'active', ?, ?) returning id",
+                    [$c, (string) ($pl['code'] ?? $it->code), (string) $pl['title'], $type, ! empty($pl['is_critical_task']) ? 'true' : 'false', $u, $u])->id;
+                DB::insert("insert into procedure_versions (company_id, procedure_id, version_number, content_html, steps, required_ppe, change_summary, status, prepared_by, created_by, updated_by)
+                            values (?, ?, 1, ?, ?::jsonb, ?::jsonb, ?, 'draft', ?, ?, ?)",
+                    [$c, $id, $pl['content_html'] ?? null, json_encode(self::steps($pl['steps'] ?? []), JSON_UNESCAPED_UNICODE),
+                        json_encode(array_values(array_filter(array_map('strval', (array) ($pl['required_ppe'] ?? [])))), JSON_UNESCAPED_UNICODE),
+                        'Instalado desde el paquete sectorial', $u, $u, $u]);
+
+                return [[$id], false];
+            case 'record_format':
+                // Formato de registro: documento de la empresa en borrador con el contenido del formato.
+                if (empty($pl['title']) || empty($pl['content_html'])) {
+                    return [[], false];
+                }
+                $cat = DB::selectOne('select id from document_categories where code = ? and (company_id = ? or company_id is null) and deleted_at is null order by company_id nulls last limit 1',
+                    [(string) ($pl['category_code'] ?? 'REGISTER'), $c])
+                    ?? DB::selectOne("select id from document_categories where code = 'REGISTER' and company_id is null and deleted_at is null limit 1");
+                if (! $cat) {
+                    return [[], false];
+                }
+                $id = DB::selectOne("insert into documents (company_id, category_id, code, title, description, owner_user_id, scope_type, status, created_by, updated_by)
+                                     values (?, ?, ?, ?, ?, ?, 'company', 'draft', ?, ?) returning id",
+                    [$c, $cat->id, (string) ($pl['code'] ?? $it->code), (string) $pl['title'], $pl['description'] ?? null, $u, $u, $u])->id;
+                DB::insert("insert into document_versions (company_id, document_id, version_number, version_label, content_html, change_summary, status, created_by, updated_by)
+                            values (?, ?, 1, '1.0', ?, 'Instalado desde el paquete sectorial', 'draft', ?, ?)", [$c, $id, (string) $pl['content_html'], $u, $u]);
+
+                return [[$id], false];
             case 'ppe_item':
                 if (empty($pl['name'])) {
                     return [[], false];
@@ -444,9 +482,37 @@ final class SectorPacks
                 DB::update('update inspection_template_items set deleted_at = now() where template_id = ? and company_id = ? and deleted_at is null
                               and item_code not in (select item_code from inspection_template_items where template_id = ? and deleted_at is null)', [$ids[0], $this->company(), $g->id]);
             }
+        } elseif (in_array($type, ['pets_model', 'record_format'], true) && $ids) {
+            // Una versión nueva en borrador con el contenido del paquete (la vigente no se toca hasta aprobarla).
+            if ($type === 'pets_model') {
+                $n = (int) DB::selectOne('select coalesce(max(version_number), 0) + 1 as n from procedure_versions where procedure_id = ?', [$ids[0]])->n;
+                DB::insert("insert into procedure_versions (company_id, procedure_id, version_number, content_html, steps, required_ppe, change_summary, status, prepared_by, created_by, updated_by)
+                            values (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, 'draft', ?, ?, ?)",
+                    [$this->company(), $ids[0], $n, $pl['content_html'] ?? null, json_encode(self::steps($pl['steps'] ?? []), JSON_UNESCAPED_UNICODE),
+                        json_encode(array_values(array_filter(array_map('strval', (array) ($pl['required_ppe'] ?? [])))), JSON_UNESCAPED_UNICODE),
+                        'Actualización del paquete sectorial', $this->user(), $this->user(), $this->user()]);
+            } else {
+                $n = (int) DB::selectOne('select coalesce(max(version_number), 0) + 1 as n from document_versions where document_id = ?', [$ids[0]])->n;
+                DB::insert("insert into document_versions (company_id, document_id, version_number, version_label, content_html, change_summary, status, created_by, updated_by)
+                            values (?, ?, ?, ?, ?, 'Actualización del paquete sectorial', 'draft', ?, ?)", [$this->company(), $ids[0], $n, $n.'.0', (string) ($pl['content_html'] ?? ''), $this->user(), $this->user()]);
+            }
         } elseif ($type === 'training_topic' && $ids) {
             DB::update('update trainings set title = ?, topic = ?, updated_by = ?, updated_at = now() where id = ? and company_id = ?', [(string) ($pl['topic'] ?? $it->name), (string) ($pl['topic'] ?? $it->name), $this->user(), $ids[0], $this->company()]);
         }
+    }
+
+    /** Pasos del PETS modelo en el formato del módulo PETS: [{step, risk, control}]. */
+    private static function steps(mixed $steps): array
+    {
+        $out = [];
+        foreach ((array) $steps as $s) {
+            $s = is_array($s) ? $s : ['step' => (string) $s];
+            if (trim((string) ($s['step'] ?? '')) !== '') {
+                $out[] = ['step' => trim((string) $s['step']), 'risk' => isset($s['risk']) ? (string) $s['risk'] : null, 'control' => isset($s['control']) ? (string) $s['control'] : null];
+            }
+        }
+
+        return $out;
     }
 
     private function copyTemplateItems(string $from, string $to): void
@@ -480,6 +546,10 @@ final class SectorPacks
             'legal_requirement' => DB::selectOne("select string_agg(coalesce(requirement, '') || '|' || coalesce(frequency, ''), '#') as v from legal_requirements where id = any(?::uuid[])", [$in]),
             'credential_requirement' => DB::selectOne("select string_agg(coalesce(description, '') || '|' || is_blocking::text || '|' || coalesce(grace_days::text, ''), '#') as v from credential_requirements where id = any(?::uuid[])", [$in]),
             'legal_parameter' => DB::selectOne("select string_agg(coalesce(value, ''), '#') as v from legal_parameters where id = any(?::uuid[])", [$in]),
+            'pets_model' => DB::selectOne("select string_agg(coalesce(p.title, '') || '|' || coalesce((select coalesce(v.content_html, '') || coalesce(v.steps::text, '') from procedure_versions v
+                                        where v.procedure_id = p.id and v.deleted_at is null order by v.version_number desc limit 1), ''), '#') as v from procedures p where p.id = any(?::uuid[])", [$in]),
+            'record_format' => DB::selectOne("select string_agg(coalesce(d.title, '') || '|' || coalesce((select v.content_html from document_versions v where v.document_id = d.id and v.deleted_at is null
+                                        order by v.version_number desc limit 1), ''), '#') as v from documents d where d.id = any(?::uuid[])", [$in]),
             default => null,
         };
 

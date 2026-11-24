@@ -122,7 +122,13 @@ export type SectorPack = {
   legal_references: string | null;
   version_number: number;
   status: "draft" | "published" | "retired";
-  items: { item_type: string; code: string; name: string }[];
+  items: { id: string; item_type: string; code: string; name: string; version?: number; payload?: PackItemPayload | null }[];
+};
+
+/** Contenido de un «PETS modelo» o «formato de registro» que la plataforma carga en el paquete (M-PSE). */
+export type PackItemPayload = {
+  code?: string; title?: string; procedure_type?: string; is_critical_task?: boolean; content_html?: string | null;
+  steps?: { step: string; risk?: string | null; control?: string | null }[]; required_ppe?: string[]; description?: string | null; category_code?: string;
 };
 
 export type Holiday = { id: string; holiday_on: string; name: string; scope: string; is_non_working: boolean; to_confirm: boolean };
@@ -175,6 +181,8 @@ export const PACK_ITEM_TYPES: Record<string, string> = {
   ppe_item: "EPP",
   kpi: "Indicadores",
   credential_requirement: "Requisitos de fotocheck",
+  pets_model: "PETS modelo",
+  record_format: "Formatos de registro",
 };
 
 export const VALUE_TYPES: Record<string, string> = {

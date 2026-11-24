@@ -93,6 +93,7 @@ final class Progress
         );
         $id = DB::selectOne('select id from training_certificates where certificate_code = ?', [$code])->id;
         DB::update('update course_enrollments set certificate_id = ? where id = ?', [$id, $e->id]);
+        \App\Modules\API\Webhooks::queue('training_certificates', 'create', $id, ['status' => 'validated']);
 
         return ['code' => $code, 'id' => $id];
     }

@@ -260,8 +260,13 @@ class CatalogsService
     public function sectorPacks(): array
     {
         $items = collect($this->db()->select(
-            'select sector_pack_id, item_type, code, name from sector_pack_items where deleted_at is null order by sort_order, name'
-        ))->groupBy('sector_pack_id');
+            "select id, sector_pack_id, item_type, code, name, version, case when item_type in ('pets_model', 'record_format') then payload end as payload
+               from sector_pack_items where deleted_at is null order by sort_order, name"
+        ))->map(function ($i) {
+            $i->payload = $i->payload ? json_decode($i->payload, true) : null;
+
+            return $i;
+        })->groupBy('sector_pack_id');
 
         return array_map(fn ($p) => (array) $p + ['items' => $items->get($p->id, collect())->values()->all()], $this->db()->select(
             'select p.id, p.code, p.name, p.sector, p.description, p.legal_references, p.version_number, p.status
@@ -274,6 +279,57 @@ class CatalogsService
         $p = $this->find('sector_packs', $id, 'El paquete no existe.');
         $this->db()->update('update sector_packs set status = ?, updated_by = ? where id = ?', [$status, $actor, $id]);
         $this->accounts->audit($actor, 'sector_pack_status', 'sector_packs', $id, ['name' => $p->name, 'before' => ['status' => $p->status], 'after' => ['status' => $status]]);
+    }
+
+    /**
+     * M-PSE: el dueño de la plataforma carga en un paquete sus «PETS modelo» y «formatos de registro» con su contenido
+     * (pse.sector_pack_items.create). Editar un ítem sube su versión: las empresas que lo instalaron lo ven en «Actualizaciones».
+     */
+    public function savePackItem(string $packId, ?string $itemId, array $d, string $actor): array
+    {
+        $this->find('sector_packs', $packId, 'El paquete no existe.');
+        $payload = $d['item_type'] === 'pets_model'
+            ? ['code' => $d['code'], 'title' => $d['name'], 'procedure_type' => $d['procedure_type'] ?? 'pets', 'is_critical_task' => (bool) ($d['is_critical_task'] ?? false),
+                'content_html' => $d['content_html'] ?? null, 'steps' => array_values(array_filter($d['steps'] ?? [], fn ($s) => trim((string) ($s['step'] ?? '')) !== '')),
+                'required_ppe' => array_values(array_filter(array_map('trim', $d['required_ppe'] ?? [])))]
+            : ['code' => $d['code'], 'title' => $d['name'], 'description' => $d['description'] ?? null, 'content_html' => $d['content_html'] ?? null, 'category_code' => $d['category_code'] ?? 'REGISTER'];
+        if ($d['item_type'] === 'pets_model' && empty($payload['content_html']) && $payload['steps'] === []) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'El PETS modelo necesita su texto o al menos un paso.', ['errors' => ['steps' => ['El PETS modelo necesita su texto o al menos un paso.']]]);
+        }
+        if ($d['item_type'] === 'record_format' && empty($payload['content_html'])) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Escribe el contenido del formato.', ['errors' => ['content_html' => ['Escribe el contenido del formato.']]]);
+        }
+        $key = $d['item_type'].':'.$d['code'];
+        $dup = $this->db()->selectOne('select id from sector_pack_items where sector_pack_id = ? and item_key = ? and deleted_at is null and id is distinct from ?::uuid', [$packId, $key, $itemId]);
+        if ($dup) {
+            throw new ApiProblem(409, 'conflict', 'Código repetido', 'El paquete ya tiene un ítem de ese tipo con ese código.');
+        }
+        if ($itemId) {
+            $old = $this->find('sector_pack_items', $itemId, 'El ítem no existe.');
+            $this->db()->update('update sector_pack_items set code = ?, name = ?, payload = ?::jsonb, item_key = ?, version = version + 1, updated_by = ?, updated_at = now() where id = ?',
+                [$d['code'], $d['name'], json_encode($payload, JSON_UNESCAPED_UNICODE), $key, $actor, $itemId]);
+            $this->accounts->audit($actor, 'sector_pack_item_update', 'sector_pack_items', $itemId, ['name' => $d['name'], 'before_version' => (int) $old->version]);
+            $id = $itemId;
+        } else {
+            $order = (int) $this->db()->selectOne('select coalesce(max(sort_order), 0) + 1 as n from sector_pack_items where sector_pack_id = ?', [$packId])->n;
+            $id = $this->db()->selectOne('insert into sector_pack_items (sector_pack_id, item_type, code, name, payload, sort_order, item_key, version, created_by, updated_by)
+                                          values (?, ?, ?, ?, ?::jsonb, ?, ?, 1, ?, ?) returning id',
+                [$packId, $d['item_type'], $d['code'], $d['name'], json_encode($payload, JSON_UNESCAPED_UNICODE), $order, $key, $actor, $actor])->id;
+            $this->accounts->audit($actor, 'sector_pack_item_create', 'sector_pack_items', $id, ['type' => $d['item_type'], 'name' => $d['name']]);
+        }
+
+        return ['id' => $id];
+    }
+
+    public function deletePackItem(string $itemId, string $actor): void
+    {
+        $it = $this->find('sector_pack_items', $itemId, 'El ítem no existe.');
+        if (! in_array($it->item_type, ['pets_model', 'record_format'], true)) {
+            throw new ApiProblem(409, 'conflict', 'No se quita aquí', 'Desde aquí solo se quitan los PETS modelo y los formatos de registro.');
+        }
+        // RN-PSE-06: lo ya instalado en las empresas no se borra; solo deja de ofrecerse.
+        $this->db()->update('update sector_pack_items set deleted_at = now(), updated_by = ? where id = ?', [$actor, $itemId]);
+        $this->accounts->audit($actor, 'sector_pack_item_delete', 'sector_pack_items', $itemId, ['name' => $it->name]);
     }
 
     // ---------------------------------------------------------------- Feriados

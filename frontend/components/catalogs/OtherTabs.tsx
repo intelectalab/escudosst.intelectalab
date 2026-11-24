@@ -11,7 +11,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
 import { api, ApiError } from "@/lib/api";
 import { SECTORS } from "@/lib/accounts";
-import { dateOnly, HAZARD_FAMILIES, type Hazard, type Holiday, type LegalNorm, NORM_STATUS, NORM_TYPES, type NormRequirement, PACK_ITEM_TYPES, PACK_STATUS, type SectorPack } from "@/lib/catalogs";
+import { dateOnly, HAZARD_FAMILIES, type Hazard, type Holiday, type LegalNorm, NORM_STATUS, NORM_TYPES, type NormRequirement, PACK_ITEM_TYPES, PACK_STATUS, type SectorPack, type PackItemPayload } from "@/lib/catalogs";
 
 type Done = (msg: string) => void;
 const sectorLabel = (s: string | null) => SECTORS.find(([v]) => v === s)?.[1] ?? s ?? "";
@@ -590,8 +590,93 @@ function HazardModal({ hazard, onClose, onDone }: { hazard: Hazard | null; onClo
 
 // ---------------------------------------------------------------- Paquetes sectoriales
 
+type PackItem = SectorPack["items"][number];
+const EDITABLE_ITEMS = ["pets_model", "record_format"];
+const toLines = (html?: string | null) => (html ?? "").replace(/<\/p>\s*<p>/g, "\n").replace(/<br\s*\/?>/g, "\n").replace(/<[^>]+>/g, "").trim();
+const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const toHtml = (text: string) => text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => `<p>${esc(l)}</p>`).join("");
+
+/**
+ * M-PSE: «PETS modelo» y «formato de registro» del paquete. El contenido lo define el especialista; al instalarse quedan como
+ * PETS y documento de la empresa en borrador. Editar un ítem sube su versión y las empresas lo ven en «Actualizaciones».
+ */
+function PackItemModal({ pack, type, item, onClose, onDone }: { pack: SectorPack; type: string; item: PackItem | null; onClose: () => void; onDone: Done }) {
+  const pl: PackItemPayload = item?.payload ?? {};
+  const [form, setForm] = useState({
+    code: item?.code ?? "",
+    name: item?.name ?? "",
+    content: toLines(pl.content_html),
+    steps: (pl.steps ?? []).map((s) => [s.step, s.risk ?? "", s.control ?? ""].join(" | ")).join("\n"),
+    ppe: (pl.required_ppe ?? []).join("\n"),
+    critical: !!pl.is_critical_task,
+    description: pl.description ?? "",
+  });
+  const { saving, errors, run } = useSave();
+  const pets = type === "pets_model";
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const body = pets
+      ? { item_type: type, code: form.code.trim().toUpperCase(), name: form.name.trim(), is_critical_task: form.critical, content_html: toHtml(form.content) || null,
+          steps: form.steps.split("\n").map((l) => l.split("|").map((x) => x.trim())).filter((p) => p[0]).map(([step, risk, control]) => ({ step, risk: risk || null, control: control || null })),
+          required_ppe: form.ppe.split("\n").map((x) => x.trim()).filter(Boolean) }
+      : { item_type: type, code: form.code.trim().toUpperCase(), name: form.name.trim(), description: form.description.trim() || null, content_html: toHtml(form.content) || null };
+    const ok = await run(() => api(item ? `/internal/catalogs/sector-pack-items/${item.id}` : `/internal/catalogs/sector-packs/${pack.id}/items`, { method: item ? "PATCH" : "POST", body }));
+    if (ok) onDone(item ? `${PACK_ITEM_TYPES[type]}: actualizado (las empresas que lo instalaron lo verán en «Actualizaciones»).` : `${PACK_ITEM_TYPES[type]}: agregado al paquete.`);
+  }
+
+  return (
+    <Modal title={item ? item.name : pets ? "Nuevo PETS modelo" : "Nuevo formato de registro"} subtitle={pack.name} icon="file" size="lg" onClose={onClose} footer={<Footer onClose={onClose} form="pack-item-form" saving={saving} />}>
+      <form id="pack-item-form" onSubmit={submit} className="space-y-4" noValidate>
+        {errors._ && <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{errors._[0]}</p>}
+        <p className="text-xs text-muted">Al instalar el paquete, la empresa lo recibe como {pets ? "PETS" : "documento"} en borrador, editable, y lo aprueba con su flujo de siempre.</p>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <FormField label="Código" error={errors.code?.[0]} hint="Mayúsculas, números y guiones.">
+            <input className="input uppercase" maxLength={40} placeholder={pets ? "Ej.: PETS-ALT-01" : "Ej.: FOR-INS-01"} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
+          </FormField>
+          <div className="sm:col-span-2">
+            <FormField label={pets ? "Título del PETS" : "Nombre del formato"} error={errors.name?.[0]}>
+              <input className="input" maxLength={200} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </FormField>
+          </div>
+        </div>
+        {!pets && (
+          <FormField label="Descripción (opcional)">
+            <input className="input" maxLength={1000} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          </FormField>
+        )}
+        <FormField label={pets ? "Texto del procedimiento (opcional si tiene pasos)" : "Contenido del formato"} error={errors.content_html?.[0]} hint="Un párrafo por línea.">
+          <textarea className="input min-h-32" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
+        </FormField>
+        {pets && (
+          <>
+            <FormField label="Pasos" error={errors.steps?.[0]} hint="Un paso por línea: paso | riesgo | control (riesgo y control opcionales).">
+              <textarea className="input min-h-32 font-mono text-xs" value={form.steps} onChange={(e) => setForm({ ...form, steps: e.target.value })} />
+            </FormField>
+            <FormField label="EPP requerido" hint="Uno por línea.">
+              <textarea className="input min-h-20" value={form.ppe} onChange={(e) => setForm({ ...form, ppe: e.target.value })} />
+            </FormField>
+            <SwitchRow label="Tarea crítica" hint="Se marca así el PETS que se instala." checked={form.critical} onChange={(v) => setForm({ ...form, critical: v })} />
+          </>
+        )}
+      </form>
+    </Modal>
+  );
+}
+
 export function PacksTab({ packs, onChanged }: { packs: SectorPack[]; onChanged: Done }) {
   const [open, setOpen] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ pack: SectorPack; type: string; item: PackItem | null } | null>(null);
+
+  async function removeItem(i: PackItem) {
+    if (!window.confirm(`¿Quitar «${i.name}» del paquete? Las empresas que ya lo instalaron lo conservan.`)) return;
+    try {
+      await api(`/internal/catalogs/sector-pack-items/${i.id}`, { method: "DELETE" });
+      onChanged(`«${i.name}» se quitó del paquete.`);
+    } catch (e) {
+      onChanged(e instanceof ApiError ? e.message : "No se pudo quitar.");
+    }
+  }
 
   async function setStatus(p: SectorPack, status: SectorPack["status"]) {
     try {
@@ -636,10 +721,31 @@ export function PacksTab({ packs, onChanged }: { packs: SectorPack[]; onChanged:
               </button>
               {expanded && (
                 <div className="mt-2 space-y-2 rounded-xl border border-line p-3 text-sm">
-                  {Object.entries(byType).map(([t, names]) => (
+                  {Object.entries(byType).filter(([t]) => !EDITABLE_ITEMS.includes(t)).map(([t, names]) => (
                     <div key={t}>
                       <p className="text-xs font-bold uppercase tracking-wide text-muted">{PACK_ITEM_TYPES[t] ?? t}</p>
                       <p>{names.join(" · ")}</p>
+                    </div>
+                  ))}
+                  {EDITABLE_ITEMS.map((t) => (
+                    <div key={t} className="space-y-1 border-t border-line pt-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-bold uppercase tracking-wide text-muted">{PACK_ITEM_TYPES[t]}</p>
+                        <button type="button" className="text-xs font-semibold text-brand hover:underline" onClick={() => setEditing({ pack: p, type: t, item: null })}>
+                          + Agregar
+                        </button>
+                      </div>
+                      {p.items.filter((i) => i.item_type === t).length === 0 ? <p className="text-xs text-muted">Aún no tiene.</p> : (
+                        <ul className="space-y-0.5">
+                          {p.items.filter((i) => i.item_type === t).map((i) => (
+                            <li key={i.id} className="flex flex-wrap items-center gap-2">
+                              <span>{i.name} <span className="text-xs text-muted">· {i.code} · v{i.version ?? 1}</span></span>
+                              <button type="button" className="text-xs text-brand underline" onClick={() => setEditing({ pack: p, type: t, item: i })}>Editar</button>
+                              <button type="button" className="text-xs text-bad underline" onClick={() => void removeItem(i)}>Quitar</button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -665,6 +771,9 @@ export function PacksTab({ packs, onChanged }: { packs: SectorPack[]; onChanged:
           );
         })}
       </ul>
+      {editing && (
+        <PackItemModal pack={editing.pack} type={editing.type} item={editing.item} onClose={() => setEditing(null)} onDone={(m) => { setEditing(null); onChanged(m); }} />
+      )}
     </div>
   );
 }

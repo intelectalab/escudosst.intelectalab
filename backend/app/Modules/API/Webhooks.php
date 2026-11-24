@@ -13,7 +13,8 @@ use Illuminate\Support\Str;
  * Webhooks (complemento API): cuando ocurre algo, se encola un envío para cada webhook activo suscrito a ese evento;
  * «php artisan escudo:webhooks» (cada minuto) los envía firmados con HMAC-SHA256 (cabecera X-EscudoSST-Signature)
  * y reintenta con espera creciente; tras 6 intentos fallidos lo abandona y, con 20 fallos seguidos, pausa el webhook.
- * Eventos: event.created, action.created, action.verified, inspection.completed, report.received.
+ * Eventos: event.created, action.created, action.verified, inspection.completed, report.received y, de M-API §12, worker.created,
+ * training.certificate_issued y credential.status_changed (este último lleva el estado nuevo en «data»).
  */
 final class Webhooks
 {
@@ -24,27 +25,46 @@ final class Webhooks
         'corrective_actions' => ['create' => 'action.created', 'verified' => 'action.verified'],
         'inspections' => ['completed' => 'inspection.completed'],
         'substandard_reports' => ['create' => 'report.received'],
+        'workers' => ['create' => 'worker.created'],
+        // Emitido = validado (al crearse ya validado o al validarse después en la bandeja «Por validar»).
+        'training_certificates' => ['validated' => 'training.certificate_issued'],
+        // Cualquier cambio de estado del fotocheck (lo haga una persona o la reevaluación automática).
+        'credentials' => ['*status' => 'credential.status_changed'],
     ];
 
+    /** @return list<string> códigos de evento a los que se puede suscribir un webhook */
+    public static function codes(): array
+    {
+        $out = [];
+        foreach (self::EVENTS as $map) {
+            array_push($out, ...array_values($map));
+        }
+
+        return array_values(array_unique($out));
+    }
+
     /** Encola los envíos de un cambio (lo llama el motor de registros). */
-    public static function queue(string $table, string $op, string $id, array $values): void
+    public static function queue(string $table, string $op, string $id, array $values, ?ConnectionInterface $db = null): void
     {
         $map = self::EVENTS[$table] ?? null;
         if (! $map) {
             return;
         }
-        $code = $op === 'create' ? ($map['create'] ?? null) : ($map[$values['status'] ?? ''] ?? null);
+        $code = $op === 'create' ? ($map['create'] ?? $map[$values['status'] ?? ''] ?? null)
+            : (isset($map['*status']) && array_key_exists('status', $values) ? $map['*status'] : ($map[$values['status'] ?? ''] ?? null));
         if (! $code) {
             return;
         }
+        $db ??= DB::connection();
         try {
-            $hooks = DB::select('select id, company_id from webhooks where is_active and deleted_at is null and ? = any(event_codes)', [$code]);
+            $hooks = $db->select('select id, company_id from webhooks where is_active and deleted_at is null and ? = any(event_codes)', [$code]);
         } catch (\Throwable) {
             return;   // sin módulo o sin permiso: no se interrumpe el registro
         }
         foreach ($hooks as $h) {
-            $body = ['event' => $code, 'id' => $id, 'table' => $table, 'occurred_at' => now()->toIso8601String()];
-            DB::insert("insert into webhook_deliveries (company_id, webhook_id, event_code, event_id, request_body, payload_sha256, status, next_retry_at)
+            $body = ['event' => $code, 'id' => $id, 'table' => $table, 'occurred_at' => now()->toIso8601String()]
+                + (isset($map['*status']) && $op !== 'create' ? ['data' => ['status' => $values['status']]] : []);
+            $db->insert("insert into webhook_deliveries (company_id, webhook_id, event_code, event_id, request_body, payload_sha256, status, next_retry_at)
                         values (?, ?, ?, ?, ?::jsonb, decode(?, 'hex'), 'pending', now())",
                 [$h->company_id, $h->id, $code, $id, json_encode($body), hash('sha256', json_encode($body))]);
         }

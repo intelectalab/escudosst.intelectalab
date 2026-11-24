@@ -108,7 +108,9 @@ class CertificatesController extends Controller
                     $status, (string) auth()->id(), $status, (string) auth()->id(), (string) auth()->id()]
             );
             if ($status === 'validated') {
-                \App\Modules\NOT\FichaEvents::certificate(DB::selectOne('select id from training_certificates where certificate_code = ?', [$code])->id, 'validated', null);
+                $cid = DB::selectOne('select id from training_certificates where certificate_code = ?', [$code])->id;
+                \App\Modules\NOT\FichaEvents::certificate($cid, 'validated', null);
+                \App\Modules\API\Webhooks::queue('training_certificates', 'create', $cid, ['status' => 'validated']);
             }
             $issued++;
         }
@@ -187,6 +189,7 @@ class CertificatesController extends Controller
         }
         \App\Modules\NOT\FichaEvents::certificate($old->id, 'voided', 'validated');
         \App\Modules\NOT\FichaEvents::certificate($new, 'validated', null);
+        \App\Modules\API\Webhooks::queue('training_certificates', 'create', $new, ['status' => 'validated']);
 
         return response()->json(['data' => ['id' => $new, 'certificate_code' => $code, 'replaces_certificate_id' => $old->id]], 201);
     }

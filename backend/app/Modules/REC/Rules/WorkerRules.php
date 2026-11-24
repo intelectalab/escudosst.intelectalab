@@ -44,8 +44,10 @@ class WorkerRules extends RecordRules
                 $on = $values['termination_on'] ?? $current->termination_on ?? now('America/Lima')->toDateString();
                 DB::update('update worker_assignments set ends_on = greatest(starts_on, ?::date) where worker_id = ? and ends_on is null and deleted_at is null', [$on, $id]);
                 DB::update("update memberships set status = 'suspended' where worker_id = ? and status = 'active' and deleted_at is null", [$id]);
-                DB::update("update credentials set status = 'revoked', revoked_at = now(), revoked_reason = ? where worker_id = ? and status in ('draft', 'issued', 'active', 'blocked') and deleted_at is null",
-                    ['Cese del trabajador', $id]);
+                foreach (DB::select("update credentials set status = 'revoked', revoked_at = now(), revoked_reason = ? where worker_id = ? and status in ('draft', 'issued', 'active', 'blocked') and deleted_at is null returning id",
+                    ['Cese del trabajador', $id]) as $rv) {
+                    \App\Modules\API\Webhooks::queue('credentials', 'update', $rv->id, ['status' => 'revoked']);
+                }
                 // M-SIM RN-SIM-04: al cese sale de las brigadas (si era líder, la brigada queda sin líder hasta designar otro).
                 DB::update("update brigade_members set status = 'inactive', ends_on = greatest(starts_on, ?::date) where worker_id = ? and status = 'active' and deleted_at is null", [$on, $id]);
                 DB::update('update brigades set leader_worker_id = null where leader_worker_id = ?', [$id]);

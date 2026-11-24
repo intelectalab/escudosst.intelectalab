@@ -160,6 +160,9 @@ class AddonRules extends RecordRules
             }
             DB::update('update credentials set status = ?, blocking_reasons = ?::jsonb, last_evaluated_at = now() where id = ?',
                 [$live ? 'blocked' : 'active', json_encode($live, JSON_UNESCAPED_UNICODE), $cred->id]);
+            if (($live ? 'blocked' : 'active') !== $cred->status) {
+                \App\Modules\API\Webhooks::queue('credentials', 'update', $cred->id, ['status' => $live ? 'blocked' : 'active']);
+            }
         }
         $values['credential_id'] ??= $cred?->id;
         if (($values['result'] ?? null) === 'overridden') {

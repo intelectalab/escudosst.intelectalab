@@ -1616,7 +1616,7 @@ function WebhookSecret({ row, canEdit }: { row: RecordRow; canEdit: boolean }) {
   };
   return (
     <section className="space-y-2 rounded-xl border border-line px-4 py-3 text-sm">
-      <p>Cada envío llega firmado: la cabecera <code>X-EscudoSST-Signature</code> es <code>sha256=</code> + HMAC-SHA256 del cuerpo con el secreto de firma, que solo se muestra al crear el webhook o al rotarlo. Eventos: event.created, action.created, action.verified, inspection.completed, report.received. Se reintenta hasta 6 veces.</p>
+      <p>Cada envío llega firmado: la cabecera <code>X-EscudoSST-Signature</code> es <code>sha256=</code> + HMAC-SHA256 del cuerpo con el secreto de firma, que solo se muestra al crear el webhook o al rotarlo. Eventos: event.created, action.created, action.verified, inspection.completed, report.received, worker.created, training.certificate_issued y credential.status_changed (lleva el estado nuevo en «data»). Se reintenta hasta 6 veces.</p>
       {secret && <SecretBox secret={secret} />}
       {canEdit && (
         <div className="flex flex-wrap gap-2">

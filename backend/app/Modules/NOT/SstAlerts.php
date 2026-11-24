@@ -112,6 +112,9 @@ final class SstAlerts
             $status = $reasons ? 'blocked' : 'active';
             $db->update('update credentials set status = ?, expires_on = ?, blocking_reasons = ?::jsonb, last_evaluated_at = '.($status !== $c->status ? 'now()' : 'last_evaluated_at').' where id = ?',
                 [$status, $expires, json_encode($reasons, JSON_UNESCAPED_UNICODE), $c->id]);
+            if ($status !== $c->status) {
+                \App\Modules\API\Webhooks::queue('credentials', 'update', $c->id, ['status' => $status], $db);
+            }
         }
     }
 

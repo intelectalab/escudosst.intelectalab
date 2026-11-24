@@ -135,6 +135,43 @@ class CatalogsController extends Controller
         return response()->noContent();
     }
 
+    public function savePackItem(Request $request, string $id, ?string $item = null): JsonResponse
+    {
+        $data = $request->validate([
+            'item_type' => ['required', 'in:pets_model,record_format'],
+            'code' => ['required', 'string', 'max:40', 'regex:/^[A-Z0-9][A-Z0-9-]{1,39}$/'],
+            'name' => ['required', 'string', 'min:3', 'max:200'],
+            'procedure_type' => ['nullable', 'in:pets,standard,instruction,emergency_plan,other'],
+            'is_critical_task' => ['nullable', 'boolean'],
+            'content_html' => ['nullable', 'string', 'max:60000'],
+            'steps' => ['nullable', 'array', 'max:60'],
+            'steps.*.step' => ['nullable', 'string', 'max:1000'],
+            'steps.*.risk' => ['nullable', 'string', 'max:1000'],
+            'steps.*.control' => ['nullable', 'string', 'max:1000'],
+            'required_ppe' => ['nullable', 'array', 'max:40'],
+            'required_ppe.*' => ['string', 'max:120'],
+            'description' => ['nullable', 'string', 'max:1000'],
+            'category_code' => ['nullable', 'string', 'max:40'],
+        ], ['code.regex' => 'El código va en mayúsculas, números y guiones (por ejemplo PETS-ALT-01).', 'name.required' => 'Escribe el nombre.', 'code.required' => 'Escribe el código.']);
+
+        return response()->json(['data' => $this->service->savePackItem($id, $item, $data, $request->user()->id)], $item ? 200 : 201);
+    }
+
+    public function updatePackItem(Request $request, string $item): JsonResponse
+    {
+        $packId = \Illuminate\Support\Facades\DB::connection('platform')->selectOne('select sector_pack_id from sector_pack_items where id = ? and deleted_at is null', [$item])?->sector_pack_id
+            ?? throw \App\Core\Http\ApiProblem::notFound('El ítem no existe.');
+
+        return $this->savePackItem($request, $packId, $item);
+    }
+
+    public function deletePackItem(Request $request, string $item): Response
+    {
+        $this->service->deletePackItem($item, $request->user()->id);
+
+        return response()->noContent();
+    }
+
     public function holidays(): JsonResponse
     {
         return response()->json(['data' => $this->service->holidays()]);

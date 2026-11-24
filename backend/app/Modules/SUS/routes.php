@@ -74,6 +74,9 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal')->group(funct
         Route::patch('hazards/{id}', [CatalogsController::class, 'saveHazard'])->whereUuid('id');
         Route::get('sector-packs', [CatalogsController::class, 'sectorPacks']);
         Route::patch('sector-packs/{id}', [CatalogsController::class, 'packStatus'])->whereUuid('id');
+        Route::post('sector-packs/{id}/items', [CatalogsController::class, 'savePackItem'])->whereUuid('id');
+        Route::patch('sector-pack-items/{item}', [CatalogsController::class, 'updatePackItem'])->whereUuid('item');
+        Route::delete('sector-pack-items/{item}', [CatalogsController::class, 'deletePackItem'])->whereUuid('item');
         Route::get('holidays', [CatalogsController::class, 'holidays']);
         Route::post('holidays', [CatalogsController::class, 'createHoliday']);
         Route::patch('holidays/{id}', [CatalogsController::class, 'updateHoliday'])->whereUuid('id');
