@@ -6,6 +6,7 @@ use App\Core\Auth\Permissions;
 use App\Core\Http\ApiProblem;
 use App\Core\Tenancy\CompanyContext;
 use App\Modules\REC\Rules\RecordRules;
+use App\Modules\SUS\Services\PlanLimits;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
@@ -154,6 +155,10 @@ final class RecordsService
         $values = $this->validate($res, $input, creating: true);
         $extra = [];
         $rules?->prepare('create', $res, $values, null, $extra);
+        // docs/03 §8: al llegar al límite del plan (trabajadores, sedes, puntos QR) no se crean más; lo existente sigue igual.
+        if (($kind = PlanLimits::kindForTable($res['table'])) && PlanLimits::occupies($res['table'], $extra + $values)) {
+            PlanLimits::assertCanCreate($kind);
+        }
         $this->checkUniques($res, $values, null);
 
         $ctx = app(CompanyContext::class);
@@ -201,6 +206,11 @@ final class RecordsService
         $values = $this->validate($res, $input, creating: false);
         $extra = [];
         $rules?->prepare('update', $res, $values, $current, $extra);
+        // Reactivar (p. ej. un trabajador cesado o una sede inactiva) ocupa un cupo del plan igual que crear.
+        if (($kind = PlanLimits::kindForTable($res['table'])) && ! PlanLimits::occupies($res['table'], (array) $current)
+            && PlanLimits::occupies($res['table'], $extra + $values + (array) $current)) {
+            PlanLimits::assertCanCreate($kind);
+        }
         // M-FIR RN-FIR-03: con todas sus firmas completas el registro queda bloqueado (solo puede seguir su flujo de estados).
         // Los datos que pone el propio flujo de estados (quién aprobó, cuándo se publicó o cerró) no cuentan como edición.
         $stamps = ['approved_by', 'approved_at', 'published_at', 'closed_by', 'closed_at', 'obsoleted_at', 'effective_on'];

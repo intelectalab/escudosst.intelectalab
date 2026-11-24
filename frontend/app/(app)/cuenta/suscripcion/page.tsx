@@ -9,6 +9,7 @@ import { api, ApiError } from "@/lib/api";
 type Detail = {
   plan: { code: string; name: string; status: string; billing_period: string | null; started_at: string | null; trial_ends_at: string | null; current_period_end: string | null;
     limits: { workers: number | null; sites: number | null; companies: number | null }; price: string } | null;
+  usage: Record<string, { used: number; limit: number | null }> | null;
   addons: { code: string; name: string; status: string }[];
   modules: { code: string; name: string; group_number: number; is_addon: boolean; mode: string; company_enabled: boolean }[];
 };
@@ -16,6 +17,11 @@ const MODE: Record<string, [string, string]> = {
   enabled: ["Activo", "text-ok"], read_only: ["Solo lectura", "text-amber-ink"], disabled_by_company: ["Desactivado por la empresa", "text-muted"], locked: ["No incluido", "text-muted"],
 };
 const STATUS: Record<string, string> = { trialing: "En prueba", active: "Activa", past_due: "Pago pendiente", grace: "En periodo de gracia", read_only: "Solo lectura", cancelled: "Cancelada" };
+// Límites del plan (docs/03 §5): al llegar al tope no se crean más; lo existente sigue igual.
+const USAGE: [string, string, string?][] = [
+  ["workers", "Trabajadores"], ["sites", "Sedes"], ["management_users", "Usuarios de gestión"], ["qr_points", "Puntos de reporte QR"], ["storage", "Almacenamiento", "GB"],
+];
+const num = (v: number) => v.toLocaleString("es-PE", { maximumFractionDigits: 2 });
 const day = (v: string | null) => (v ? new Date(v).toLocaleDateString("es-PE") : "—");
 
 export default function MySubscriptionPage() {
@@ -40,6 +46,25 @@ export default function MySubscriptionPage() {
           <div><p className="text-xs text-muted">{d.plan.status === "trialing" ? "Prueba hasta" : "Periodo actual hasta"}</p><p className="font-semibold">{day(d.plan.status === "trialing" ? d.plan.trial_ends_at : d.plan.current_period_end)}</p></div>
           <div><p className="text-xs text-muted">Precio</p><p className="font-semibold">{d.plan.price}</p></div>
           <div className="sm:col-span-4"><button type="button" className="rounded-lg bg-brand px-4 py-2 font-semibold text-white" onClick={() => ask()}>Solicitar mejora del plan</button></div>
+        </section>
+      )}
+      {d.usage && (
+        <section className="space-y-2 rounded-xl border border-line bg-surface p-4 text-sm">
+          <p className="font-semibold">Uso del plan</p>
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{USAGE.map(([k, label, unit]) => {
+            const u = d.usage?.[k];
+            if (!u) return null;
+            const full = u.limit !== null && u.used >= u.limit;
+            const pct = u.limit ? Math.min(100, Math.round((u.used / u.limit) * 100)) : 0;
+            return (
+              <li key={k}>
+                <p className="text-xs text-muted">{label}</p>
+                <p className={`font-semibold ${full ? "text-amber-ink" : ""}`}>{num(u.used)}{unit ? ` ${unit}` : ""} de {u.limit === null ? "sin límite" : `${num(u.limit)}${unit ? ` ${unit}` : ""}`}</p>
+                {u.limit !== null && <div className="mt-1 h-1.5 rounded-full bg-line"><div className={`h-1.5 rounded-full ${full ? "bg-amber" : "bg-brand"}`} style={{ width: `${pct}%` }} /></div>}
+                {full && <p className="mt-1 text-xs text-muted">Llegaste al límite: mejora el plan para agregar más.</p>}
+              </li>
+            );
+          })}</ul>
         </section>
       )}
       <section className="space-y-2 rounded-xl border border-line bg-surface p-4 text-sm">

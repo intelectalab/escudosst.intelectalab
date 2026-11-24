@@ -7,6 +7,7 @@ use App\Core\Auth\Roles;
 use App\Core\Http\ApiProblem;
 use App\Core\Tenancy\CompanyContext;
 use App\Http\Controllers\Controller;
+use App\Modules\SUS\Services\PlanLimits;
 use App\Modules\USR\Services\InvitationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -112,6 +113,10 @@ class CompanyUsersController extends Controller
         if ($errors) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Hay campos por corregir.', ['errors' => $errors]);
         }
+        // docs/03 §8: al llegar al límite de usuarios de gestión del plan no se invita a más (los trabajadores no cuentan).
+        if (PlanLimits::isManagementRole($roleRow->base)) {
+            PlanLimits::assertCanCreate('management_users');
+        }
 
         // El usuario es global (puede estar en varias empresas): se busca o crea con la conexión de la plataforma.
         $platform = DB::connection('platform');
@@ -183,6 +188,16 @@ class CompanyUsersController extends Controller
                 throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', $errors['expires_on'][0], ['errors' => $errors]);
             }
         }
+        // Pasar a un rol de gestión, reactivar o renovar un acceso vencido ocupa un cupo de usuario de gestión del plan.
+        $newBase = $m->base_role_code;
+        if ($request->filled('role_code')) {
+            $ignored = [];
+            $newBase = $this->assignable((string) $request->input('role_code'), $ignored)->base ?? $m->base_role_code;
+        }
+        if (! $this->occupiesSeat($m->base_role_code, $m->status, $m->expires_at)
+            && $this->occupiesSeat($newBase, $request->filled('status') ? (string) $request->input('status') : $m->status, $request->has('expires_on') ? $expires : $m->expires_at)) {
+            PlanLimits::assertCanCreate('management_users');
+        }
         if ($request->filled('role_code')) {
             $role = (string) $request->input('role_code');
             $errors = [];
@@ -247,6 +262,13 @@ class CompanyUsersController extends Controller
         $this->invitations->send($m->user_id, $m->email, $m->full_name, $ctx->companyId, $ctx->companyName, $m->id, true, $m->role_name);
 
         return response()->json(['data' => ['sent' => true]]);
+    }
+
+    /** ¿El acceso cuenta como usuario de gestión del plan? (rol de gestión, invitado o activo y no vencido). */
+    private function occupiesSeat(string $baseRole, string $status, ?string $expiresAt): bool
+    {
+        return PlanLimits::isManagementRole($baseRole) && in_array($status, ['invited', 'active'], true)
+            && ($expiresAt === null || strtotime($expiresAt) > time());
     }
 
     private function membership(string $id): object

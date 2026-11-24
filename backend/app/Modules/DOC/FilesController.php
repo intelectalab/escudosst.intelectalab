@@ -58,6 +58,8 @@ class FilesController extends Controller
      */
     public static function put(UploadedFile $file, string $mime, string $ext, ?string $module = null, ?string $entityType = null, ?string $entityId = null): string
     {
+        // docs/03 §8: con el almacenamiento del plan lleno no se suben más archivos (los ya subidos siguen disponibles).
+        \App\Modules\SUS\Services\PlanLimits::assertCanCreate('storage', (int) $file->getSize());
         $medical = $module && in_array($module, Permissions::MEDICAL_MODULES, true);
         $ctx = app(CompanyContext::class);
         $disk = config('escudo.files_disk', 'local');

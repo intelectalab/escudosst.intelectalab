@@ -69,6 +69,8 @@ class MySubscriptionController extends Controller
             'plan' => $s ? ['code' => $s->code, 'name' => $s->name, 'status' => $s->status, 'billing_period' => $s->billing_period, 'started_at' => $s->started_at,
                 'trial_ends_at' => $s->trial_ends_at, 'current_period_end' => $s->current_period_end, 'limits' => ['workers' => $s->max_workers, 'sites' => $s->max_sites, 'companies' => $s->max_companies],
                 'price' => 'Por definir'] : null,
+            // docs/03 §5: uso de cada límite del plan frente a su tope (null = sin límite; almacenamiento en GB).
+            'usage' => $s ? $this->usage() : null,
             'addons' => $addons, 'modules' => $modules,
         ]]);
     }
@@ -89,6 +91,15 @@ class MySubscriptionController extends Controller
             [$code, $company, (string) auth()->id(), $subject, mb_substr($msg, 0, 4000)]);
 
         return response()->json(['data' => $row], 201);
+    }
+
+    /** @return array<string, array{used: int|float, limit: ?int}> */
+    private function usage(): array
+    {
+        $u = \App\Modules\SUS\Services\PlanLimits::summary();
+        $u['storage']['used'] = round($u['storage']['used'] / 1073741824, 2);
+
+        return $u;
     }
 
     private function billingOnly(): void
