@@ -339,7 +339,7 @@ export function InvTreeWithGuide({ row, readOnly }: { row: RecordRow; readOnly: 
           <Button size="sm" icon="sparkle" onClick={() => setOpen(true)}>Investigación guiada</Button>
         </div>
       )}
-      <InvCauseTree key={tick} row={row} />
+      <InvCauseTree key={tick} row={row} readOnly={readOnly} />
       {open && (
         <Modal title="Investigación guiada" subtitle="Las causas que aceptes entran al árbol de esta investigación." icon="sparkle" size="lg" onClose={() => setOpen(false)}>
           <InvestigationGuide investigationId={row.id} investigationLabel={String(row.code ?? "")} onAccepted={() => setTick((t) => t + 1)} />

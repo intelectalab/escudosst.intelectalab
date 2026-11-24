@@ -115,6 +115,22 @@ class EventRules extends RecordRules
             return;
         }
         $this->investigationOpen($this->value($values, $current, 'investigation_id'));
+        // Árbol de causas (SCR-INV-03): la causa superior es de la misma investigación y no puede ser la causa misma ni una
+        // que dependa de ella (el árbol no se cierra en un ciclo).
+        if (! array_key_exists('parent_cause_id', $values) || $values['parent_cause_id'] === null) {
+            return;
+        }
+        $parent = $values['parent_cause_id'];
+        $inv = $this->value($values, $current, 'investigation_id');
+        if (! DB::selectOne('select 1 as ok from investigation_causes where id = ? and investigation_id = ? and deleted_at is null', [$parent, $inv])) {
+            $this->fail('parent_cause_id', 'La causa superior debe ser una causa de la misma investigación.');
+        }
+        if ($current && DB::selectOne(
+            'with recursive up as (select id, parent_cause_id from investigation_causes where id = ?
+                 union select c.id, c.parent_cause_id from investigation_causes c join up on c.id = up.parent_cause_id)
+             select 1 as ok from up where id = ? limit 1', [$parent, $current->id])) {
+            $this->fail('parent_cause_id', 'Una causa no puede depender de sí misma ni de una causa que depende de ella.');
+        }
     }
 
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
