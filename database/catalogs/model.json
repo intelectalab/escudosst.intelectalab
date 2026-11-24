@@ -2384,7 +2384,8 @@
      "assign",
      "send",
      "confirm",
-     "manage"
+     "manage",
+     "suspend"
     ],
     "ref": null,
     "encrypted": false,

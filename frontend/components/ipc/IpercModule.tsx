@@ -1074,39 +1074,90 @@ function RowModal({
   );
 }
 
+type ControlForm = { hierarchy: string; description: string; is_existing: boolean; responsible_user_id: string; due_on: string; ppe_item_id: string; procedure_id: string; training_id: string };
+const EMPTY_CONTROL: ControlForm = { hierarchy: "engineering", description: "", is_existing: false, responsible_user_id: "", due_on: "", ppe_item_id: "", procedure_id: "", training_id: "" };
+
+/** Datos del control que vuelve la API de registros, con los nombres de sus vínculos (SCR-IPC-04). */
+const controlFrom = (d: RecordRow, prev?: IpercControl): IpercControl => ({
+  ...(prev ?? {}),
+  ...(d as unknown as IpercControl),
+  responsible_name: (d.responsible_user_id__label as string | undefined) ?? prev?.responsible_name ?? null,
+  ppe_item_name: (d.ppe_item_id__label as string | undefined) ?? null,
+  procedure_name: (d.procedure_id__label as string | undefined) ?? null,
+  training_name: (d.training_id__label as string | undefined) ?? null,
+});
+
 function Controls({ row, draft, canEdit, onChanged }: { row: IpercRow; draft: boolean; canEdit: boolean; onChanged: (list: IpercControl[]) => void }) {
   const [list, setList] = useState<IpercControl[]>(row.controls);
-  const [form, setForm] = useState({ hierarchy: "engineering", description: "", is_existing: false, responsible_user_id: "", due_on: "" });
+  const [form, setForm] = useState<ControlForm>(EMPTY_CONTROL);
+  const [editing, setEditing] = useState<IpercControl | null>(null);
+  // Cambia para volver a montar los buscadores (con su etiqueta) al limpiar o cargar el formulario.
+  const [formKey, setFormKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const add = async () => {
+  const reset = () => {
+    setForm(EMPTY_CONTROL);
+    setEditing(null);
+    setFormKey((k) => k + 1);
+  };
+
+  // El EPP solo se vincula a un control de EPP y el PETS a un control administrativo.
+  const setHierarchy = (h: string) =>
+    setForm((f) => ({ ...f, hierarchy: h, ppe_item_id: h === "ppe" ? f.ppe_item_id : "", procedure_id: h === "administrative" ? f.procedure_id : "" }));
+
+  const save = async () => {
     setBusy(true);
     setError(null);
+    const body = {
+      hierarchy: form.hierarchy,
+      description: form.description,
+      is_existing: form.is_existing,
+      responsible_user_id: form.is_existing ? null : form.responsible_user_id || null,
+      due_on: form.is_existing ? null : form.due_on || null,
+      ppe_item_id: form.hierarchy === "ppe" ? form.ppe_item_id || null : null,
+      procedure_id: form.hierarchy === "administrative" ? form.procedure_id || null : null,
+      training_id: form.training_id || null,
+    };
     try {
-      const r = await records.create("IPC", "iperc_controls", {
-        iperc_row_id: row.id,
-        hierarchy: form.hierarchy,
-        description: form.description,
-        is_existing: form.is_existing,
-        responsible_user_id: form.responsible_user_id || null,
-        due_on: form.due_on || null,
-      });
-      const next = [...list, { ...(r.data as unknown as IpercControl), responsible_name: null }];
+      let next: IpercControl[];
+      if (editing) {
+        const r = await records.update("IPC", "iperc_controls", editing.id, body);
+        next = list.map((x) => (x.id === editing.id ? controlFrom(r.data, x) : x));
+      } else {
+        const r = await records.create("IPC", "iperc_controls", { iperc_row_id: row.id, ...body });
+        next = [...list, controlFrom(r.data)];
+      }
       setList(next);
       onChanged(next);
-      setForm({ hierarchy: "engineering", description: "", is_existing: false, responsible_user_id: "", due_on: "" });
+      reset();
     } catch (e) {
-      setError((e as ApiError).detail ?? (e as ApiError).title);
+      const err = e as ApiError;
+      setError(Object.values(err.errors ?? {})[0]?.[0] ?? err.detail ?? err.title);
     } finally {
       setBusy(false);
     }
   };
 
+  const edit = (ctl: IpercControl) => {
+    setEditing(ctl);
+    setForm({
+      hierarchy: ctl.hierarchy,
+      description: ctl.description,
+      is_existing: ctl.is_existing,
+      responsible_user_id: ctl.responsible_user_id ?? "",
+      due_on: ctl.due_on ?? "",
+      ppe_item_id: ctl.ppe_item_id ?? "",
+      procedure_id: ctl.procedure_id ?? "",
+      training_id: ctl.training_id ?? "",
+    });
+    setFormKey((k) => k + 1);
+  };
+
   const update = async (ctl: IpercControl, body: Record<string, unknown>) => {
     try {
       const r = await records.update("IPC", "iperc_controls", ctl.id, body);
-      const next = list.map((x) => (x.id === ctl.id ? { ...x, ...(r.data as unknown as IpercControl), responsible_name: x.responsible_name } : x));
+      const next = list.map((x) => (x.id === ctl.id ? controlFrom(r.data, x) : x));
       setList(next);
       onChanged(next);
     } catch (e) {
@@ -1120,6 +1171,7 @@ function Controls({ row, draft, canEdit, onChanged }: { row: IpercRow; draft: bo
       const next = list.filter((x) => x.id !== ctl.id);
       setList(next);
       onChanged(next);
+      if (editing?.id === ctl.id) reset();
     } catch (e) {
       setError((e as ApiError).detail ?? (e as ApiError).title);
     }
@@ -1127,37 +1179,48 @@ function Controls({ row, draft, canEdit, onChanged }: { row: IpercRow; draft: bo
 
   return (
     <div className="space-y-3">
-      {error && <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{error}</p>}
+      {error && <p role="alert" className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{error}</p>}
       {list.length === 0 && <p className="text-sm text-muted">Sin controles todavía.</p>}
-      {list.map((x) => (
-        <div key={x.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-3 py-2 text-sm">
-          <div className="min-w-0">
-            <p>
-              <b>{HIERARCHY.find((h) => h[0] === x.hierarchy)?.[1]}:</b> {x.description}
-            </p>
-            <p className="text-xs text-muted">
-              {x.responsible_name ?? (x.responsible_user_id ? "Con responsable" : "Sin responsable")} · {x.due_on ? fmt(x.due_on) : "sin fecha"}
-              {x.corrective_action_id && " · acción correctiva creada"}
-            </p>
+      {list.map((x) => {
+        const links = [
+          x.ppe_item_id ? `EPP: ${x.ppe_item_name ?? "vinculado"}` : null,
+          x.procedure_id ? `PETS: ${x.procedure_name ?? "vinculado"}` : null,
+          x.training_id ? `Capacitación: ${x.training_name ?? "vinculada"}` : null,
+        ].filter(Boolean);
+        return (
+          <div key={x.id} className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${editing?.id === x.id ? "border-brand" : "border-line"}`}>
+            <div className="min-w-0">
+              <p>
+                <b>{HIERARCHY.find((h) => h[0] === x.hierarchy)?.[1]}:</b> {x.description}
+              </p>
+              <p className="text-xs text-muted">
+                {x.responsible_name ?? (x.responsible_user_id ? "Con responsable" : "Sin responsable")} · {x.due_on ? fmt(x.due_on) : "sin fecha"}
+                {x.corrective_action_id && " · acción correctiva creada"}
+              </p>
+              {links.length > 0 && <p className="text-xs">{links.join(" · ")}</p>}
+              {x.hierarchy === "ppe" && !x.ppe_item_id && <p className="text-xs text-amber-ink">Sin EPP del catálogo: no pasará a los EPP obligatorios del puesto.</p>}
+            </div>
+            <div className="flex items-center gap-2">
+              <select className="input !h-8 !py-0 text-xs" disabled={!canEdit} value={x.status} onChange={(e) => update(x, { status: e.target.value })} aria-label="Estado del control">
+                {CONTROL_STATUS.map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+              {draft && canEdit && <Button size="sm" variant="ghost" onClick={() => edit(x)}>Editar</Button>}
+              {draft && canEdit && (
+                <Button size="sm" variant="danger-ghost" icon="trash" aria-label="Quitar control" onClick={() => remove(x)} />
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <select className="input !h-8 !py-0 text-xs" disabled={!canEdit} value={x.status} onChange={(e) => update(x, { status: e.target.value })} aria-label="Estado del control">
-              {CONTROL_STATUS.map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
-            {draft && canEdit && (
-              <Button size="sm" variant="danger-ghost" icon="trash" aria-label="Quitar control" onClick={() => remove(x)} />
-            )}
-          </div>
-        </div>
-      ))}
+        );
+      })}
       {draft && canEdit && (
-        <div className="grid gap-3 rounded-xl border border-dashed border-line p-3 sm:grid-cols-2">
+        <div key={formKey} className="grid gap-3 rounded-xl border border-dashed border-line p-3 sm:grid-cols-2">
+          {editing && <p className="text-sm font-semibold text-brand sm:col-span-2">Editando el control «{editing.description}»</p>}
           <FormField label="Jerarquía">
-            <select className="input" value={form.hierarchy} onChange={(e) => setForm({ ...form, hierarchy: e.target.value })}>
+            <select className="input" value={form.hierarchy} onChange={(e) => setHierarchy(e.target.value)}>
               {HIERARCHY.map(([v, l]) => (
                 <option key={v} value={v}>
                   {l}
@@ -1174,19 +1237,33 @@ function Controls({ row, draft, canEdit, onChanged }: { row: IpercRow; draft: bo
               <input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </FormField>
           </div>
+          {form.hierarchy === "ppe" && (
+            <FormField label="EPP del catálogo" hint="Al aprobar la matriz, este EPP pasa a los EPP obligatorios del puesto de la fila.">
+              <RefSelect code="IPC" table="iperc_controls" f={refField("ppe_item_id", "EPP del catálogo", "ppe_items")} value={form.ppe_item_id} initialLabel={editing?.ppe_item_name ?? undefined} disabled={false} invalid={false} onChange={(v) => setForm((f) => ({ ...f, ppe_item_id: (v as string) ?? "" }))} />
+            </FormField>
+          )}
+          {form.hierarchy === "administrative" && (
+            <FormField label="PETS (procedimiento)" hint="Procedimiento escrito de trabajo seguro que aplica este control.">
+              <RefSelect code="IPC" table="iperc_controls" f={refField("procedure_id", "PETS", "procedures")} value={form.procedure_id} initialLabel={editing?.procedure_name ?? undefined} disabled={false} invalid={false} onChange={(v) => setForm((f) => ({ ...f, procedure_id: (v as string) ?? "" }))} />
+            </FormField>
+          )}
+          <FormField label="Capacitación" hint="Capacitación vinculada a este control (opcional).">
+            <RefSelect code="IPC" table="iperc_controls" f={refField("training_id", "Capacitación", "trainings")} value={form.training_id} initialLabel={editing?.training_name ?? undefined} disabled={false} invalid={false} onChange={(v) => setForm((f) => ({ ...f, training_id: (v as string) ?? "" }))} />
+          </FormField>
           {!form.is_existing && (
             <>
               <FormField label="Responsable" hint="Con responsable y fecha, al aprobar se crea su acción correctiva.">
-                <RefSelect code="IPC" table="iperc_controls" f={refField("responsible_user_id", "Responsable", "users")} value={form.responsible_user_id} disabled={false} invalid={false} onChange={(v) => setForm({ ...form, responsible_user_id: (v as string) ?? "" })} />
+                <RefSelect code="IPC" table="iperc_controls" f={refField("responsible_user_id", "Responsable", "users")} value={form.responsible_user_id} initialLabel={editing?.responsible_name ?? undefined} disabled={false} invalid={false} onChange={(v) => setForm((f) => ({ ...f, responsible_user_id: (v as string) ?? "" }))} />
               </FormField>
               <FormField label="Fecha límite">
                 <input className="input" type="date" value={form.due_on} onChange={(e) => setForm({ ...form, due_on: e.target.value })} />
               </FormField>
             </>
           )}
-          <div className="sm:col-span-2 flex justify-end">
-            <Button variant="soft" icon="plus" loading={busy} disabled={!form.description.trim()} onClick={add}>
-              Agregar control
+          <div className="sm:col-span-2 flex justify-end gap-2">
+            {editing && <Button variant="secondary" onClick={reset}>Cancelar</Button>}
+            <Button variant="soft" icon={editing ? undefined : "plus"} loading={busy} disabled={!form.description.trim()} onClick={save}>
+              {editing ? "Guardar cambios" : "Agregar control"}
             </Button>
           </div>
         </div>

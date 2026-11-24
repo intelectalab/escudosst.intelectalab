@@ -282,8 +282,10 @@ final class IpercWorkflow
         );
         $controls = collect(DB::select(
             "select c.id, c.iperc_row_id, c.hierarchy, c.description, c.is_existing, c.responsible_user_id, u.full_name as responsible_name, c.due_on,
-                    c.status, c.corrective_action_id
+                    c.status, c.corrective_action_id, c.ppe_item_id, pi.name as ppe_item_name, c.procedure_id, nullif(concat_ws(' · ', pr.code, pr.title), '') as procedure_name,
+                    c.training_id, nullif(concat_ws(' · ', tr.code, tr.title), '') as training_name
                from iperc_controls c join iperc_rows r on r.id = c.iperc_row_id left join users u on u.id = c.responsible_user_id
+                    left join ppe_items pi on pi.id = c.ppe_item_id left join procedures pr on pr.id = c.procedure_id left join trainings tr on tr.id = c.training_id
               where r.iperc_version_id = ? and c.deleted_at is null
               order by array_position(array['elimination','substitution','engineering','administrative','signage','ppe'], c.hierarchy), c.created_at",
             [$versionId]

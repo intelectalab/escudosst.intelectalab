@@ -29,6 +29,13 @@ export type IpercControl = {
   due_on: string | null;
   status: string;
   corrective_action_id: string | null;
+  /** SCR-IPC-04: vínculos del control a EPP (catálogo), PETS y capacitación. */
+  ppe_item_id?: string | null;
+  ppe_item_name?: string | null;
+  procedure_id?: string | null;
+  procedure_name?: string | null;
+  training_id?: string | null;
+  training_name?: string | null;
 };
 
 export type IpercRow = {

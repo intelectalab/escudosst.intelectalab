@@ -19,13 +19,14 @@
   "send",
   "share",
   "sign",
+  "suspend",
   "sync",
   "track",
   "update",
   "verify",
   "vote"
  ],
- "count": 1258,
+ "count": 1259,
  "permissions": [
   {
    "code": "ten.accounts.read",
@@ -7116,6 +7117,16 @@
    "is_special": true,
    "db": "main",
    "description": "Cerrar · work_permits (PETAR y permisos de alto riesgo)"
+  },
+  {
+   "code": "ptr.work_permits.suspend",
+   "module_code": "PTR",
+   "resource": "work_permits",
+   "action": "suspend",
+   "is_sensitive": false,
+   "is_special": true,
+   "db": "main",
+   "description": "Suspender · work_permits (PETAR y permisos de alto riesgo)"
   },
   {
    "code": "ptr.permit_checks.read",

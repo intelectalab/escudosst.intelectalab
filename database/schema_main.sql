@@ -374,7 +374,7 @@ CREATE TABLE IF NOT EXISTS permissions (
   code text NOT NULL,
   module_code char(3) NOT NULL,
   resource text NOT NULL,
-  action text NOT NULL CHECK (action IN ('read', 'create', 'update', 'delete', 'approve', 'sign', 'export', 'close', 'vote', 'verify', 'generate', 'share', 'sync', 'read_sensitive', 'publish', 'revoke', 'import', 'respond', 'track', 'assign', 'send', 'confirm', 'manage')),
+  action text NOT NULL CHECK (action IN ('read', 'create', 'update', 'delete', 'approve', 'sign', 'export', 'close', 'vote', 'verify', 'generate', 'share', 'sync', 'read_sensitive', 'publish', 'revoke', 'import', 'respond', 'track', 'assign', 'send', 'confirm', 'manage', 'suspend')),
   is_sensitive boolean NOT NULL DEFAULT false,
   is_special boolean NOT NULL DEFAULT false,
   description text,

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/Form";
 import { Modal } from "@/components/ui/Modal";
 import { RefSelect } from "./ModuleRecords";
+import { GasEditor, gasValues, type GasLimit, type GasValues } from "./GasEditor";
 import { PsiPanel } from "./PsiPanel";
 import { CriteriaEditor, ScoreForm } from "@/components/addons/HomPanels";
 import { IsoAssess, PseApply } from "@/components/addons/IsoPsePanels";
@@ -1291,7 +1292,8 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
     help: "Borrador → solicitado → aprobado (aprobaciones en orden, ejecutantes con sus requisitos SST, sin verificaciones en «No») → activo (vigente, con ATS y gases en rango si el tipo lo exige) → cerrado con el área segura.",
     steps: [
       { from: ["draft"], label: "Solicitar aprobación", body: { status: "pending_approval" }, primary: true },
-      { from: ["pending_approval"], label: "Aprobar", body: { status: "approved" }, primary: true },
+      // RN-PTR-03: si el tipo exige gases, la medición se registra (en rango) antes de aprobar.
+      { from: ["pending_approval"], label: "Aprobar", body: { status: "approved" }, primary: true, ask: "gas_measurements" },
       { from: ["pending_approval", "approved"], label: "Rechazar", body: { status: "rejected" } },
       { from: ["approved", "suspended"], label: "Activar trabajo", body: { status: "active" }, primary: true, ask: "gas_measurements" },
       { from: ["active"], label: "Suspender", body: { status: "suspended" }, ask: "suspended_reason" },
@@ -1350,7 +1352,15 @@ function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; t
   const [msg, setMsg] = useState<string | null>(null);
   const [asking, setAsking] = useState<Step | null>(null);
   const [text, setText] = useState("");
-  const [gas, setGas] = useState<Record<string, string>>({ o2: "", lel: "", co: "", h2s: "" });
+  const [gas, setGas] = useState<GasValues | null>(null);
+  // M-PTR: si el tipo de permiso exige medición de gases y sus rangos permitidos (parámetros de la empresa).
+  const [permitCtx, setPermitCtx] = useState<{ requires_gas_test: boolean; gas_limits: GasLimit[] } | null>(null);
+  useEffect(() => {
+    if (table !== "work_permits") return;
+    api<{ data: { requires_gas_test: boolean; gas_limits: GasLimit[] } }>(`/ptr/work-permits/${row.id}/context`, { withCompany: true })
+      .then((r) => setPermitCtx(r.data))
+      .catch(() => setPermitCtx(null));
+  }, [table, row.id, row.permit_type_id]);
   const options = cfg.steps.filter((x) => x.from.includes(st) && (!x.when || x.when(row)));
   const [otpSent, setOtpSent] = useState<string | null>(null);
   // M-POL RN-POL-02: gerencia aprueba la política con un código de un solo uso enviado a su correo.
@@ -1362,9 +1372,13 @@ function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; t
     api(`/pol/policies/${row.id}/approve`, { method: "POST", withCompany: true, body: { otp: text } })
       .then(() => { setAsking(null); setText(""); setOtpSent(null); setMsg(null); onChanged(); })
       .catch((e: ApiError) => setMsg(Object.values(e.errors ?? {})[0]?.[0] ?? e.detail ?? e.title));
-  const gasBody = () => {
-    const v = Object.fromEntries(Object.entries(gas).filter(([, x]) => x.trim() !== "").map(([k, x]) => [k, Number(x.replace(",", "."))]));
-    return Object.keys(v).length ? { gas_measurements: v } : {};
+  const gasBody = () => (gas ? { gas_measurements: gas } : {});
+  // Al aprobar o iniciar se parte de la medición registrada; al reanudar un trabajo suspendido se pide una nueva (RN-PTR-06).
+  const openGas = (x: Step) => {
+    if (permitCtx && !permitCtx.requires_gas_test) return run(x);
+    const saved = gasValues(row.gas_measurements);
+    setGas(st === "suspended" || !Object.keys(saved).length ? null : saved);
+    setAsking(x);
   };
   const run = (x: Step, extra: Record<string, unknown> = {}) =>
     records
@@ -1391,7 +1405,7 @@ function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; t
         {canEdit && options.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {options.map((x) => (
-              <Button key={x.label} variant={x.primary ? "primary" : "secondary"} onClick={() => { if (x.ask === "policy_otp") void askCode(); if (x.ask) setAsking(x); else run(x); }}>
+              <Button key={x.label} variant={x.primary ? "primary" : "secondary"} onClick={() => { if (x.ask === "policy_otp") void askCode(); if (x.ask === "gas_measurements") void openGas(x); else if (x.ask) setAsking(x); else run(x); }}>
                 {x.label}
               </Button>
             ))}
@@ -1409,16 +1423,17 @@ function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; t
         )}
         {asking?.ask === "gas_measurements" && (
           <div className="space-y-2 rounded-lg border border-line p-3">
-            <p className="text-muted">Medición de gases antes de iniciar (déjala en blanco si este trabajo no la exige). Rangos: O₂ 19.5–22.5 %, LEL menos de 10 %, CO menos de 25 ppm, H₂S menos de 10 ppm.</p>
+            <p className="font-semibold">
+              {asking.body.status === "approved" ? "Medición de gases antes de aprobar" : st === "suspended" ? "Nueva medición de gases para reanudar el trabajo" : "Medición de gases antes de iniciar"}
+            </p>
+            <p className="text-muted">
+              {permitCtx?.requires_gas_test ? "Este tipo de permiso exige la medición de gases." : "Regístrala si este trabajo la exige."} Los valores fuera del rango permitido no dejan continuar.
+            </p>
+            <GasEditor value={gas} onChange={setGas} limits={permitCtx?.gas_limits} />
             <div className="flex flex-wrap gap-2">
-              {([["o2", "O₂ (%)"], ["lel", "LEL (%)"], ["co", "CO (ppm)"], ["h2s", "H₂S (ppm)"]] as const).map(([k, l]) => (
-                <label key={k} className="flex items-center gap-1.5">
-                  <span className="text-xs font-semibold">{l}</span>
-                  <input className="input !h-9 !w-24" inputMode="decimal" aria-label={l} value={gas[k]} onChange={(e) => setGas((g) => ({ ...g, [k]: e.target.value }))} />
-                </label>
-              ))}
+              <Button variant="primary" disabled={!!permitCtx?.requires_gas_test && !gas} onClick={() => run(asking, gasBody())}>{asking.label}</Button>
+              <Button onClick={() => { setAsking(null); setGas(null); }}>Cancelar</Button>
             </div>
-            <Button variant="primary" onClick={() => run(asking, gasBody())}>{asking.label}</Button>
           </div>
         )}
         {asking && asking.ask !== "gas_measurements" && asking.ask !== "policy_otp" && (

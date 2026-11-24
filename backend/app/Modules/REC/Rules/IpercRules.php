@@ -210,9 +210,23 @@ class IpercRules extends RecordRules
         }
         $status = DB::selectOne('select v.status from iperc_rows r join iperc_versions v on v.id = r.iperc_version_id where r.id = ?', [$rowId])?->status;
         // En una versión aprobada solo se sigue la implementación (estado, responsable, fecha); lo demás queda congelado.
-        $frozen = array_intersect(array_keys($values), ['hierarchy', 'description', 'is_existing', 'iperc_row_id']);
+        $frozen = array_intersect(array_keys($values), ['hierarchy', 'description', 'is_existing', 'iperc_row_id', 'ppe_item_id', 'procedure_id', 'training_id']);
         if ($status !== 'draft' && ($current === null || $frozen !== [])) {
             $this->conflict('La versión ya fue enviada o aprobada: el control no se puede cambiar. Abre una nueva versión de la matriz.');
+        }
+        // SCR-IPC-04 / RN-IPC-10: vínculos del control a EPP, PETS y capacitación (la empresa y la existencia ya se validan como referencia).
+        $ppe = $this->value($values, $current, 'ppe_item_id');
+        if ($ppe && $this->value($values, $current, 'hierarchy') !== 'ppe') {
+            $this->fail('ppe_item_id', 'Solo un control de EPP se vincula a un ítem de EPP.');
+        }
+        if (($values['ppe_item_id'] ?? null) && ! DB::selectOne('select 1 as ok from ppe_items where id = ? and is_active and deleted_at is null', [$values['ppe_item_id']])) {
+            $this->fail('ppe_item_id', 'El EPP elegido está inactivo: elige uno vigente del catálogo.');
+        }
+        if (($values['procedure_id'] ?? null) && ! DB::selectOne("select 1 as ok from procedures where id = ? and status = 'active' and deleted_at is null", [$values['procedure_id']])) {
+            $this->fail('procedure_id', 'El PETS elegido está archivado: elige uno activo.');
+        }
+        if (($values['training_id'] ?? null) && ! DB::selectOne("select 1 as ok from trainings where id = ? and status <> 'cancelled' and deleted_at is null", [$values['training_id']])) {
+            $this->fail('training_id', 'La capacitación elegida está anulada: elige otra.');
         }
         if (($values['is_existing'] ?? false) === true && ! array_key_exists('status', $values) && $current === null) {
             $values['status'] = 'existing';

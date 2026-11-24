@@ -123,6 +123,12 @@ Route::middleware(['auth:sanctum', 'company', 'module:ACC'])->get('acc/report.xl
 Route::middleware(['auth:sanctum', 'company', 'module:ACT'])->get('act/report.xlsx', \App\Modules\REC\SubstandardReportController::class);
 // M-PTR §11: estadísticas de permisos por tipo y sede, y suspensiones con su causa.
 Route::middleware(['auth:sanctum', 'company', 'module:PTR'])->get('ptr/stats.xlsx', \App\Modules\REC\PermitStatsController::class);
+// M-PTR SCR-PTR-03/05: rangos de gases, contexto del permiso en campo y suspensión por un participante (RN-PTR-06).
+Route::middleware(['auth:sanctum', 'company', 'module:PTR'])->prefix('ptr')->controller(\App\Modules\REC\PermitFieldController::class)->group(function () {
+    Route::get('gas-limits', 'limits');
+    Route::get('work-permits/{id}/context', 'context')->whereUuid('id');
+    Route::post('work-permits/{id}/suspend', 'suspend')->whereUuid('id')->middleware('throttle:30,1');
+});
 Route::middleware(['auth:sanctum', 'company', 'module:POL'])->prefix('pol/policies/{id}')->whereUuid('id')->group(function () {
     Route::post('approval-code', [\App\Modules\REC\PolicyApprovalController::class, 'code'])->middleware('throttle:10,1');
     Route::post('approve', [\App\Modules\REC\PolicyApprovalController::class, 'approve'])->middleware('throttle:20,1');

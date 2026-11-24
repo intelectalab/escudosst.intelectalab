@@ -4,8 +4,10 @@
 //  - permit_types.checklist: preguntas de verificación del PETAR (antes de iniciar / al cerrar).
 //  - permit_types.approval_chain: cadena de aprobación por rol, en orden (M-PTR: «Configura tipos y cadena de aprobación»).
 //  - risk_criteria.level_bands / severity_scale: bandas de nivel con su rango y color y escala de severidad (M-IPC SCR-IPC-02).
+//  - work_permits.gas_measurements: medición de gases del PETAR con su rango permitido (M-PTR SCR-PTR-03, RN-PTR-03).
 
 import { Icon } from "@/components/ui/Icon";
+import { GasEditor } from "./GasEditor";
 
 type Check = { code: string; phase: "pre_start" | "closure"; question: string };
 type Step = { step: number; role: string; label: string; optional?: boolean };
@@ -23,7 +25,12 @@ export const JSON_EDITORS: Record<string, (p: { value: unknown; onChange: (v: un
   "permit_types.approval_chain": ChainEditor,
   "risk_criteria.level_bands": BandsEditor,
   "risk_criteria.severity_scale": ScaleEditor,
+  "work_permits.gas_measurements": GasMeasurementsEditor,
 };
+
+function GasMeasurementsEditor({ value, onChange, disabled }: { value: unknown; onChange: (v: unknown) => void; disabled: boolean }) {
+  return <GasEditor value={value} onChange={onChange} disabled={disabled} />;
+}
 
 const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : typeof v === "string" && v.trim().startsWith("[") ? (JSON.parse(v) as T[]) : []);
 

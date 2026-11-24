@@ -358,6 +358,15 @@ final class RecordsService
             if ($id === null && $target === 'iperc_rows') {
                 $sql .= " and exists (select 1 from iperc_versions v where v.id = r.iperc_version_id and v.status = 'current' and v.deleted_at is null)";
             }
+            // SCR-IPC-04: un control se vincula a EPP activos del catálogo, PETS activos y capacitaciones no anuladas.
+            if ($id === null && $res['table'] === 'iperc_controls') {
+                $sql .= match ($target) {
+                    'ppe_items' => ' and r.is_active',
+                    'procedures' => " and r.status = 'active'",
+                    'trainings' => " and r.status <> 'cancelled'",
+                    default => '',
+                };
+            }
             if ($id === null && $target === 'sites') {
                 $sql .= " and not (coalesce(r.is_temporary, false) and r.ends_on < (now() at time zone 'America/Lima')::date)";
             }
