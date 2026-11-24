@@ -1,7 +1,7 @@
 "use client";
 
 // Resultado clínico de EMO (M-EMO SCR-EMO-03 y SCR-EMO-05): solo para el médico ocupacional. Antes de ver o registrar
-// datos clínicos se confirma la contraseña (dura unos minutos y cada acceso queda registrado). Todo se guarda en la
+// datos clínicos se confirma la contraseña con el código de la app y el motivo (dura unos minutos y cada acceso queda registrado). Todo se guarda en la
 // base médica; a la ficha del trabajador solo pasan la aptitud, su vigencia y las restricciones laborales.
 
 import { useCallback, useEffect, useState } from "react";
@@ -9,6 +9,7 @@ import { api, ApiError, API_URL } from "@/lib/api";
 import { session } from "@/lib/session";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/Form";
+import { MedReauth } from "@/components/modules/MedicalGate";
 
 type Fitness = "pending" | "fit" | "fit_with_restrictions" | "unfit";
 type ExamFile = { id: string; file_kind: string; name: string; mime_type: string; size_bytes: number; created_at: string };
@@ -58,7 +59,7 @@ export function EmoClinical({ orderId, workerId, readOnly = false, onSaved }: { 
     async <T,>(path: string, opts: { method?: "GET" | "POST" | "PUT"; body?: unknown } = {}): Promise<T> => {
       if (!reauth || reauth.expires < Date.now()) {
         setReauth(null);
-        throw new ApiError(403, "reauth_required", "Confirma tu contraseña");
+        throw new ApiError(403, "reauth_required", "Confirma tu identidad");
       }
       try {
         return await api<T>(path, { ...opts, withCompany: true, headers: { "X-Medical-Reauth": reauth.id } });
@@ -430,31 +431,10 @@ function HistoryView({ h, reauthId }: { h: History; reauthId: string }) {
   );
 }
 
+/** Contraseña + código de la app (o de recuperación) + motivo: el mismo formulario de la clave médica de los demás módulos. */
 function Reauth({ onOk }: { onOk: (id: string, minutes: number) => void }) {
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await api<{ data: { reauth_id: string; expires_at: string } }>("/emo/reauth", { method: "POST", body: { password }, withCompany: true });
-      onOk(r.data.reauth_id, Math.max(1, Math.round((new Date(r.data.expires_at).getTime() - Date.now()) / 60_000)));
-    } catch (err) {
-      setError(err instanceof ApiError && err.status === 403 ? "Solo el médico ocupacional ve los resultados clínicos. Tu rol ve la aptitud y su vigencia." : msg(err));
-    } finally {
-      setBusy(false);
-    }
-  }
   return (
-    <form onSubmit={submit} className="max-w-md space-y-3 rounded-2xl border border-line bg-surface p-6 shadow-sm">
-      <h2 className="text-lg font-semibold">Confirma tu contraseña</h2>
-      <p className="text-sm text-muted">Vas a ver datos médicos confidenciales. Por seguridad, confirma tu contraseña: el acceso dura unos minutos y cada consulta queda registrada.</p>
-      <FormField label="Contraseña" error={error ?? undefined}>
-        <input type="password" aria-label="Contraseña" autoComplete="current-password" className="filter-control w-full" value={password} onChange={(e) => setPassword(e.target.value)} />
-      </FormField>
-      <Button type="submit" variant="primary" loading={busy} disabled={!password}>Ver datos médicos</Button>
-    </form>
+    <MedReauth endpoint="/emo/reauth" who="el médico ocupacional" submitLabel="Ver datos médicos"
+      onOk={(k) => onOk(k.id, Math.max(1, Math.round((k.expires - Date.now()) / 60_000)))} />
   );
 }

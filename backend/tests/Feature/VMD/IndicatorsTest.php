@@ -31,7 +31,7 @@ it('muestra indicadores agregados ocultando grupos pequeños y publica la restri
     DB::select("select set_config('app.company_id', '', false)");
 
     $doc = authHeaders(tokenFor(ESENCIAL_EMAIL), HUAYLAS_ID);
-    $r = $this->postJson('/api/v1/vmd/reauth', ['password' => DEMO_PASSWORD], $doc)->assertOk()->json('data.reauth_id');
+    $r = medReauth('/api/v1/vmd/reauth', $doc, ESENCIAL_EMAIL)->assertOk()->json('data.reauth_id');
     $m = $doc + ['X-Medical-Reauth' => $r];
     $p = $this->postJson('/api/v1/vmd/programs', ['code' => 'VMD-IND', 'name' => 'Conservación auditiva IND', 'target_risk' => 'noise'], $m)->assertCreated()->json('data.id');
     $case = $this->postJson('/api/v1/vmd/cases', ['program_id' => $p, 'worker_id' => $w, 'risk_classification' => 'high'], $m)->assertCreated()->json('data.id');
@@ -68,7 +68,7 @@ it('las áreas con menos casos que el grupo mínimo se suman a nivel de su sede 
         $workers[] = $id;
     }
     $doc = authHeaders(tokenFor(ESENCIAL_EMAIL), HUAYLAS_ID);
-    $m = $doc + ['X-Medical-Reauth' => $this->postJson('/api/v1/vmd/reauth', ['password' => DEMO_PASSWORD], $doc)->assertOk()->json('data.reauth_id')];
+    $m = $doc + ['X-Medical-Reauth' => medReauth('/api/v1/vmd/reauth', $doc, ESENCIAL_EMAIL)->assertOk()->json('data.reauth_id')];
     $p = $this->postJson('/api/v1/vmd/programs', ['code' => 'VMD-SITE', 'name' => 'Conservación auditiva planta', 'target_risk' => 'noise'], $m)->assertCreated()->json('data.id');
     foreach ($workers as $w) {
         $this->postJson('/api/v1/vmd/cases', ['program_id' => $p, 'worker_id' => $w, 'risk_classification' => 'medium'], $m)->assertCreated();

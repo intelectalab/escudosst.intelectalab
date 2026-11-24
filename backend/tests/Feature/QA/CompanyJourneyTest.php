@@ -103,7 +103,7 @@ function qajInvite(array $admin, string $companyId, string $who, string $roleCod
 
     $me = test()->getJson('/api/v1/me', $h)->qaStatus(200);
 
-    return [$h, $me->json('data.id') ?? $me->json('id')];
+    return [$h, $me->json('data.id') ?? $me->json('id'), $email];
 }
 
 /** KPI del tablero por código. */
@@ -171,7 +171,7 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
     // ------------------------------------------------------------ 4. Equipo: Jefe SST, segundo responsable, médico y un rol propio
     [$a, $aId] = qajInvite($admin, $cid, 'jefe', 'sst_manager', 'Andrés Jefe Rojas');
     [$b, $bId] = qajInvite($admin, $cid, 'super', 'sst_manager', 'Beatriz Segunda Vega');
-    [$doc, $docId] = qajInvite($admin, $cid, 'medico', 'occupational_doctor', 'Dra. Carmen Médica Ruiz');
+    [$doc, $docId, $docEmail] = qajInvite($admin, $cid, 'medico', 'occupational_doctor', 'Dra. Carmen Médica Ruiz');
     $manage = $this->getJson('/api/v1/company/roles/manage', $admin)->qaStatus(200)->json('data');
     $supPerms = collect($manage['roles'])->firstWhere('code', 'sst_supervisor')['permissions'];
     $inspPerms = array_values(array_filter($supPerms, fn ($c) => str_starts_with($c, 'ins.') || str_starts_with($c, 'act.')));
@@ -386,7 +386,7 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
         'scheduled_at' => now()->addHour()->toIso8601String()], $doc)->qaStatus(201)->json('data.id');
     $this->patchJson("/api/v1/records/EMO/medical_exam_orders/{$order}", ['status' => 'attended'], $doc)->qaStatus(200);
     $this->getJson("/api/v1/emo/orders/{$order}/clinical", $a)->assertForbidden();   // el Jefe SST no ve datos clínicos
-    $reauth = $this->postJson('/api/v1/emo/reauth', ['password' => DEMO_PASSWORD], $doc)->qaStatus(200)->json('data.reauth_id');
+    $reauth = medReauth('/api/v1/emo/reauth', $doc, $docEmail)->qaStatus(200)->json('data.reauth_id');
     $med = $doc + ['X-Medical-Reauth' => $reauth];
     $this->getJson("/api/v1/emo/orders/{$order}/clinical", $med)->qaStatus(200)->assertJsonPath('data.can_issue_fitness', true);
     $this->putJson("/api/v1/emo/orders/{$order}/clinical", ['exam_on' => $today, 'examining_doctor_name' => 'Dra. Carmen Médica Ruiz', 'examining_doctor_cmp' => '54321',

@@ -1,6 +1,6 @@
 "use client";
 
-// Vigilancia médica (M-VMD): solo para el médico ocupacional. Antes de ver datos médicos se confirma la contraseña
+// Vigilancia médica (M-VMD): solo para el médico ocupacional. Antes de ver datos médicos se confirma la contraseña con el código de la app
 // (dura 15 minutos y cada acceso queda registrado). Programas → casos por trabajador → notas clínicas (sin editar:
 // las correcciones se agregan como adenda).
 
@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/Form";
+import { MedReauth } from "@/components/modules/MedicalGate";
 import { Modal } from "@/components/ui/Modal";
 import { RefSelect } from "@/components/records/ModuleRecords";
 
@@ -39,12 +40,12 @@ export function VmdModule({ readOnly }: { readOnly: boolean }) {
   const [newCase, setNewCase] = useState(false);
   const [openCase, setOpenCase] = useState<string | null>(null);
 
-  // Llamada médica: lleva la clave de re-autenticación; si venció, se vuelve a pedir la contraseña.
+  // Llamada médica: lleva la clave de re-autenticación; si venció, se vuelve a pedir la contraseña y el código.
   const med = useCallback(
     async <T,>(path: string, opts: { method?: "GET" | "POST" | "PATCH"; body?: unknown } = {}): Promise<T> => {
       if (!reauth || reauth.expires < Date.now()) {
         setReauth(null);
-        throw new ApiError(403, "reauth_required", "Confirma tu contraseña");
+        throw new ApiError(403, "reauth_required", "Confirma tu identidad");
       }
       try {
         return await api<T>(path, { ...opts, withCompany: true, headers: { "X-Medical-Reauth": reauth.id } });
@@ -169,32 +170,11 @@ export function VmdModule({ readOnly }: { readOnly: boolean }) {
 
 type Med = <T>(path: string, opts?: { method?: "GET" | "POST" | "PATCH"; body?: unknown }) => Promise<T>;
 
+/** Contraseña + código de la app (o de recuperación) + motivo: el mismo formulario de la clave médica de los demás módulos. */
 function Reauth({ onOk }: { onOk: (id: string, minutes: number) => void }) {
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await api<{ data: { reauth_id: string; expires_at: string } }>("/vmd/reauth", { method: "POST", body: { password }, withCompany: true });
-      onOk(r.data.reauth_id, Math.max(1, Math.round((new Date(r.data.expires_at).getTime() - Date.now()) / 60_000)));
-    } catch (err) {
-      setError(err instanceof ApiError ? (err.detail ?? err.title) : "No pudimos confirmar.");
-    } finally {
-      setBusy(false);
-    }
-  }
   return (
-    <form onSubmit={submit} className="max-w-md space-y-3 rounded-2xl border border-line bg-surface p-6 shadow-sm">
-      <h2 className="text-lg font-semibold">Confirma tu contraseña</h2>
-      <p className="text-sm text-muted">Vas a ver datos médicos confidenciales. Por seguridad, confirma tu contraseña: el acceso dura 15 minutos y cada consulta queda registrada.</p>
-      <FormField label="Contraseña" error={error ?? undefined}>
-        <input type="password" aria-label="Contraseña" autoComplete="current-password" className="filter-control w-full" value={password} onChange={(e) => setPassword(e.target.value)} />
-      </FormField>
-      <Button type="submit" variant="primary" loading={busy} disabled={!password}>Entrar a vigilancia médica</Button>
-    </form>
+    <MedReauth endpoint="/vmd/reauth" who="el médico ocupacional" submitLabel="Entrar a vigilancia médica"
+      onOk={(k) => onOk(k.id, Math.max(1, Math.round((k.expires - Date.now()) / 60_000)))} />
   );
 }
 

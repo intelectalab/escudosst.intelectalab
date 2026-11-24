@@ -42,8 +42,8 @@ it('registra el resultado clínico con re-autenticación, publica solo la aptitu
 
     $doc = authHeaders(tokenFor(ESENCIAL_EMAIL), HUAYLAS_ID);
     $this->getJson("/api/v1/emo/orders/{$order}/clinical", $doc)->assertStatus(403)->assertJsonPath('type', 'reauth_required');
-    $this->postJson('/api/v1/emo/reauth', ['password' => 'otra'], $doc)->assertStatus(422);
-    $r = $this->postJson('/api/v1/emo/reauth', ['password' => DEMO_PASSWORD], $doc)->assertOk()->json('data.reauth_id');
+    medReauth('/api/v1/emo/reauth', $doc, ESENCIAL_EMAIL, ['password' => 'otra'])->assertStatus(422);
+    $r = medReauth('/api/v1/emo/reauth', $doc, ESENCIAL_EMAIL)->assertOk()->json('data.reauth_id');
     $m = $doc + ['X-Medical-Reauth' => $r];
 
     $this->getJson("/api/v1/emo/orders/{$order}/clinical", $m)->assertOk()->assertJsonPath('data.exam', null)
@@ -114,7 +114,7 @@ it('no registra resultados en una orden anulada', function () {
     DB::select("select set_config('app.company_id', '', false)");
 
     $doc = authHeaders(tokenFor(ESENCIAL_EMAIL), HUAYLAS_ID);
-    $r = $this->postJson('/api/v1/emo/reauth', ['password' => DEMO_PASSWORD], $doc)->json('data.reauth_id');
+    $r = medReauth('/api/v1/emo/reauth', $doc, ESENCIAL_EMAIL)->json('data.reauth_id');
     $this->putJson("/api/v1/emo/orders/{$order}/clinical", ['exam_on' => now()->toDateString(), 'fitness_result' => 'pending'], $doc + ['X-Medical-Reauth' => $r])->assertStatus(409);
 });
 
@@ -123,7 +123,7 @@ it('la versión completa del registro de EMO solo la descarga el médico con su 
     $w = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => '63636399', 'first_name' => 'Raúl', 'paternal_last_name' => 'Registro'], $sst)->json('data.id');
     $order = emoOrder($w);
     $doc = authHeaders(tokenFor(ESENCIAL_EMAIL), HUAYLAS_ID);
-    $r = $this->postJson('/api/v1/emo/reauth', ['password' => DEMO_PASSWORD], $doc)->json('data.reauth_id');
+    $r = medReauth('/api/v1/emo/reauth', $doc, ESENCIAL_EMAIL)->json('data.reauth_id');
     $m = $doc + ['X-Medical-Reauth' => $r];
     $this->putJson("/api/v1/emo/orders/{$order}/clinical", ['exam_on' => now()->toDateString(), 'examining_doctor_name' => 'Dra. Salud', 'examining_doctor_cmp' => '12345',
         'diagnoses' => [['code' => 'H83.3', 'description' => 'Ruido']], 'fitness_result' => 'fit', 'fitness_valid_until' => now()->addYear()->toDateString()], $m)->assertCreated();
@@ -157,8 +157,8 @@ it('un resultado que cumple el criterio del parámetro abre caso en el programa 
     $order = emoOrder($w);
 
     $doc = authHeaders(tokenFor(ESENCIAL_EMAIL), HUAYLAS_ID);
-    $m = $doc + ['X-Medical-Reauth' => $this->postJson('/api/v1/emo/reauth', ['password' => DEMO_PASSWORD], $doc)->assertOk()->json('data.reauth_id')];
-    $vm = $doc + ['X-Medical-Reauth' => $this->postJson('/api/v1/vmd/reauth', ['password' => DEMO_PASSWORD], $doc)->assertOk()->json('data.reauth_id')];
+    $m = $doc + ['X-Medical-Reauth' => medReauth('/api/v1/emo/reauth', $doc, ESENCIAL_EMAIL)->assertOk()->json('data.reauth_id')];
+    $vm = $doc + ['X-Medical-Reauth' => medReauth('/api/v1/vmd/reauth', $doc, ESENCIAL_EMAIL)->assertOk()->json('data.reauth_id')];
     $p = $this->postJson('/api/v1/vmd/programs', ['code' => 'VMD-AUTO', 'name' => 'Conservación auditiva molino', 'target_risk' => 'noise', 'target_positions' => [$pos], 'status' => 'active'], $vm)
         ->assertCreated()->json('data.id');
     $db = DB::connection('medical');

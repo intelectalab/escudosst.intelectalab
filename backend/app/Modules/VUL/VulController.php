@@ -21,7 +21,7 @@ use Illuminate\Support\Str;
  *  POST /vul/adjustments                 {worker_id, adjustment_category, description, restricted_hazard_families[], starts_on, ends_on?,
  *                                         new_position_id?, compatibility_justification?}  exige reubicación o justificación si hay choque (RN-VUL-02)
  *  PUT  /vul/adjustments/{id}            mismos campos + status
- *  POST /vul/reauth                      {password} clave médica (solo médico ocupacional)
+ *  POST /vul/reauth                      {password, code o recovery_code, purpose} clave médica con segundo factor y motivo (solo médico ocupacional)
  *  GET  /vul/records                     condiciones registradas (base médica, clave médica)
  *  POST /vul/records                     {worker_id, vulnerability_type, starts_on, expected_end_on?, details?, conadis_registration?,
  *                                         risk_assessment?, recommended_measures?, consent_on?}  con medidas propone una adecuación

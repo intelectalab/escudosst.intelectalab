@@ -5,6 +5,7 @@ namespace App\Modules\EMO;
 use App\Core\Auth\Permissions;
 use App\Core\Http\ApiProblem;
 use App\Core\Tenancy\CompanyContext;
+use App\Modules\VUL\MedicalAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -18,7 +19,7 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Resultado clínico de EMO en la base médica (M-EMO SCR-EMO-03 y SCR-EMO-05; RN-EMO-01..04, 09).
  *
- *  POST /emo/reauth                          confirma la contraseña → clave médica por unos minutos (la misma que usa VMD)
+ *  POST /emo/reauth                          contraseña + código de la app (o de recuperación) + motivo → clave médica por unos minutos (la misma que usa VMD)
  *  GET  /emo/orders/{order}/clinical         orden (base principal) + resultado clínico y archivos (base médica)
  *  PUT  /emo/orders/{order}/clinical         registra o corrige el resultado; con aptitud la publica en fitness_status
  *  POST /emo/exams/{exam}/files              adjunta un archivo (PDF o imagen) al resultado, cifrado en el disco médico
@@ -38,18 +39,9 @@ class EmoClinicalController extends Controller
 
     public function reauth(Request $request): JsonResponse
     {
-        $this->canAny(['emo.medical_exams.read_sensitive', 'emo.medical_exams.create']);
-        $data = $request->validate(['password' => ['required', 'string']], [], ['password' => 'contraseña']);
-        if (! Hash::check($data['password'], (string) $request->user()->getAuthPassword())) {
-            \App\Modules\VUL\MedicalAccess::denied('Contraseña incorrecta');
-            throw new ApiProblem(422, 'validation_failed', 'Contraseña incorrecta', 'La contraseña no es correcta.', ['errors' => ['password' => ['La contraseña no es correcta.']]]);
-        }
-        $id = (string) Str::uuid();
-        $expires = now()->addMinutes($this->ttl());
-        Cache::put("vmd-reauth:{$id}", ['user' => $this->uid(), 'company' => $this->company()], $expires);
-        $this->recordReauth($id, $expires);
-
-        return response()->json(['data' => ['reauth_id' => $id, 'expires_at' => $expires->toIso8601String()]]);
+        // Contraseña + segundo factor + motivo (M-EMO §7), con la misma clave médica que VMD, VUL y DES.
+        return response()->json(['data' => MedicalAccess::reauth($request, ['emo.medical_exams.read_sensitive', 'emo.medical_exams.create'],
+            'Solo el médico ocupacional ve y registra resultados clínicos; tu rol ve solo la aptitud.')]);
     }
 
     public function show(Request $request, string $order): JsonResponse
@@ -348,35 +340,17 @@ class EmoClinicalController extends Controller
         });
     }
 
+    /** Clave médica vigente (la misma de VMD, VUL y DES) o 403 reauth_required. */
     private function reauthId(Request $request): string
     {
-        $id = (string) $request->header('X-Medical-Reauth');
-        $r = Str::isUuid($id) ? Cache::get("vmd-reauth:{$id}") : null;
-        if (! $r || $r['user'] !== $this->uid() || $r['company'] !== $this->company()) {
-            throw new ApiProblem(403, 'reauth_required', 'Confirma tu contraseña', 'Para ver o registrar datos médicos confirma tu contraseña (dura '.$this->ttl().' minutos).');
-        }
-
-        // Una clave emitida por /vmd/reauth también vale aquí: se deja su constancia en sessions_mfa si aún no la tiene.
-        if (! DB::selectOne('select 1 as ok from sessions_mfa where id = ?', [$id])) {
-            $this->recordReauth($id, now()->addMinutes($this->ttl()));
-        }
-
-        return $id;
-    }
-
-    /** Constancia de la re-autenticación médica (sessions_mfa: token médico de corta vida; solo se guarda su huella). */
-    private function recordReauth(string $id, \DateTimeInterface $expires): void
-    {
-        DB::insert("insert into sessions_mfa (id, user_id, token_hash, ip, user_agent, mfa_method, reauth_at, reauth_expires_at, reauth_purpose, expires_at, created_by)
-                    values (?, ?, decode(?, 'hex'), ?::inet, ?, 'none', now(), ?, 'medical', ?, ?)",
-            [$id, $this->uid(), hash('sha256', $id), request()->ip(), mb_substr((string) request()->userAgent(), 0, 300), $expires, $expires, $this->uid()]);
+        return MedicalAccess::reauthId($request);
     }
 
     /** Registro inalterable en la base médica (med_log_access exige la re-autenticación fijada en la sesión). */
     private function log($db, string $resource, ?string $resourceId, ?string $workerId, string $action, ?string $purpose): void
     {
         $db->select('select med_log_access(?, ?::uuid, ?, ?::uuid, ?, ?, ?::inet)',
-            [$resource, $resourceId, $action, $workerId, app(CompanyContext::class)->roleCode, $purpose ? mb_substr($purpose, 0, 300) : null, request()->ip()]);
+            [$resource, $resourceId, $action, $workerId, app(CompanyContext::class)->roleCode, MedicalAccess::purpose($purpose), request()->ip()]);
     }
 
     /** Registro en sensitive_access_logs de la base principal (previo a la lectura: si falla, la petición falla). */
@@ -384,7 +358,7 @@ class EmoClinicalController extends Controller
     {
         DB::insert("insert into sensitive_access_logs (company_id, user_id, role_code, worker_id, resource, resource_id, action, purpose, reauth_session_id, result, ip, user_agent, created_by)
                     values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'granted', ?::inet, ?, ?)",
-            [$this->company(), $this->uid(), app(CompanyContext::class)->roleCode, $workerId, $resource, $resourceId, $action, $purpose ? mb_substr($purpose, 0, 300) : null, $reauth,
+            [$this->company(), $this->uid(), app(CompanyContext::class)->roleCode, $workerId, $resource, $resourceId, $action, MedicalAccess::purpose($purpose), $reauth,
                 request()->ip(), mb_substr((string) request()->userAgent(), 0, 300), $this->uid()]);
     }
 
@@ -410,11 +384,6 @@ class EmoClinicalController extends Controller
         if (! array_intersect($perms, Permissions::effective())) {
             throw ApiProblem::forbidden('Solo el médico ocupacional ve y registra resultados clínicos; tu rol ve solo la aptitud.');
         }
-    }
-
-    private function ttl(): int
-    {
-        return max(1, (int) config('escudo.medical.reauth_minutes', 15));
     }
 
     private function company(): string

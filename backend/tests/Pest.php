@@ -50,6 +50,20 @@ function totpFor(string $userId, string $secret): string
 }
 
 /**
+ * Clave médica (M-EMO §7): contraseña + código TOTP de la app + motivo contra /{módulo}/reauth. El usuario debe haber
+ * configurado el segundo factor al ingresar (tokenFor). Se olvida el último paso usado para simular que pasó el tiempo
+ * (el mismo código no se acepta dos veces).
+ */
+function medReauth(string $endpoint, array $headers, string $email, array $extra = []): \Illuminate\Testing\TestResponse
+{
+    $userId = DB::selectOne('select id from app_auth_lookup_user(?)', [$email])->id;
+    Cache::forget('mfa_last_ts:'.$userId);
+    $secret = mfaSecrets()[$email] ?? null;
+
+    return test()->postJson($endpoint, $extra + ['password' => DEMO_PASSWORD, 'code' => $secret ? totpFor($userId, $secret) : '000000', 'purpose' => 'Control ocupacional'], $headers);
+}
+
+/**
  * Inicia sesión por la API, pasando el segundo factor si hace falta (lo configura la primera vez),
  * y devuelve el token.
  */

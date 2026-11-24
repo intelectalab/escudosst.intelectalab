@@ -18,7 +18,7 @@ use Symfony\Component\HttpFoundation\Response;
  *
  *  GET  /des/indicators?month=AAAA-MM       KPIs del mes, tasa de ausentismo por área y mes (6 meses), días perdidos y por accidente de trabajo
  *  GET  /des/absences                       ausencias recientes (solo fechas, días y tipo; nunca diagnóstico)
- *  POST /des/reauth                         {password} clave médica (personal de salud y médico)
+ *  POST /des/reauth                         {password, code o recovery_code, purpose} clave médica con segundo factor y motivo (personal de salud y médico)
  *  GET  /des/absences/{id}/medical          detalle médico: CIE-10, CITT, emisor (base médica, clave médica)
  *  PUT  /des/absences/{id}/medical          registra o corrige el detalle médico (RN-DES-03: el diagnóstico solo en la base médica)
  *  POST /des/absences/{id}/certificate      certificado (PDF o imagen), cifrado en el disco médico

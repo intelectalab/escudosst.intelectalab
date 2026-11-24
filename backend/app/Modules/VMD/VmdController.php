@@ -5,6 +5,7 @@ namespace App\Modules\VMD;
 use App\Core\Auth\Permissions;
 use App\Core\Http\ApiProblem;
 use App\Core\Tenancy\CompanyContext;
+use App\Modules\VUL\MedicalAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -16,7 +17,7 @@ use Illuminate\Support\Str;
 /**
  * Vigilancia médica ocupacional (M-VMD). Todo dato vive en la base médica separada (RN-VMD-01).
  *
- *  POST  /vmd/reauth                     confirma la contraseña → clave de acceso médico por unos minutos (RN-VMD-02)
+ *  POST  /vmd/reauth                     contraseña + código de la app (o de recuperación) + motivo → clave médica por unos minutos (RN-VMD-02)
  *  GET   /vmd/programs                   programas con sus conteos (sin datos de personas)
  *  POST  /vmd/programs                   crear programa · PATCH /vmd/programs/{id} cambiar estado o datos
  *  GET   /vmd/cases?program_id=&status=&overdue=1&worker_id=   casos (requiere clave médica; queda registrado)
@@ -32,21 +33,10 @@ use Illuminate\Support\Str;
  */
 class VmdController extends Controller
 {
-    private const REAUTH_MINUTES = 15;
-
+    /** Contraseña + segundo factor + motivo (M-EMO §7, docs/10 §5): la misma clave médica que EMO, VUL y DES. */
     public function reauth(Request $request): JsonResponse
     {
-        $data = $request->validate(['password' => ['required', 'string']], [], ['password' => 'contraseña']);
-        $user = $request->user();
-        if (! Hash::check($data['password'], (string) $user->getAuthPassword())) {
-            \App\Modules\VUL\MedicalAccess::denied('Contraseña incorrecta');
-            throw new ApiProblem(422, 'validation_failed', 'Contraseña incorrecta', 'La contraseña no es correcta.', ['errors' => ['password' => ['La contraseña no es correcta.']]]);
-        }
-        $id = (string) Str::uuid();
-        $expires = now()->addMinutes(self::REAUTH_MINUTES);
-        Cache::put("vmd-reauth:{$id}", ['user' => (string) $user->id, 'company' => $this->company()], $expires);
-
-        return response()->json(['data' => ['reauth_id' => $id, 'expires_at' => $expires->toIso8601String()]]);
+        return response()->json(['data' => MedicalAccess::reauth($request, null)]);
     }
 
     public function programs(): JsonResponse
@@ -381,20 +371,14 @@ class VmdController extends Controller
 
     private function reauthId(Request $request): string
     {
-        $id = (string) $request->header('X-Medical-Reauth');
-        $r = Str::isUuid($id) ? Cache::get("vmd-reauth:{$id}") : null;
-        if (! $r || $r['user'] !== $this->uid() || $r['company'] !== $this->company()) {
-            throw new ApiProblem(403, 'reauth_required', 'Confirma tu contraseña', 'Para ver o registrar datos médicos confirma tu contraseña (dura '.self::REAUTH_MINUTES.' minutos).');
-        }
-
-        return $id;
+        return MedicalAccess::reauthId($request);
     }
 
     /** Registro inalterable del acceso (función med_log_access de la base médica, con la sesión de re-autenticación fijada). */
     private function log($db, string $resource, ?string $resourceId, ?string $workerId, string $action, ?string $purpose): void
     {
         $db->select('select med_log_access(?, ?::uuid, ?, ?::uuid, ?, ?, ?::inet)',
-            [$resource, $resourceId, $action, $workerId, app(CompanyContext::class)->roleCode, $purpose, request()->ip()]);
+            [$resource, $resourceId, $action, $workerId, app(CompanyContext::class)->roleCode, MedicalAccess::purpose($purpose), request()->ip()]);
     }
 
     private function find($db, string $table, string $id, string $msg): object

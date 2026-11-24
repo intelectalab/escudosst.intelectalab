@@ -28,8 +28,8 @@ it('exige confirmar la contraseña, registra cada acceso y no edita notas firmad
     // Sin contraseña confirmada no se ve nada médico; contraseña errada se rechaza.
     $this->getJson('/api/v1/vmd/programs', $doc)->assertStatus(403)->assertJsonPath('type', 'reauth_required');
     $this->getJson('/api/v1/vmd/cases', $doc)->assertStatus(403)->assertJsonPath('type', 'reauth_required');
-    $this->postJson('/api/v1/vmd/reauth', ['password' => 'otra'], $doc)->assertStatus(422);
-    $r = $this->postJson('/api/v1/vmd/reauth', ['password' => DEMO_PASSWORD], $doc)->assertOk()->json('data.reauth_id');
+    medReauth('/api/v1/vmd/reauth', $doc, ESENCIAL_EMAIL, ['password' => 'otra'])->assertStatus(422);
+    $r = medReauth('/api/v1/vmd/reauth', $doc, ESENCIAL_EMAIL)->assertOk()->json('data.reauth_id');
     $m = $doc + ['X-Medical-Reauth' => $r];
 
     $p = $this->postJson('/api/v1/vmd/programs', ['code' => 'VMD-RUI', 'name' => 'Conservación auditiva', 'target_risk' => 'noise'], $m)->assertCreated()->json('data.id');

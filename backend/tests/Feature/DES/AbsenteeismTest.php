@@ -78,7 +78,7 @@ it('el diagnóstico y el certificado solo los ve el personal de salud, en la bas
 
     $doc = desAs(ESENCIAL_EMAIL);
     $this->getJson("/api/v1/des/absences/{$leave}/medical", $doc)->assertStatus(403)->assertJsonPath('type', 'reauth_required');
-    $r = $this->postJson('/api/v1/des/reauth', ['password' => DEMO_PASSWORD], $doc)->assertOk()->json('data.reauth_id');
+    $r = medReauth('/api/v1/des/reauth', $doc, ESENCIAL_EMAIL)->assertOk()->json('data.reauth_id');
     $m = $doc + ['X-Medical-Reauth' => $r];
     $this->getJson("/api/v1/des/absences/{$leave}/medical", $m)->assertOk()->assertJsonPath('data.detail', null)->assertJsonPath('data.absence.days', 10);
 

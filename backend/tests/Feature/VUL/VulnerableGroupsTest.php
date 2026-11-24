@@ -58,8 +58,8 @@ it('el médico registra la condición en la base médica, propone la adecuación
 
     $doc = vulAs(ESENCIAL_EMAIL);
     $this->getJson('/api/v1/vul/records', $doc)->assertStatus(403)->assertJsonPath('type', 'reauth_required');
-    $this->postJson('/api/v1/vul/reauth', ['password' => 'otra'], $doc)->assertStatus(422);
-    $r = $this->postJson('/api/v1/vul/reauth', ['password' => DEMO_PASSWORD], $doc)->assertOk()->json('data.reauth_id');
+    medReauth('/api/v1/vul/reauth', $doc, ESENCIAL_EMAIL, ['password' => 'otra'])->assertStatus(422);
+    $r = medReauth('/api/v1/vul/reauth', $doc, ESENCIAL_EMAIL)->assertOk()->json('data.reauth_id');
     $m = $doc + ['X-Medical-Reauth' => $r];
 
     $this->postJson('/api/v1/vul/records', ['worker_id' => $w, 'vulnerability_type' => 'nope', 'starts_on' => now()->toDateString()], $m)->assertStatus(422);
