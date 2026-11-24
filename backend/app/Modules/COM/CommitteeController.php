@@ -59,7 +59,7 @@ class CommitteeController extends Controller
             "select m.id, m.number, m.meeting_type, m.scheduled_at, m.held_at, m.status, m.quorum_reached,
                     coalesce(jsonb_array_length(case when jsonb_typeof(m.attendance) = 'array' then m.attendance end), 0) as attendees,
                     (select count(*) from meeting_agreements a where a.meeting_id = m.id and a.deleted_at is null) as agreements,
-                    (select count(*) from signatures s where s.subject_type = 'committee_meetings' and s.subject_id = m.id) as signatures
+                    (select count(*) from signatures s where s.subject_type = 'committee_meetings' and s.subject_id = m.id and ".\App\Modules\FIR\SignatureService::valid('s').") as signatures
                from committee_meetings m where m.committee_id = ? and m.deleted_at is null
               order by coalesce(m.held_at, m.scheduled_at) desc nulls last limit 24", [$c->id]);
 
@@ -138,7 +138,7 @@ class CommitteeController extends Controller
         $signatures = DB::select(
             "select s.id, s.signer_name, s.signed_at, s.method, k.mime_type, encode(k.image, 'base64') as image
                from signatures s left join signature_strokes k on k.signature_id = s.id
-              where s.subject_type = 'committee_meetings' and s.subject_id = ? order by s.signed_at", [$m->id]);
+              where s.subject_type = 'committee_meetings' and s.subject_id = ? and ".\App\Modules\FIR\SignatureService::valid('s')." order by s.signed_at", [$m->id]);
         foreach ($signatures as $s) {
             $s->image = $s->image ? 'data:'.$s->mime_type.';base64,'.str_replace(["\n", "\r"], '', $s->image) : null;
             unset($s->mime_type);

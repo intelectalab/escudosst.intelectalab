@@ -31,6 +31,23 @@ class SignatureService
         'investigations' => ['id', 'company_id', 'event_id', 'code', 'method', 'started_on', 'summary', 'immediate_causes', 'basic_causes', 'conclusions', 'lessons_learned'],
     ];
 
+    /**
+     * RN-FIR-01: condición SQL de firma válida para la fila de «signatures» con ese alias: no es una fila de anulación ni fue
+     * anulada. Toda consulta que cuente o muestre firmas como hechas la usa.
+     */
+    public static function valid(string $alias = 's'): string
+    {
+        return "({$alias}.method <> 'void' and not exists (select 1 from signatures sv where sv.voids_signature_id = {$alias}.id and sv.company_id = {$alias}.company_id))";
+    }
+
+    /** Anulación de una firma (RN-FIR-01): motivo, quién y cuándo; null si la firma sigue vigente. */
+    public static function voidOf(string $signatureId): ?array
+    {
+        $v = DB::selectOne('select v.id, v.void_reason, v.signed_at, v.signer_name, v.signer_user_id from signatures v where v.voids_signature_id = ?', [$signatureId]);
+
+        return $v ? ['void_id' => $v->id, 'reason' => $v->void_reason, 'voided_at' => $v->signed_at, 'voided_by_name' => $v->signer_name, 'voided_by' => $v->signer_user_id] : null;
+    }
+
     /** Alcance de la huella para una tabla: 'content' (solo contenido inmutable) o 'row' (todo el registro). */
     public static function scope(string $table): string
     {

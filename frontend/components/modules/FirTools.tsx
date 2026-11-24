@@ -3,6 +3,7 @@
 // Firma (M-FIR): sobre la lista de solicitudes, «Verificar una firma» por su código (SCR-FIR-04: huella del registro hoy
 // vs. la firmada → «Íntegro» o «Alterado desde la firma», con firmante, fecha y evidencia) y las firmas pendientes con
 // «Reenviar recordatorio» (SCR-FIR-03). VerifyResult también se usa en la pestaña «Firmas» de cada registro.
+// RN-FIR-01: una firma errónea se anula con motivo (VoidSignature); la anulada se sigue viendo como «Anulada · motivo · quién · fecha».
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -10,6 +11,8 @@ import { api, type ApiError } from "@/lib/api";
 import { recordsHref } from "@/lib/records";
 import { Button } from "@/components/ui/Button";
 import { Chip, EmptyState } from "@/components/ui/Display";
+import { FormField } from "@/components/ui/Form";
+import { Modal } from "@/components/ui/Modal";
 import { Card } from "./Summary";
 
 export type Verification = {
@@ -17,7 +20,9 @@ export type Verification = {
   role_in_document: string | null; method: string; signed_at: string; subject_type: string; subject_id: string; subject_tab: string;
   subject_module: string | null; subject_label: string | null; signed_hash: string; current_hash: string | null;
   evidence: { ip: string | null; user_agent: string | null; method: string; at: string; geo: string | null };
+  voided?: boolean; void?: SignatureVoid | null; can_void?: boolean;
 };
+export type SignatureVoid = { reason: string; voided_at: string; voided_by_name: string };
 type PendingReq = {
   id: string; subject_type: string; subject_id: string; subject_module: string | null; subject_tab: string; subject_label: string; role_in_document: string;
   signer_name: string | null; requested_by_name: string | null; created_at: string; expires_at: string | null; reminder_count: number; last_reminder_at: string | null; can_remind: boolean;
@@ -33,15 +38,81 @@ const errText = (e: unknown) => {
   return Object.values(x.errors ?? {})[0]?.[0] ?? x.detail ?? x.title;
 };
 
+/** «Anulada · motivo · quién · fecha» de una firma anulada (RN-FIR-01). */
+export function VoidNote({ v }: { v: SignatureVoid }) {
+  return (
+    <span className="block text-xs text-bad">
+      <b>Anulada</b> · {v.reason} · {v.voided_by_name} · {fmt(v.voided_at)}
+    </span>
+  );
+}
+
+/**
+ * Anular una firma errónea (RN-FIR-01): pide el motivo; la firma original no se borra ni se modifica, queda una anulación
+ * vinculada. Solo se muestra a quien puede anular (el backend lo indica con can_void).
+ */
+export function VoidSignature({ signatureId, signerName, onDone }: { signatureId: string; signerName: string | null; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const close = () => {
+    setOpen(false);
+    setReason("");
+    setError(null);
+  };
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/fir/signatures/${signatureId}/void`, { method: "POST", withCompany: true, body: { reason: reason.trim() } });
+      close();
+      onDone();
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <Button size="sm" variant="danger-ghost" icon="close" onClick={() => setOpen(true)}>Anular</Button>
+      {open && (
+        <Modal title="Anular firma" subtitle={signerName ? `Firma de ${signerName}` : undefined} icon="alert" size="sm" onClose={close}
+          footer={(
+            <>
+              <Button variant="ghost" onClick={close}>Cancelar</Button>
+              <Button variant="danger" loading={busy} disabled={reason.trim().length < 10} onClick={submit}>Anular firma</Button>
+            </>
+          )}>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted">La firma no se borra: queda registrada como «Anulada» con el motivo, quién la anuló y cuándo. Si hace falta, vuelve a pedir la firma.</p>
+            <FormField label="Motivo de anulación" hint="Al menos 10 caracteres." counter={`${reason.length}/500`} error={error ?? undefined}>
+              <textarea className="input min-h-24" maxLength={500} autoFocus value={reason} onChange={(e) => setReason(e.target.value)} />
+            </FormField>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 /** Resultado de la verificación de una firma. */
-export function VerifyResult({ v, showSubject = true }: { v: Verification; showSubject?: boolean }) {
+export function VerifyResult({ v, showSubject = true, onVoided }: { v: Verification; showSubject?: boolean; onVoided?: () => void }) {
   const ok = v.result === "intact";
   return (
-    <div className={`space-y-2 rounded-xl border p-3 text-sm ${ok ? "border-ok/40" : "border-bad/40"}`}>
+    <div className={`space-y-2 rounded-xl border p-3 text-sm ${ok && !v.voided ? "border-ok/40" : "border-bad/40"}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Chip tone={ok ? "ok" : "bad"} dot>{ok ? "Íntegro" : v.result === "altered" ? "Alterado desde la firma" : "Registro no disponible"}</Chip>
-        <span className="font-mono text-xs text-muted">Código {v.code}</span>
+        <span className="flex flex-wrap items-center gap-2">
+          <Chip tone={ok ? "ok" : "bad"} dot>{ok ? "Íntegro" : v.result === "altered" ? "Alterado desde la firma" : "Registro no disponible"}</Chip>
+          {v.voided && <Chip tone="bad">Anulada</Chip>}
+        </span>
+        <span className="flex items-center gap-2">
+          {v.can_void && onVoided && <VoidSignature signatureId={v.signature_id} signerName={v.signer_name} onDone={onVoided} />}
+          <span className="font-mono text-xs text-muted">Código {v.code}</span>
+        </span>
       </div>
+      {v.void && <VoidNote v={v.void} />}
       <p className="text-muted">
         {ok
           ? "El registro no cambió desde que se firmó: su huella actual coincide con la firmada."

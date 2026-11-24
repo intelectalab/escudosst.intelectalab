@@ -291,7 +291,7 @@ class WorkerSelfController extends Controller
         }
         $rows = DB::select(
             "select v.id as version_id, m.code, m.title, v.version_number, v.effective_on, v.approved_at,
-                    (select s.signed_at from signatures s where s.subject_type = 'iperc_versions' and s.subject_id = v.id and s.signer_worker_id = ? order by s.signed_at desc limit 1) as signed_at
+                    (select s.signed_at from signatures s where s.subject_type = 'iperc_versions' and s.subject_id = v.id and s.signer_worker_id = ? and ".\App\Modules\FIR\SignatureService::valid('s')." order by s.signed_at desc limit 1) as signed_at
                from iperc_matrices m join iperc_versions v on v.id = m.current_version_id and v.status = 'current' and v.deleted_at is null
               where m.deleted_at is null and m.status <> 'archived'
                 and exists (select 1 from iperc_rows r where r.iperc_version_id = v.id and r.deleted_at is null and coalesce(r.position_id, m.position_id) = ?)

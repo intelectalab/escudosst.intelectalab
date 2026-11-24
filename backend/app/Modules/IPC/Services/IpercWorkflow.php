@@ -211,7 +211,7 @@ final class IpercWorkflow
 
         return (bool) DB::selectOne(
             "select 1 as ok from signatures s join memberships m on m.user_id = s.signer_user_id and m.company_id = s.company_id and m.status = 'active' and m.deleted_at is null
-               join roles r on r.id = m.role_id where s.subject_type = 'iperc_versions' and s.subject_id = ? and coalesce(r.base_role_code, r.code) = 'sst_supervisor'", [$versionId]);
+               join roles r on r.id = m.role_id where s.subject_type = 'iperc_versions' and s.subject_id = ? and ".\App\Modules\FIR\SignatureService::valid('s')." and coalesce(r.base_role_code, r.code) = 'sst_supervisor'", [$versionId]);
     }
 
     /**

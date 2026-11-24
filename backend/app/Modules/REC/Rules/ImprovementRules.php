@@ -82,7 +82,7 @@ class ImprovementRules extends RecordRules
                 if (! DB::selectOne('select 1 as ok from committee_meetings where id = ? and quorum_reached and deleted_at is null', [$meeting])) {
                     $this->fail('committee_meeting_id', 'La sesión elegida no tiene quórum registrado: el plan se aprueba en una sesión con quórum.');
                 }
-            } elseif ($model === 'supervisor' && ! DB::selectOne("select 1 as ok from signatures where subject_type = 'annual_plans' and subject_id = ?", [$current->id])) {
+            } elseif ($model === 'supervisor' && ! DB::selectOne("select 1 as ok from signatures where subject_type = 'annual_plans' and subject_id = ? and ".\App\Modules\FIR\SignatureService::valid('signatures')."", [$current->id])) {
                 // RN-PLA-03: con Supervisor SST, la aprobación lleva su firma (se pide con «Pedir firma»).
                 $this->fail('status', 'La empresa tiene Supervisor SST: el plan necesita su firma antes de aprobarse (usa «Pedir firma»).');
             }
@@ -327,7 +327,7 @@ class ImprovementRules extends RecordRules
         // RN-RVD-03: se cierra con la firma de gerencia (pedida con «Pedir firma» y firmada por un usuario de gerencia).
         if ($to === 'closed' && ! DB::selectOne(
             "select 1 as ok from signatures s join memberships m on m.user_id = s.signer_user_id and m.company_id = s.company_id and m.deleted_at is null
-               join roles r on r.id = m.role_id where s.subject_type = 'management_reviews' and s.subject_id = ? and coalesce(r.base_role_code, r.code) = 'management'", [$current->id])) {
+               join roles r on r.id = m.role_id where s.subject_type = 'management_reviews' and s.subject_id = ? and ".\App\Modules\FIR\SignatureService::valid('s')." and coalesce(r.base_role_code, r.code) = 'management'", [$current->id])) {
             $this->fail('status', 'La revisión se cierra con la firma de gerencia: pide la firma a gerencia («Pedir firma») antes de cerrarla.');
         }
     }

@@ -1298,7 +1298,8 @@
   "site_photo_file_id": "Foto del lugar",
   "closing_notes": "Observaciones del cierre",
   "incident_occurred": "¿Ocurrió un incidente?",
-  "incident_event_id": "Evento registrado"
+  "incident_event_id": "Evento registrado",
+  "voids_signature_id": "Firma anulada"
  },
  "values": {
   "A": "Tipo A",
@@ -2028,7 +2029,8 @@
   "training_programs": "Programa de capacitación",
   "always": "Siempre",
   "after_previous": "Al completar la sección anterior",
-  "from_date": "Desde una fecha"
+  "from_date": "Desde una fecha",
+  "void": "Anulación"
  },
  "tables": {
   "absences": "Ausencias",

@@ -213,9 +213,9 @@ class TalksController extends Controller
         }
         $rows = DB::select(
             "select t.id, t.worker_id, coalesce(w.full_name, trim(concat_ws(' ', cw.first_name, cw.paternal_last_name, cw.maternal_last_name))) as full_name, coalesce(w.document_last4, cw.document_last4) as document_last4,
-                    t.signature_id is not null as signed, s.method as signature_method, s.signed_at
+                    s.id is not null as signed, s.method as signature_method, s.signed_at
                from talk_attendances t left join workers w on w.id = t.worker_id left join contractor_workers cw on cw.id = t.contractor_worker_id
-               left join signatures s on s.id = t.signature_id
+               left join signatures s on s.id = t.signature_id and ".\App\Modules\FIR\SignatureService::valid('s')."
               where t.safety_talk_id = ? and t.deleted_at is null order by (t.signature_id is not null), 3", [$id]);
 
         return response()->json(['data' => ['talk' => $talk, 'attendances' => $rows]]);

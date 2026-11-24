@@ -787,7 +787,7 @@ class PeopleRules extends RecordRules
             $signers = array_column(DB::select(
                 "select s.signer_user_id, coalesce(r.base_role_code, r.code) as role from signatures s
                    left join memberships m on m.user_id = s.signer_user_id and m.company_id = s.company_id and m.status = 'active' and m.deleted_at is null
-                   left join roles r on r.id = m.role_id where s.subject_type = 'work_permits' and s.subject_id = ?", [$current->id]), 'role', 'signer_user_id');
+                   left join roles r on r.id = m.role_id where s.subject_type = 'work_permits' and s.subject_id = ? and ".\App\Modules\FIR\SignatureService::valid('s')."", [$current->id]), 'role', 'signer_user_id');
             if ($current->requested_by && ! array_key_exists((string) $current->requested_by, $signers)) {
                 $this->fail('status', 'Para cerrar el permiso falta la firma de quien lo solicitó (pestaña «Firmas»).');
             }

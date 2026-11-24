@@ -64,7 +64,7 @@ class InsRules extends RecordRules
         }
         // M-INS §9: «firmada» cuando la inspección finalizada tiene sus firmas (lo marca la firma; a mano solo si ya hay firmas).
         if ($to === 'signed' && $current?->status !== 'signed') {
-            if ($current?->status !== 'completed' || ! DB::selectOne("select 1 as ok from signatures where subject_type = 'inspections' and subject_id = ?", [$current->id])) {
+            if ($current?->status !== 'completed' || ! DB::selectOne("select 1 as ok from signatures where subject_type = 'inspections' and subject_id = ? and ".\App\Modules\FIR\SignatureService::valid('signatures')."", [$current->id])) {
                 $this->fail('status', 'La inspección pasa a «firmada» cuando está finalizada y tiene sus firmas.');
             }
             $extra['signed_at'] = ['now()', []];

@@ -58,7 +58,7 @@ class RecordReportsController extends FieldReportsController
                 'requested_by' => $s->requested_by, 'document_hash' => $s->document_hex, 'evidence_hash' => $s->evidence_hex, 'hash_scope' => $evidence['hash_scope'] ?? null,
                 'ip' => $s->ip, 'user_agent' => $s->user_agent, 'otp_channel' => $s->otp_channel, 'geo' => $s->geo_lat ? [$s->geo_lat, $s->geo_lng] : null,
                 'subject' => ['table' => $s->subject_type, 'id' => $s->subject_id, 'title' => $res['title'] ?? $s->subject_type, 'module' => $res['module'] ?? $s->subject_module],
-                'image' => $this->stroke($s->id)],
+                'image' => $this->stroke($s->id), 'void' => \App\Modules\FIR\SignatureService::voidOf($s->id)],
         ]]);
     }
 

@@ -82,7 +82,7 @@ class PetStepsController extends Controller
                 'content_html' => $v->content_html, 'required_ppe' => json_decode((string) $v->required_ppe, true) ?: [], 'change_summary' => $v->change_summary],
             'steps' => json_decode((string) $v->steps, true) ?: [],
             'trainings' => $trainings ? array_column(DB::select('select title from trainings where id = any(?::uuid[]) order by title', ['{'.implode(',', $trainings).'}']), 'title') : [],
-            'signatures' => DB::select("select signer_name, signed_at, method from signatures where subject_type = 'procedure_versions' and subject_id = ? order by signed_at", [$v->id]),
+            'signatures' => DB::select("select signer_name, signed_at, method from signatures where subject_type = 'procedure_versions' and subject_id = ? and ".\App\Modules\FIR\SignatureService::valid('signatures')." order by signed_at", [$v->id]),
         ];
     }
 

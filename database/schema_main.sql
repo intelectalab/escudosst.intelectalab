@@ -1096,7 +1096,7 @@ CREATE TABLE IF NOT EXISTS signature_requests (
   role_in_document text NOT NULL CHECK (role_in_document IN ('attendee', 'responsible', 'approver', 'reviewer', 'worker', 'witness', 'committee_member', 'doctor')),
   methods_allowed text[] NOT NULL DEFAULT '{stroke,pin}',
   sequence_order integer NOT NULL DEFAULT 1,
-  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'signed', 'declined', 'expired', 'cancelled')),
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'signed', 'declined', 'expired', 'cancelled', 'voided')),
   expires_at timestamptz,
   requested_by uuid,
   reminder_count integer NOT NULL DEFAULT 0,
@@ -1124,7 +1124,7 @@ CREATE TABLE IF NOT EXISTS signatures (
   signer_worker_id uuid,
   signer_name text NOT NULL,
   signer_document_masked text,
-  method text NOT NULL CHECK (method IN ('stroke', 'pin', 'otp', 'assisted_in_person', 'scanned')),
+  method text NOT NULL CHECK (method IN ('stroke', 'pin', 'otp', 'assisted_in_person', 'scanned', 'void')),
   stroke_file_id uuid,
   document_hash bytea NOT NULL,
   evidence_hash bytea NOT NULL,
@@ -1141,15 +1141,20 @@ CREATE TABLE IF NOT EXISTS signatures (
   device_id uuid,
   client_created_at timestamptz,
   sync_batch_id uuid,
+  voids_signature_id uuid,
+  void_reason text,
   PRIMARY KEY (id),
   CONSTRAINT uq_signatures_company_id_id UNIQUE (company_id, id),
-  CONSTRAINT ck_signatures_1 CHECK (signer_user_id IS NOT NULL OR signer_worker_id IS NOT NULL)
+  CONSTRAINT ck_signatures_1 CHECK (signer_user_id IS NOT NULL OR signer_worker_id IS NOT NULL),
+  CONSTRAINT ck_signatures_void CHECK ((method = 'void') = (voids_signature_id IS NOT NULL) AND (voids_signature_id IS NULL OR length(btrim(coalesce(void_reason, ''))) > 0) AND (voids_signature_id IS NOT NULL OR void_reason IS NULL))
 );
 COMMENT ON TABLE signatures IS '[FIR] Evidencia de firma electrónica (inalterable) · INALTERABLE: solo INSERT.';
 COMMENT ON COLUMN signatures.signer_name IS 'instantánea del nombre al firmar';
 COMMENT ON COLUMN signatures.evidence_hash IS 'sha256 de la evidencia completa';
 COMMENT ON COLUMN signatures.idempotency_key IS 'clave idempotente generada por el cliente (offline)';
 COMMENT ON COLUMN signatures.client_created_at IS 'instante de captura en el dispositivo';
+COMMENT ON COLUMN signatures.voids_signature_id IS 'RN-FIR-01: fila de anulación de esa firma (una sola por firma)';
+COMMENT ON COLUMN signatures.void_reason IS 'motivo de la anulación (obligatorio en la fila de anulación)';
 
 -- AUD · audit_logs (special, imm, partition)
 CREATE TABLE IF NOT EXISTS audit_logs (
@@ -8324,6 +8329,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_kpi_snapshots_1 ON kpi_snapshots (company_i
 CREATE INDEX IF NOT EXISTS idx_signature_requests_1 ON signature_requests (company_id, subject_type, subject_id);
 CREATE INDEX IF NOT EXISTS idx_signatures_1 ON signatures (company_id, subject_type, subject_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_signatures_idempotency ON signatures (company_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_signatures_voids_signature_id ON signatures (company_id, voids_signature_id) WHERE voids_signature_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_audit_logs_1 ON audit_logs (company_id, chain_seq);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_2 ON audit_logs (company_id, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_3 ON audit_logs (company_id, entity_type, entity_id);
@@ -8886,6 +8892,7 @@ CREATE INDEX IF NOT EXISTS idx_signatures_fk_signer_worker_id ON signatures (com
 ALTER TABLE signatures ADD CONSTRAINT fk_signatures_stroke_file_id FOREIGN KEY (company_id, stroke_file_id) REFERENCES files (company_id, id);
 CREATE INDEX IF NOT EXISTS idx_signatures_fk_stroke_file_id ON signatures (company_id, stroke_file_id);
 ALTER TABLE signatures ADD CONSTRAINT fk_signatures_created_by FOREIGN KEY (created_by) REFERENCES users (id);
+ALTER TABLE signatures ADD CONSTRAINT fk_signatures_voids_signature_id FOREIGN KEY (company_id, voids_signature_id) REFERENCES signatures (company_id, id);
 ALTER TABLE signatures ADD CONSTRAINT fk_signatures_device_id FOREIGN KEY (company_id, device_id) REFERENCES devices (company_id, id);
 CREATE INDEX IF NOT EXISTS idx_signatures_fk_device_id ON signatures (company_id, device_id);
 ALTER TABLE signatures ADD CONSTRAINT fk_signatures_sync_batch_id FOREIGN KEY (company_id, sync_batch_id) REFERENCES sync_batches (company_id, id);

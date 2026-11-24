@@ -107,7 +107,7 @@ final class FichaEvents
             }
             // M-EPP RN-EPP-02: con la firma del trabajador la entrega pendiente queda «entregada».
             if ($r->subject_type === 'ppe_deliveries') {
-                DB::update("update ppe_deliveries d set status = 'delivered', signature_id = coalesce(d.signature_id, (select s.id from signatures s where s.subject_type = 'ppe_deliveries' and s.subject_id = d.id order by s.signed_at desc limit 1)),
+                DB::update("update ppe_deliveries d set status = 'delivered', signature_id = coalesce(d.signature_id, (select s.id from signatures s where s.subject_type = 'ppe_deliveries' and s.subject_id = d.id and ".\App\Modules\FIR\SignatureService::valid('s')." order by s.signed_at desc limit 1)),
                              updated_at = now() where d.id = ? and d.status = 'pending_signature'", [$r->subject_id]);
             }
             // M-INS §9: la inspección finalizada con todas sus firmas queda «firmada».

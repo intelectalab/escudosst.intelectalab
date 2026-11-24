@@ -2776,6 +2776,10 @@
       {
        "value": "cancelled",
        "label": "Cancelado"
+      },
+      {
+       "value": "voided",
+       "label": "Anulado"
       }
      ],
      "default": "pending",

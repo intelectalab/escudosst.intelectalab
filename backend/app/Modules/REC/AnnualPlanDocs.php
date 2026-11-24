@@ -58,7 +58,7 @@ final class AnnualPlanDocs
             'meeting' => $p->committee_meeting_id ? DB::selectOne('select number, meeting_type, held_at, scheduled_at from committee_meetings where id = ?', [$p->committee_meeting_id]) : null,
             'approvedBy' => $p->approved_by ? DB::selectOne('select full_name from users where id = ?', [$p->approved_by])?->full_name : null,
             'signatures' => DB::select("select coalesce(u.full_name, s.signer_name) as full_name, s.method, s.signed_at from signatures s left join users u on u.id = s.signer_user_id
-                                         where s.subject_type = 'annual_plans' and s.subject_id = ? order by s.signed_at", [$planId]),
+                                         where s.subject_type = 'annual_plans' and s.subject_id = ? and ".\App\Modules\FIR\SignatureService::valid('s')." order by s.signed_at", [$planId]),
         ];
     }
 

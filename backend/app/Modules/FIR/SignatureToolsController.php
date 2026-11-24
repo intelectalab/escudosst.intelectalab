@@ -20,7 +20,7 @@ use Illuminate\Support\Str;
  *  POST /fir/requests/{id}/remind        reenviar el recordatorio al firmante (aviso M-NOT); suma reminder_count; como máximo
  *                                        uno cada «signature_reminder_hours» horas por solicitud
  *  GET  /fir/verify?code=XXXX-XXXX-XXXX  verificar una firma por su código de verificación (o el id de la firma)
- *  GET  /fir/verify/{table}/{id}         verificar todas las firmas de un registro
+ *  GET  /fir/verify/{table}/{id}         verificar todas las firmas de un registro (las anuladas salen como «Anulada», con motivo)
  *
  * Verificar = volver a calcular la huella SHA-256 del registro (misma representación canónica con que se firmó, RN-FIR-02)
  * y compararla con la guardada en la firma: «Íntegro» si coincide, «Alterado desde la firma» si no. Se muestran el firmante,
@@ -93,13 +93,13 @@ class SignatureToolsController extends Controller
         $this->can('fir.signatures.read');
         $code = strtolower(preg_replace('/[^0-9a-fA-F-]/', '', (string) $request->query('code')));
         if (Str::isUuid($code)) {
-            $sig = DB::selectOne('select * from signatures where id = ?', [$code]);
+            $sig = DB::selectOne("select * from signatures where id = ? and method <> 'void'", [$code]);
         } else {
             $hex = str_replace('-', '', $code);
             if (strlen($hex) < 12) {
                 $this->fail('code', 'Escribe el código de verificación de 12 caracteres (p. ej. A1B2-C3D4-E5F6).');
             }
-            $sig = DB::selectOne("select * from signatures where encode(evidence_hash, 'hex') like ? order by signed_at desc limit 1", [substr($hex, 0, 64).'%']);
+            $sig = DB::selectOne("select * from signatures where encode(evidence_hash, 'hex') like ? and method <> 'void' order by signed_at desc limit 1", [substr($hex, 0, 64).'%']);
         }
         if (! $sig) {
             throw ApiProblem::notFound('No hay una firma con ese código en esta empresa.');
@@ -114,7 +114,7 @@ class SignatureToolsController extends Controller
         $this->subject($table, $id);
 
         return response()->json(['data' => array_map(fn ($s) => $this->check($s),
-            DB::select('select * from signatures where subject_type = ? and subject_id = ? order by signed_at', [$table, $id]))]);
+            DB::select("select * from signatures where subject_type = ? and subject_id = ? and method <> 'void' order by signed_at", [$table, $id]))]);
     }
 
     /** Compara la huella guardada en la firma con la del registro tal como está hoy. */
@@ -127,11 +127,16 @@ class SignatureToolsController extends Controller
         $current = $row ? SignatureService::hash($sig->subject_type, $row, $evidence['hash_scope'] ?? 'row') : null;
         $role = $sig->signature_request_id ? DB::selectOne('select role_in_document from signature_requests where id = ?', [$sig->signature_request_id])?->role_in_document : null;
         $code = strtoupper(implode('-', str_split(substr(bin2hex(self::bytes($sig->evidence_hash)), 0, 12), 4)));
+        // RN-FIR-01: una firma anulada se sigue mostrando, como «Anulada», con el motivo, quién y cuándo.
+        $void = SignatureService::voidOf($sig->id);
 
         return [
             'signature_id' => $sig->id,
             'code' => $code,
             'result' => $current === null ? 'missing' : (hash_equals($signed, $current) ? 'intact' : 'altered'),
+            'voided' => $void !== null,
+            'void' => $void,
+            'can_void' => $void === null && in_array(SignatureController::VOID_PERMISSION, Permissions::effective(), true),
             'signer_name' => $sig->signer_name,
             'signer_document_masked' => $sig->signer_document_masked,
             'role_in_document' => $role,

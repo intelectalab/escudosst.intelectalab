@@ -8547,7 +8547,8 @@
      "signed",
      "declined",
      "expired",
-     "cancelled"
+     "cancelled",
+     "voided"
     ],
     "ref": null,
     "encrypted": false,
@@ -8790,7 +8791,8 @@
      "pin",
      "otp",
      "assisted_in_person",
-     "scanned"
+     "scanned",
+     "void"
     ],
     "ref": null,
     "encrypted": false,
@@ -8912,6 +8914,28 @@
     "comment": null
    },
    {
+    "name": "voids_signature_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "signatures.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "void_reason",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -8979,7 +9003,8 @@
    }
   ],
   "checks": [
-   "signer_user_id IS NOT NULL OR signer_worker_id IS NOT NULL"
+   "signer_user_id IS NOT NULL OR signer_worker_id IS NOT NULL",
+   "(method = 'void') = (voids_signature_id IS NOT NULL) AND (voids_signature_id IS NULL OR length(btrim(coalesce(void_reason, ''))) > 0) AND (voids_signature_id IS NOT NULL OR void_reason IS NULL)"
   ],
   "uniques": []
  },

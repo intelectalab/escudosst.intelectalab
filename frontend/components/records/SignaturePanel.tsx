@@ -13,11 +13,12 @@ import { SignaturePad } from "@/components/addons/SignaturePad";
 import { session } from "@/lib/session";
 import { signPlace } from "@/lib/geo";
 import { API_URL } from "@/lib/api";
-import { VerifyResult, type Verification } from "@/components/modules/FirTools";
+import { VerifyResult, VoidNote, VoidSignature, type Verification } from "@/components/modules/FirTools";
 
 type Req = {
   id: string; role_in_document: string; status: string; signer_user_id: string | null; signer_worker_id: string | null; signer_name: string | null;
-  expires_at: string | null; signed_at: string | null; declined_reason: string | null; method: string | null; signature_id: string | null; has_image: boolean;
+  expires_at: string | null; signed_at: string | null; declined_reason: string | null; method: string | null; signature_id: string | null; has_image: boolean; signed_by_name: string | null;
+  void_reason: string | null; voided_at: string | null; voided_by_name: string | null; can_void: boolean;
 };
 
 const ROLES: [string, string][] = [
@@ -27,7 +28,7 @@ const ROLES: [string, string][] = [
 const ROLE = Object.fromEntries(ROLES);
 const STATUS: Record<string, [string, string]> = {
   pending: ["Pendiente", "bg-amber-soft text-amber-ink"], signed: ["Firmado", "bg-ok-soft text-ok"], declined: ["Rechazado", "bg-bad-soft text-bad"],
-  expired: ["Vencido", "bg-bg text-muted"], cancelled: ["Anulado", "bg-bg text-muted"],
+  expired: ["Vencido", "bg-bg text-muted"], cancelled: ["Anulado", "bg-bg text-muted"], voided: ["Firma anulada", "bg-bad-soft text-bad"],
 };
 const METHOD: Record<string, string> = { pin: "con contraseña", assisted_in_person: "asistida en persona", stroke: "trazo", otp: "código", scanned: "escaneada" };
 const dt = (v: string | null) => (v ? new Date(v).toLocaleString("es-PE", { timeZone: "America/Lima", dateStyle: "short", timeStyle: "short" }) : "");
@@ -115,7 +116,7 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-semibold">Firmas {items.length > 0 && <span className="font-normal text-muted">· {items.filter((i) => i.status === "signed").length} de {items.length}</span>}</p>
         <span className="flex flex-wrap gap-2">
-          {items.some((i) => i.status === "signed") && <Button size="sm" variant="ghost" icon="shield" onClick={() => (checks ? setChecks(null) : verify())}>{checks ? "Ocultar verificación" : "Verificar integridad"}</Button>}
+          {items.some((i) => i.status === "signed" || i.status === "voided") && <Button size="sm" variant="ghost" icon="shield" onClick={() => (checks ? setChecks(null) : verify())}>{checks ? "Ocultar verificación" : "Verificar integridad"}</Button>}
           {!asking && <Button size="sm" variant="secondary" icon="pen" onClick={() => setAsking(true)}>Pedir firma</Button>}
         </span>
       </div>
@@ -128,6 +129,7 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
               <b>{r.signer_name}</b> · {ROLE[r.role_in_document] ?? r.role_in_document}
               {r.signed_at && <span className="text-muted"> · {dt(r.signed_at)} {r.method ? `(${METHOD[r.method] ?? r.method})` : ""}</span>}
               {r.declined_reason && <span className="block text-xs text-bad">Motivo: {r.declined_reason}</span>}
+              {r.voided_at && <VoidNote v={{ reason: r.void_reason ?? "", voided_at: r.voided_at, voided_by_name: r.voided_by_name ?? "" }} />}
             </span>
             <span className="flex flex-wrap items-center gap-2">
               {r.status === "pending" && mine && (
@@ -150,6 +152,7 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
                 <Button size="sm" variant="ghost" icon="bell" onClick={() => remind(r)}>Reenviar recordatorio</Button>
               )}
               {r.has_image && r.signature_id && <SignatureThumb id={r.signature_id} />}
+              {r.can_void && r.signature_id && <VoidSignature signatureId={r.signature_id} signerName={r.signed_by_name ?? r.signer_name} onDone={() => { load(); if (checks) void verify(); }} />}
               {r.signature_id && <a href={`/imprimir/constancia-firma/${r.signature_id}`} target="_blank" rel="noreferrer" className="text-xs font-semibold text-brand-strong underline">Constancia</a>}
               <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${cls}`}>{label}</span>
             </span>
@@ -195,7 +198,7 @@ export function SignaturePanel({ table, id, version }: { table: string; id: stri
           <Button size="sm" variant="ghost" onClick={() => setAsking(false)}>Cancelar</Button>
         </div>
       )}
-      {checks && (checks.length === 0 ? <p className="text-muted">No hay firmas hechas que verificar.</p> : checks.map((c) => <VerifyResult key={c.signature_id} v={c} showSubject={false} />))}
+      {checks && (checks.length === 0 ? <p className="text-muted">No hay firmas hechas que verificar.</p> : checks.map((c) => <VerifyResult key={c.signature_id} v={c} showSubject={false} onVoided={() => { load(); void verify(); }} />))}
       {note && <p role="status" className="text-ok">{note}</p>}
       {msg && <p className="text-bad">{msg}</p>}
     </section>

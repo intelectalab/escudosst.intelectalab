@@ -95,7 +95,8 @@ type SignatureCert = {
   company: Company;
   signature: { id: string; signer_name: string; signer_document_masked: string | null; method: string; role: string | null; signed_at_lima: string; requested_at_lima: string | null;
     requested_by: string | null; document_hash: string; evidence_hash: string; hash_scope: string | null; ip: string | null; user_agent: string | null; otp_channel: string | null;
-    geo: [number, number] | null; subject: { table: string; id: string; title: string; module: string }; image: string | null };
+    geo: [number, number] | null; subject: { table: string; id: string; title: string; module: string }; image: string | null;
+    void: { reason: string; voided_at: string; voided_by_name: string } | null };
 };
 const ROLE: Record<string, string> = { attendee: "Asistente", responsible: "Responsable", approver: "Aprobador", reviewer: "Revisor", worker: "Trabajador", witness: "Testigo",
   committee_member: "Miembro del comité", doctor: "Médico" };
@@ -111,6 +112,11 @@ export function SignatureCertificate({ id }: { id: string }) {
           ["Método", METHOD[s.method] ?? s.method], ["Fecha y hora (America/Lima)", s.signed_at_lima]]} />
         {/* eslint-disable-next-line @next/next/no-img-element */}
         {s.image && <img src={s.image} alt={`Firma de ${s.signer_name}`} className="mt-2 h-20 object-contain" />}
+        {s.void && (
+          <p className="mt-2 rounded border border-red-300 px-2 py-1 text-sm text-red-700">
+            <b>Anulada</b> · {s.void.reason} · {s.void.voided_by_name} · {fmtDT(s.void.voided_at)}
+          </p>
+        )}
       </Section>
       <Section n={2} title="Registro firmado">
         <Facts rows={[["Registro", `${s.subject.title} · ${s.subject.table}`], ["Identificador", <span key="i" className="break-all font-mono text-xs">{s.subject.id}</span>],

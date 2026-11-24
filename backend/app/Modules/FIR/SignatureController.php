@@ -21,27 +21,92 @@ use Illuminate\Support\Str;
  *  POST /fir/requests/{id}/sign            firmar: el usuario confirma con su contraseña; a un trabajador sin usuario lo firma «asistido en persona»
  *                                          quien tiene permiso, con su presencia declarada {password} | {assisted: true}
  *  POST /fir/requests/{id}/decline         rechazar {reason}
+ *  POST /fir/signatures/{id}/void          anular una firma errónea {reason} (fila de anulación vinculada, RN-FIR-01)
  *
  * Al pedir la firma se guarda la huella (SHA-256) del registro; al firmar se vuelve a calcular: si el registro cambió,
  * la firma no procede. Cada firma deja su evidencia (quién, cómo, cuándo, IP, navegador, huellas) en «signatures».
  */
 class SignatureController extends Controller
 {
-    private const ROLES = ['attendee', 'responsible', 'approver', 'reviewer', 'worker', 'witness', 'committee_member', 'doctor'];
+    /** Anular una firma: no hay permiso propio en el catálogo; lo hace quien gestiona (edita) las solicitudes de firma. */
+    public const VOID_PERMISSION = 'fir.signature_requests.update';
+
+    private const ROLES =['attendee', 'responsible', 'approver', 'reviewer', 'worker', 'witness', 'committee_member', 'doctor'];
 
     public function subject(string $table, string $id): JsonResponse
     {
         $this->subjectRow($table, $id);
 
-        return response()->json(['data' => DB::select(
+        $rows = DB::select(
             "select r.id, r.role_in_document, r.status, r.signer_user_id, r.signer_worker_id, r.expires_at, r.signed_at, r.declined_reason,
                     coalesce(u.full_name, w.full_name) as signer_name, s.method, s.signer_name as signed_by_name, s.id as signature_id,
-                    exists (select 1 from signature_strokes k where k.signature_id = s.id) as has_image
+                    exists (select 1 from signature_strokes k where k.signature_id = s.id) as has_image,
+                    v.void_reason, v.signed_at as voided_at, v.signer_name as voided_by_name
                from signature_requests r left join users u on u.id = r.signer_user_id left join workers w on w.id = r.signer_worker_id
-               left join signatures s on s.signature_request_id = r.id
+               left join signatures s on s.signature_request_id = r.id and s.method <> 'void'
+               left join signatures v on v.voids_signature_id = s.id
               where r.subject_type = ? and r.subject_id = ? and r.deleted_at is null order by r.sequence_order, r.created_at",
             [$table, $id]
-        )]);
+        );
+        $canVoid = in_array(self::VOID_PERMISSION, Permissions::effective(), true);
+
+        return response()->json(['data' => array_map(fn ($r) => (array) $r + ['can_void' => $canVoid && $r->signature_id && ! $r->voided_at], $rows)]);
+    }
+
+    /**
+     * POST /fir/signatures/{id}/void {reason} — RN-FIR-01: anula una firma errónea con una fila de anulación vinculada y su motivo;
+     * la firma original no se toca. §9: la solicitud firmada pasa a «voided». Como la solicitud deja de estar firmada, el registro
+     * deja de tener todas sus firmas completas y se puede corregir y volver a pedir la firma (RN-FIR-03).
+     */
+    public function void(Request $request, string $id, AccountsService $accounts): JsonResponse
+    {
+        $this->can(self::VOID_PERMISSION);
+        $d = $request->validate(['reason' => ['required', 'string', 'min:10', 'max:500']], [
+            'reason.required' => 'Indica el motivo de la anulación.',
+            'reason.min' => 'El motivo de la anulación debe tener al menos 10 caracteres.',
+            'reason.max' => 'El motivo de la anulación no puede pasar de 500 caracteres.',
+        ]);
+        $reason = trim($d['reason']);
+        if (mb_strlen($reason) < 10) {
+            $this->fail('reason', 'El motivo de la anulación debe tener al menos 10 caracteres.');
+        }
+        $s = Str::isUuid($id) ? DB::selectOne('select * from signatures where id = ?', [$id]) : null;
+        if (! $s) {
+            throw ApiProblem::notFound('La firma no existe o es de otra empresa.');
+        }
+        $this->subjectRow($s->subject_type, $s->subject_id);
+        if ($s->method === 'void') {
+            throw new ApiProblem(409, 'conflict', 'No se anula una anulación', 'Esta fila es la anulación de otra firma: no se puede anular.');
+        }
+        if (DB::selectOne('select 1 as ok from signatures where voids_signature_id = ?', [$s->id])) {
+            throw new ApiProblem(409, 'conflict', 'Firma ya anulada', 'Esta firma ya fue anulada.');
+        }
+        $uid = (string) auth()->id();
+        $name = DB::selectOne('select full_name from users where id = ?', [$uid])->full_name;
+        $hash = bin2hex(self::bytes($s->document_hash));
+        $evidence = ['voids_signature_id' => $s->id, 'reason' => $reason, 'voided_by_user_id' => $uid, 'voided_by' => $name, 'subject' => "{$s->subject_type}/{$s->subject_id}",
+            'document_hash' => $hash, 'ip' => $request->ip(), 'user_agent' => mb_substr((string) $request->userAgent(), 0, 300), 'at' => now()->toIso8601String()];
+        try {
+            $voidId = DB::transaction(function () use ($s, $uid, $name, $hash, $evidence, $reason, $request) {
+                $voidId = DB::selectOne(
+                    "insert into signatures (company_id, subject_type, subject_id, signer_user_id, signer_name, method, document_hash, evidence_hash, evidence,
+                        ip, user_agent, signed_at, created_by, voids_signature_id, void_reason)
+                     values (?, ?, ?, ?, ?, 'void', decode(?, 'hex'), decode(?, 'hex'), ?::jsonb, ?::inet, ?, now(), ?, ?, ?) returning id",
+                    [$s->company_id, $s->subject_type, $s->subject_id, $uid, $name, $hash, hash('sha256', json_encode($evidence)), json_encode($evidence, JSON_UNESCAPED_UNICODE),
+                        $request->ip(), mb_substr((string) $request->userAgent(), 0, 300), $uid, $s->id, $reason]
+                )->id;
+                if ($s->signature_request_id) {
+                    DB::update("update signature_requests set status = 'voided', updated_by = ? where id = ? and status = 'signed'", [$uid, $s->signature_request_id]);
+                }
+
+                return $voidId;
+            });
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            throw new ApiProblem(409, 'conflict', 'Firma ya anulada', 'Esta firma ya fue anulada.');
+        }
+        $accounts->audit($uid, 'signature_voided', $s->subject_type, $s->subject_id, ['signature' => $s->id, 'void' => $voidId, 'request' => $s->signature_request_id], $reason);
+
+        return response()->json(['data' => ['signature_id' => $s->id, 'void_id' => $voidId, 'status' => 'voided', 'reason' => $reason, 'voided_by_name' => $name]]);
     }
 
     public function request(Request $request, AccountsService $accounts): JsonResponse

@@ -146,7 +146,7 @@ class ProgramRules extends RecordRules
             // RN-PCA-05: sin comité, basta la firma del supervisor SST en el programa.
             if ($model !== 'committee' && $table === 'training_programs' && ! DB::selectOne(
                 "select 1 as ok from signatures s join memberships m on m.user_id = s.signer_user_id and m.company_id = s.company_id and m.status = 'active' and m.deleted_at is null
-                   join roles r on r.id = m.role_id where s.subject_type = 'training_programs' and s.subject_id = ? and coalesce(r.base_role_code, r.code) = 'sst_supervisor'", [$current->id])) {
+                   join roles r on r.id = m.role_id where s.subject_type = 'training_programs' and s.subject_id = ? and ".\App\Modules\FIR\SignatureService::valid('s')." and coalesce(r.base_role_code, r.code) = 'sst_supervisor'", [$current->id])) {
                 $this->fail('status', 'Sin Comité SST, el programa se aprueba con la firma del Supervisor SST: pídele que lo firme en la pestaña «Firmas».');
             }
             $extra['approved_at'] = ['now()', []];

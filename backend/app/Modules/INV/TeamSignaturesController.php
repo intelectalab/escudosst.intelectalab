@@ -106,12 +106,12 @@ class TeamSignaturesController extends Controller
         return DB::select(
             "select t.id, t.role, t.worker_id, t.user_id, coalesce(t.user_id, w.user_id) as signer_user_id, t.external_name,
                     coalesce(w.full_name, u.full_name, t.external_name, 'Sin nombre') as name,
-                    coalesce(t.signature_id, sg.id) as signature_id, coalesce(s0.signed_at, sg.signed_at) as signed_at, coalesce(s0.method, sg.method) as method,
+                    coalesce(s0.id, sg.id) as signature_id, coalesce(s0.signed_at, sg.signed_at) as signed_at, coalesce(s0.method, sg.method) as method,
                     pr.id as pending_request_id
                from investigation_team t left join workers w on w.id = t.worker_id left join users u on u.id = t.user_id
-               left join signatures s0 on s0.id = t.signature_id
+               left join signatures s0 on s0.id = t.signature_id and ".\App\Modules\FIR\SignatureService::valid('s0')."
                left join lateral (select s.id, s.signed_at, s.method from signatures s
-                                   where s.subject_type = 'investigations' and s.subject_id = t.investigation_id
+                                   where s.subject_type = 'investigations' and s.subject_id = t.investigation_id and ".\App\Modules\FIR\SignatureService::valid('s')."
                                      and ((t.user_id is not null and s.signer_user_id = t.user_id) or (w.user_id is not null and s.signer_user_id = w.user_id)
                                           or (t.worker_id is not null and s.signer_worker_id = t.worker_id))
                                    order by s.signed_at desc limit 1) sg on true

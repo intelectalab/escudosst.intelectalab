@@ -176,7 +176,7 @@ class ScatController extends Controller
         $signatures = DB::select(
             "select s.signer_name, s.signed_at, s.method, k.mime_type, encode(k.image, 'base64') as image
                from signatures s left join signature_strokes k on k.signature_id = s.id
-              where s.subject_type = 'investigations' and s.subject_id = ? order by s.signed_at", [$inv->id]);
+              where s.subject_type = 'investigations' and s.subject_id = ? and ".\App\Modules\FIR\SignatureService::valid('s')." order by s.signed_at", [$inv->id]);
         foreach ($signatures as $s) {
             $s->image = $s->image ? 'data:'.$s->mime_type.';base64,'.str_replace(["\n", "\r"], '', $s->image) : null;
             unset($s->mime_type);

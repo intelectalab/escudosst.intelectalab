@@ -350,7 +350,7 @@ class RegistersController extends Controller
             return $s;
         }, DB::select(
             "select r.role_in_document as role, r.status, coalesce(sg.signer_name, u.full_name) as signer_name, sg.signed_at, sg.method, k.mime_type, encode(k.image, 'base64') as image
-               from signature_requests r left join users u on u.id = r.signer_user_id left join signatures sg on sg.signature_request_id = r.id
+               from signature_requests r left join users u on u.id = r.signer_user_id left join signatures sg on sg.signature_request_id = r.id and ".\App\Modules\FIR\SignatureService::valid('sg')."
                left join signature_strokes k on k.signature_id = sg.id
               where r.subject_type = 'register_exports' and r.subject_id = ? and r.deleted_at is null and r.status <> 'cancelled' order by r.sequence_order", [$id]));
 
