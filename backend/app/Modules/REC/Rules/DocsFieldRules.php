@@ -155,6 +155,10 @@ class DocsFieldRules extends RecordRules
             \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles($roles), 'doc.review_pending', 'DOC', $d->id, 'Documento por aprobar',
                 "{$d->code} · {$d->title} se envió a revisión.", '/m/doc?t=documents&open='.$d->id, 'normal', 'doc.review_pending:'.$id);
         }
+        // M-PET RN-PET-03: la versión aprobada deja su capacitación pendiente para los puestos vinculados en CAP.
+        if ($t === 'procedure_versions' && in_array($values['status'] ?? null, ['approved', 'current'], true) && ! in_array($current?->status, ['approved', 'current'], true)) {
+            \App\Modules\PET\PetStepsController::requireTrainings($id);
+        }
         if ($t === 'report_points' && $op === 'create') {
             $token = \App\Modules\ACT\ReportPointController::token(app(\App\Core\Tenancy\CompanyContext::class)->companyId, $id);
             DB::update("update report_points set token_hash = decode(?, 'hex'), token_last4 = ? where id = ?", [hash('sha256', $token), substr($token, -4), $id]);

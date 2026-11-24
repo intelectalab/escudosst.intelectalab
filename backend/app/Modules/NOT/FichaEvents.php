@@ -42,7 +42,9 @@ final class FichaEvents
                 'training_certificates' => self::certificate($id, $values['status'] ?? null, $current?->status),
                 'training_evaluations' => $op === 'create' && self::evaluationFailed($id),
                 'sst_events' => ($op === 'create' || (array_key_exists('iperc_row_id', $values) && $values['iperc_row_id'] !== $current?->iperc_row_id)) && self::iperReview('sst_events', $id),
-                'change_requests' => self::entered($values, $current, 'approved') && self::iperReview('change_requests', $id),
+                'change_requests' => (self::entered($values, $current, 'pending_management') && self::toRoles(['management'], 'moc.pending_management', 'MOC', $id,
+                    'Cambio de impacto alto por aprobar', "select code || ' · ' || title as name from change_requests where id = ?", '/m/moc?t=change_requests&open='))
+                    || (self::entered($values, $current, 'approved') && self::iperReview('change_requests', $id)),
                 'objective_targets' => self::targetRed($id, $current),
                 default => null,
             };
@@ -335,12 +337,13 @@ final class FichaEvents
         if (! in_array($values['status'] ?? null, $live, true) || in_array($current?->status, $live, true)) {
             return false;
         }
-        \App\Modules\PET\PetStepsController::requireTrainings($id);
-        $p = DB::selectOne('select p.id, p.code, p.title, p.position_id, v.version_number from procedure_versions v join procedures p on p.id = v.procedure_id where v.id = ?', [$id]);
-        if (! $p->position_id) {
+        // La capacitación pendiente (RN-PET-03) la deja DocsFieldRules al aprobar; aquí solo se avisa.
+        $p = DB::selectOne('select p.id, p.code, p.title, v.version_number from procedure_versions v join procedures p on p.id = v.procedure_id where v.id = ?', [$id]);
+        $positions = \App\Modules\PET\PetStepsController::linkedPositions($id);
+        if (! $positions) {
             return false;
         }
-        $workers = array_column(DB::select("select id from workers where current_position_id = ? and status = 'active' and deleted_at is null", [$p->position_id]), 'id');
+        $workers = array_column(DB::select("select id from workers where current_position_id = any(?::uuid[]) and status = 'active' and deleted_at is null", ['{'.implode(',', $positions).'}']), 'id');
         Notify::workers($workers, 'pet.approved', 'PET', $p->id, 'Nuevo procedimiento de tu puesto',
             "Se aprobó {$p->code} · {$p->title} (versión {$p->version_number}) para tu puesto.", '/mi', 'normal', 'pet.approved:'.$id);
 

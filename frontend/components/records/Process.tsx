@@ -1270,12 +1270,15 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
     ],
   },
   change_requests: {
-    help: "Borrador → enviado → en revisión → aprobado (con una revisión que lo apruebe) → implementado (con su evaluación de riesgos) → verificado (cómo se comprobó que funciona) → cerrado.",
+    help: "Borrador → enviado → en revisión → aprobado (con una revisión que lo apruebe; si el impacto es alto, queda pendiente de gerencia y la gerencia lo aprueba o rechaza) → implementado (con su evaluación de riesgos) → verificado (cómo se comprobó que funciona) → cerrado.",
     steps: [
       { from: ["draft"], label: "Enviar", body: { status: "submitted" }, primary: true },
       { from: ["submitted"], label: "Pasar a revisión", body: { status: "under_review" } },
       { from: ["under_review"], label: "Aprobar", body: { status: "approved" }, primary: true },
       { from: ["under_review"], label: "Rechazar", body: { status: "rejected" } },
+      // RN-MOC-03: el cambio de impacto alto aprobado por el Jefe SST lo aprueba o rechaza la gerencia.
+      { from: ["pending_management"], label: "Aprobar (gerencia)", body: { status: "approved" }, primary: true },
+      { from: ["pending_management"], label: "Rechazar (gerencia)", body: { status: "rejected" } },
       { from: ["approved"], label: "Marcar implementado", body: { status: "implemented" }, primary: true },
       { from: ["implemented"], label: "Verificar eficacia", body: { status: "verified" }, primary: true, ask: "verification_notes" },
       { from: ["verified"], label: "Cerrar", body: { status: "closed" }, primary: true },

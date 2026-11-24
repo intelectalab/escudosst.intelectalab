@@ -2030,7 +2030,8 @@
   "always": "Siempre",
   "after_previous": "Al completar la sección anterior",
   "from_date": "Desde una fecha",
-  "void": "Anulación"
+  "void": "Anulación",
+  "pending_management": "Pendiente de gerencia"
  },
  "tables": {
   "absences": "Ausencias",

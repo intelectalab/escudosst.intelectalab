@@ -8630,6 +8630,13 @@
      "label": "Pasos, riesgos y controles",
      "readonly": true,
      "type": "json"
+    },
+    {
+     "name": "training_id",
+     "label": "Capacitación",
+     "readonly": true,
+     "type": "ref",
+     "ref": "trainings"
     }
    ]
   },
@@ -8787,6 +8794,10 @@
       {
        "value": "under_review",
        "label": "En revisión"
+      },
+      {
+       "value": "pending_management",
+       "label": "Pendiente de gerencia"
       },
       {
        "value": "approved",

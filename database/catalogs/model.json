@@ -22657,6 +22657,17 @@
     "comment": null
    },
    {
+    "name": "training_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "trainings.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -22912,6 +22923,7 @@
      "draft",
      "submitted",
      "under_review",
+     "pending_management",
      "approved",
      "rejected",
      "implemented",

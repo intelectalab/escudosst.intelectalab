@@ -2665,6 +2665,7 @@ CREATE TABLE IF NOT EXISTS procedure_versions (
   approved_at timestamptz,
   effective_on date,
   obsoleted_at timestamptz,
+  training_id uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -2676,6 +2677,7 @@ CREATE TABLE IF NOT EXISTS procedure_versions (
 );
 COMMENT ON TABLE procedure_versions IS '[PET] Versión del procedimiento con aprobación';
 COMMENT ON COLUMN procedure_versions.participants IS 'trabajadores que participaron en su elaboración';
+COMMENT ON COLUMN procedure_versions.training_id IS 'RN-PET-03: capacitación de difusión creada al aprobar la versión';
 
 -- MOC · change_requests (company)
 CREATE TABLE IF NOT EXISTS change_requests (
@@ -2694,7 +2696,7 @@ CREATE TABLE IF NOT EXISTS change_requests (
   planned_implementation_on date,
   risk_assessment jsonb,
   iperc_version_id uuid,
-  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'submitted', 'under_review', 'approved', 'rejected', 'implemented', 'closed', 'cancelled')),
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'submitted', 'under_review', 'pending_management', 'approved', 'rejected', 'implemented', 'verified', 'closed', 'cancelled')),
   decision_at timestamptz,
   implemented_at timestamptz,
   closure_notes text,
@@ -9409,6 +9411,8 @@ ALTER TABLE procedure_versions ADD CONSTRAINT fk_procedure_versions_company_id F
 ALTER TABLE procedure_versions ADD CONSTRAINT fk_procedure_versions_procedure_id FOREIGN KEY (company_id, procedure_id) REFERENCES procedures (company_id, id);
 CREATE INDEX IF NOT EXISTS idx_procedure_versions_fk_procedure_id ON procedure_versions (company_id, procedure_id);
 ALTER TABLE procedure_versions ADD CONSTRAINT fk_procedure_versions_file_id FOREIGN KEY (company_id, file_id) REFERENCES files (company_id, id);
+ALTER TABLE procedure_versions ADD CONSTRAINT fk_procedure_versions_training_id FOREIGN KEY (company_id, training_id) REFERENCES trainings (company_id, id);
+CREATE INDEX IF NOT EXISTS idx_procedure_versions_fk_training_id ON procedure_versions (company_id, training_id);
 CREATE INDEX IF NOT EXISTS idx_procedure_versions_fk_file_id ON procedure_versions (company_id, file_id);
 ALTER TABLE procedure_versions ADD CONSTRAINT fk_procedure_versions_prepared_by FOREIGN KEY (prepared_by) REFERENCES users (id);
 CREATE INDEX IF NOT EXISTS idx_procedure_versions_fk_prepared_by ON procedure_versions (prepared_by);

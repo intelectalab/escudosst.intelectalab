@@ -125,20 +125,56 @@ class PetStepsController extends Controller
         return null;
     }
 
-    /** RN-PET-03: al aprobarse, las capacitaciones requeridas quedan exigidas para el puesto del PETS (pendientes en la matriz). */
+    /**
+     * Puestos vinculados al PETS (M-PET §5 y SCR-PET-02): el puesto del procedimiento y los puestos de las filas del IPERC
+     * vinculadas a la versión.
+     * @return list<string>
+     */
+    public static function linkedPositions(string $versionId): array
+    {
+        return array_column(DB::select(
+            'select p.position_id as id from procedure_versions v join procedures p on p.id = v.procedure_id where v.id = ? and p.position_id is not null
+             union
+             select r.position_id from procedure_versions v join iperc_rows r on r.id = any(v.iperc_row_ids) and r.deleted_at is null
+              where v.id = ? and r.position_id is not null', [$versionId, $versionId]), 'id');
+    }
+
+    /**
+     * RN-PET-03 / criterio 2: al aprobarse una versión, sus trabajadores tienen capacitación pendiente en CAP.
+     *  - La versión tiene su capacitación de difusión (se crea una vez, «Difusión del PETS …», y se reutiliza si se vuelve a aprobar).
+     *  - Esa capacitación y las capacitaciones requeridas del editor quedan obligatorias para cada puesto vinculado (sin duplicar).
+     *  - La difusión de versiones anteriores deja de exigirse (fin de vigencia ayer): con la versión nueva hay que volver a capacitar.
+     */
     public static function requireTrainings(string $versionId): void
     {
-        $v = DB::selectOne('select v.company_id, v.required_training_ids, p.position_id from procedure_versions v join procedures p on p.id = v.procedure_id where v.id = ?', [$versionId]);
-        if (! $v?->position_id || ! $v->required_training_ids) {
+        $v = DB::selectOne('select v.id, v.company_id, v.procedure_id, v.version_number, v.required_training_ids, v.training_id, p.code, p.title
+                              from procedure_versions v join procedures p on p.id = v.procedure_id where v.id = ?', [$versionId]);
+        $positions = $v ? self::linkedPositions($versionId) : [];
+        if (! $positions) {
             return;
         }
-        foreach (str_getcsv(trim((string) $v->required_training_ids, '{}')) as $t) {
-            if (Str::isUuid($t)) {
-                DB::insert("insert into position_training_requirements (company_id, position_id, training_id, requirement_level, is_active)
-                            select ?, ?, ?, 'mandatory', true where not exists (select 1 from position_training_requirements where position_id = ? and training_id = ? and deleted_at is null)",
-                    [$v->company_id, $v->position_id, $t, $v->position_id, $t]);
+        $own = $v->training_id;
+        if (! $own) {
+            $own = DB::selectOne("insert into trainings (company_id, code, title, training_type, topic, description, modality, status, created_by, updated_by)
+                                  values (?, ?, ?, 'specific', 'PETS', ?, 'in_person', 'draft', ?, ?) returning id", [
+                $v->company_id, mb_substr("{$v->code}-V{$v->version_number}", 0, 60), "Difusión del PETS {$v->code} · {$v->title} (versión {$v->version_number})",
+                "Capacitación en el procedimiento {$v->code} (versión {$v->version_number}) para los puestos vinculados, creada al aprobarse la versión.",
+                auth()->id(), auth()->id(),
+            ])->id;
+            DB::update('update procedure_versions set training_id = ? where id = ?', [$own, $versionId]);
+        }
+        $trainings = array_values(array_unique([$own, ...array_filter(str_getcsv(trim((string) $v->required_training_ids, '{}')), fn ($t) => Str::isUuid($t))]));
+        foreach ($positions as $pos) {
+            foreach ($trainings as $t) {
+                DB::insert("insert into position_training_requirements (company_id, position_id, training_id, requirement_level, is_active, effective_from, notes)
+                            select ?, ?, ?, 'mandatory', true, (now() at time zone 'America/Lima')::date, ?
+                             where not exists (select 1 from position_training_requirements where position_id = ? and training_id = ? and deleted_at is null)",
+                    [$v->company_id, $pos, $t, "Exigida por el PETS {$v->code} (versión {$v->version_number}).", $pos, $t]);
             }
         }
+        DB::update("update position_training_requirements set effective_to = (now() at time zone 'America/Lima')::date - 1, deleted_at = now(), updated_at = now()
+                     where deleted_at is null and training_id in (select training_id from procedure_versions where procedure_id = ? and id <> ? and training_id is not null)",
+            [$v->procedure_id, $versionId]);
     }
 
     private function version(string $id): object

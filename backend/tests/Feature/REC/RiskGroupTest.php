@@ -43,8 +43,8 @@ it('el cambio pide su impacto, espera las revisiones obligatorias, el de impacto
     $this->patchJson("/api/v1/records/MOC/change_requests/{$c}", ['status' => 'approved'], $this->h)->assertStatus(422)->assertJsonPath('errors.status.0', 'Faltan revisiones obligatorias resueltas a favor: Mantenimiento.');
     $this->patchJson("/api/v1/records/MOC/change_reviews/{$r}", ['decision' => 'approve'], $this->h)->assertOk();
     $this->patchJson("/api/v1/records/MOC/change_reviews/{$r}", ['comments' => 'otro'], $this->h)->assertStatus(409);
-    // Impacto alto: el Jefe SST no lo aprueba.
-    $this->patchJson("/api/v1/records/MOC/change_requests/{$c}", ['status' => 'approved'], $this->h)->assertStatus(422)->assertJsonPath('errors.status.0', 'Es un cambio de impacto alto: queda pendiente de la aprobación de gerencia.');
+    // Impacto alto: lo que aprueba el Jefe SST queda pendiente de gerencia.
+    $this->patchJson("/api/v1/records/MOC/change_requests/{$c}", ['status' => 'approved'], $this->h)->assertOk()->assertJsonPath('data.status', 'pending_management');
     rgAs(fn () => DB::update("update memberships set role_id = (select id from roles where code = 'management' and account_id is null) where user_id = ? and company_id = ?", [$this->uid, ANDINAS_ID]));
     $GLOBALS['sus_tokens'] = [];
     app('auth')->forgetGuards();

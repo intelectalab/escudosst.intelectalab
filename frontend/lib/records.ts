@@ -126,7 +126,7 @@ export function toLocalInput(v: unknown): string {
 export function statusTone(value: string): "ok" | "na" | "amber" | "brand" | "bad" {
   if (/^(active|approved|completed|valid|done|closed_ok|published|in_force|current|fit|compliant|accredited|signed|paid|delivered|executed|met)$/.test(value)) return "ok";
   if (/^(overdue|expired|rejected|cancelled|failed|unfit|non_compliant|suspended|blocked|terminated|critical|high|very_high)$/.test(value)) return "bad";
-  if (/^(in_progress|pending|scheduled|draft|under_review|open|planned|on_leave|partial|medium|requested|submitted|observed)$/.test(value)) return "amber";
+  if (/^(in_progress|pending|pending_management|scheduled|draft|under_review|open|planned|on_leave|partial|medium|requested|submitted|observed)$/.test(value)) return "amber";
   return "na";
 }
 

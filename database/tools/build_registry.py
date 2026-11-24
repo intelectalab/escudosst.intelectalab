@@ -61,7 +61,7 @@ READONLY = {"baseline_assessments.submitted_for_review_at", "sst_events.classifi
             "sst_policies.version_number", "sst_policies.prepared_by", "sst_policies.approved_by", "sst_policies.approved_at", "sst_policies.published_at",
             "sst_policies.obsoleted_at", "risst_versions.version_number", "risst_versions.prepared_by", "risst_versions.approved_by", "risst_versions.approved_at",
             "risst_versions.obsoleted_at", "procedure_versions.version_number", "procedure_versions.prepared_by", "procedure_versions.approved_by",
-            "procedure_versions.approved_at", "procedure_versions.obsoleted_at", "procedures.current_version_id", "documents.current_version_id",
+            "procedure_versions.approved_at", "procedure_versions.obsoleted_at", "procedure_versions.training_id", "procedures.current_version_id", "documents.current_version_id",
             "document_versions.version_number", "document_versions.submitted_by", "document_versions.submitted_at", "document_versions.approved_by",
             "document_versions.approved_at", "document_versions.obsoleted_at", "substandard_reports.triaged_by", "substandard_reports.triaged_at",
             "substandard_reports.closed_at", "substandard_reports.reporter_user_id", "objective_targets.achievement_pct",

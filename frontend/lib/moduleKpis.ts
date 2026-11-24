@@ -163,7 +163,7 @@ export const MODULE_KPIS: Record<string, Kpi[]> = {
     { label: "Archivados", table: "procedures", filters: { status: "archived" }, color: "teal" },
   ],
   MOC: [
-    { label: "En revisión", table: "change_requests", filters: { status: "submitted,under_review" }, color: "amber" },
+    { label: "En revisión", table: "change_requests", filters: { status: "submitted,under_review,pending_management" }, color: "amber" },
     { label: "Aprobados", table: "change_requests", filters: { status: "approved" }, color: "brand" },
     { label: "Implementados", table: "change_requests", filters: { status: "implemented,closed" }, color: "ok" },
     { label: "Rechazados", table: "change_requests", filters: { status: "rejected" }, color: "bad" },

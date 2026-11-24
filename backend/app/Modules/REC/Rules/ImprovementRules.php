@@ -11,7 +11,8 @@ use Illuminate\Support\Facades\DB;
  * - AUI: código automático; para completarla, conclusiones; para cerrarla, sus hallazgos atendidos.
  * - RVD: para completarla, conclusiones (queda quién la aprobó).
  * - MAG: el resultado de la medición se compara con su límite de exposición.
- * - MOC: código automático; no se aprueba sin una revisión que lo apruebe; no se implementa sin la evaluación de riesgos.
+ * - MOC: código automático; no se aprueba sin una revisión que lo apruebe; no se implementa sin la evaluación de riesgos;
+ *   el de impacto alto que aprueba el Jefe SST queda «pendiente de gerencia» y solo gerencia lo aprueba o rechaza (RN-MOC-03).
  */
 class ImprovementRules extends RecordRules
 {
@@ -19,7 +20,7 @@ class ImprovementRules extends RecordRules
 
     private const MOC_FLOW = [
         'draft' => ['submitted', 'cancelled'], 'submitted' => ['under_review', 'cancelled'], 'under_review' => ['approved', 'rejected'],
-        'approved' => ['implemented', 'cancelled'], 'implemented' => ['verified'], 'verified' => ['closed'], 'rejected' => [], 'closed' => [], 'cancelled' => [],
+        'pending_management' => ['approved', 'rejected'], 'approved' => ['implemented', 'cancelled'], 'implemented' => ['verified'], 'verified' => ['closed'], 'rejected' => [], 'closed' => [], 'cancelled' => [],
     ];
 
     public function prepare(string $op, array $res, array &$values, ?object $current, array &$extra): void
@@ -632,6 +633,14 @@ class ImprovementRules extends RecordRules
         if (in_array($to, ['submitted', 'under_review'], true) && ! $this->value($values, $current, 'impact_level')) {
             $this->fail('impact_level', 'Indica el nivel de impacto del cambio (bajo, medio o alto).');
         }
+        // M-MOC §4: aprueba o rechaza quien tiene el permiso de aprobar cambios (Jefe SST o gerencia).
+        if (in_array($to, ['approved', 'rejected'], true) && ! in_array('moc.change_requests.approve', \App\Core\Auth\Permissions::effective(), true)) {
+            throw \App\Core\Http\ApiProblem::forbidden('Tu rol no puede aprobar ni rechazar cambios: lo hace el Jefe SST (o gerencia en los de impacto alto).');
+        }
+        // RN-MOC-03: el cambio pendiente de gerencia solo lo aprueba o rechaza gerencia.
+        if ($current->status === 'pending_management' && in_array($to, ['approved', 'rejected'], true) && ! $this->isManagement($current->company_id)) {
+            throw \App\Core\Http\ApiProblem::forbidden('El cambio está pendiente de gerencia: solo gerencia lo aprueba o rechaza.');
+        }
         if ($to === 'approved') {
             // RN-MOC-01: no se aprueba sin todas las revisiones obligatorias resueltas a favor.
             $pending = DB::select("select coalesce(review_area, 'sin especialidad') as area, decision from change_reviews where change_request_id = ? and deleted_at is null and is_required
@@ -647,13 +656,12 @@ class ImprovementRules extends RecordRules
                                                               and decision in ('approve','approve_with_conditions') and reviewed_at > ?", [$current->id, $current->implemented_at])) {
                 $this->fail('status', 'El cambio pasa de temporal a permanente: registra una revisión nueva que lo apruebe como permanente.');
             }
-            // RN-MOC-03: un cambio de impacto alto lo aprueba gerencia.
+            // RN-MOC-03 / criterio 3: un cambio de impacto alto lo aprueba gerencia. Si lo aprueba el Jefe SST, queda «pendiente de gerencia».
             if ($this->value($values, $current, 'impact_level') === 'high') {
-                $ctx = app(\App\Core\Tenancy\CompanyContext::class);
-                $base = DB::selectOne('select coalesce(base_role_code, code) as c from roles where code = ? and (account_id is null or account_id = (select account_id from companies where id = ?)) limit 1',
-                    [$ctx->roleCode, $current->company_id])?->c ?? $ctx->roleCode;
-                if ($base !== 'management') {
-                    $this->fail('status', 'Es un cambio de impacto alto: queda pendiente de la aprobación de gerencia.');
+                if (! $this->isManagement($current->company_id)) {
+                    $values['status'] = 'pending_management';
+
+                    return;
                 }
                 $values['management_approved_by'] = (string) auth()->id();
                 $values['management_approved_at'] = now()->toIso8601String();
@@ -687,5 +695,15 @@ class ImprovementRules extends RecordRules
         if ($to === 'implemented') {
             $values['implemented_at'] = now()->toIso8601String();
         }
+    }
+
+    /** Rol base de gerencia (también un rol propio de la cuenta creado a partir de «management»). */
+    private function isManagement(string $companyId): bool
+    {
+        $ctx = app(\App\Core\Tenancy\CompanyContext::class);
+        $base = DB::selectOne('select coalesce(base_role_code, code) as c from roles where code = ? and (account_id is null or account_id = (select account_id from companies where id = ?)) limit 1',
+            [$ctx->roleCode, $companyId])?->c ?? $ctx->roleCode;
+
+        return $base === 'management';
     }
 }
