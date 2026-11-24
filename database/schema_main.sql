@@ -2548,6 +2548,37 @@ COMMENT ON COLUMN measurements.idempotency_key IS 'clave idempotente generada po
 COMMENT ON COLUMN measurements.client_created_at IS 'instante de captura en el dispositivo';
 COMMENT ON COLUMN measurements.version IS 'versión para control optimista y conflictos offline';
 
+-- MAG · worker_exposures (company): marca de exposición del trabajador sobre el límite (RN-MAG-06), para EMO y VMD; sin datos médicos
+CREATE TABLE IF NOT EXISTS worker_exposures (
+  id uuid NOT NULL DEFAULT uuidv7(),
+  company_id uuid NOT NULL REFERENCES companies(id),
+  worker_id uuid NOT NULL,
+  measurement_id uuid NOT NULL,
+  monitoring_point_id uuid NOT NULL,
+  agent_type_id uuid NOT NULL REFERENCES agent_types(id),
+  site_id uuid,
+  area_id uuid,
+  position_id uuid,
+  level text NOT NULL DEFAULT 'exceeds_limit' CHECK (level IN ('exceeds_limit', 'action_level')),
+  ratio_to_limit numeric(10,4),
+  personal boolean NOT NULL DEFAULT false,
+  measured_at timestamptz NOT NULL,
+  valid_from date NOT NULL,
+  valid_until date NOT NULL,
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'void')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (id),
+  CONSTRAINT uq_worker_exposures_measurement_worker UNIQUE (company_id, measurement_id, worker_id),
+  CONSTRAINT fk_worker_exposures_worker_id FOREIGN KEY (company_id, worker_id) REFERENCES workers (company_id, id),
+  CONSTRAINT fk_worker_exposures_measurement_id FOREIGN KEY (company_id, measurement_id) REFERENCES measurements (company_id, id),
+  CONSTRAINT fk_worker_exposures_monitoring_point_id FOREIGN KEY (company_id, monitoring_point_id) REFERENCES monitoring_points (company_id, id),
+  CHECK (valid_until >= valid_from)
+);
+COMMENT ON TABLE worker_exposures IS '[MAG] Marca de exposición del trabajador sobre el límite (RN-MAG-06), para EMO y VMD; sin datos médicos';
+CREATE INDEX IF NOT EXISTS idx_worker_exposures_worker ON worker_exposures (company_id, worker_id, valid_until);
+CREATE INDEX IF NOT EXISTS idx_worker_exposures_agent ON worker_exposures (company_id, agent_type_id, valid_until);
+
 -- PSI · ergonomic_assessments (company)
 CREATE TABLE IF NOT EXISTS ergonomic_assessments (
   id uuid NOT NULL DEFAULT uuidv7(),
@@ -4635,7 +4666,7 @@ CREATE TABLE IF NOT EXISTS medical_exam_orders (
   id uuid NOT NULL DEFAULT uuidv7(),
   company_id uuid NOT NULL,
   worker_id uuid NOT NULL,
-  exam_type text NOT NULL CHECK (exam_type IN ('pre_employment', 'periodic', 'exit', 'return_to_work', 'position_change', 'other')),
+  exam_type text NOT NULL CHECK (exam_type IN ('pre_employment', 'periodic', 'exit', 'return_to_work', 'position_change', 'exposure', 'other')),
   position_id uuid,
   protocol_code text,
   clinic_name text,
@@ -14552,6 +14583,11 @@ ALTER TABLE measurements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE measurements FORCE ROW LEVEL SECURITY;
 CREATE POLICY rls_measurements_company ON measurements TO escudo_app USING (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid) WITH CHECK (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid);
 GRANT SELECT, INSERT, UPDATE ON measurements TO escudo_app;
+
+ALTER TABLE worker_exposures ENABLE ROW LEVEL SECURITY;
+ALTER TABLE worker_exposures FORCE ROW LEVEL SECURITY;
+CREATE POLICY rls_worker_exposures_company ON worker_exposures TO escudo_app USING (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid) WITH CHECK (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid);
+GRANT SELECT, INSERT, UPDATE ON worker_exposures TO escudo_app;
 
 ALTER TABLE ergonomic_assessments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ergonomic_assessments FORCE ROW LEVEL SECURITY;

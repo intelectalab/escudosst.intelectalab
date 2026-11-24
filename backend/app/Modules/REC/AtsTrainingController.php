@@ -13,7 +13,7 @@ use Illuminate\Support\Str;
 /**
  * GET /ats/forms/{id}/training-check — M-ATS RN-ATS-03: para cada participante, las capacitaciones exigidas que no tiene vigentes:
  * las del PETS vinculado a la tarea (versión vigente) y los temas obligatorios de su puesto en el programa de capacitación aprobado.
- * Con ats_block_untrained activo, quien no las tiene no puede firmar (lo aplica la firma en la app del trabajador).
+ * Con ats_block_untrained activo, quien no las tiene no puede firmar (lo aplica la firma en la app del trabajador y la de la ficha).
  */
 class AtsTrainingController extends Controller
 {

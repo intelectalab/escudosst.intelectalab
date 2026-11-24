@@ -27,6 +27,7 @@ import { QuestionOptions } from "@/components/addons/AulLearner";
 import { RiskMapEditor } from "./RiskMapEditor";
 import { InvTreeWithGuide } from "@/components/addons/IaaGuided";
 import { EmoClinical } from "@/components/modules/EmoClinical";
+import { EmoOrderExposures } from "@/components/modules/EmoProtocols";
 import { DocFicha } from "@/components/modules/DocModule";
 import { InvScatPanel } from "@/components/modules/InvScat";
 import { PetSteps } from "@/components/modules/PetSteps";
@@ -192,6 +193,7 @@ function RecordActionsInner({
   if (res.table === "medical_exam_orders")
     return (
       <div className="space-y-3">
+        <EmoOrderExposures orderId={row.id} />
         <EmoClinicalForRole orderId={row.id} readOnly={readOnly} onSaved={onChanged} />
         {!readOnly && <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />}
       </div>

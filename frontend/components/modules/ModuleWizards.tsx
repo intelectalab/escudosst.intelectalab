@@ -12,6 +12,7 @@ import { AccWizard } from "./AccWizard";
 import { PtrWizard } from "./PtrWizard";
 import { TrbImport } from "./TrbImport";
 import { ReportButton } from "./CtrExtras";
+import { PtrBoard } from "./PtrBoard";
 
 const ACTIONS: Record<string, { table: string; label: string; icon: string }> = {
   ACC: { table: "sst_events", label: "Registrar evento", icon: "alert" },
@@ -52,6 +53,8 @@ export function ModuleWizards({ code, readOnly }: { code: string; readOnly: bool
           )}
         </div>
       )}
+      {/* M-PTR SCR-PTR-01: tablero de permisos activos por sede con su mapa. */}
+      {code === "PTR" && <PtrBoard key={`b${version}`} />}
       {open && code === "ACC" && <AccWizard onClose={close} onDone={done} />}
       {open && code === "PTR" && <PtrWizard onClose={close} onDone={done} />}
       {open && code === "TRB" && <TrbImport onClose={close} onDone={done} />}

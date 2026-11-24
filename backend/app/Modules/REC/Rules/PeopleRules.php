@@ -164,7 +164,12 @@ class PeopleRules extends RecordRules
             DB::update('update fitness_status set is_current = false where worker_id = ? and id <> ? and is_current', [$f->worker_id, $id]);
             if ($f->medical_exam_order_id) {
                 DB::update("update medical_exam_orders set status = 'fitness_issued' where id = ? and status <> 'cancelled'", [$f->medical_exam_order_id]);
+                DocsFieldRules::emoOrderExecuted((string) $f->medical_exam_order_id);
             }
+        }
+        // M-PAS RN-PAS-05: el examen realizado ejecuta la actividad del programa con regla automática de EMO.
+        if ($res['table'] === 'medical_exam_orders' && in_array($values['status'] ?? null, ['attended', 'results_received', 'fitness_issued'], true)) {
+            DocsFieldRules::emoOrderExecuted($id);
         }
         // M-PTR §10: aprobación pendiente (a quien tiene el rol del primer paso) y permiso suspendido (al solicitante y SST).
         if ($res['table'] === 'work_permits' && ($values['status'] ?? null) && $values['status'] !== $current?->status) {

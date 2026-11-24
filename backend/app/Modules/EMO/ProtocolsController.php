@@ -19,6 +19,8 @@ use Illuminate\Support\Str;
  *                                    IPERC vigente del puesto y estado de aptitud de sus trabajadores (vigente, por vencer, vencida, sin EMO)
  *  POST  /emo/protocols              crear o editar un protocolo {id?, code, name, exams[], exposures?, notes?}
  *  PATCH /emo/positions/{id}         asignar al puesto {requires_emo, emo_protocol_code, emo_periodicity_param}
+ *  GET   /emo/orders/{order}/exposures  SCR-EMO-02: protocolo del puesto y exposiciones vigentes del trabajador medidas en MAG (RN-MAG-06)
+ * Los puestos traen también mag_exposures: agentes con marca de exposición vigente en sus trabajadores (MAG).
  * Las órdenes periódicas se generan solas cada día para los puestos que exigen EMO (SstAlerts) con el protocolo del puesto.
  */
 class ProtocolsController extends Controller
@@ -60,8 +62,43 @@ class ProtocolsController extends Controller
                    join iperc_matrices m on m.id = v.iperc_matrix_id and m.current_version_id = v.id and m.deleted_at is null
                   where r.deleted_at is null and coalesce(r.position_id, m.position_id) = ? order by r.hazard limit 15", [$p->id]), 'hazard');
         }
+        // Exposiciones medidas (MAG, RN-MAG-06): agentes con marca vigente sobre el límite en trabajadores del puesto y cuántos son.
+        $mag = [];
+        foreach (\App\Modules\REC\WorkerExposures::active() as $e) {
+            if ($e->current_position_id) {
+                $mag[$e->current_position_id][$e->agent] = ($mag[$e->current_position_id][$e->agent] ?? 0) + 1;
+            }
+        }
+        foreach ($positions as $p) {
+            $p->mag_exposures = array_map(fn ($a, $n) => ['agent' => $a, 'workers' => $n], array_keys($mag[$p->id] ?? []), array_values($mag[$p->id] ?? []));
+        }
 
         return response()->json(['data' => ['protocols' => $protocols, 'positions' => $positions, 'periodicity' => $months, 'notice_days' => $notice]]);
+    }
+
+    /**
+     * SCR-EMO-02: protocolo del puesto del trabajador de la orden (exámenes incluidos) y sus exposiciones vigentes medidas en MAG
+     * (agente, nivel, medición y vigencia; RN-MAG-06). Sin datos clínicos.
+     */
+    public function orderExposures(string $order): JsonResponse
+    {
+        $this->can('emo.medical_exam_orders.read');
+        $o = Str::isUuid($order) ? DB::selectOne('select o.id, o.worker_id, o.exam_type, coalesce(o.protocol_code, ps.emo_protocol_code) as protocol_code, ps.name as position
+                                                    from medical_exam_orders o join workers w on w.id = o.worker_id left join positions ps on ps.id = coalesce(o.position_id, w.current_position_id)
+                                                   where o.id = ? and o.deleted_at is null', [$order]) : null;
+        if (! $o) {
+            throw ApiProblem::notFound('La orden no existe.');
+        }
+        $protocol = $o->protocol_code ? DB::selectOne('select code, name, exams, exposures from emo_protocols where lower(code) = lower(?) and deleted_at is null', [$o->protocol_code]) : null;
+        if ($protocol) {
+            $protocol->exams = json_decode((string) $protocol->exams, true) ?: [];
+        }
+        $exposures = array_map(fn ($e) => ['agent' => $e->agent, 'agent_family' => $e->agent_family, 'point' => $e->point, 'site' => $e->site, 'level' => $e->level,
+            'ratio_to_limit' => $e->ratio_to_limit === null ? null : (float) $e->ratio_to_limit, 'value' => $e->value === null ? null : (float) $e->value, 'unit' => $e->unit,
+            'personal' => (bool) $e->personal, 'measured_at' => $e->measured_at, 'valid_until' => $e->valid_until, 'measurement_id' => $e->measurement_id],
+            \App\Modules\REC\WorkerExposures::active(['worker_id' => $o->worker_id]));
+
+        return response()->json(['data' => ['order_id' => $o->id, 'exam_type' => $o->exam_type, 'position' => $o->position, 'protocol' => $protocol, 'exposures' => $exposures]]);
     }
 
     public function save(Request $request): JsonResponse

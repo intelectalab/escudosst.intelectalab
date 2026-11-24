@@ -21,8 +21,8 @@ use Illuminate\Support\Str;
  *                                       registros (límite vigente, cociente y nivel de acción por RN-MAG-01/02/04; acción correctiva si
  *                                       supera el límite, RN-MAG-03)
  *  GET  /mag/trend?point_id=&agent_type_id=  SCR-MAG-05: mediciones del punto en el tiempo con el límite y el nivel de acción
- *  GET  /mag/exposed                     RN-MAG-06: trabajadores expuestos sobre el límite (mediciones aprobadas del periodo) para la vigilancia
- *                                        médica: la medición personal o los trabajadores activos del puesto (o del área) del punto
+ *  GET  /mag/exposed                     RN-MAG-06: trabajadores expuestos sobre el límite para la vigilancia médica: marcas vigentes de
+ *                                        worker_exposures (la medición personal o los trabajadores activos del puesto, o del área, del punto)
  *  GET  /mag/gaps                        RN-MAG-07: puntos activos nunca medidos o sin medición aprobada en monitoring_frequency_months
  */
 class MeasurementsController extends Controller
@@ -174,16 +174,9 @@ class MeasurementsController extends Controller
             throw \App\Core\Http\ApiProblem::forbidden('Tu rol no ve el monitoreo de agentes.');
         }
         $months = (int) LegalParams::number('monitoring_frequency_months', 12);
-        $rows = DB::select(
-            "select distinct on (w.id, m.agent_type_id) w.id as worker_id, w.full_name, ps.name as position, ar.name as area, a.name as agent, p.name as point,
-                    m.measured_at, m.value, m.unit, m.ratio_to_limit, m.worker_id is not null as personal
-               from measurements m join monitoring_points p on p.id = m.monitoring_point_id left join agent_types a on a.id = m.agent_type_id
-               join workers w on w.deleted_at is null and w.status = 'active'
-                    and (w.id = m.worker_id or (m.worker_id is null and ((p.position_id is not null and w.current_position_id = p.position_id)
-                         or (p.position_id is null and p.area_id is not null and w.current_area_id = p.area_id))))
-               left join positions ps on ps.id = w.current_position_id left join areas ar on ar.id = w.current_area_id
-              where m.deleted_at is null and m.status = 'approved' and m.result = 'exceeds_limit' and m.measured_at > now() - make_interval(months => ?::int)
-              order by w.id, m.agent_type_id, m.measured_at desc", [$months]);
+        // Marcas vigentes de exposición (worker_exposures): las mismas que usan EMO y VMD.
+        $rows = WorkerExposures::active();
+        usort($rows, fn ($x, $y) => strcmp((string) $x->full_name, (string) $y->full_name));
 
         return response()->json(['data' => ['months' => $months, 'workers' => $rows]]);
     }

@@ -514,6 +514,12 @@ class ImprovementRules extends RecordRules
         }
         // RN-MAG-03: una medición sobre el límite crea su acción correctiva (prioridad alta) para el responsable de la campaña.
         if ($res['table'] === 'measurements') {
+            // RN-MAG-06 / §12: marca de exposición de los trabajadores (para EMO y VMD), al día con el estado de la medición.
+            \App\Modules\REC\WorkerExposures::sync($id);
+            // M-PAS RN-PAS-05: la medición aprobada ejecuta la actividad del programa con regla automática de MAG.
+            if (($values['status'] ?? null) === 'approved' && DB::selectOne("select 1 as ok from measurements where id = ? and status = 'approved'", [$id])) {
+                DocsFieldRules::programExecutionFor('measurements', $id, 'MAG');
+            }
             $m = DB::selectOne('select m.*, c.responsible_user_id, p.site_id, p.area_id, p.name as point, a.name as agent from measurements m
                                   left join monitoring_campaigns c on c.id = m.campaign_id left join monitoring_points p on p.id = m.monitoring_point_id
                                   left join agent_types a on a.id = m.agent_type_id where m.id = ?', [$id]);
@@ -565,6 +571,13 @@ class ImprovementRules extends RecordRules
         // Sin límite comparable, el resultado lo indica quien registra la medición.
         if ($res['table'] === 'measurements' && DB::selectOne('select result from measurements where id = ?', [$id])?->result === null) {
             $this->fail('result', 'Indica el resultado de la medición (no hay un límite de exposición comparable).');
+        }
+    }
+
+    public function afterDelete(array $res, object $current): void
+    {
+        if ($res['table'] === 'measurements') {
+            \App\Modules\REC\WorkerExposures::sync($current->id);
         }
     }
 

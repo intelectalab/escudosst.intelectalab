@@ -137,6 +137,8 @@ final class KpiService
             'baseline_score' => ['LBA', 'baseline_assessments', ['status' => 'completed,approved']],
             'ppe_compliance' => ['EPP', 'ppe_deliveries', ['status' => 'delivered'] + $site],
             'talk_coverage' => ['CH5', 'safety_talks', []],
+            'ats_signed_before_start' => ['ATS', 'ats_forms', ['status' => 'signed,in_execution,closed,not_closed'] + $period('performed_on') + $site],
+            'ats_late_signatures' => ['ATS', 'ats_participants', ['late_signature' => 'true']],
             'emo_valid' => ['EMO', 'fitness_status', ['is_current' => 'true']],
             'events_notified_on_time' => ['ACC', 'event_notifications', $period('deadline_at')],
             'frequency_index', 'severity_index', 'accident_rate' => ['ACC', 'sst_events', ['event_type' => 'disabling_accident,fatal_accident'] + $period('occurred_at') + $site],
@@ -195,6 +197,18 @@ final class KpiService
                                                           and k.talk_on = ?::date and (t.signature_id is not null or t.method <> 'signature'))) as num, count(*) as den
                    from workers w where w.deleted_at is null and w.status = 'active'".$this->siteSql('w.current_site_id').$this->areaSql('w.current_area_id'), [$this->today],
                 'trabajadores activos con charla firmada hoy'),
+            // M-ATS RN-ATS-02 / §11: ATS firmados del periodo en que ningún participante firmó tarde (después de iniciar o de firmado el ATS).
+            'ats_signed_before_start_pct' => $this->ratio(
+                "select count(*) filter (where not exists (select 1 from ats_participants p where p.ats_form_id = a.id and p.deleted_at is null and p.late_signature)) as num,
+                        count(*) as den
+                   from ats_forms a where a.deleted_at is null and a.status in ('signed','in_execution','closed','not_closed') and a.performed_on between ? and ?"
+                   .$this->siteSql('a.site_id').$this->areaSql('a.area_id'), [$this->from, $this->to],
+                'ATS firmados por todos antes de iniciar el trabajo'),
+            'ats_late_signatures_count' => $this->count(
+                "select count(*) filter (where p.late_signature) as num, count(*) as den from ats_participants p join ats_forms a on a.id = p.ats_form_id
+                  where p.deleted_at is null and a.deleted_at is null and p.signed_at is not null and a.performed_on between ? and ?"
+                  .$this->siteSql('a.site_id').$this->areaSql('a.area_id'), [$this->from, $this->to],
+                'firmas de ATS registradas tarde'),
             'ppe_compliance_pct' => $this->ratio(
                 "with req as (select w.id as worker_id, r.ppe_item_id from workers w join ppe_position_requirements r on r.position_id = w.current_position_id and r.deleted_at is null and r.is_mandatory
                                where w.deleted_at is null and w.status = 'active'".$this->siteSql('w.current_site_id').$this->areaSql('w.current_area_id').")
@@ -344,7 +358,7 @@ final class KpiService
     private array $areas = [];
 
     /** Indicadores que se pueden acotar a un área (tienen el área en sus registros); los demás no aplican para el área. */
-    private const AREA_KPIS = ['talk_coverage_pct', 'inspection_compliance_pct', 'corrective_actions_overdue_count', 'corrective_actions_on_time_pct', 'ppe_compliance_pct', 'emo_valid_pct',
+    private const AREA_KPIS = ['talk_coverage_pct', 'ats_signed_before_start_pct', 'ats_late_signatures_count', 'inspection_compliance_pct', 'corrective_actions_overdue_count', 'corrective_actions_on_time_pct', 'ppe_compliance_pct', 'emo_valid_pct',
         'events_notified_on_time_pct', 'substandard_reports_count'];
 
     /** @param list<string> $areas */

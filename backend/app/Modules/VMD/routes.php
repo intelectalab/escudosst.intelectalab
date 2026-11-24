@@ -8,6 +8,8 @@ Route::middleware(['auth:sanctum', 'company', 'module:VMD'])->prefix('vmd')->gro
     Route::post('reauth', [VmdController::class, 'reauth'])->middleware('throttle:10,1');
     Route::get('programs', [VmdController::class, 'programs']);
     Route::get('indicators', [VmdController::class, 'indicators']);
+    Route::get('exposures', [VmdController::class, 'exposures']);
+    Route::get('programs/{id}/exposed', [VmdController::class, 'programExposed'])->whereUuid('id');
     Route::post('programs', [VmdController::class, 'createProgram']);
     Route::patch('programs/{id}', [VmdController::class, 'updateProgram'])->whereUuid('id');
     Route::get('cases', [VmdController::class, 'cases']);

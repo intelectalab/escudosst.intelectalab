@@ -10,7 +10,8 @@ import { Card } from "./Summary";
 
 type Protocol = { id: string; code: string; name: string; exams: string[]; exposures: string | null; notes: string | null };
 type Position = { id: string; code: string | null; name: string; area: string | null; requires_emo: boolean | null; emo_protocol_code: string | null; emo_periodicity_param: string | null;
-  periodicity_months: number | null; workers: number; valid: number; due_soon: number; missing: number; unfit: number; exposures: string[] };
+  periodicity_months: number | null; workers: number; valid: number; due_soon: number; missing: number; unfit: number; exposures: string[];
+  mag_exposures?: { agent: string; workers: number }[] };
 type Data = { protocols: Protocol[]; positions: Position[]; periodicity: Record<string, number>; notice_days: number };
 const blank = { id: "", code: "", name: "", exams: "", exposures: "", notes: "" };
 
@@ -102,7 +103,7 @@ export function EmoProtocols({ readOnly }: { readOnly: boolean }) {
             <thead className="border-b border-line text-xs font-semibold text-muted">
               <tr><th className="px-2 py-2">Puesto</th><th className="px-2 py-2">Exige EMO</th><th className="px-2 py-2">Protocolo</th><th className="px-2 py-2">Periodicidad</th>
                 <th className="px-2 py-2 text-right">Trab.</th><th className="px-2 py-2 text-right">Vigente</th><th className="px-2 py-2 text-right">Por vencer</th>
-                <th className="px-2 py-2 text-right">Vencida o sin EMO</th><th className="px-2 py-2">Exposición en el IPERC</th></tr>
+                <th className="px-2 py-2 text-right">Vencida o sin EMO</th><th className="px-2 py-2">Exposición en el IPERC</th><th className="px-2 py-2">Medida sobre el límite (MAG)</th></tr>
             </thead>
             <tbody>
               {d.positions.map((p) => (
@@ -128,12 +129,48 @@ export function EmoProtocols({ readOnly }: { readOnly: boolean }) {
                   <td className="px-2 py-2 text-right text-amber-ink">{p.due_soon}</td>
                   <td className={`px-2 py-2 text-right ${p.missing ? "font-semibold text-bad" : ""}`}>{p.missing}</td>
                   <td className="px-2 py-2 text-xs text-muted">{p.exposures.length ? p.exposures.join(", ") : "—"}</td>
+                  <td className="px-2 py-2 text-xs">{p.mag_exposures?.length
+                    ? p.mag_exposures.map((x) => `${x.agent} (${x.workers} trab.)`).join(", ") : <span className="text-muted">—</span>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </Card>
+    </div>
+  );
+}
+
+type OrderExposure = { agent: string; point: string | null; site: string | null; ratio_to_limit: number | null; value: number | null; unit: string | null;
+  personal: boolean; measured_at: string; valid_until: string };
+type OrderExposures = { position: string | null; protocol: { code: string; name: string; exams: string[]; exposures: string | null } | null; exposures: OrderExposure[] };
+
+/**
+ * SCR-EMO-02 en la ficha de la orden: protocolo del puesto (exámenes incluidos) y exposiciones vigentes del trabajador medidas
+ * en MAG sobre el límite (RN-MAG-06). Sin datos clínicos.
+ */
+export function EmoOrderExposures({ orderId }: { orderId: string }) {
+  const [d, setD] = useState<OrderExposures | null>(null);
+  useEffect(() => {
+    api<{ data: OrderExposures }>(`/emo/orders/${orderId}/exposures`, { withCompany: true }).then((r) => setD(r.data)).catch(() => setD(null));
+  }, [orderId]);
+  if (!d) return null;
+  return (
+    <div className="rounded-lg border border-line p-3 text-sm">
+      <p className="font-semibold">Protocolo y exposiciones del trabajador</p>
+      {d.protocol ? (
+        <p className="mt-1 text-xs text-muted">Protocolo {d.protocol.code} · {d.protocol.name}{d.position ? ` (puesto ${d.position})` : ""}: {d.protocol.exams.join(", ")}</p>
+      ) : <p className="mt-1 text-xs text-muted">El puesto no tiene protocolo asignado.</p>}
+      {d.exposures.length ? (
+        <ul className="mt-2 space-y-1">
+          {d.exposures.map((e, i) => (
+            <li key={i} className="text-xs">
+              <b>{e.agent}</b> sobre el límite{e.ratio_to_limit !== null ? ` (${Math.round(e.ratio_to_limit * 100)} %)` : ""} en {e.point ?? "el punto"}{e.site ? ` · ${e.site}` : ""}
+              {e.personal ? " · medición personal" : ""} · medido el {new Date(e.measured_at).toLocaleDateString("es-PE")} · vigente hasta {new Date(`${e.valid_until}T12:00:00`).toLocaleDateString("es-PE")}
+            </li>
+          ))}
+        </ul>
+      ) : <p className="mt-2 text-xs text-muted">Sin exposiciones vigentes sobre el límite en el monitoreo de agentes.</p>}
     </div>
   );
 }

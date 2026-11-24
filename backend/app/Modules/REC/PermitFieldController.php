@@ -13,6 +13,7 @@ use Illuminate\Support\Str;
 
 /**
  * PETAR en campo y medición de gases (M-PTR SCR-PTR-03, SCR-PTR-05, RN-PTR-03, RN-PTR-06):
+ *  GET  /ptr/board                       SCR-PTR-01: permisos en curso por sede (estado, tipo, vencimiento) con coordenadas para el mapa
  *  GET  /ptr/gas-limits                  rangos permitidos de O₂, LEL, CO y H₂S (parámetros legales vigentes, a confirmar)
  *  GET  /ptr/work-permits/{id}/context   si el tipo exige gases, sus rangos y si la persona puede suspender el permiso
  *  POST /ptr/work-permits/{id}/suspend   {reason} suspende un permiso activo: quien edita permisos o un participante con
@@ -57,6 +58,51 @@ class PermitFieldController extends Controller
         $row = DB::transaction(fn () => $records->update(Registry::resource('PTR', 'work_permits'), $p->id, ['status' => 'suspended', 'suspended_reason' => mb_substr($reason, 0, 1000)]));
 
         return response()->json(['data' => $row]);
+    }
+
+    /**
+     * SCR-PTR-01 «Permisos activos»: permisos en curso (por aprobar, aprobados, activos y suspendidos) agrupados por sede, con su
+     * estado, tipo y hora de vencimiento, y las coordenadas de la sede (o del permiso) para el mapa. Respeta el alcance por sede/área.
+     */
+    public function board(): JsonResponse
+    {
+        $this->canRead();
+        $rows = DB::select(
+            "select w.id, w.code, w.status, w.valid_from, w.valid_until, w.location_text, w.work_description, w.latitude, w.longitude, w.suspended_reason,
+                    t.name as type, t.category, w.site_id, s.name as site, s.latitude as site_lat, s.longitude as site_lng, a.name as area,
+                    (w.status = 'active' and w.valid_until < now()) as overdue
+               from work_permits w left join permit_types t on t.id = w.permit_type_id left join sites s on s.id = w.site_id left join areas a on a.id = w.area_id
+              where w.deleted_at is null and w.status in ('pending_approval', 'approved', 'active', 'suspended')".\App\Core\Auth\Scope::andSql('w.site_id', 'w.area_id').'
+              order by s.name nulls last, w.valid_until nulls last');
+        $sites = [];
+        $num = fn ($v) => $v === null ? null : (float) $v;
+        foreach ($rows as $r) {
+            $k = $r->site_id ?? '-';
+            $sites[$k] ??= ['site_id' => $r->site_id, 'site' => $r->site ?? 'Sin sede', 'lat' => $num($r->site_lat), 'lng' => $num($r->site_lng), 'by_status' => [], 'by_type' => [], 'permits' => []];
+            $sites[$k]['by_status'][$r->status] = ($sites[$k]['by_status'][$r->status] ?? 0) + 1;
+            $sites[$k]['by_type'][$r->type ?? 'Sin tipo'] = ($sites[$k]['by_type'][$r->type ?? 'Sin tipo'] ?? 0) + 1;
+            $sites[$k]['permits'][] = ['id' => $r->id, 'code' => $r->code, 'status' => $r->status, 'type' => $r->type, 'area' => $r->area, 'location_text' => $r->location_text,
+                'work_description' => $r->work_description, 'valid_from' => $r->valid_from, 'valid_until' => $r->valid_until, 'overdue' => (bool) $r->overdue,
+                'suspended_reason' => $r->suspended_reason, 'lat' => $num($r->latitude), 'lng' => $num($r->longitude)];
+        }
+        foreach ($sites as &$g) {
+            // Sin coordenadas de la sede, el mapa se centra en el primer permiso con coordenadas.
+            if ($g['lat'] === null) {
+                foreach ($g['permits'] as $p) {
+                    if ($p['lat'] !== null && $p['lng'] !== null) {
+                        [$g['lat'], $g['lng']] = [$p['lat'], $p['lng']];
+                        break;
+                    }
+                }
+            }
+        }
+        unset($g);
+        $totals = [];
+        foreach ($rows as $r) {
+            $totals[$r->status] = ($totals[$r->status] ?? 0) + 1;
+        }
+
+        return response()->json(['data' => ['totals' => $totals, 'sites' => array_values($sites)]]);
     }
 
     /** Rangos de gases que aplica la regla del permiso (mismos parámetros y valores de respaldo). */

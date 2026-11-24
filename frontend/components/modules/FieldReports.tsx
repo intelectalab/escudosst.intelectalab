@@ -252,7 +252,8 @@ export function PermitReport({ id }: { id: string }) {
 type Ats = {
   company: Company;
   ats: { code: string | null; task: string; status: string; performed_on: string | null; work_location: string | null; site: string | null; area: string | null; contractor: string | null;
-    supervisor: string | null; leader: string | null; permit: string | null; procedure: string | null; required_ppe: unknown; tools_equipment: unknown; started_at: string | null; closed_at: string | null; is_high_risk: boolean };
+    supervisor: string | null; leader: string | null; permit: string | null; procedure: string | null; required_ppe: unknown; tools_equipment: unknown; started_at: string | null; closed_at: string | null; is_high_risk: boolean;
+    site_photo?: string | null };
   steps: { step_number: number; description: string; hazards: string | null; risks: string | null; controls: string | null; responsible: string | null }[];
   participants: { name: string; role: string | null; signed_at: string | null; late_signature: boolean; image: string | null }[];
   signatures: Sig[];
@@ -272,6 +273,12 @@ export function AtsReport({ id }: { id: string }) {
         <Facts rows={[["Tarea", a.task], ["Fecha", fmtD(a.performed_on)], ["Lugar", [a.site, a.area, a.work_location].filter(Boolean).join(" · ") || "—"], ["Contratista", a.contractor ?? "Personal propio"],
           ["Supervisor", a.supervisor], ["Líder de la tarea", a.leader], ["PETAR / PETS", [a.permit, a.procedure].filter(Boolean).join(" · ") || "—"], ["Alto riesgo", a.is_high_risk ? "Sí" : "No"],
           ["EPP requerido", list(a.required_ppe) || "—"], ["Herramientas y equipos", list(a.tools_equipment) || "—"], ["Inicio / cierre", `${fmtDT(a.started_at)} / ${fmtDT(a.closed_at)}`]]} />
+        {a.site_photo ? (
+          <figure className="mt-2" style={{ breakInside: "avoid" }}>
+            <img src={a.site_photo} alt="Foto del lugar de trabajo" className="max-h-64 rounded border border-gray-300 object-contain" />
+            <figcaption className="text-xs text-gray-600">Foto del lugar de trabajo</figcaption>
+          </figure>
+        ) : null}
       </Section>
       <Section n={2} title="Pasos, peligros y controles">
         <table className="w-full border-collapse text-sm">

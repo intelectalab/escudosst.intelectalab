@@ -17060,6 +17060,10 @@
        "label": "Cambio de puesto"
       },
       {
+       "value": "exposure",
+       "label": "Por exposición"
+      },
+      {
        "value": "other",
        "label": "Otro"
       }

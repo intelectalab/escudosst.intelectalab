@@ -2036,7 +2036,8 @@
   "from_date": "Desde una fecha",
   "void": "Anulación",
   "pending_management": "Pendiente de gerencia",
-  "on_source_record": "Al registrarse en el módulo origen (mismo mes, sede y área)"
+  "on_source_record": "Al registrarse en el módulo origen (mismo mes, sede y área)",
+  "exposure": "Por exposición"
  },
  "tables": {
   "absences": "Ausencias",

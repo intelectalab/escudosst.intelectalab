@@ -48,7 +48,8 @@ class ProgramRules extends RecordRules
     }
 
     /** Módulos origen que registran la ejecución automática de una actividad (RN-PAS-05). */
-    public const AUTO_SOURCES = ['INS' => 'inspección finalizada', 'SIM' => 'simulacro evaluado', 'CAP' => 'capacitación realizada'];
+    public const AUTO_SOURCES = ['INS' => 'inspección finalizada', 'SIM' => 'simulacro evaluado', 'CAP' => 'capacitación realizada',
+        'EMO' => 'examen médico ocupacional realizado', 'MAG' => 'medición de agentes aprobada'];
 
     private function activity(array $values, ?object $current): void
     {
@@ -56,7 +57,7 @@ class ProgramRules extends RecordRules
         // SCR-PAS-02 / RN-PAS-05: la regla automática necesita el módulo origen que la dispara.
         if ($this->value($values, $current, 'auto_execution_rule') === 'on_source_record'
             && ! isset(self::AUTO_SOURCES[strtoupper(trim((string) $this->value($values, $current, 'linked_module')))])) {
-            $this->fail('linked_module', 'La ejecución automática necesita el módulo vinculado: INS (inspección finalizada), SIM (simulacro evaluado) o CAP (capacitación realizada).');
+            $this->fail('linked_module', 'La ejecución automática necesita el módulo vinculado: '.implode(', ', array_map(fn ($k, $v) => "{$k} ({$v})", array_keys(self::AUTO_SOURCES), self::AUTO_SOURCES)).'.');
         }
         // La área elegida debe ser de la sede de la actividad.
         $site = $this->value($values, $current, 'site_id');

@@ -242,6 +242,12 @@ class DossierBuilder extends Controller
             if ($cr) {
                 $add('W7', "{$n}: fotocheck SST", 'FOT', 'credentials', $cr->id, $cr->status === 'active' ? 'included' : 'expired', $cr->status === 'active' ? null : 'El fotocheck está bloqueado o vencido.', $w);
             }
+            // M-PTR §11: permisos de trabajo de alto riesgo del periodo en los que participó (líder ejecutante o cuadrilla, incluido el vigía).
+            $pw = (int) $one("select count(*) as n from work_permits where deleted_at is null and status in ('active', 'closed', 'expired', 'suspended') and valid_from::date between ? and ?
+                                and (executor_leader_worker_id = ? or exists (select 1 from jsonb_array_elements(case when jsonb_typeof(crew) = 'array' then crew else '[]'::jsonb end) c
+                                                                             where c->>'worker_id' = ?::text))", [$from, $to, $w, $w])->n;
+            $add('W8', "{$n}: permisos de trabajo de alto riesgo en que participó ({$pw})", 'PTR', 'work_permits', null, $pw > 0 ? 'included' : 'not_applicable',
+                $pw > 0 ? null : 'No participó en trabajos de alto riesgo con permiso en el periodo.', $w);
         }
 
         // SCR-SUN-04: las exclusiones con motivo y el orden manual se conservan al volver a armar el expediente.

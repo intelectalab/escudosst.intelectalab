@@ -120,6 +120,8 @@ class FieldReportsController extends Controller
                 'permit' => $this->name('work_permits', $a->work_permit_id, 'code'), 'procedure' => $this->name('procedures', $a->procedure_id, "concat_ws(' · ', code, title)"),
                 'required_ppe' => json_decode((string) $a->required_ppe, true) ?: [], 'tools_equipment' => json_decode((string) $a->tools_equipment, true) ?? $a->tools_equipment,
                 'started_at' => $a->started_at, 'closed_at' => $a->closed_at, 'is_high_risk' => (bool) $a->is_high_risk,
+                // SCR-ATS-02: foto del lugar de trabajo, incrustada en el ATS impreso.
+                'site_photo' => $this->image($a->site_photo_file_id ?? null),
             ],
             'steps' => $steps,
             'participants' => $people,

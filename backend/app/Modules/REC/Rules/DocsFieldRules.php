@@ -233,12 +233,33 @@ class DocsFieldRules extends RecordRules
         'inspections' => ["(coalesce(completed_at, scheduled_on::timestamptz) at time zone 'America/Lima')::date", 'site_id', 'area_id', 'title', true],
         'drills' => ["(coalesce(executed_at, scheduled_at) at time zone 'America/Lima')::date", 'site_id', 'null::uuid', 'title', true],
         'training_sessions' => ["(starts_at at time zone 'America/Lima')::date", 'site_id', 'null::uuid', "(select t.title from trainings t where t.id = training_sessions.training_id)", false],
+        // M-PAS §12: EMO y MAG. Del EMO solo la orden de la base principal (tipo y fecha de atención; nunca datos clínicos), con la
+        // sede y el área actuales del trabajador; de MAG la medición aprobada con la sede y el área de su punto.
+        'medical_exam_orders' => ["(coalesce(attended_at, scheduled_at) at time zone 'America/Lima')::date",
+            '(select w.current_site_id from workers w where w.id = medical_exam_orders.worker_id)', '(select w.current_area_id from workers w where w.id = medical_exam_orders.worker_id)',
+            "'Examen médico ocupacional '||case exam_type when 'pre_employment' then 'preocupacional' when 'periodic' then 'periódico' when 'exit' then 'de retiro'
+                when 'return_to_work' then 'de reintegro' when 'position_change' then 'por cambio de puesto' when 'exposure' then 'por exposición' else '' end", false],
+        'measurements' => ["(measured_at at time zone 'America/Lima')::date", '(select p.site_id from monitoring_points p where p.id = measurements.monitoring_point_id)',
+            '(select p.area_id from monitoring_points p where p.id = measurements.monitoring_point_id)',
+            "(select concat_ws(' · ', a.name, p.name) from monitoring_points p left join agent_types a on a.id = measurements.agent_type_id where p.id = measurements.monitoring_point_id)", false],
     ];
+
+    /**
+     * M-PAS RN-PAS-05 con EMO: el examen realizado (orden atendida, con resultados o con aptitud registrada) cuenta como ejecución.
+     * Solo se lee la orden de la base principal: ningún dato clínico.
+     */
+    public static function emoOrderExecuted(string $orderId): void
+    {
+        $st = DB::selectOne('select status from medical_exam_orders where id = ? and deleted_at is null', [$orderId])?->status;
+        if (in_array($st, ['attended', 'results_received', 'fitness_issued'], true)) {
+            self::programExecutionFor('medical_exam_orders', $orderId, 'EMO');
+        }
+    }
 
     /**
      * RN-PAS-05: el registro origen cuenta como ejecución de la actividad del PASST (una sola vez por actividad y registro):
      *  - la actividad vinculada a mano (program_activity_id del registro), y
-     *  - las actividades con regla automática «al registrarse en el módulo origen» (SCR-PAS-02): mismo módulo vinculado,
+     *  - las actividades con regla automática «al registrarse en el módulo origen» (SCR-PAS-02; INS, SIM, CAP, EMO o MAG): mismo módulo vinculado,
      *    programa aprobado del año del registro, mes del registro entre sus meses programados y, si la actividad tiene
      *    sede o área, la misma sede o área. Si en ese mes ya tiene una ejecución automática, no se suma otra.
      * La ejecución queda pendiente de validación del Jefe SST.
@@ -503,6 +524,14 @@ class DocsFieldRules extends RecordRules
         }
         if (in_array($st, ['closed', 'cancelled'], true)) {
             $this->conflict('El ATS está cerrado: no se modifica.');
+        }
+        // RN-ATS-03: con ats_block_untrained activo, la firma cargada desde la ficha tampoco se registra si al trabajador le falta la
+        // capacitación exigida (igual que en la app del trabajador).
+        $signing = ($values['signed_at'] ?? null) || ($values['signature_id'] ?? null);
+        $worker = $participant ? $this->value($values, $current, 'worker_id') : null;
+        if ($signing && $ats && $worker && \App\Core\Support\LegalParams::flag('ats_block_untrained', false)
+            && ($miss = \App\Modules\REC\AtsTrainingController::missing((string) $ats, (string) $worker))) {
+            $this->fail(($values['signature_id'] ?? null) ? 'signature_id' : 'signed_at', 'Este trabajador no puede firmar el ATS: le falta la capacitación «'.implode('», «', $miss).'».');
         }
         if (in_array($st, ['signed', 'in_execution'], true)) {
             if (! $participant) {

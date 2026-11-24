@@ -161,6 +161,10 @@ class EmoClinicalController extends Controller
                         values (?, ?, ?, ?, ?, ?, ?, ?, now(), true, ?, ?)',
                 [$this->company(), $o->worker_id, $o->id, $fitness, $d['exam_on'], $validUntil, $restrictions, $this->uid(), $this->uid(), $this->uid()]);
             DB::update("update medical_exam_orders set status = 'fitness_issued' where id = ?", [$o->id]);
+        }
+        // M-PAS RN-PAS-05: el examen realizado ejecuta la actividad del programa con regla automática de EMO (solo la orden, sin datos clínicos).
+        \App\Modules\REC\Rules\DocsFieldRules::emoOrderExecuted((string) $o->id);
+        if ($publish) {
             if ($fid = DB::selectOne('select id from fitness_status where worker_id = ? and is_current and deleted_at is null order by created_at desc limit 1', [$o->worker_id])?->id) {
                 try {
                     \App\Modules\NOT\FichaEvents::fitness($fid, [], null);

@@ -39235,6 +39235,7 @@
      "exit",
      "return_to_work",
      "position_change",
+     "exposure",
      "other"
     ],
     "ref": null,

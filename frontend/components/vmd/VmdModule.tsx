@@ -12,7 +12,11 @@ import { MedReauth } from "@/components/modules/MedicalGate";
 import { Modal } from "@/components/ui/Modal";
 import { RefSelect } from "@/components/records/ModuleRecords";
 
-type Program = { id: string; code: string; name: string; target_risk: string; description: string | null; protocol: string | null; status: string; open_cases: number; overdue: number };
+type Program = { id: string; code: string; name: string; target_risk: string; description: string | null; protocol: string | null; status: string; open_cases: number; overdue: number;
+  agent_type_code?: string | null; target_positions?: string[]; exposed_workers?: number; exposed_without_case?: number };
+type AgentExposure = { agent_code: string; agent: string; agent_family: string; workers: number; positions: { id: string; name: string | null }[] };
+type ProgramExposed = { worker_id: string; worker: string; position: string | null; area: string | null; agent: string; ratio_to_limit: number | null; measured_at: string;
+  valid_until: string; has_open_case: boolean };
 type Case = {
   id: string; program_id: string; program: string; worker_id: string; worker: string; document_masked: string | null; opened_on: string; reason: string | null;
   risk_classification: "low" | "medium" | "high" | null; next_control_on: string | null; closed_on: string | null; status: string; overdue: boolean; closure_reason?: string | null;
@@ -39,6 +43,8 @@ export function VmdModule({ readOnly }: { readOnly: boolean }) {
   const [newProgram, setNewProgram] = useState(false);
   const [newCase, setNewCase] = useState(false);
   const [openCase, setOpenCase] = useState<string | null>(null);
+  const [exposedOf, setExposedOf] = useState<Program | null>(null);
+  const [caseWorker, setCaseWorker] = useState<{ program_id: string; worker_id: string } | null>(null);
 
   // Llamada médica: lleva la clave de re-autenticación; si venció, se vuelve a pedir la contraseña y el código.
   const med = useCallback(
@@ -108,14 +114,21 @@ export function VmdModule({ readOnly }: { readOnly: boolean }) {
         {programs?.length === 0 && <p className="text-sm text-muted">Aún no hay programas. Crea el primero (por ejemplo, conservación auditiva para puestos con ruido).</p>}
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {programs?.map((p) => (
-            <button key={p.id} onClick={() => setFilter({ program_id: p.id, status: "open,in_follow_up" })}
-              className={`rounded-xl border p-4 text-left hover:border-brand ${filter.program_id === p.id ? "border-brand ring-2 ring-brand/30" : "border-line"}`}>
-              <p className="text-xs text-muted">{p.code} · {RISKS[p.target_risk] ?? p.target_risk}{p.status === "closed" ? " · cerrado" : ""}</p>
-              <p className="font-semibold">{p.name}</p>
-              <p className="mt-1 text-sm">
-                <b>{p.open_cases}</b> casos abiertos{Number(p.overdue) > 0 && <span className="text-bad"> · {p.overdue} con control vencido</span>}
-              </p>
-            </button>
+            <div key={p.id} className={`rounded-xl border p-4 hover:border-brand ${filter.program_id === p.id ? "border-brand ring-2 ring-brand/30" : "border-line"}`}>
+              <button onClick={() => setFilter({ program_id: p.id, status: "open,in_follow_up" })} className="block w-full text-left">
+                <p className="text-xs text-muted">{p.code} · {RISKS[p.target_risk] ?? p.target_risk}{p.status === "closed" ? " · cerrado" : ""}</p>
+                <p className="font-semibold">{p.name}</p>
+                <p className="mt-1 text-sm">
+                  <b>{p.open_cases}</b> casos abiertos{Number(p.overdue) > 0 && <span className="text-bad"> · {p.overdue} con control vencido</span>}
+                </p>
+              </button>
+              {(p.agent_type_code || (p.target_positions?.length ?? 0) > 0) && (
+                <p className="mt-1 text-xs">
+                  {p.exposed_workers ?? 0} expuestos vigentes (monitoreo){(p.exposed_without_case ?? 0) > 0 && <span className="text-amber-ink"> · {p.exposed_without_case} sin caso</span>}
+                  {(p.exposed_workers ?? 0) > 0 && <button className="ml-2 text-brand underline" onClick={() => setExposedOf(p)}>Ver expuestos</button>}
+                </p>
+              )}
+            </div>
           ))}
         </div>
       </section>
@@ -163,6 +176,12 @@ export function VmdModule({ readOnly }: { readOnly: boolean }) {
 
       {newProgram && <ProgramForm med={med} onClose={() => setNewProgram(false)} onSaved={() => { setNewProgram(false); load(); }} />}
       {newCase && <CaseForm med={med} programs={active} preset={filter.program_id} onClose={() => setNewCase(false)} onSaved={() => { setNewCase(false); load(); }} />}
+      {exposedOf && (
+        <ExposedList med={med} program={exposedOf} readOnly={readOnly || exposedOf.status !== "active"} onClose={() => setExposedOf(null)}
+          onOpenCase={(w) => { setCaseWorker({ program_id: exposedOf.id, worker_id: w }); setExposedOf(null); }} />
+      )}
+      {caseWorker && <CaseForm med={med} programs={active} preset={caseWorker.program_id} presetWorker={caseWorker.worker_id}
+        onClose={() => setCaseWorker(null)} onSaved={() => { setCaseWorker(null); load(); }} />}
       {openCase && <CaseDetail id={openCase} med={med} readOnly={readOnly} onClose={() => setOpenCase(null)} onChanged={load} />}
     </div>
   );
@@ -178,14 +197,49 @@ function Reauth({ onOk }: { onOk: (id: string, minutes: number) => void }) {
   );
 }
 
+/** Expuestos vigentes del programa (monitoreo de agentes) y si ya tienen caso; desde aquí se abre el caso del que falta. */
+function ExposedList({ med, program, readOnly, onClose, onOpenCase }: { med: Med; program: Program; readOnly: boolean; onClose: () => void; onOpenCase: (workerId: string) => void }) {
+  const [rows, setRows] = useState<ProgramExposed[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    med<{ data: ProgramExposed[] }>(`/vmd/programs/${program.id}/exposed`).then((r) => setRows(r.data)).catch((e: ApiError) => setError(e.detail ?? e.title));
+  }, [med, program.id]);
+  return (
+    <Modal title={`Expuestos: ${program.name}`} onClose={onClose} footer={<Button onClick={onClose}>Cerrar</Button>}>
+      {error && <p className="text-bad">{error}</p>}
+      {rows?.length === 0 && <p className="text-sm text-muted">No hay expuestos vigentes para este programa.</p>}
+      <ul className="divide-y divide-line text-sm">
+        {rows?.map((r, i) => (
+          <li key={`${r.worker_id}-${i}`} className="flex flex-wrap items-center justify-between gap-2 py-2">
+            <span>
+              <b>{r.worker}</b>{r.position ? ` · ${r.position}` : ""}
+              <span className="block text-xs text-muted">
+                {r.agent} sobre el límite{r.ratio_to_limit !== null ? ` (${Math.round(r.ratio_to_limit * 100)} %)` : ""} · medido el {d(r.measured_at)} · vigente hasta {d(r.valid_until)}
+              </span>
+            </span>
+            {r.has_open_case ? <span className="text-xs text-ok">Con caso abierto</span>
+              : !readOnly && <Button onClick={() => onOpenCase(r.worker_id)}>Abrir caso</Button>}
+          </li>
+        ))}
+      </ul>
+    </Modal>
+  );
+}
+
 function ProgramForm({ med, onClose, onSaved }: { med: Med; onClose: () => void; onSaved: () => void }) {
-  const [f, setF] = useState({ code: "", name: "", target_risk: "noise", description: "", protocol: "" });
+  const [f, setF] = useState({ code: "", name: "", target_risk: "noise", description: "", protocol: "", agent_type_code: "", target_positions: [] as string[] });
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState(false);
+  const [agents, setAgents] = useState<AgentExposure[]>([]);
+  // «El médico define programas a partir de exposiciones (MAG/IPERC)»: agentes medidos sobre el límite con sus puestos.
+  useEffect(() => {
+    api<{ data: AgentExposure[] }>("/vmd/exposures", { withCompany: true }).then((r) => setAgents(r.data)).catch(() => setAgents([]));
+  }, []);
+  const agent = agents.find((a) => a.agent_code === f.agent_type_code);
   async function save() {
     setBusy(true);
     try {
-      await med("/vmd/programs", { method: "POST", body: f });
+      await med("/vmd/programs", { method: "POST", body: { ...f, agent_type_code: f.agent_type_code || null } });
       onSaved();
     } catch (e) {
       setErrors(e instanceof ApiError ? (e.errors ?? { name: [e.detail ?? e.title] }) : {});
@@ -203,14 +257,34 @@ function ProgramForm({ med, onClose, onSaved }: { med: Med; onClose: () => void;
           </select>
         </FormField>
         <div className="sm:col-span-2"><FormField label="Nombre" error={errors.name?.[0]}><input className="filter-control w-full" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Conservación auditiva" /></FormField></div>
+        <div className="sm:col-span-2">
+          <FormField label="Exposición medida (monitoreo de agentes)" error={errors.agent_type_code?.[0] ?? errors.target_positions?.[0]}>
+            <select className="filter-control w-full" value={f.agent_type_code}
+              onChange={(e) => setF({ ...f, agent_type_code: e.target.value, target_positions: agents.find((a) => a.agent_code === e.target.value)?.positions.map((x) => x.id) ?? [] })}>
+              <option value="">Sin exposición vinculada</option>
+              {agents.map((a) => <option key={a.agent_code} value={a.agent_code}>{a.agent} · {a.workers} expuestos</option>)}
+            </select>
+          </FormField>
+          {agent && agent.positions.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-3 text-sm">
+              {agent.positions.map((x) => (
+                <label key={x.id} className="flex items-center gap-1">
+                  <input type="checkbox" checked={f.target_positions.includes(x.id)}
+                    onChange={(e) => setF({ ...f, target_positions: e.target.checked ? [...f.target_positions, x.id] : f.target_positions.filter((y) => y !== x.id) })} />
+                  {x.name ?? "Puesto"}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="sm:col-span-2"><FormField label="Protocolo (exámenes y frecuencia)"><textarea className="filter-control w-full" rows={3} value={f.protocol} onChange={(e) => setF({ ...f, protocol: e.target.value })} placeholder="Audiometría anual; control a los 6 meses si hay caída." /></FormField></div>
       </div>
     </Modal>
   );
 }
 
-function CaseForm({ med, programs, preset, onClose, onSaved }: { med: Med; programs: Program[]; preset?: string; onClose: () => void; onSaved: () => void }) {
-  const [f, setF] = useState({ program_id: preset ?? programs[0]?.id ?? "", worker_id: "", reason: "", risk_classification: "medium", next_control_on: "" });
+function CaseForm({ med, programs, preset, presetWorker, onClose, onSaved }: { med: Med; programs: Program[]; preset?: string; presetWorker?: string; onClose: () => void; onSaved: () => void }) {
+  const [f, setF] = useState({ program_id: preset ?? programs[0]?.id ?? "", worker_id: presetWorker ?? "", reason: presetWorker ? "Expuesto sobre el límite en el monitoreo de agentes" : "", risk_classification: "medium", next_control_on: "" });
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

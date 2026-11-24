@@ -54,6 +54,14 @@ final class RecordsService
 
     public const SST_ROLES = ['sst_manager', 'sst_supervisor', 'consultant'];
 
+    /**
+     * M-FIR RN-FIR-03: campos que acompañan a una transición de estado y no cuentan como edición del registro firmado
+     * (tabla => «origen>destino», con * para cualquier origen => campos). M-PTR RN-PTR-06: suspender con su motivo y reanudar con la nueva medición de gases.
+     */
+    private const TRANSITION_FIELDS = [
+        'work_permits' => ['*>suspended' => ['suspended_reason'], 'suspended>active' => ['gas_measurements', 'activated_at']],
+    ];
+
     /** Campos de la tabla que el rol activo no puede ver (ni filtrar ni cambiar). */
     public static function reservedFields(string $table): array
     {
@@ -258,7 +266,12 @@ final class RecordsService
         // M-FIR RN-FIR-03: con todas sus firmas completas el registro queda bloqueado (solo puede seguir su flujo de estados).
         // Los datos que pone el propio flujo de estados (quién aprobó, cuándo se publicó o cerró) no cuentan como edición.
         $stamps = ['approved_by', 'approved_at', 'published_at', 'closed_by', 'closed_at', 'obsoleted_at', 'effective_on'];
-        if (array_diff(array_keys($values), ['status', 'effective_on']) !== [] || array_diff(array_keys($extra), $stamps) !== []) {
+        // Los datos propios de una transición permitida tampoco: M-PTR RN-PTR-06, el permiso firmado siempre se puede suspender (con su
+        // motivo) y reanudar (con la nueva medición de gases).
+        $to = $values['status'] ?? null;
+        $map = self::TRANSITION_FIELDS[$res['table']] ?? [];
+        $transition = $to && $to !== ($current->status ?? null) ? ($map[($current->status ?? '').'>'.$to] ?? $map['*>'.$to] ?? []) : [];
+        if (array_diff(array_keys($values), ['status', 'effective_on'], $transition) !== [] || array_diff(array_keys($extra), $stamps) !== []) {
             $this->assertNotFullySigned($res['table'], $id);
         }
         $this->checkUniques($res, $values, $current);
