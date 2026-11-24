@@ -55,12 +55,7 @@ class HealthController extends Controller
             $this->queue(),
             $this->failedJobs(),
             $this->mail(),
-            [
-                'key' => 'whatsapp', 'name' => 'WhatsApp', 'group' => 'comms', 'icon' => 'mail', 'status' => 'off',
-                'detail' => 'Pendiente: falta elegir el proveedor de WhatsApp. Mientras tanto los avisos llegan por correo.',
-                'help' => 'Para enviar avisos y alertas por WhatsApp.',
-                'fix' => 'Nada en el panel. Cuando se elija el proveedor, el equipo técnico conecta su cuenta en el servidor.',
-            ],
+            $this->whatsapp(),
             $this->backups(),
             [
                 'key' => 'sunat', 'name' => 'Facturación electrónica (OSE)', 'group' => 'comms', 'icon' => 'file', 'status' => 'off',
@@ -238,6 +233,24 @@ class HealthController extends Controller
             'fix' => 'Ver el error en la lista de abajo y corregir la causa; luego se pueden reintentar.',
             'value' => (int) $r->total,
         ];
+    }
+
+    /** WhatsApp según «Proveedores y claves»: encendido solo con la API Cloud de Meta en vivo. */
+    private function whatsapp(): array
+    {
+        $base = ['key' => 'whatsapp', 'name' => 'WhatsApp', 'group' => 'comms', 'icon' => 'mail', 'help' => 'Para enviar avisos y alertas por WhatsApp.'];
+        try {
+            $p = \App\Core\Support\Providers::get('whatsapp');
+        } catch (\Throwable) {
+            $p = ['live' => false, 'provider' => null];
+        }
+        if ($p['live'] && $p['provider'] === 'meta') {
+            return $base + ['status' => 'ok', 'detail' => 'Conectado con la API Cloud de Meta. Los avisos salen por WhatsApp a quienes lo aceptaron.',
+                'fix' => 'Si los mensajes no llegan, revisa en Proveedores y claves la prueba de envío y que las plantillas estén aprobadas por Meta.'];
+        }
+
+        return $base + ['status' => 'off', 'detail' => 'Sin conectar: mientras tanto los avisos llegan por correo y en la campana.',
+            'fix' => 'En Proveedores y claves › WhatsApp, elige Meta, pega el token y el identificador del número, y pásalo a «en vivo».'];
     }
 
     private function mail(): array
