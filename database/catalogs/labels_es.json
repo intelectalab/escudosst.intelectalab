@@ -1299,7 +1299,8 @@
   "closing_notes": "Observaciones del cierre",
   "incident_occurred": "¿Ocurrió un incidente?",
   "incident_event_id": "Evento registrado",
-  "voids_signature_id": "Firma anulada"
+  "voids_signature_id": "Firma anulada",
+  "auto_execution_rule": "Ejecución automática"
  },
  "values": {
   "A": "Tipo A",
@@ -2034,7 +2035,8 @@
   "after_previous": "Al completar la sección anterior",
   "from_date": "Desde una fecha",
   "void": "Anulación",
-  "pending_management": "Pendiente de gerencia"
+  "pending_management": "Pendiente de gerencia",
+  "on_source_record": "Al registrarse en el módulo origen (mismo mes, sede y área)"
  },
  "tables": {
   "absences": "Ausencias",

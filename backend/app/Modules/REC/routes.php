@@ -45,6 +45,8 @@ Route::middleware(['auth:sanctum', 'company'])->prefix('reports')->controller(\A
     Route::get('signatures/{id}', 'signature')->whereUuid('id')->middleware('module:FIR');
     Route::get('elections/{id}/call', 'electionCall')->whereUuid('id')->middleware('module:COM');
     Route::get('committees/{id}', 'committee')->whereUuid('id')->middleware('module:COM');
+    Route::get('committees/{id}/annual', 'committeeAnnual')->whereUuid('id')->middleware('module:COM');
+    Route::get('committees/{id}/annual.xlsx', 'committeeAnnualXlsx')->whereUuid('id')->middleware('module:COM');
     Route::get('ppe_deliveries/worker/{id}', 'ppeWorker')->whereUuid('id')->middleware('module:EPP');
     Route::get('documents/{id}', 'document')->whereUuid('id')->middleware('module:DOC');
 });
@@ -165,6 +167,11 @@ Route::middleware(['auth:sanctum', 'company', 'module:EQE'])->get('eqe/calendar'
 Route::middleware(['auth:sanctum', 'company', 'module:PRE'])->prefix('pre')->group(function () {
     Route::get('execution', [\App\Modules\REC\BudgetToolsController::class, 'execution']);
     Route::get('execution.xlsx', [\App\Modules\REC\BudgetToolsController::class, 'executionXlsx']);
+});
+Route::middleware(['auth:sanctum', 'company', 'module:PRE'])->prefix('reports')->group(function () {
+    Route::get('budget_execution', [\App\Modules\REC\BudgetToolsController::class, 'report']);
+});
+Route::middleware(['auth:sanctum', 'company', 'module:PRE'])->prefix('pre')->group(function () {
     Route::post('transfers', [\App\Modules\REC\BudgetToolsController::class, 'requestTransfer']);
     Route::post('transfers/{id}/decide', [\App\Modules\REC\BudgetToolsController::class, 'decide'])->whereUuid('id');
 });

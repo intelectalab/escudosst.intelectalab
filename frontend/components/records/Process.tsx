@@ -145,7 +145,7 @@ const FIELD_PDF: Record<string, [string, string][]> = {
   sst_policies: [["politica", "Descargar PDF"]], sst_events: [["constancia-notificacion", "Constancias de notificación"]], risst_versions: [["reglamento", "PDF con acta"]], annual_plans: [["plan-anual", "Descargar PDF"]], annual_programs: [["passt", "Descargar PDF"]], training_programs: [["programa-capacitacion", "Descargar PDF"]], procedure_versions: [["pets", "Descargar PDF"]],
   baseline_assessments: [["linea-base", "Descargar PDF"]], legal_requirements: [["matriz-legal", "Matriz legal en PDF"]],
   management_reviews: [["revision-direccion", "Informe en PDF"]], elections: [["acta-convocatoria", "Acta de convocatoria en PDF"]],
-  committees: [["acta-instalacion", "Acta de instalación en PDF"]], documents: [["documento", "Historial y cargos en PDF"]],
+  committees: [["acta-instalacion", "Acta de instalación en PDF"], ["informe-comite", "Informe anual en PDF"]], documents: [["documento", "Historial y cargos en PDF"]],
 };
 
 export function RecordActions(props: { code: string; res: RecordResource; row: RecordRow; readOnly: boolean; onChanged: () => void }) {
@@ -1237,7 +1237,7 @@ const STEPS: Record<string, { help: string; steps: Step[] }> = {
     ],
   },
   annual_plans: {
-    help: "Borrador → revisión → aprobado (con la sesión del comité si la empresa lo tiene) → vigente → cerrado. Al aprobarse, su PDF queda como versión en la gestión documental y sus ítems ya no cambian. Al terminar el año se cierra y se genera el informe de cumplimiento.",
+    help: "Borrador → revisión → aprobado (con la sesión del comité si la empresa lo tiene) → vigente → cerrado. Al aprobarse, su PDF queda como versión en la gestión documental y sus ítems ya no cambian. Al terminar el año se cierra solo (el 1 de enero) y se genera el informe de cumplimiento; también puedes cerrarlo con «Cerrar el año».",
     steps: [
       { from: ["draft"], label: "Enviar a revisión", body: { status: "in_review" } },
       { from: ["draft", "in_review"], label: "Aprobar", body: { status: "approved" }, primary: true },

@@ -373,6 +373,8 @@ class ImprovementRules extends RecordRules
                                                  count(*) filter (where status in ('draft', 'active')) as en_curso from sst_objectives where deleted_at is null and year = ?", $y),
             'cambios_legales' => DB::selectOne('select count(*) as requisitos_por_revisar, count(*) filter (where reviewed_at is not null and reviewed_at::date between ? and ?) as revisados_en_el_periodo
                                                   from legal_requirements where deleted_at is null and (needs_review or (review_flagged_at::date between ? and ?))', [$from, $to, $from, $to]),
+            // M-COM §11: informe anual del comité para la revisión (sesiones, acuerdos y su estado, inspecciones con el comité).
+            'comite' => \App\Modules\COM\CommitteeAnnualReport::reviewInputs($from, $to),
         ];
     }
 

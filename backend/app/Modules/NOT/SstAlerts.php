@@ -83,6 +83,13 @@ final class SstAlerts
         $db->update("update ppe_deliveries set status = 'due_for_replacement', updated_at = now() where status = 'delivered' and deleted_at is null and expires_on < (now() at time zone 'America/Lima')::date");
         // M-COM RN-COM-07: el comité o supervisor cuyo mandato pasó su fecha de fin queda «terminado» (vencido).
         $db->update("update committees set status = 'ended', updated_at = now() where deleted_at is null and status = 'active' and period_end_on < (now() at time zone 'America/Lima')::date");
+        // M-PLA §9 / RN-PLA-08: el plan vigente pasa a «cerrado» al terminar su año y se genera su informe de cumplimiento
+        // (lo mismo que «Cerrar el año» a mano; closed_by queda vacío porque lo cierra el sistema).
+        foreach ($db->select("update annual_plans set status = 'closed', closed_at = now(), closed_by = null, updated_at = now()
+                               where deleted_at is null and status = 'current' and year < extract(year from (now() at time zone 'America/Lima'))::int
+                              returning id") as $p) {
+            \App\Modules\REC\AnnualPlanDocs::closure($p->id);
+        }
         // M-HOM RN-HOM-05: la homologación aprobada que pasó su vigencia queda «vencida».
         $db->update("update vendor_evaluations set status = 'expired', updated_at = now() where deleted_at is null and status = 'approved' and valid_until < current_date");
         // M-EQE RN-EQE-07: el extintor que superó su vida útil desde la fabricación queda fuera de servicio aunque tenga recarga vigente.

@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 class DiagnosisController extends Controller
 {
     /** Código de cada obligación del catálogo (en el orden en que se evalúan). */
-    public const CODES = ['committee', 'iperc', 'pets', 'drills', 'registers', 'training', 'emo', 'policy', 'ppe'];
+    public const CODES = ['committee', 'iperc', 'pets', 'drills', 'registers', 'training', 'emo', 'policy', 'ppe', 'legal'];
 
     public const CHECKLIST_VERSION = 'SUN-2026.1';
 
@@ -49,6 +49,7 @@ class DiagnosisController extends Controller
             $this->emo($today),
             $this->policy($workers),
             $this->ppe($today),
+            $this->legal($today),
         ];
         $severity = json_decode(LegalParams::text('sunafil_obligation_severity', '{}'), true) ?: [];
         $weights = ['minor' => LegalParams::number('sunafil_weight_minor', 1), 'serious' => LegalParams::number('sunafil_weight_serious', 2),
@@ -274,5 +275,41 @@ class DiagnosisController extends Controller
 
         return $this->area('EPP', 'EPP', 'ppe_deliveries', $r->num * 100 / $r->den,
             $pending === 0 ? 'Todos tienen el EPP obligatorio de su puesto vigente.' : "{$pending} trabajador(es) sin todo el EPP obligatorio de su puesto vigente.", $names);
+    }
+
+    /**
+     * M-MRL §12 (insumo del autodiagnóstico): RN-MRL-06, requisitos aplicables con última evaluación «cumple» / requisitos
+     * aplicables evaluados; los que «requieren revisión» por cambio normativo no cuentan como cumplidos (RN-MRL-05).
+     * El detalle nombra los incumplidos, los pendientes de evaluar y las evaluaciones vencidas.
+     */
+    private function legal(string $today): array
+    {
+        $r = DB::selectOne(
+            "select count(*) as total,
+                    count(*) filter (where e.result is not null) as evaluated,
+                    count(*) filter (where e.result = 'compliant' and not r.needs_review) as compliant,
+                    count(*) filter (where e.result in ('partial', 'non_compliant')) as failing,
+                    count(*) filter (where e.result is null) as pending,
+                    count(*) filter (where r.needs_review) as review,
+                    count(*) filter (where r.next_evaluation_on < ?) as overdue
+               from legal_requirements r
+               left join lateral (select result from requirement_evaluations v where v.legal_requirement_id = r.id and v.deleted_at is null
+                                   order by v.evaluated_on desc, v.created_at desc limit 1) e on true
+              where r.deleted_at is null and r.status = 'active' and r.applies and coalesce(e.result, '') <> 'not_applicable'", [$today]);
+        if ((int) $r->total === 0) {
+            return $this->area('Requisitos legales', 'MRL', 'legal_requirements', 0, 'No hay requisitos legales aplicables en la matriz.');
+        }
+        if ((int) $r->evaluated === 0) {
+            return $this->area('Requisitos legales', 'MRL', 'requirement_evaluations', 0, "Ninguno de los {$r->total} requisitos legales aplicables tiene evaluación de cumplimiento.");
+        }
+        $parts = array_filter([
+            $r->failing > 0 ? "{$r->failing} con resultado parcial o no cumple" : null,
+            $r->review > 0 ? "{$r->review} requieren revisión por cambio normativo" : null,
+            $r->pending > 0 ? "{$r->pending} sin evaluar" : null,
+            $r->overdue > 0 ? "{$r->overdue} con evaluación vencida" : null,
+        ]);
+
+        return $this->area('Requisitos legales', 'MRL', 'requirement_evaluations', $r->compliant * 100 / $r->evaluated,
+            "{$r->compliant} de {$r->evaluated} requisitos evaluados cumplen".($parts ? ' · '.implode(' · ', $parts) : '').'.');
     }
 }

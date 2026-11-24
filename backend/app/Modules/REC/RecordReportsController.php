@@ -2,7 +2,11 @@
 
 namespace App\Modules\REC;
 
+use App\Core\Support\Xlsx;
+use App\Modules\COM\CommitteeAnnualReport;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -12,6 +16,8 @@ use Illuminate\Support\Str;
  *  GET /reports/signatures/{id}          M-FIR: constancia de firma (huellas, fecha y hora de Lima, método y evidencia)
  *  GET /reports/elections/{id}/call      M-COM: acta de convocatoria a elecciones (cronograma, puestos, junta electoral y firmas)
  *  GET /reports/committees/{id}          M-COM: acta de instalación (integrantes, presidente y secretario, mandato y firmas)
+ *  GET /reports/committees/{id}/annual?year=       M-COM §11: informe anual del comité para la revisión por la dirección
+ *  GET /reports/committees/{id}/annual.xlsx?year=  el mismo informe en Excel
  *  GET /reports/ppe_deliveries/worker/{id} M-EPP: registro de entrega de EPP del trabajador con sus firmas (constancia)
  *  GET /reports/documents/{id}           M-DOC: historial de versiones con aprobadores y constancias de cargo de la versión vigente
  */
@@ -97,6 +103,76 @@ class RecordReportsController extends FieldReportsController
             'members' => $members,
             'signatures' => $this->signatures('committees', $id),
         ]]);
+    }
+
+    /** M-COM §11: informe anual del comité (sesiones, asistencia, acuerdos e inspecciones del año). */
+    public function committeeAnnual(Request $request, string $id): JsonResponse
+    {
+        [$c, $year] = $this->annualInput($request, $id);
+
+        return response()->json(['data' => ['company' => $this->company()] + CommitteeAnnualReport::data($c, $year)]);
+    }
+
+    public function committeeAnnualXlsx(Request $request, string $id): Response
+    {
+        [$c, $year] = $this->annualInput($request, $id);
+        $d = CommitteeAnnualReport::data($c, $year);
+        $co = $this->company();
+        $s = $d['summary'];
+        $rep = ['employer' => 'Empleador', 'workers' => 'Trabajadores', 'supervisor' => 'Supervisor SST'];
+        $type = ['titular' => 'Titular', 'alternate' => 'Suplente'];
+        $role = ['president' => 'Presidente', 'secretary' => 'Secretario', 'member' => 'Miembro', 'observer' => 'Observador'];
+        $rows = [['INFORME ANUAL DEL COMITÉ SST '.$year], ["{$co['legal_name']} · RUC {$co['ruc']}"], [$c->name.($d['committee']['site'] ? ' · '.$d['committee']['site'] : '')],
+            ['Generado: '.now('America/Lima')->format('d/m/Y H:i')], [],
+            ['Resumen'], ['Indicador', 'Valor'],
+            ['Sesiones programadas', $s['meetings_planned']], ['Sesiones realizadas', $s['meetings_held']], ['Ordinarias realizadas', $s['ordinary_held']],
+            ['Extraordinarias realizadas', $s['extraordinary_held']], ['Meses con sesión ordinaria', $s['months_with_ordinary']], ['Sesiones canceladas', $s['meetings_cancelled']],
+            ['Sesiones por realizar', $s['meetings_pending']], ['Sesiones con quórum', $s['with_quorum']], ['Actas firmadas', $s['minutes_signed']],
+            ['Asistencia promedio (%)', $s['average_attendance_pct']], ['Acuerdos', $s['agreements_total']]];
+        foreach (CommitteeAnnualReport::AGREEMENT_STATUS as $k => $label) {
+            $rows[] = ["Acuerdos · {$label}", $s['agreements_by_status'][$k] ?? 0];
+        }
+        $rows[] = ['Inspecciones con participación del comité', $s['inspections_with_committee']];
+        $rows[] = ['Inspecciones con el comité finalizadas', $s['inspections_with_committee_done']];
+        $rows[] = [];
+        $rows[] = ['Asistencia por integrante'];
+        $rows[] = ['Integrante', 'Puesto', 'Representa a', 'Condición', 'Cargo', 'Sesiones asistidas', 'Asistencia (%)'];
+        foreach ($d['members'] as $m) {
+            $rows[] = [$m['name'], $m['position'] ?? '', $rep[$m['representation']] ?? $m['representation'], $type[$m['member_type']] ?? $m['member_type'],
+                $role[$m['role_in_committee']] ?? $m['role_in_committee'], $m['attended'], $m['attendance_pct']];
+        }
+        $rows[] = [];
+        $rows[] = ['Sesiones'];
+        $rows[] = ['N.°', 'Tipo', 'Programada', 'Realizada', 'Estado', 'Quórum', 'Asistentes', 'Acuerdos'];
+        $lima = fn ($v) => $v ? (new \DateTimeImmutable((string) $v))->setTimezone(new \DateTimeZone('America/Lima'))->format('d/m/Y H:i') : '';
+        foreach ($d['meetings'] as $m) {
+            $rows[] = [$m['number'], $m['meeting_type_label'], $lima($m['scheduled_at']), $lima($m['held_at']), $m['status_label'],
+                $m['quorum_reached'] === null ? '' : ($m['quorum_reached'] ? 'Sí' : 'No'), $m['present'] ?? '', $m['agreements']];
+        }
+        $rows[] = [];
+        $rows[] = ['Acuerdos'];
+        $rows[] = ['Sesión', 'N.°', 'Acuerdo', 'Responsable', 'Fecha límite', 'Estado', 'Acción correctiva'];
+        foreach ($d['agreements'] as $a) {
+            $rows[] = [$a->meeting_number, $a->number, $a->description, $a->responsible ?? '', $a->due_on ?? '', $a->status_label, $a->action_code ?? ''];
+        }
+
+        return response(Xlsx::build('Informe anual', $rows, 6), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="informe-anual-comite-'.$year.'.xlsx"',
+        ]);
+    }
+
+    /** @return array{0: object, 1: int} */
+    private function annualInput(Request $request, string $id): array
+    {
+        $this->can('com.committees.read');
+        $c = $this->row('committees', $id, 'El comité no existe o es de otra empresa.');
+        $year = $request->filled('year') ? (int) $request->query('year') : (int) now('America/Lima')->format('Y');
+        if ($year < 2000 || $year > 2100) {
+            throw new \App\Core\Http\ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Indica un año válido.', ['errors' => ['year' => ['Indica un año válido.']]]);
+        }
+
+        return [$c, $year];
     }
 
     public function ppeWorker(string $id): JsonResponse

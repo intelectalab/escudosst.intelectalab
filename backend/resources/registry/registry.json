@@ -4592,6 +4592,34 @@
      "readonly": true,
      "type": "ref",
      "ref": "program_activities"
+    },
+    {
+     "name": "site_id",
+     "label": "Sede",
+     "type": "ref",
+     "ref": "sites"
+    },
+    {
+     "name": "area_id",
+     "label": "Área",
+     "type": "ref",
+     "ref": "areas"
+    },
+    {
+     "name": "auto_execution_rule",
+     "label": "Ejecución automática",
+     "type": "enum",
+     "options": [
+      {
+       "value": "manual",
+       "label": "Manual"
+      },
+      {
+       "value": "on_source_record",
+       "label": "Al registrarse en el módulo origen (mismo mes, sede y área)"
+      }
+     ],
+     "default": "manual"
     }
    ]
   },

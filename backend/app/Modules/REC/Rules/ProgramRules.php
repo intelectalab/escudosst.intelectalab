@@ -34,7 +34,7 @@ class ProgramRules extends RecordRules
     {
         match ($res['table']) {
             'annual_programs', 'training_programs' => $this->program($res['table'], $op, $values, $current, $extra),
-            'program_activities' => $this->structure('annual_programs', $this->value($values, $current, 'program_id'), 'actividades'),
+            'program_activities' => $this->activity($values, $current),
             'training_program_items' => $this->programItem($op, $values, $current, $extra),
             'activity_executions' => $this->execution($op, $values, $current, $extra),
             'trainings' => $this->training($op, $values),
@@ -45,6 +45,25 @@ class ProgramRules extends RecordRules
             'training_evaluations' => $this->evaluation($values, $current),
             default => null,
         };
+    }
+
+    /** Módulos origen que registran la ejecución automática de una actividad (RN-PAS-05). */
+    public const AUTO_SOURCES = ['INS' => 'inspección finalizada', 'SIM' => 'simulacro evaluado', 'CAP' => 'capacitación realizada'];
+
+    private function activity(array $values, ?object $current): void
+    {
+        $this->structure('annual_programs', $this->value($values, $current, 'program_id'), 'actividades');
+        // SCR-PAS-02 / RN-PAS-05: la regla automática necesita el módulo origen que la dispara.
+        if ($this->value($values, $current, 'auto_execution_rule') === 'on_source_record'
+            && ! isset(self::AUTO_SOURCES[strtoupper(trim((string) $this->value($values, $current, 'linked_module')))])) {
+            $this->fail('linked_module', 'La ejecución automática necesita el módulo vinculado: INS (inspección finalizada), SIM (simulacro evaluado) o CAP (capacitación realizada).');
+        }
+        // La área elegida debe ser de la sede de la actividad.
+        $site = $this->value($values, $current, 'site_id');
+        $area = $this->value($values, $current, 'area_id');
+        if ($site && $area && ! DB::selectOne('select 1 as ok from areas where id = ? and site_id = ? and deleted_at is null', [$area, $site])) {
+            $this->fail('area_id', 'El área no pertenece a la sede de la actividad.');
+        }
     }
 
     public function after(string $op, array $res, string $id, array $values, ?object $current): void
@@ -68,6 +87,8 @@ class ProgramRules extends RecordRules
             DB::update("update training_program_items set status = 'done' where training_id = ? and status <> 'cancelled'", [$s->training_id]);
             DB::update("update training_program_items i set status = 'done' from trainings t
                          where t.id = ? and t.training_program_item_id = i.id and i.status <> 'cancelled'", [$s->training_id]);
+            // M-PAS RN-PAS-05: la capacitación realizada cuenta para la actividad del PASST con regla automática.
+            DocsFieldRules::programExecutionFor('training_sessions', $id, 'CAP');
         }
         if ($res['table'] === 'trainings' && ($values['training_program_item_id'] ?? null)) {
             DB::update("update training_program_items set training_id = ?, status = case when status = 'planned' then 'scheduled' else status end where id = ?",

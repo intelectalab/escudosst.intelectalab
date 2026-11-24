@@ -1,6 +1,6 @@
 "use client";
 
-// Presupuesto SST (M-PRE SCR-PRE-01): total aprobado, ejecutado y % de ejecución por categoría, sede y actividad, con su Excel (§11);
+// Presupuesto SST (M-PRE SCR-PRE-01): total aprobado, ejecutado y % de ejecución por categoría, sede y actividad, con su Excel y su PDF (§11);
 // y la reasignación entre líneas de un presupuesto aprobado, que pide el Jefe SST y aprueba o rechaza la gerencia (RN-PRE-05).
 
 import { useCallback, useEffect, useState } from "react";
@@ -8,6 +8,7 @@ import { api, type ApiError } from "@/lib/api";
 import { downloadFile } from "@/lib/records";
 import { Button } from "@/components/ui/Button";
 import { Card, Kpi } from "./Summary";
+import { cell, type Company, Facts, ReportLoading, Section, Sheet, useReport } from "./FieldReports";
 
 type Group = { name: string; planned: number; executed: number; pct: number | null };
 type Line = { id: string; category: string; description: string; planned_amount: string; executed_amount: string; site: string | null };
@@ -65,7 +66,11 @@ export function PreExecution({ readOnly }: { readOnly: boolean }) {
 
   return (
     <div className="space-y-4">
-      <Card title={`Ejecución · ${d.budget.title}`} action={<Button size="sm" icon="download" onClick={() => downloadFile(`/pre/execution.xlsx?budget_id=${d.budget.id}`, `ejecucion-presupuesto-${d.budget.year ?? "sst"}.xlsx`)}>Excel</Button>}>
+      <Card title={`Ejecución · ${d.budget.title}`} action={<div className="flex gap-2">
+        <a href={`/imprimir/presupuesto?budget_id=${d.budget.id}`} target="_blank" rel="noreferrer"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-semibold hover:border-brand hover:text-brand-strong">PDF</a>
+        <Button size="sm" icon="download" onClick={() => downloadFile(`/pre/execution.xlsx?budget_id=${d.budget.id}`, `ejecucion-presupuesto-${d.budget.year ?? "sst"}.xlsx`)}>Excel</Button>
+      </div>}>
         {msg && <p role={msg.ok ? "status" : "alert"} className={`mb-2 text-sm ${msg.ok ? "text-ok" : "text-bad"}`}>{msg.text}</p>}
         <div className="grid gap-3 sm:grid-cols-3">
           <Kpi label={`Total aprobado (${d.budget.currency})`} value={money(d.budget.total_approved ?? d.planned)} />
@@ -116,5 +121,53 @@ export function PreExecution({ readOnly }: { readOnly: boolean }) {
         </Card>
       )}
     </div>
+  );
+}
+
+type ReportLine = { category: string; description: string; site: string | null; activity: string | null; cost_center: string | null; planned: number; executed: number; pct: number | null };
+type ReportData = Omit<Data, "lines" | "transfers" | "can_request" | "can_approve"> & { company: Company; generated_at: string; lines: ReportLine[] };
+const BSTATUS: Record<string, string> = { draft: "Borrador", in_review: "En revisión", approved: "Aprobado", in_execution: "En ejecución", closed: "Cerrado" };
+
+function GroupTable({ rows, currency }: { rows: Group[]; currency: string }) {
+  return (
+    <table className="w-full border-collapse text-sm">
+      <thead><tr className="bg-gray-50">{["Grupo", `Planificado (${currency})`, "Ejecutado", "% de ejecución", "Saldo"].map((h) => <th key={h} className={`${cell} text-left`}>{h}</th>)}</tr></thead>
+      <tbody>{rows.length === 0 ? <tr><td className={cell} colSpan={5}>Sin líneas.</td></tr> : rows.map((r) => (
+        <tr key={r.name} style={{ breakInside: "avoid" }}>
+          <td className={cell}>{r.name}</td><td className={`${cell} text-right`}>{money(r.planned)}</td><td className={`${cell} text-right`}>{money(r.executed)}</td>
+          <td className={`${cell} text-right`}>{r.pct === null ? "—" : `${r.pct} %`}</td><td className={`${cell} text-right`}>{money(r.planned - r.executed)}</td>
+        </tr>
+      ))}</tbody>
+    </table>
+  );
+}
+
+/** M-PRE §11: informe imprimible de la ejecución presupuestal (los mismos datos del Excel). */
+export function BudgetExecutionReport({ budgetId }: { budgetId: string | null }) {
+  const { data: d, error } = useReport<ReportData>(`/reports/budget_execution${budgetId ? `?budget_id=${encodeURIComponent(budgetId)}` : ""}`);
+  if (!d) return <ReportLoading error={error} />;
+  const b = d.budget;
+  return (
+    <Sheet company={d.company} title={`Ejecución presupuestal SST${b.year ? ` ${b.year}` : ""}`} sub={`${b.title} · ${b.currency}`}>
+      <Section n={1} title="Resumen">
+        <Facts rows={[["Estado", BSTATUS[b.status] ?? b.status], [`Total aprobado (${b.currency})`, money(b.total_approved ?? d.planned)], ["Planificado en líneas", money(d.planned)],
+          ["Ejecutado", money(d.executed)], ["% de ejecución", `${d.pct ?? 0} %`], ["Generado", d.generated_at]]} />
+      </Section>
+      <Section n={2} title="Por categoría"><GroupTable rows={d.by_category} currency={b.currency} /></Section>
+      <Section n={3} title="Por sede"><GroupTable rows={d.by_site} currency={b.currency} /></Section>
+      <Section n={4} title="Por actividad del programa"><GroupTable rows={d.by_activity} currency={b.currency} /></Section>
+      <Section n={5} title="Detalle por línea">
+        <table className="w-full border-collapse text-[11px]">
+          <thead><tr className="bg-gray-50">{["Categoría", "Descripción", "Sede", "Actividad", "Centro de costo", "Planificado", "Ejecutado", "%"].map((h) => <th key={h} className={`${cell} text-left`}>{h}</th>)}</tr></thead>
+          <tbody>{d.lines.length === 0 ? <tr><td className={cell} colSpan={8}>Sin líneas.</td></tr> : d.lines.map((l, i) => (
+            <tr key={i} style={{ breakInside: "avoid" }}>
+              <td className={cell}>{l.category}</td><td className={cell}>{l.description}</td><td className={cell}>{l.site ?? "—"}</td><td className={cell}>{l.activity ?? "—"}</td>
+              <td className={cell}>{l.cost_center ?? "—"}</td><td className={`${cell} text-right`}>{money(l.planned)}</td><td className={`${cell} text-right`}>{money(l.executed)}</td>
+              <td className={`${cell} text-right`}>{l.pct === null ? "—" : `${l.pct} %`}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </Section>
+    </Sheet>
   );
 }

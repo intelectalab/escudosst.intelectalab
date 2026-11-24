@@ -3,11 +3,13 @@
 // Informes imprimibles de registros (§11 de las fichas), con el formato de los demás informes:
 //  - M-RVD: informe de revisión por la dirección con entradas, conclusiones, salidas y firmas.
 //  - M-FIR: constancia de firma con huellas, fecha y hora de Lima, método y evidencia.
-//  - M-COM: acta de convocatoria a elecciones y acta de instalación del comité, con firmas.
+//  - M-COM: acta de convocatoria a elecciones y acta de instalación del comité, con firmas; informe anual del comité (§11, para RVD).
 //  - M-EPP: registro de entrega de EPP del trabajador con sus firmas (constancia).
 //  - M-DOC: historial de versiones con aprobadores y constancias de cargo de la versión vigente.
 // Se guardan como PDF desde el diálogo de impresión del navegador.
 
+import { useState } from "react";
+import { downloadFile } from "@/lib/records";
 import { cell, type Company, Facts, fmtD, fmtDT, ReportLoading, Section, Sheet, useReport } from "./FieldReports";
 
 type Sig = { signer_name: string; signed_at: string; method: string; image: string | null };
@@ -191,6 +193,69 @@ export function CommitteeInstallationReport({ id }: { id: string }) {
       </Section>
       {c.notes && <Section n={3} title="Observaciones"><p className="whitespace-pre-line text-sm">{c.notes}</p></Section>}
       <Section n={c.notes ? 4 : 3} title="Firmas"><Firmas list={data.signatures} /></Section>
+    </Sheet>
+  );
+}
+
+type CommitteeAnnual = {
+  company: Company;
+  year: number;
+  committee: { name: string; committee_type: string; site: string | null; period_start_on: string | null; period_end_on: string | null; installation_on: string | null; status: string };
+  summary: { meetings_planned: number; meetings_held: number; meetings_cancelled: number; meetings_pending: number; ordinary_held: number; extraordinary_held: number;
+    months_with_ordinary: number; with_quorum: number; minutes_signed: number; average_attendance_pct: number | null; agreements_total: number;
+    agreements_by_status: Record<string, number>; inspections_with_committee: number; inspections_with_committee_done: number };
+  members: { name: string; position: string | null; representation: string; member_type: string; role_in_committee: string; status: string; attended: number; attendance_pct: number | null }[];
+  meetings: { number: number | null; meeting_type_label: string; scheduled_at: string | null; held_at: string | null; status_label: string; quorum_reached: boolean | null; present: number | null;
+    agreements: number }[];
+  agreements: { number: number | null; meeting_number: number | null; description: string; responsible: string | null; due_on: string | null; status: string; status_label: string;
+    action_code: string | null }[];
+};
+const AGREEMENT_STATUS: Record<string, string> = { agreed: "Acordado", in_progress: "En curso", fulfilled: "Cumplido", overdue: "Vencido", cancelled: "Anulado" };
+
+/** M-COM §11: informe anual del comité para la revisión por la dirección (sesiones, asistencia, acuerdos e inspecciones del año). */
+export function CommitteeAnnualReport({ id, year: initial }: { id: string; year: number }) {
+  const [year, setYear] = useState(initial);
+  const { data, error } = useReport<CommitteeAnnual>(`/reports/committees/${id}/annual?year=${year}`);
+  if (!data) return <ReportLoading error={error} />;
+  const c = data.committee;
+  const s = data.summary;
+  const pct = (v: number | null) => (v === null ? "—" : `${v} %`);
+  const now = new Date().getFullYear();
+  return (
+    <Sheet company={data.company} title={`Informe anual del ${c.committee_type === "supervisor" ? "Supervisor" : "Comité"} SST ${data.year}`} sub={c.site ? `${c.name} · ${c.site}` : c.name}>
+      <div className="no-print flex flex-wrap items-center justify-end gap-2 text-sm">
+        <label className="flex items-center gap-1">Año
+          <select className="rounded border border-gray-300 px-2 py-1" value={year} onChange={(e) => setYear(Number(e.target.value))}>
+            {Array.from({ length: 6 }, (_, i) => now - i).map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </label>
+        <button type="button" className="rounded-lg border border-gray-300 px-3 py-1 font-semibold"
+          onClick={() => void downloadFile(`/reports/committees/${id}/annual.xlsx?year=${year}`, `informe-anual-comite-${year}.xlsx`)}>Excel</button>
+      </div>
+      <Section n={1} title="Comité">
+        <Facts rows={[["Mandato", `${fmtD(c.period_start_on)} al ${fmtD(c.period_end_on)}`], ["Fecha de instalación", fmtD(c.installation_on)], ["Integrantes en el año", data.members.length]]} />
+      </Section>
+      <Section n={2} title="Resumen del año">
+        <Facts rows={[["Sesiones programadas", s.meetings_planned], ["Sesiones realizadas", `${s.meetings_held} (ordinarias ${s.ordinary_held} · extraordinarias ${s.extraordinary_held})`],
+          ["Meses con sesión ordinaria", s.months_with_ordinary], ["Canceladas · por realizar", `${s.meetings_cancelled} · ${s.meetings_pending}`],
+          ["Sesiones con quórum", s.with_quorum], ["Actas firmadas", s.minutes_signed], ["Asistencia promedio", pct(s.average_attendance_pct)],
+          ["Acuerdos", `${s.agreements_total} · ${Object.entries(s.agreements_by_status).filter(([, n]) => n > 0).map(([k, n]) => `${AGREEMENT_STATUS[k] ?? k}: ${n}`).join(" · ") || "sin acuerdos"}`],
+          ["Inspecciones con participación del comité", `${s.inspections_with_committee} (finalizadas ${s.inspections_with_committee_done})`]]} />
+      </Section>
+      <Section n={3} title="Asistencia por integrante">
+        <Table head={["Integrante", "Representa a", "Condición", "Cargo", "Sesiones asistidas", "Asistencia"]} empty="Sin integrantes en el año."
+          rows={data.members.map((m) => [m.name, REPRESENTATION[m.representation] ?? m.representation, MEMBER_TYPE[m.member_type] ?? m.member_type,
+            COMMITTEE_ROLE[m.role_in_committee] ?? m.role_in_committee, `${m.attended} de ${s.meetings_held}`, pct(m.attendance_pct)])} />
+      </Section>
+      <Section n={4} title="Sesiones">
+        <Table head={["N.°", "Tipo", "Programada", "Realizada", "Estado", "Quórum", "Asistentes", "Acuerdos"]} empty="Sin sesiones en el año."
+          rows={data.meetings.map((m) => [m.number, m.meeting_type_label, fmtDT(m.scheduled_at), fmtDT(m.held_at), m.status_label,
+            m.quorum_reached === null ? null : yes(m.quorum_reached), m.present, m.agreements])} />
+      </Section>
+      <Section n={5} title="Acuerdos y su estado">
+        <Table head={["Sesión", "N.°", "Acuerdo", "Responsable", "Fecha límite", "Estado", "Acción"]} empty="Sin acuerdos en el año."
+          rows={data.agreements.map((a) => [a.meeting_number, a.number, a.description, a.responsible, fmtD(a.due_on), a.status_label, a.action_code])} />
+      </Section>
     </Sheet>
   );
 }

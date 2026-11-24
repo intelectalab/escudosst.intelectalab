@@ -19,6 +19,7 @@ use Illuminate\Support\Str;
  *  GET  /pre/execution?budget_id=           SCR-PRE-01: total aprobado, ejecutado y % de ejecución por categoría, sede y actividad;
  *                                           reasignaciones del presupuesto
  *  GET  /pre/execution.xlsx?budget_id=      §11: ejecución presupuestal por categoría, sede y actividad (Excel)
+ *  GET  /reports/budget_execution?budget_id= §11: los mismos datos para el informe imprimible (PDF desde el navegador)
  *  POST /pre/transfers                      RN-PRE-05: pide mover {amount} de una línea a otra de un presupuesto aprobado, con motivo
  *  POST /pre/transfers/{id}/decide          gerencia aprueba o rechaza la reasignación {decision: approved|rejected, note?}; queda auditada
  */
@@ -41,6 +42,20 @@ class BudgetToolsController extends Controller
             'can_request' => in_array('pre.budgets.update', Permissions::effective(), true),
             'can_approve' => in_array('pre.budgets.approve', Permissions::effective(), true),
         ]]);
+    }
+
+    /** §11: ejecución presupuestal para el informe imprimible (cabecera de la empresa + el mismo resumen del Excel). */
+    public function report(Request $request): JsonResponse
+    {
+        $b = $this->budget($request);
+        $c = DB::selectOne('select legal_name, trade_name, ruc from companies where id = ?', [app(CompanyContext::class)->companyId]);
+        $s = $this->summary($b);
+        $s['lines'] = array_map(fn ($l) => ['category' => self::CATEGORY[$l->category] ?? $l->category, 'description' => $l->description, 'site' => $l->site,
+            'activity' => $l->activity, 'cost_center' => $l->cost_center, 'planned' => (float) $l->planned_amount, 'executed' => (float) $l->executed_amount,
+            'pct' => (float) $l->planned_amount > 0 ? round($l->executed_amount * 100 / $l->planned_amount, 1) : null], $s['lines']);
+
+        return response()->json(['data' => ['company' => ['name' => $c->trade_name ?: $c->legal_name, 'legal_name' => $c->legal_name, 'ruc' => trim((string) $c->ruc)],
+            'generated_at' => now('America/Lima')->format('Y-m-d H:i')] + $s]);
     }
 
     public function executionXlsx(Request $request): Response
@@ -160,7 +175,7 @@ class BudgetToolsController extends Controller
         $lines = DB::select(
             "select l.id, l.category, l.description, l.cost_center, l.planned_amount, l.executed_amount, s.name as site, a.title as activity
                from budget_lines l left join sites s on s.id = l.site_id left join program_activities a on a.id = l.program_activity_id
-              where l.budget_id = ? and l.deleted_at is null order by l.category, l.description", [$b->id]);
+              where l.budget_id = ? and l.deleted_at is null".\App\Core\Auth\Scope::andTable('budget_lines', 'l').' order by l.category, l.description', [$b->id]);
         $group = function (callable $key) use ($lines) {
             $g = [];
             foreach ($lines as $l) {

@@ -11,8 +11,8 @@ use Illuminate\Support\Str;
  *
  * Versiones: borrador → en revisión → aprobada → vigente (la anterior pasa a obsoleta); número correlativo;
  * vigente u obsoleta no se edita; una sola vigente por documento.
- * Integración con el PASST (RN-PAS-05): un simulacro evaluado o una inspección finalizada vinculados a una
- * actividad del programa registran su ejecución automáticamente.
+ * Integración con el PASST (RN-PAS-05): un simulacro evaluado, una inspección finalizada o una capacitación realizada,
+ * vinculados a una actividad del programa o que cumplen su regla automática, registran su ejecución.
  */
 class DocsFieldRules extends RecordRules
 {
@@ -225,24 +225,69 @@ class DocsFieldRules extends RecordRules
         }
     }
 
-    /** RN-PAS-05: el registro vinculado a una actividad del PASST cuenta como su ejecución (una sola vez). */
+    /**
+     * Cómo se lee cada registro origen para la ejecución automática (RN-PAS-05): fecha que cuenta, sede, área y título.
+     * tabla => [fecha (Lima), sede, área, título, tiene program_activity_id]
+     */
+    private const PROGRAM_SOURCES = [
+        'inspections' => ["(coalesce(completed_at, scheduled_on::timestamptz) at time zone 'America/Lima')::date", 'site_id', 'area_id', 'title', true],
+        'drills' => ["(coalesce(executed_at, scheduled_at) at time zone 'America/Lima')::date", 'site_id', 'null::uuid', 'title', true],
+        'training_sessions' => ["(starts_at at time zone 'America/Lima')::date", 'site_id', 'null::uuid', "(select t.title from trainings t where t.id = training_sessions.training_id)", false],
+    ];
+
+    /**
+     * RN-PAS-05: el registro origen cuenta como ejecución de la actividad del PASST (una sola vez por actividad y registro):
+     *  - la actividad vinculada a mano (program_activity_id del registro), y
+     *  - las actividades con regla automática «al registrarse en el módulo origen» (SCR-PAS-02): mismo módulo vinculado,
+     *    programa aprobado del año del registro, mes del registro entre sus meses programados y, si la actividad tiene
+     *    sede o área, la misma sede o área. Si en ese mes ya tiene una ejecución automática, no se suma otra.
+     * La ejecución queda pendiente de validación del Jefe SST.
+     */
     public static function programExecutionFor(string $table, string $id, string $module): void
     {
-        $r = DB::selectOne("select program_activity_id, title from \"{$table}\" where id = ?", [$id]);
-        if (! $r?->program_activity_id || DB::selectOne('select 1 as ok from activity_executions where source_id = ? and deleted_at is null', [$id])) {
+        [$dateSql, $siteCol, $areaCol, $titleSql, $linkable] = self::PROGRAM_SOURCES[$table];
+        $r = DB::selectOne("select company_id, {$dateSql} as d, {$siteCol} as site_id, {$areaCol} as area_id, {$titleSql} as title"
+            .($linkable ? ', program_activity_id' : ', null::uuid as program_activity_id')." from \"{$table}\" where id = ?", [$id]);
+        if (! $r) {
             return;
         }
-        $st = DB::selectOne('select p.status from program_activities a join annual_programs p on p.id = a.program_id where a.id = ?', [$r->program_activity_id])?->status;
-        if (! in_array($st, ['approved', 'in_execution'], true)) {
-            return;
+        $date = (string) ($r->d ?? now('America/Lima')->toDateString());
+        $month = (int) substr($date, 5, 2);
+        $targets = [];
+        if ($r->program_activity_id) {
+            $targets[] = $r->program_activity_id;
         }
-        $company = DB::selectOne("select company_id from \"{$table}\" where id = ?", [$id])->company_id;
-        DB::insert(
-            "insert into activity_executions (company_id, activity_id, executed_on, quantity, description, source_module, source_id, recorded_by, created_by, updated_by)
-             values (?, ?, (now() at time zone 'America/Lima')::date, 1, ?, ?, ?, ?, ?, ?)",
-            [$company, $r->program_activity_id, mb_substr("Registrado desde {$module}: {$r->title}", 0, 500), $module, $id, (string) auth()->id(), (string) auth()->id(), (string) auth()->id()]
-        );
-        (new ProgramRules)->after('create', ['table' => 'activity_executions'], DB::selectOne('select id from activity_executions where source_id = ?', [$id])->id, [], null);
+        $auto = DB::select(
+            "select a.id from program_activities a join annual_programs p on p.id = a.program_id
+              where a.deleted_at is null and p.deleted_at is null and a.status <> 'cancelled' and a.auto_execution_rule = 'on_source_record'
+                and a.linked_module = ? and p.status in ('approved', 'in_execution') and p.year = ?
+                and ?::smallint = any(a.planned_months)
+                and (a.site_id is null or a.site_id = ?) and (a.area_id is null or a.area_id = ?)
+                and not exists (select 1 from activity_executions x where x.activity_id = a.id and x.deleted_at is null and x.source_module = ?
+                                 and x.source_id is not null and x.planned_month = ?)",
+            [$module, (int) substr($date, 0, 4), $month, $r->site_id, $r->area_id, $module, $month]);
+        foreach ($auto as $a) {
+            $targets[] = $a->id;
+        }
+        foreach (array_unique($targets) as $activity) {
+            if (DB::selectOne('select 1 as ok from activity_executions where activity_id = ? and source_id = ? and deleted_at is null', [$activity, $id])) {
+                continue;
+            }
+            $st = DB::selectOne('select p.status from program_activities a join annual_programs p on p.id = a.program_id where a.id = ?', [$activity])?->status;
+            if (! in_array($st, ['approved', 'in_execution'], true)) {
+                continue;
+            }
+            $by = auth()->id() ? (string) auth()->id() : null;
+            $exec = DB::selectOne(
+                "insert into activity_executions (company_id, activity_id, executed_on, planned_month, quantity, description, source_module, source_id, recorded_by, created_by, updated_by)
+                 values (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?) returning id",
+                [$r->company_id, $activity, $date, $month, mb_substr("Registrado desde {$module}: ".($r->title ?? ''), 0, 500), $module, $id, $by, $by, $by]
+            )->id;
+            if ($st === 'approved') {
+                DB::update("update annual_programs set status = 'in_execution' from program_activities a where a.id = ? and annual_programs.id = a.program_id", [$activity]);
+            }
+            (new ProgramRules)->after('create', ['table' => 'activity_executions'], $exec, [], null);
+        }
     }
 
     private function programExecution(string $table, string $id, string $module): void

@@ -1786,6 +1786,9 @@ CREATE TABLE IF NOT EXISTS program_activities (
   status text NOT NULL DEFAULT 'planned' CHECK (status IN ('planned', 'in_progress', 'done', 'overdue', 'cancelled')),
   progress_pct numeric(5,2) NOT NULL DEFAULT 0,
   cancel_reason text,
+  site_id uuid,
+  area_id uuid,
+  auto_execution_rule text NOT NULL DEFAULT 'manual' CHECK (auto_execution_rule IN ('manual', 'on_source_record')),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -9087,6 +9090,10 @@ ALTER TABLE program_activities ADD CONSTRAINT fk_program_activities_responsible_
 CREATE INDEX IF NOT EXISTS idx_program_activities_fk_responsible_user_id ON program_activities (responsible_user_id);
 ALTER TABLE program_activities ADD CONSTRAINT fk_program_activities_budget_line_id FOREIGN KEY (company_id, budget_line_id) REFERENCES budget_lines (company_id, id);
 CREATE INDEX IF NOT EXISTS idx_program_activities_fk_budget_line_id ON program_activities (company_id, budget_line_id);
+ALTER TABLE program_activities ADD CONSTRAINT fk_program_activities_site_id FOREIGN KEY (company_id, site_id) REFERENCES sites (company_id, id);
+CREATE INDEX IF NOT EXISTS idx_program_activities_fk_site_id ON program_activities (company_id, site_id);
+ALTER TABLE program_activities ADD CONSTRAINT fk_program_activities_area_id FOREIGN KEY (company_id, area_id) REFERENCES areas (company_id, id);
+CREATE INDEX IF NOT EXISTS idx_program_activities_fk_area_id ON program_activities (company_id, area_id);
 ALTER TABLE program_activities ADD CONSTRAINT fk_program_activities_created_by FOREIGN KEY (created_by) REFERENCES users (id);
 ALTER TABLE program_activities ADD CONSTRAINT fk_program_activities_updated_by FOREIGN KEY (updated_by) REFERENCES users (id);
 ALTER TABLE activity_executions ADD CONSTRAINT fk_activity_executions_company_id FOREIGN KEY (company_id) REFERENCES companies (id);
