@@ -26253,6 +26253,50 @@
     "comment": null
    },
    {
+    "name": "site_photo_file_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "files.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "closing_notes",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "incident_occurred",
+    "type": "boolean",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "incident_event_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "sst_events.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,

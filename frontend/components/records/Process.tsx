@@ -33,6 +33,7 @@ import { InvTeamSignatures } from "@/components/modules/InvSignatures";
 import { DossierSharePanel, ShareLinkDetail } from "@/components/modules/SunShare";
 import { useApp } from "@/components/AppContext";
 import { submitInspectionAnswers } from "@/lib/offline";
+import { fieldPlace } from "@/lib/geo";
 
 /** Texto de un filtro que llegó por enlace (chips «Mostrando solo: …»). */
 export function describeFilter(res: RecordResource, key: string, value: string): string {
@@ -534,6 +535,11 @@ function InspectionRun({ row, onChanged }: { row: RecordRow; onChanged: () => vo
   const [answers, setAnswers] = useState<Record<string, { answer: string; comment: string; photo_file_id?: string | null; photo_name?: string }>>({});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // SCR-INS-03: ubicación GPS del equipo al ejecutar el checklist (se guarda en la inspección la primera vez).
+  const [loc, setLoc] = useState<{ lat: number; lng: number; accuracy_m: number } | null | undefined>(undefined);
+  useEffect(() => {
+    if (open && data?.editable && loc === undefined) void fieldPlace().then(setLoc);
+  }, [open, data?.editable, loc]);
 
   const load = () =>
     api<{ data: Checklist }>(`/ins/inspections/${row.id}/checklist`, { withCompany: true }).then((r) => {
@@ -553,9 +559,9 @@ function InspectionRun({ row, onChanged }: { row: RecordRow; onChanged: () => vo
     setMsg(null);
     try {
       const list = Object.entries(answers).filter(([, a]) => a.answer).map(([item_id, a]) => ({ item_id, answer: a.answer, comment: a.comment || null, ...(a.photo_file_id ? { photo_file_id: a.photo_file_id } : {}) }));
-      if (list.length) await submitInspectionAnswers(row.id, list);
+      if (list.length) await submitInspectionAnswers(row.id, list, loc);
       if (finish) {
-        const r = await api<{ data: { score_pct: number | null; findings_created: number; critical: boolean } }>(`/ins/inspections/${row.id}/finish`, { method: "POST", body: {}, withCompany: true });
+        const r = await api<{ data: { score_pct: number | null; findings_created: number; critical: boolean } }>(`/ins/inspections/${row.id}/finish`, { method: "POST", body: loc ? { location: loc } : {}, withCompany: true });
         setMsg(`Finalizada: ${r.data.score_pct ?? "—"} % · ${r.data.findings_created} hallazgo(s)${r.data.critical ? " · incluye un ítem crítico" : ""}.`);
         setOpen(false);
       }
@@ -592,7 +598,7 @@ function InspectionRun({ row, onChanged }: { row: RecordRow; onChanged: () => vo
           footer={
             data.editable ? (
               <div className="flex w-full flex-wrap items-center justify-between gap-2">
-                <span className="text-sm text-muted">{answered} de {data.items.length} respondidos</span>
+                <span className="text-sm text-muted">{answered} de {data.items.length} respondidos · {loc === undefined ? "obteniendo ubicación…" : loc ? `📍 ubicación ±${Math.round(loc.accuracy_m)} m` : "sin ubicación GPS"}</span>
                 <div className="flex gap-2">
                   <Button loading={busy} onClick={() => save(false)}>Guardar avance</Button>
                   <Button variant="primary" loading={busy} disabled={answered < data.items.length} onClick={() => save(true)}>

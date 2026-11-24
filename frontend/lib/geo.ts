@@ -18,3 +18,22 @@ export async function signPlace(): Promise<{ geo_lat?: number; geo_lng?: number 
     );
   });
 }
+
+/** M-INS SCR-INS-03: ubicación GPS del equipo para la inspección (alta precisión; null si no la da en unos segundos). */
+export async function fieldPlace(): Promise<{ lat: number; lng: number; accuracy_m: number } | null> {
+  if (typeof navigator === "undefined" || !navigator.geolocation) return null;
+  return new Promise((resolve) => {
+    const done = setTimeout(() => resolve(null), 9000);
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        clearTimeout(done);
+        resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy_m: p.coords.accuracy });
+      },
+      () => {
+        clearTimeout(done);
+        resolve(null);
+      },
+      { enableHighAccuracy: true, timeout: 8500, maximumAge: 120000 },
+    );
+  });
+}

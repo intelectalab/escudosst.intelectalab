@@ -279,7 +279,7 @@ function Mini({ label, value, color }: { label: string; value: number; color: st
 }
 
 /** Cámara con BarcodeDetector (Chrome/Android/Edge). Si el navegador no lo tiene, se usa el campo manual. */
-function Scanner({ onCode, paused }: { onCode: (c: string) => void; paused: boolean }) {
+export function Scanner({ onCode, paused }: { onCode: (c: string) => void; paused: boolean }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const [on, setOn] = useState(false);

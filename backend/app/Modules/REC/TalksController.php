@@ -21,6 +21,8 @@ use Illuminate\Support\Str;
  *  POST /ch5/topics                 crear o editar un tema {id?, title, content?, hazard_keywords[], duration_minutes?, is_active}
  *  GET  /ch5/coverage?date=          SCR-CH5-01 / RN-CH5-05: cobertura del día por área = trabajadores del área con asistencia
  *                                    registrada en una charla de ese día / trabajadores activos del área.
+ *  GET  /ch5/talks/{id}/attendances SCR-CH5-02: asistentes de la charla con su firma, para la firma asistida uno tras otro
+ *  POST /ch5/attendances/{id}/sign   firma asistida del asistente ante quien da la charla (M-FIR RN-FIR-05): {assisted, dni + pin | image}
  */
 class TalksController extends Controller
 {
@@ -50,6 +52,7 @@ class TalksController extends Controller
             'area_id' => ['required', 'uuid'],
             'duration_minutes' => ['nullable', 'integer', 'min:1', 'max:120'],
             'topic_bank_id' => ['nullable', 'uuid'],
+            'photo_file_id' => ['nullable', 'uuid'],
             'worker_ids' => ['required', 'array', 'min:1', 'max:500'],
             'worker_ids.*' => ['uuid'],
         ], ['topic.required' => 'Escribe el tema de la charla.', 'worker_ids.required' => 'Marca al menos un asistente.', 'worker_ids.min' => 'Marca al menos un asistente.',
@@ -59,12 +62,16 @@ class TalksController extends Controller
         if (count($active) !== count(array_unique($d['worker_ids']))) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Hay asistentes que no son trabajadores activos.', ['errors' => ['worker_ids' => ['Hay asistentes que no son trabajadores activos.']]]);
         }
+        // SCR-CH5-02: foto de grupo (archivo ya subido de la empresa).
+        if (! empty($d['photo_file_id']) && ! DB::selectOne("select 1 as ok from files where id = ? and status = 'available'", [$d['photo_file_id']])) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'La foto de grupo no se subió bien: vuelve a tomarla.', ['errors' => ['photo_file_id' => ['La foto de grupo no se subió bien.']]]);
+        }
         $talkRes = Registry::resource('CH5', 'safety_talks');
         $attRes = Registry::resource('CH5', 'talk_attendances');
         $id = DB::transaction(function () use ($records, $talkRes, $attRes, $d, $active) {
             $talk = $records->create($talkRes, [
                 'topic' => $d['topic'], 'content' => $d['content'] ?? null, 'talk_on' => $d['talk_on'], 'site_id' => $d['site_id'], 'area_id' => $d['area_id'],
-                'speaker_user_id' => (string) auth()->id(), 'duration_minutes' => $d['duration_minutes'] ?? null,
+                'speaker_user_id' => (string) auth()->id(), 'duration_minutes' => $d['duration_minutes'] ?? null, 'photo_file_id' => $d['photo_file_id'] ?? null,
                 'topic_bank_id' => ! empty($d['topic_bank_id']) && DB::selectOne('select 1 as ok from talk_topics where id = ? and deleted_at is null', [$d['topic_bank_id']]) ? $d['topic_bank_id'] : null,
             ]);
             foreach ($active as $w) {
@@ -195,6 +202,53 @@ class TalksController extends Controller
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => "attachment; filename=\"charlas-{$from}-{$to}.xlsx\"",
         ]);
+    }
+
+    public function attendances(string $id): JsonResponse
+    {
+        $this->can('ch5.talk_attendances.read');
+        $talk = Str::isUuid($id) ? DB::selectOne('select id, topic, talk_on, status, photo_file_id from safety_talks where id = ? and deleted_at is null', [$id]) : null;
+        if (! $talk) {
+            throw ApiProblem::notFound('La charla no existe.');
+        }
+        $rows = DB::select(
+            "select t.id, t.worker_id, coalesce(w.full_name, trim(concat_ws(' ', cw.first_name, cw.paternal_last_name, cw.maternal_last_name))) as full_name, coalesce(w.document_last4, cw.document_last4) as document_last4,
+                    t.signature_id is not null as signed, s.method as signature_method, s.signed_at
+               from talk_attendances t left join workers w on w.id = t.worker_id left join contractor_workers cw on cw.id = t.contractor_worker_id
+               left join signatures s on s.id = t.signature_id
+              where t.safety_talk_id = ? and t.deleted_at is null order by (t.signature_id is not null), 3", [$id]);
+
+        return response()->json(['data' => ['talk' => $talk, 'attendances' => $rows]]);
+    }
+
+    public function sign(Request $request, string $id): JsonResponse
+    {
+        $this->can('ch5.talk_attendances.create');
+        $a = Str::isUuid($id) ? DB::selectOne(
+            'select t.id, t.worker_id, t.signature_id, k.status as talk_status from talk_attendances t join safety_talks k on k.id = t.safety_talk_id
+              where t.id = ? and t.deleted_at is null and k.deleted_at is null for update of t', [$id]) : null;
+        if (! $a) {
+            throw ApiProblem::notFound('La asistencia no existe.');
+        }
+        if ($a->signature_id) {
+            throw new ApiProblem(409, 'conflict', 'Ya firmó', 'Este asistente ya firmó la charla.');
+        }
+        if ($a->talk_status === 'cancelled') {
+            throw new ApiProblem(409, 'conflict', 'Charla anulada', 'La charla está anulada: no se firma.');
+        }
+        if (! $a->worker_id) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'La firma asistida es para trabajadores de la empresa.', ['errors' => ['worker_id' => ['La firma asistida es para trabajadores de la empresa.']]]);
+        }
+        $sig = DB::transaction(function () use ($request, $a) {
+            $sig = \App\Modules\FIR\AssistedSignature::sign($request, 'talk_attendances', $a->id, $a->worker_id, 'attendee');
+            DB::update("update talk_attendances set signature_id = ?, method = 'signature', updated_by = ?, updated_at = now() where id = ?", [$sig, (string) auth()->id(), $a->id]);
+            // RN-CH5-01: con la primera firma de un asistente, la charla programada pasa a «realizada».
+            DB::update("update safety_talks set status = 'held', updated_at = now() where status = 'scheduled' and id = (select safety_talk_id from talk_attendances where id = ?)", [$a->id]);
+
+            return $sig;
+        });
+
+        return response()->json(['data' => ['signature_id' => $sig]], 201);
     }
 
     private function can(string $p): void

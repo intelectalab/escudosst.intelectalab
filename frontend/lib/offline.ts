@@ -341,9 +341,9 @@ export async function createOrQueue<T extends { id: string }>(table: string, sen
 }
 
 /** Respuestas de una inspección: sin señal se encola una operación por ítem (solo-anexar). */
-export async function submitInspectionAnswers(inspectionId: string, answers: { item_id: string; answer: unknown; comment?: string | null }[]): Promise<{ queued: boolean }> {
+export async function submitInspectionAnswers(inspectionId: string, answers: { item_id: string; answer: unknown; comment?: string | null }[], location?: { lat: number; lng: number; accuracy_m: number } | null): Promise<{ queued: boolean }> {
   try {
-    await api(`/ins/inspections/${inspectionId}/answers`, { method: "POST", body: { answers }, withCompany: true });
+    await api(`/ins/inspections/${inspectionId}/answers`, { method: "POST", body: location ? { answers, location } : { answers }, withCompany: true });
     return { queued: false };
   } catch (e) {
     if (!isNetwork(e) || !canQueue("inspection_answers")) throw e;

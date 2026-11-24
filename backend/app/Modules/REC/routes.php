@@ -68,6 +68,8 @@ Route::middleware(['auth:sanctum', 'company', 'module:CH5'])->prefix('ch5')->con
     Route::get('report.xlsx', 'report');
     Route::get('topics', 'topics');
     Route::post('topics', 'saveTopic');
+    Route::get('talks/{id}/attendances', 'attendances')->whereUuid('id');
+    Route::post('attendances/{id}/sign', 'sign')->whereUuid('id')->middleware('throttle:60,1');
 });
 
 // Ejecutar simulacro (M-SIM SCR-SIM-02): cronómetro de alarma a evacuación completa y asistencia de la sede.
@@ -187,4 +189,6 @@ Route::middleware(['auth:sanctum', 'company', 'module:EPP'])->prefix('epp')->gro
     Route::get('kardex.xlsx', [\App\Modules\REC\PpeMatrixController::class, 'kardex']);
     Route::get('replacement-requests', [\App\Modules\REC\PpeMatrixController::class, 'requests']);
     Route::post('replacement-requests/{id}/resolve', [\App\Modules\REC\PpeMatrixController::class, 'resolve'])->whereUuid('id');
+    Route::get('quick/lookup', [\App\Modules\REC\PpeQuickController::class, 'lookup'])->middleware('throttle:60,1');
+    Route::post('quick/deliver', [\App\Modules\REC\PpeQuickController::class, 'deliver'])->middleware('throttle:30,1');
 });

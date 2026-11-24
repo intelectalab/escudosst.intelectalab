@@ -8,6 +8,8 @@ import { api, type ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "./Summary";
 import { ReportButton } from "./CtrExtras";
+import { TalkSignRound } from "./FieldWork";
+import { uploadFile } from "@/lib/records";
 
 type Opt = { id: string; name: string; site_id?: string | null };
 type Worker = { id: string; full_name: string; document: string | null; position: string | null };
@@ -35,6 +37,9 @@ export function Ch5Talks({ readOnly, onSaved }: { readOnly: boolean; onSaved: ()
   const [bank, setBank] = useState<Topics | null>(null);
   const [topicId, setTopicId] = useState("");
   const [tv, setTv] = useState(0);
+  const [photo, setPhoto] = useState<{ id: string; name: string } | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [round, setRound] = useState<string | null>(null);
 
   useEffect(() => {
     api<{ data: Opt[] }>("/records/TEN/sites?per_page=200", { withCompany: true }).then((r) => setSites(r.data ?? [])).catch(() => setSites([]));
@@ -68,11 +73,14 @@ export function Ch5Talks({ readOnly, onSaved }: { readOnly: boolean; onSaved: ()
     setBusy(true);
     setMsg(null);
     try {
-      const r = await api<{ data: { attendees: number } }>("/ch5/quick", {
+      const r = await api<{ data: { id: string; attendees: number } }>("/ch5/quick", {
         method: "POST", withCompany: true,
-        body: { topic, topic_bank_id: topicId || null, content: content || null, talk_on: date, site_id: site, area_id: area, duration_minutes: minutes ? Number(minutes) : null, worker_ids: [...picked] },
+        body: { topic, topic_bank_id: topicId || null, content: content || null, talk_on: date, site_id: site, area_id: area, duration_minutes: minutes ? Number(minutes) : null,
+          photo_file_id: photo?.id ?? null, worker_ids: [...picked] },
       });
-      setMsg({ ok: true, text: `Charla registrada con ${r.data.attendees} asistente(s). Se marca «realizada» cuando firme al menos uno: cada trabajador firma su asistencia desde su app.` });
+      setMsg({ ok: true, text: `Charla registrada con ${r.data.attendees} asistente(s). Se marca «realizada» cuando firme al menos uno: aquí mismo, uno tras otro, o cada trabajador desde su app.` });
+      setRound(r.data.id);
+      setPhoto(null);
       setTopic("");
       setContent("");
       setTopicId("");
@@ -142,10 +150,27 @@ export function Ch5Talks({ readOnly, onSaved }: { readOnly: boolean; onSaved: ()
               )}
             </div>
           )}
+          <div className="mt-3 text-sm">
+            <span className="mb-1 block text-xs font-semibold text-muted">Foto de grupo (opcional)</span>
+            {photo ? (
+              <span className="flex items-center gap-2">📷 {photo.name} <button type="button" className="text-xs text-muted underline" onClick={() => setPhoto(null)}>Quitar</button></span>
+            ) : (
+              <input type="file" accept="image/*" capture="environment" aria-label="Foto de grupo" className="text-sm" disabled={photoBusy}
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  setPhotoBusy(true);
+                  try { const u = await uploadFile(f, "CH5"); setPhoto({ id: u.id, name: u.original_name }); }
+                  catch (err) { setMsg({ ok: false, text: (err as ApiError).detail ?? "No se pudo subir la foto." }); }
+                  finally { setPhotoBusy(false); e.target.value = ""; }
+                }} />
+            )}
+          </div>
           <div className="mt-3">
-            <Button variant="primary" icon="check" loading={busy} disabled={busy || !topic.trim() || !area || picked.size === 0} onClick={save}>Registrar charla</Button>
+            <Button variant="primary" icon="check" loading={busy} disabled={busy || photoBusy || !topic.trim() || !area || picked.size === 0} onClick={save}>Registrar charla</Button>
           </div>
           {msg && <p role={msg.ok ? "status" : "alert"} className={`mt-2 text-sm ${msg.ok ? "text-ok" : "text-bad"}`}>{msg.text}</p>}
+          {round && <div className="mt-3"><TalkSignRound talkId={round} onClose={() => { setRound(null); setReload((v) => v + 1); onSaved(); }} /></div>}
         </Card>
       )}
       {!readOnly && <TopicBank bank={bank} onSaved={() => setTv((x) => x + 1)} />}

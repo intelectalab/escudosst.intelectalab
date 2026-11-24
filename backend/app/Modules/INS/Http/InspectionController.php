@@ -27,12 +27,17 @@ class InspectionController extends Controller
     public function answers(Request $request, string $inspection): JsonResponse
     {
         $answers = $request->input('answers');
+        $data = $this->service->answer($inspection, is_array($answers) ? $answers : []);
+        $this->service->place($inspection, $request->input('location'));
 
-        return response()->json(['data' => $this->service->answer($inspection, is_array($answers) ? $answers : [])]);
+        return response()->json(['data' => $data]);
     }
 
     public function finish(Request $request, string $inspection): JsonResponse
     {
+        // SCR-INS-03: ubicación GPS del equipo al ejecutar la inspección (si el navegador la da).
+        $this->service->place($inspection, $request->input('location'));
+
         return response()->json(['data' => $this->service->finish($inspection, $request->input('summary'))]);
     }
 

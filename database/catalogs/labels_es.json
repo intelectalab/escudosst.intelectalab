@@ -1294,7 +1294,11 @@
   "unlock_on": "Se desbloquea el",
   "original_value": "Valor medido (unidad original)",
   "original_unit": "Unidad original",
-  "unit_conversion_id": "Conversión de unidades usada"
+  "unit_conversion_id": "Conversión de unidades usada",
+  "site_photo_file_id": "Foto del lugar",
+  "closing_notes": "Observaciones del cierre",
+  "incident_occurred": "¿Ocurrió un incidente?",
+  "incident_event_id": "Evento registrado"
  },
  "values": {
   "A": "Tipo A",

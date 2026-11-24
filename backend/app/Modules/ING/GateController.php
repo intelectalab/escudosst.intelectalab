@@ -54,7 +54,7 @@ class GateController extends Controller
             'override_reason' => ['nullable', 'string', 'max:1000'],
         ]);
         $this->point($in['access_point_id']);
-        $subject = $this->resolve(trim($in['code']));
+        $subject = self::resolveCode(trim($in['code']));
         if (! $subject) {
             return response()->json(['data' => [
                 'result' => 'unknown', 'granted' => false, 'person' => null,
@@ -320,7 +320,8 @@ class GateController extends Controller
      *
      * @return array{type: string, id: string}|null
      */
-    private function resolve(string $code): ?array
+    /** Persona por DNI, QR o número del fotocheck (también lo usa la entrega rápida de EPP). */
+    public static function resolveCode(string $code): ?array
     {
         if (preg_match('~/verificar/fotocheck/([A-Za-z0-9]{8,64})~', $code, $m)) {
             $code = $m[1];

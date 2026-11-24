@@ -37,6 +37,7 @@ import { Ch5Talks } from "@/components/modules/Ch5Talks";
 import { EmoProtocols } from "@/components/modules/EmoProtocols";
 import { SimRun } from "@/components/modules/SimRun";
 import { AtsCopy } from "@/components/modules/AtsCopy";
+import { AtsClose, EppQuick } from "@/components/modules/FieldWork";
 import { MagFollowUp, MagTools } from "@/components/modules/MagTools";
 import { MagOverview } from "@/components/modules/MagOverview";
 import { ErgoSummary, PsiInstruments, Rm375Form, RulaForm } from "@/components/modules/PsiTools";
@@ -215,6 +216,7 @@ export default function ModulePage() {
         </div>
       ) : m.code === "EPP" || m.code === "INS" ? (
         <div className="space-y-6">
+          {m.code === "EPP" && m.mode !== "read_only" && <EppQuick />}
           {m.code === "EPP" ? <EppPanel readOnly={m.mode === "read_only"} /> : <InsDashboard />}
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
@@ -352,6 +354,7 @@ function AtsPage({ readOnly }: { readOnly: boolean }) {
   return (
     <div className="space-y-6">
       {!readOnly && <AtsCopy onSaved={() => setV((x) => x + 1)} />}
+      {!readOnly && <AtsClose onSaved={() => setV((x) => x + 1)} />}
       <ModuleRecords key={v} code="ATS" readOnly={readOnly} />
     </div>
   );

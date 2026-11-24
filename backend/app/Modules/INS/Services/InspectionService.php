@@ -147,6 +147,25 @@ final class InspectionService
         return ['score_pct' => $score, 'findings_created' => $created, 'critical' => $critical];
     }
 
+    /**
+     * SCR-INS-03: guarda la ubicación GPS de la inspección ({lat, lng, accuracy_m}) la primera vez que llega; una ubicación inválida
+     * se ignora (la inspección no se detiene por el GPS).
+     */
+    public function place(string $id, mixed $loc): void
+    {
+        if (! is_array($loc) || ! is_numeric($loc['lat'] ?? null) || ! is_numeric($loc['lng'] ?? null) || ! Str::isUuid($id)) {
+            return;
+        }
+        $lat = (float) $loc['lat'];
+        $lng = (float) $loc['lng'];
+        $acc = is_numeric($loc['accuracy_m'] ?? null) ? max(0, round((float) $loc['accuracy_m'], 1)) : null;
+        if ($lat < -90 || $lat > 90 || $lng < -180 || $lng > 180 || ($lat == 0 && $lng == 0)) {
+            return;
+        }
+        DB::update('update inspections set latitude = ?, longitude = ?, location_accuracy_m = ?, updated_by = ? where id = ? and latitude is null and deleted_at is null',
+            [round($lat, 6), round($lng, 6), $acc, (string) auth()->id(), $id]);
+    }
+
     /** Acción correctiva desde un hallazgo: el hallazgo queda «con acción» y la acción lo tiene como origen. */
     public function actionFromFinding(string $findingId, array $input): array
     {

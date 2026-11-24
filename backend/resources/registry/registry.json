@@ -10514,6 +10514,27 @@
      "name": "is_high_risk",
      "label": "Tarea de alto riesgo",
      "type": "bool"
+    },
+    {
+     "name": "site_photo_file_id",
+     "label": "Foto del lugar",
+     "type": "file"
+    },
+    {
+     "name": "closing_notes",
+     "label": "Observaciones del cierre",
+     "type": "longtext"
+    },
+    {
+     "name": "incident_occurred",
+     "label": "¿Ocurrió un incidente?",
+     "type": "bool"
+    },
+    {
+     "name": "incident_event_id",
+     "label": "Evento registrado",
+     "type": "ref",
+     "ref": "sst_events"
     }
    ]
   },

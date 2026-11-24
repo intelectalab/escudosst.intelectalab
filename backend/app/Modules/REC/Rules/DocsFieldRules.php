@@ -513,8 +513,28 @@ class DocsFieldRules extends RecordRules
         if ($to === 'in_execution') {
             $values['started_at'] = $this->value($values, $current, 'started_at') ?? now()->toIso8601String();
         }
-        if ($to === 'closed') {
-            $values['closed_at'] = now()->toIso8601String();
+        if ($to === 'closed' && $current && $current->status !== 'closed') {
+            // SCR-ATS-04: cierre con hora de término, observaciones e incidentes ocurridos; solo esos datos cambian al cerrar.
+            if (array_diff(array_keys($values), ['status', 'closed_at', 'closing_notes', 'incident_occurred', 'incident_event_id']) !== []) {
+                $this->conflict('Al cerrar el ATS solo se registran la hora de término, las observaciones y si ocurrió un incidente.');
+            }
+            $end = $values['closed_at'] ?? null;
+            if ($end && strtotime((string) $end) > time() + 300) {
+                $this->fail('closed_at', 'La hora de término no puede ser futura.');
+            }
+            if ($end && $current->started_at && strtotime((string) $end) < strtotime((string) $current->started_at)) {
+                $this->fail('closed_at', 'La hora de término es anterior al inicio de la tarea.');
+            }
+            $values['closed_at'] = $end ?: now()->toIso8601String();
+            // Flujo §7.4: si ocurrió un evento, se enlaza al registrado en Accidentes e incidentes.
+            if (! empty($values['incident_occurred']) && empty($values['incident_event_id'])) {
+                $this->fail('incident_event_id', 'Ocurrió un incidente: elige el evento registrado en «Accidentes e incidentes» (regístralo primero si aún no está).');
+            }
+            if (! empty($values['incident_event_id'])) {
+                $values['incident_occurred'] = true;
+            } elseif (array_key_exists('incident_occurred', $values) && empty($values['incident_occurred'])) {
+                $values['incident_event_id'] = null;
+            }
         }
         if ($current && in_array($current->status, ['closed', 'cancelled'], true) && $values !== []) {
             $this->conflict('El ATS está cerrado: no se modifica.');
