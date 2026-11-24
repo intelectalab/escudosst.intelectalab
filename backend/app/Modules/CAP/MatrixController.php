@@ -47,21 +47,21 @@ class MatrixController extends Controller
                          where a.worker_id = w.id and s.training_id = q.training_id and a.deleted_at is null and s.deleted_at is null and a.attended
                            and (q.renewal_months is null or (s.starts_at at time zone 'America/Lima')::date >= ?::date - make_interval(months => q.renewal_months)))) as done
                from position_training_requirements q
-               left join workers w on w.current_position_id = q.position_id and w.deleted_at is null and w.status = 'active'
+               left join workers w on w.current_position_id = q.position_id and w.deleted_at is null and w.status = 'active'".\App\Core\Auth\Scope::andSql('w.current_site_id', 'w.current_area_id')."
               where ".self::rows($asOf)." and coalesce(q.is_active, true) and q.training_id is not null
               group by q.position_id, q.training_id, q.requirement_level", [$today, $today]);
 
         $posIds = array_values(array_unique(array_column($cells, 'position_id')));
         $trIds = array_values(array_unique(array_column($cells, 'training_id')));
         $positions = $posIds ? DB::select(
-            "select p.id, p.name, (select count(*) from workers w where w.current_position_id = p.id and w.deleted_at is null and w.status = 'active') as workers
+            "select p.id, p.name, (select count(*) from workers w where w.current_position_id = p.id and w.deleted_at is null and w.status = 'active'".\App\Core\Auth\Scope::andSql('w.current_site_id', 'w.current_area_id').") as workers
                from positions p where p.id = any(?::uuid[]) order by p.name", ['{'.implode(',', $posIds).'}']) : [];
         $trainings = $trIds ? DB::select('select id, code, title from trainings where id = any(?::uuid[]) order by title', ['{'.implode(',', $trIds).'}']) : [];
 
         $mandatory = array_filter($cells, fn ($c) => $c->level !== 'suggested');
         $den = array_sum(array_map(fn ($c) => (int) $c->total, $mandatory));
         $num = array_sum(array_map(fn ($c) => (int) $c->done, $mandatory));
-        $workers = (int) DB::selectOne("select count(*) as n from workers where deleted_at is null and status = 'active'")->n;
+        $workers = (int) DB::selectOne("select count(*) as n from workers w where deleted_at is null and status = 'active'".\App\Core\Auth\Scope::andSql('w.current_site_id', 'w.current_area_id'))->n;
         $hours = (float) DB::selectOne(
             "select coalesce(sum(coalesce(a.hours, extract(epoch from (s.ends_at - s.starts_at)) / 3600)), 0) as h
                from training_attendances a join training_sessions s on s.id = a.session_id
@@ -99,7 +99,7 @@ class MatrixController extends Controller
         $asOf = self::asOf($request);
         $today = $asOf ?? DB::selectOne("select (now() at time zone 'America/Lima')::date as d")->d;
         $soon = (int) \App\Core\Support\LegalParams::number('training_expiry_notice_days', 30);
-        $where = ["w.deleted_at is null", "w.status = 'active'"];
+        $where = ["w.deleted_at is null", "w.status = 'active'".\App\Core\Auth\Scope::andSql('w.current_site_id', 'w.current_area_id')];
         $bind = [$today, $soon, $today, $today];
         foreach (['site_id' => 'current_site_id', 'area_id' => 'current_area_id', 'position_id' => 'current_position_id'] as $k => $col) {
             if (! empty($f[$k])) {

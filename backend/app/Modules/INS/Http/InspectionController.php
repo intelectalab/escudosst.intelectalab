@@ -2,6 +2,7 @@
 
 namespace App\Modules\INS\Http;
 
+use App\Core\Auth\Scope;
 use App\Http\Controllers\Controller;
 use App\Modules\INS\Services\InspectionService;
 use Illuminate\Http\JsonResponse;
@@ -21,11 +22,14 @@ class InspectionController extends Controller
 
     public function checklist(string $inspection): JsonResponse
     {
+        Scope::assertRow('inspections', $inspection);
+
         return response()->json(['data' => $this->service->checklist($inspection)]);
     }
 
     public function answers(Request $request, string $inspection): JsonResponse
     {
+        Scope::assertRowWritable('inspections', $inspection);
         $answers = $request->input('answers');
         $data = $this->service->answer($inspection, is_array($answers) ? $answers : []);
         $this->service->place($inspection, $request->input('location'));
@@ -35,6 +39,7 @@ class InspectionController extends Controller
 
     public function finish(Request $request, string $inspection): JsonResponse
     {
+        Scope::assertRowWritable('inspections', $inspection);
         // SCR-INS-03: ubicación GPS del equipo al ejecutar la inspección (si el navegador la da).
         $this->service->place($inspection, $request->input('location'));
 
@@ -43,6 +48,7 @@ class InspectionController extends Controller
 
     public function action(Request $request, string $finding): JsonResponse
     {
+        Scope::assertRow('findings', $finding);
         return response()->json(['data' => $this->service->actionFromFinding($finding, $request->all())], 201);
     }
 }

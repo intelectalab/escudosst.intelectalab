@@ -107,6 +107,7 @@ class MeController extends Controller
      *  - mode: enabled / read_only / locked / disabled_by_company (feature_flags de la empresa)
      *  - required_plan: plan más bajo que hoy lo incluye (según plan_modules), o '+' si es complemento
      *  - role_can_use: el rol (base o personalizado) puede ver el módulo: tiene un permiso de lectura (si no, no se muestra)
+ *    y el módulo está entre los permitidos a la membresía (allowed_modules, auditor externo)
      */
     public function modules(): JsonResponse
     {
@@ -117,8 +118,10 @@ class MeController extends Controller
     public static function moduleRows(): array
     {
         $context = app(CompanyContext::class);
+        // M-AUI RN-AUI-08: con módulos permitidos en la membresía, los demás no se muestran (role_can_use = false).
+        $allowed = \App\Core\Auth\Scope::modules();
 
-        return DB::select(
+        $rows = DB::select(
             "select trim(m.code) as code, m.number, m.name, m.solves, m.group_number, m.plan_code,
                     coalesce(f.mode, 'locked') as mode,
                     coalesce((select p.code from plan_modules pm join plans p on p.id = pm.plan_id
@@ -138,5 +141,12 @@ class MeController extends Controller
               order by m.group_number, m.number",
             [$context->membershipId, '{'.implode(',', Permissions::MEDICAL_MODULES).'}', $context->membershipId]
         );
+        if ($allowed !== null) {
+            foreach ($rows as $r) {
+                $r->role_can_use = $r->role_can_use && in_array($r->code, $allowed, true);
+            }
+        }
+
+        return $rows;
     }
 }

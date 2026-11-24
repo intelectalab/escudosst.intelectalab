@@ -2,6 +2,7 @@
 
 namespace App\Core\Http\Middleware;
 
+use App\Core\Auth\Scope;
 use App\Core\Http\ApiProblem;
 use Closure;
 use Illuminate\Http\Request;
@@ -12,6 +13,7 @@ use Symfony\Component\HttpFoundation\Response;
  * Verifica que el módulo esté habilitado para la empresa activa según
  * feature_flags (docs/08-api.md §3 «Plan y feature flags»).
  * Uso en rutas: ->middleware('module:TRB'). Requiere SetTenantContext antes.
+ * Rechaza también (403) los módulos fuera de los permitidos a la membresía (App\Core\Auth\Scope::modules()).
  */
 class FeatureGate
 {
@@ -19,6 +21,9 @@ class FeatureGate
 
     public function handle(Request $request, Closure $next, string $module): Response
     {
+        // M-AUI RN-AUI-08 / docs/05 §4.5: la membresía puede estar limitada a algunos módulos (allowed_modules).
+        Scope::assertModule($module);
+
         $flag = DB::selectOne(
             'select f.mode, m.name, m.plan_code from modules m
                left join feature_flags f on f.module_code = m.code and f.deleted_at is null

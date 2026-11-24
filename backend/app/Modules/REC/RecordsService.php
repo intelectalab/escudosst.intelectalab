@@ -3,6 +3,7 @@
 namespace App\Modules\REC;
 
 use App\Core\Auth\Permissions;
+use App\Core\Auth\Scope;
 use App\Core\Http\ApiProblem;
 use App\Core\Tenancy\CompanyContext;
 use App\Modules\REC\Rules\RecordRules;
@@ -112,7 +113,10 @@ final class RecordsService
         return $res['table'] === 'contractor_requirements' ? null : ['false', []];
     }
 
-    /** Condición «solo lo suyo» para el rol trabajador o el contratista, o null si no aplica. */
+    /**
+     * Condición «solo lo suyo» para el rol trabajador o el contratista; para los demás, el alcance por sede/área de la
+     * membresía (App\Core\Auth\Scope: docs/03 §3, M-USR criterio 4). null si no aplica.
+     */
     private function selfScope(array $res): ?array
     {
         if ($c = $this->contractorScope($res)) {
@@ -121,7 +125,7 @@ final class RecordsService
         $ctx = app(\App\Core\Tenancy\CompanyContext::class);
         if ($ctx->roleCode !== 'worker' || ! in_array($res['module'], self::SELF_ONLY_MODULES, true)
             || ! in_array('worker_id', array_column($res['fields'], 'name'), true)) {
-            return null;
+            return Scope::condition($res['table'], 't');
         }
         $worker = DB::selectOne('select worker_id from memberships where id = ?', [$ctx->membershipId])?->worker_id;
 
@@ -197,6 +201,7 @@ final class RecordsService
         if (($kind = PlanLimits::kindForTable($res['table'])) && PlanLimits::occupies($res['table'], $extra + $values)) {
             PlanLimits::assertCanCreate($kind);
         }
+        $this->assertInScope($res, $extra + $values, null);
         $this->checkUniques($res, $values, null);
 
         $ctx = app(CompanyContext::class);
@@ -249,6 +254,7 @@ final class RecordsService
             && PlanLimits::occupies($res['table'], $extra + $values + (array) $current)) {
             PlanLimits::assertCanCreate($kind);
         }
+        $this->assertInScope($res, $extra + $values + (array) $current, $current);
         // M-FIR RN-FIR-03: con todas sus firmas completas el registro queda bloqueado (solo puede seguir su flujo de estados).
         // Los datos que pone el propio flujo de estados (quién aprobó, cuándo se publicó o cerró) no cuentan como edición.
         $stamps = ['approved_by', 'approved_at', 'published_at', 'closed_by', 'closed_at', 'obsoleted_at', 'effective_on'];
@@ -281,6 +287,37 @@ final class RecordsService
         return $this->find($res, $id, decrypt: true);
     }
 
+    /**
+     * Alcance por sede/área al escribir (docs/05 §2 «G: dentro de su alcance»): el registro actual debe estar en el alcance
+     * (los de toda la empresa, sin sede ni área, no los modifica quien tiene alcance) y la sede/área que queda también.
+     */
+    private function assertInScope(array $res, array $row, ?object $current): void
+    {
+        $t = $res['table'];
+        if (! Scope::restricted() || ! Scope::appliesTo($t) || $this->contractorScope($res) !== null) {
+            return;
+        }
+        if ($current !== null && ($c = Scope::condition($t, 't', strict: true))
+            && ! DB::selectOne("select 1 as ok from \"{$t}\" t where t.id = ? and {$c[0]}", array_merge([$current->id], $c[1]))) {
+            throw ApiProblem::forbidden('Este registro es de toda la empresa o de una sede o área fuera de tu alcance: no puedes modificarlo.');
+        }
+        if ($t === 'sites') {
+            if ($current === null) {
+                throw ApiProblem::forbidden('Tu acceso está limitado a algunas sedes: no puedes crear sedes nuevas.');
+            }
+
+            return;
+        }
+        [$sc, $ac] = $t === 'areas' ? ['site_id', 'parent_area_id'] : Scope::columns($t);
+        $site = $sc ? ($row[$sc] ?? null) : null;
+        $area = $ac ? ($row[$ac] ?? null) : null;
+        if (($t === 'areas' && $area === null && Scope::areaMode()) || ! Scope::allows($site, $area)) {
+            $field = ($area !== null || ! $sc) && $ac ? $ac : $sc;
+            $msg = $site === null && $area === null ? 'Elige una sede o un área de tu alcance.' : 'La sede o el área elegida está fuera del alcance de tu acceso.';
+            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', $msg, ['errors' => [$field => [$msg]]]);
+        }
+    }
+
     /** RN-FIR-03: un registro con firmas pedidas y todas firmadas no se edita; se corrige con una versión o anexo. */
     private function assertNotFullySigned(string $table, string $id): void
     {
@@ -301,6 +338,7 @@ final class RecordsService
             throw ApiProblem::forbidden('Este registro es del catálogo general de EscudoSST: no se puede archivar.');
         }
         \App\Modules\PSE\SectorPacks::assertEditable($res['table'], $id);
+        $this->assertInScope($res, (array) $current, $current);
         RecordRules::for($res['table'])?->prepareDelete($res, $current);
         $this->assertNotFullySigned($res['table'], $id);
 
@@ -369,6 +407,12 @@ final class RecordsService
             }
             if ($id === null && $target === 'sites') {
                 $sql .= " and not (coalesce(r.is_temporary, false) and r.ends_on < (now() at time zone 'America/Lima')::date)";
+            }
+            // Alcance por sede/área: para registros nuevos solo se ofrecen las sedes y áreas del alcance, y de las demás tablas
+            // los registros que el usuario puede ver. La etiqueta de un valor ya guardado (búsqueda por id) se sigue mostrando.
+            if ($id === null && ($c = Scope::condition($target, 'r', strict: in_array($target, ['sites', 'areas'], true)))) {
+                $sql .= " and {$c[0]}";
+                array_push($bind, ...$c[1]);
             }
         }
         if ($id !== null) {

@@ -28,7 +28,7 @@ final class MagOverviewController
         $points = DB::select(
             "select p.id, p.code, p.name, p.latitude, p.longitude, p.site_id, s.name as site, a.name as area
                from monitoring_points p left join sites s on s.id = p.site_id left join areas a on a.id = p.area_id
-              where p.deleted_at is null and coalesce(p.status, 'active') = 'active' order by s.name nulls last, p.code");
+              where p.deleted_at is null and coalesce(p.status, 'active') = 'active'".\App\Core\Auth\Scope::andSql('p.site_id', 'p.area_id').' order by s.name nulls last, p.code');
         $last = DB::select(
             "select distinct on (m.monitoring_point_id, m.agent_type_id) m.monitoring_point_id, t.name as agent, m.value, m.unit, m.result, m.ratio_to_limit, m.measured_at
                from measurements m join agent_types t on t.id = m.agent_type_id
@@ -73,7 +73,7 @@ final class MagOverviewController
                     (coalesce(max(m.measured_at)::date, current_date) + make_interval(months => ?))::date as due_on, max(m.measured_at) is null as never
                from monitoring_points p left join sites s on s.id = p.site_id
                left join measurements m on m.monitoring_point_id = p.id and m.deleted_at is null and m.status = 'approved'
-              where p.deleted_at is null and coalesce(p.status, 'active') = 'active'
+              where p.deleted_at is null and coalesce(p.status, 'active') = 'active'".\App\Core\Auth\Scope::andSql('p.site_id', 'p.area_id')."
               group by p.id, p.code, p.name, s.name order by due_on", [$freq]);
         $months = array_fill(1, 12, ['campaigns' => [], 'due' => []]);
         foreach ($campaigns as $c) {

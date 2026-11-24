@@ -2,6 +2,7 @@
 
 namespace App\Modules\DSH\Http;
 
+use App\Core\Auth\Scope;
 use App\Core\Http\ApiProblem;
 use App\Core\Tenancy\CompanyContext;
 use App\Core\Tenancy\DbContext;
@@ -44,10 +45,13 @@ class DashboardController extends Controller
         } else {
             $site = null;
         }
+        // M-DSH criterio 3 / docs/03 §3: con alcance por sede/área la sede elegida debe ser del alcance y los valores
+        // se calculan solo con los registros del alcance (App\Core\Auth\Scope).
+        Scope::assertSite($site);
 
         // M-DSH: el jefe de área ve solo los indicadores de su área (y subáreas) según el alcance de su acceso.
-        $areas = $this->leadAreas();
-        $kpis = $this->kpis->forAreas($areas)->overview($year, $site);
+        $areas = Scope::restricted() ? (Scope::areaMode() ? Scope::areaIds() : []) : $this->leadAreas();
+        $kpis = $this->kpis->forAreas($areas)->forSites(Scope::siteIds())->overview($year, $site);
 
         return response()->json(['data' => [
             'year' => $year,
@@ -56,7 +60,7 @@ class DashboardController extends Controller
             'kpis' => $kpis,
             'alerts' => $year === $current ? $this->kpis->alerts() : [],
             'counts' => $this->kpis->counts(),
-            'sites' => DB::select("select id, name from sites where deleted_at is null and status = 'active' order by is_main desc, name"),
+            'sites' => DB::select("select id, name from sites s where deleted_at is null and status = 'active'".Scope::andSql('s.id', null, true).' order by is_main desc, name'),
         ]]);
     }
 

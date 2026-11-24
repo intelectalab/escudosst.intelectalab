@@ -62,7 +62,7 @@ class InsToolsController extends Controller
                     round(avg(i.score_pct) filter (where i.status in ('completed', 'signed', 'closed')), 1) as avg_score,
                     count(*) filter (where exists (select 1 from inspection_answers x where x.inspection_id = i.id and x.deleted_at is null and x.is_critical and x.is_compliant = false)) as critical
                from inspections i left join areas a on a.id = i.area_id left join sites s on s.id = i.site_id
-              where i.deleted_at is null and extract(year from coalesce(i.scheduled_on, i.created_at::date)) = ?
+              where i.deleted_at is null and extract(year from coalesce(i.scheduled_on, i.created_at::date)) = ?".\App\Core\Auth\Scope::andSql('i.site_id', 'i.area_id')."
               group by a.name, s.name order by s.name nulls last, a.name nulls last", [$today, $today, $year]);
         foreach ($rows as $r) {
             $r->due = (int) $r->due;

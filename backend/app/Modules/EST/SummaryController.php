@@ -2,6 +2,7 @@
 
 namespace App\Modules\EST;
 
+use App\Core\Auth\Scope;
 use App\Core\Http\ApiProblem;
 use App\Core\Support\LegalParams;
 use App\Http\Controllers\Controller;
@@ -14,6 +15,8 @@ use Illuminate\Support\Facades\DB;
  * baja (mortales + incapacitantes), días perdidos e índices IF, IG e IA de cada mes del año, más el acumulado.
  * Si el mes ya se calculó (monthly_statistics, total de la empresa) se usa ese valor; si no, se calcula al vuelo con
  * las horas-hombre y los eventos registrados, sin guardarlo (RN-EST-01, RN-EST-04, RN-EST-05).
+ * Con alcance por sede/área (App\Core\Auth\Scope) no se usa el total de la empresa: se calcula con las horas-hombre de
+ * sus sedes y los eventos de su alcance.
  */
 class SummaryController extends Controller
 {
@@ -30,18 +33,19 @@ class SummaryController extends Controller
         $div = LegalParams::number('accident_rate_divisor', 1000);
 
         $stored = [];
-        foreach (DB::select('select * from monthly_statistics where period_year = ? and site_id is null and deleted_at is null', [$year]) as $m) {
+        $scoped = Scope::restricted();
+        foreach ($scoped ? [] : DB::select('select * from monthly_statistics where period_year = ? and site_id is null and deleted_at is null', [$year]) as $m) {
             $stored[(int) $m->period_month] = $m;
         }
         $hours = [];
-        foreach (DB::select('select period_month, sum(hours_worked) as h, sum(worker_count) as w from man_hours where deleted_at is null and period_year = ? group by 1', [$year]) as $h) {
+        foreach (DB::select('select period_month, sum(hours_worked) as h, sum(worker_count) as w from man_hours where deleted_at is null and period_year = ?'.Scope::andSql('site_id', null, true).' group by 1', [$year]) as $h) {
             $hours[(int) $h->period_month] = $h;
         }
         $events = [];
         foreach (DB::select(
             "select extract(month from occurred_at at time zone 'America/Lima')::int as m,
                     count(*) filter (where event_type in ('fatal_accident','disabling_accident')) as lost, coalesce(sum(lost_days), 0) as days
-               from sst_events where deleted_at is null and status <> 'discarded' and extract(year from occurred_at at time zone 'America/Lima') = ? group by 1", [$year]) as $e) {
+               from sst_events where deleted_at is null and status <> 'discarded' and extract(year from occurred_at at time zone 'America/Lima') = ?".Scope::andSql('site_id', 'area_id', true).' group by 1', [$year]) as $e) {
             $events[(int) $e->m] = $e;
         }
 

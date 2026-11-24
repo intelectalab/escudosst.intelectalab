@@ -39,7 +39,7 @@ class PpeMatrixController extends Controller
             $rows = DB::select(
                 "select w.id, w.full_name, w.current_position_id as position_id, d.ppe_item_id, max(coalesce(d.expires_on, '9999-12-31'::date)) as until
                    from workers w left join ppe_deliveries d on d.worker_id = w.id and d.deleted_at is null and d.status in ('delivered', 'due_for_replacement')
-                  where w.deleted_at is null and w.status = 'active' and w.current_position_id = any(?::uuid[])
+                  where w.deleted_at is null and w.status = 'active' and w.current_position_id = any(?::uuid[])".\App\Core\Auth\Scope::andSql('w.current_site_id', 'w.current_area_id')."
                   group by w.id, w.full_name, w.current_position_id, d.ppe_item_id", ['{'.implode(',', array_keys($byPos)).'}']);
             foreach ($rows as $r) {
                 $workers[$r->id] ??= ['worker_id' => $r->id, 'name' => $r->full_name, 'position_id' => $r->position_id, 'has' => []];
@@ -98,7 +98,7 @@ class PpeMatrixController extends Controller
             "select i.id as item_id, i.code, i.name as item, i.min_stock, m.site_id, s.name as site,
                     sum(case when m.movement_type in ('in','return','adjustment') then m.quantity else -m.quantity end) as balance
                from ppe_stock_movements m join ppe_items i on i.id = m.ppe_item_id and i.deleted_at is null left join sites s on s.id = m.site_id
-              where m.deleted_at is null group by i.id, i.code, i.name, i.min_stock, m.site_id, s.name order by i.name, s.name nulls first");
+              where m.deleted_at is null".\App\Core\Auth\Scope::andSql('m.site_id', null).' group by i.id, i.code, i.name, i.min_stock, m.site_id, s.name order by i.name, s.name nulls first');
 
         return response()->json(['data' => array_map(fn ($r) => ['item_id' => $r->item_id, 'code' => $r->code, 'item' => $r->item, 'site_id' => $r->site_id,
             'site' => $r->site ?? 'Sin sede (almacén general)', 'balance' => (float) $r->balance, 'min_stock' => $r->min_stock === null ? null : (float) $r->min_stock,
@@ -120,7 +120,7 @@ class PpeMatrixController extends Controller
                select m.moved_at, s.name as site, i.name as item, m.size, m.movement_type, m.quantity, m.reference, m.supplier_name,
                       sum(case when m.movement_type in ('in','return','adjustment') then m.quantity else -m.quantity end)
                         over (partition by m.ppe_item_id, m.site_id order by m.moved_at, m.created_at rows unbounded preceding) as balance
-                 from ppe_stock_movements m join ppe_items i on i.id = m.ppe_item_id left join sites s on s.id = m.site_id where m.deleted_at is null) x
+                 from ppe_stock_movements m join ppe_items i on i.id = m.ppe_item_id left join sites s on s.id = m.site_id where m.deleted_at is null".\App\Core\Auth\Scope::andSql('m.site_id', null).") x
               where (moved_at at time zone 'America/Lima')::date between ? and ? order by site nulls first, item, moved_at", [$from, $to]);
         $out = [['Kárdex de EPP'], ["Del {$from} al {$to}. Saldo: existencias después de cada movimiento."], [],
             ['Sede', 'EPP', 'Talla', 'Fecha', 'Movimiento', 'Cantidad', 'Saldo', 'Referencia']];
@@ -138,7 +138,7 @@ class PpeMatrixController extends Controller
             "select s.name as site, a.name as area, i.name as item, sum(d.quantity) as units, count(distinct d.worker_id) as workers
                from ppe_deliveries d join ppe_items i on i.id = d.ppe_item_id left join workers w on w.id = d.worker_id
                left join sites s on s.id = coalesce(d.site_id, w.current_site_id) left join areas a on a.id = w.current_area_id
-              where d.deleted_at is null and d.status = 'delivered' and (d.delivered_at at time zone 'America/Lima')::date between ? and ?
+              where d.deleted_at is null and d.status = 'delivered' and (d.delivered_at at time zone 'America/Lima')::date between ? and ?".\App\Core\Auth\Scope::andSql('coalesce(d.site_id, w.current_site_id)', null)."
               group by 1, 2, 3 order by 1 nulls first, 2 nulls first, 4 desc", [$from, $to]);
         foreach ($use as $u) {
             $out[] = [$u->site ?? 'Sin sede', $u->area ?? 'Sin área', $u->item, (float) $u->units, (int) $u->workers];

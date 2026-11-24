@@ -23,8 +23,18 @@ class IpercController extends Controller
 {
     public function __construct(private IpercWorkflow $flow, private IpercExport $export) {}
 
+    /** Alcance por sede/área (App\Core\Auth\Scope): la matriz de la versión debe ser de la sede o área del usuario. */
+    private function scopeVersion(string $version, bool $write = false): void
+    {
+        $m = \Illuminate\Support\Str::isUuid($version) ? \Illuminate\Support\Facades\DB::selectOne('select iperc_matrix_id as id from iperc_versions where id = ?', [$version])?->id : null;
+        if ($m) {
+            $write ? \App\Core\Auth\Scope::assertRowWritable('iperc_matrices', $m) : \App\Core\Auth\Scope::assertRow('iperc_matrices', $m);
+        }
+    }
+
     public function workspace(Request $request, string $matrix): JsonResponse
     {
+        \App\Core\Auth\Scope::assertRow('iperc_matrices', $matrix);
         $version = $request->query('version');
         $p = \App\Core\Auth\Permissions::effective();
         $can = fn (string $x) => in_array("ipc.{$x}", $p, true);
@@ -45,11 +55,13 @@ class IpercController extends Controller
 
     public function newVersion(Request $request, string $matrix): JsonResponse
     {
+        \App\Core\Auth\Scope::assertRowWritable('iperc_matrices', $matrix);
         return response()->json(['data' => $this->flow->newVersion($matrix, $request->input('change_reason'))], 201);
     }
 
     public function submit(Request $request, string $version): Response
     {
+        $this->scopeVersion($version, true);
         $p = $request->input('participants');
         $this->flow->submit($version, is_array($p) ? $p : null);
 
@@ -58,6 +70,7 @@ class IpercController extends Controller
 
     public function sendBack(Request $request, string $version): Response
     {
+        $this->scopeVersion($version, true);
         $this->flow->sendBack($version, $request->input('comment'));
 
         return response()->noContent();
@@ -65,11 +78,13 @@ class IpercController extends Controller
 
     public function approve(Request $request, string $version): JsonResponse
     {
+        $this->scopeVersion($version, true);
         return response()->json(['data' => $this->flow->approve($version, $request->input('committee_meeting_id'))]);
     }
 
     public function pdf(string $version): Response
     {
+        $this->scopeVersion($version);
         [$name, $bytes] = $this->export->pdf($version);
 
         return response($bytes, 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => "attachment; filename=\"{$name}\""]);
@@ -77,6 +92,7 @@ class IpercController extends Controller
 
     public function xlsx(string $version): Response
     {
+        $this->scopeVersion($version);
         [$name, $bytes] = $this->export->xlsx($version);
 
         return response($bytes, 200, [

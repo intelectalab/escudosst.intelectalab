@@ -1,9 +1,11 @@
 "use client";
 
 // Auditorías (M-AUI): SCR-AUI-01 calendario anual por mes con estado, SCR-AUI-02 preparación con el último autodiagnóstico SUNAFIL,
-// y por auditoría: cargar el checklist desde la plantilla de la Ley 29783 (RN-AUI-07) y dar acceso temporal al auditor externo (RN-AUI-02).
+// y por auditoría: cargar el checklist desde la plantilla de la Ley 29783 (RN-AUI-07) y dar acceso temporal al auditor externo (RN-AUI-02),
+// acotado a los módulos que se eligen (RN-AUI-08).
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
+import { AppContext } from "@/components/AppContext";
 import { api, type ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "./Summary";
@@ -14,6 +16,8 @@ type Data = { year: number; audits: Audit[]; preparation: { id: string; title: s
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Setiembre", "Octubre", "Noviembre", "Diciembre"];
 const TYPE: Record<string, string> = { internal: "Interna", external: "Externa", legal_mandatory: "Legal obligatoria", certification: "Certificación", client: "De cliente", supplier: "A proveedor" };
 const STATUS: Record<string, string> = { planned: "Planificada", in_progress: "En curso", report_draft: "Informe en borrador", completed: "Completada", closed: "Cerrada", cancelled: "Cancelada" };
+// Módulos con datos de salud (el auditor nunca los ve) y módulos base que todo acceso conserva (cuenta, avisos, estructura).
+const NOT_OFFERED = ["EMO", "VMD", "DES", "PSI", "VUL", "USR", "NOT", "TEN"];
 const fmt = (d: string | null) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "—");
 const gapsText = (g: unknown): string[] => (Array.isArray(g) ? g.map((x) => (typeof x === "string" ? x : String((x as Record<string, unknown>)?.title ?? (x as Record<string, unknown>)?.question ?? JSON.stringify(x)))) : []);
 
@@ -22,6 +26,9 @@ export function AuiTools({ readOnly, onSaved }: { readOnly: boolean; onSaved: ()
   const [d, setD] = useState<Data | null>(null);
   const [sel, setSel] = useState("");
   const [inv, setInv] = useState({ email: "", name: "" });
+  const [mods, setMods] = useState<string[]>([]);
+  const app = useContext(AppContext);
+  const offered = (app?.modules ?? []).filter((m) => (m.mode === "enabled" || m.mode === "read_only") && !NOT_OFFERED.includes(m.code));
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const load = useCallback(() => api<{ data: Data }>(`/aui/calendar?year=${year}`, { withCompany: true }).then((r) => setD(r.data)).catch(() => setD(null)), [year]);
   useEffect(() => { void load(); }, [load]);
@@ -38,9 +45,10 @@ export function AuiTools({ readOnly, onSaved }: { readOnly: boolean; onSaved: ()
   const access = async () => {
     setMsg(null);
     try {
-      const r = await api<{ data: { expires_on: string } }>(`/aui/audits/${sel}/auditor-access`, { method: "POST", withCompany: true, body: { email: inv.email, full_name: inv.name } });
+      const r = await api<{ data: { expires_on: string } }>(`/aui/audits/${sel}/auditor-access`, { method: "POST", withCompany: true, body: { email: inv.email, full_name: inv.name, modules: mods } });
       setMsg({ ok: true, text: `Se envió la invitación al auditor externo. Su acceso vence el ${fmt(r.data.expires_on)}.` });
       setInv({ email: "", name: "" });
+      setMods([]);
       void load();
     } catch (e) { fail(e); }
   };
@@ -97,6 +105,18 @@ export function AuiTools({ readOnly, onSaved }: { readOnly: boolean; onSaved: ()
                 <p className="font-semibold">Acceso del auditor externo</p>
                 <input className="input" placeholder="Nombre completo" value={inv.name} onChange={(e) => setInv({ ...inv, name: e.target.value })} />
                 <input className="input" type="email" placeholder="Correo" value={inv.email} onChange={(e) => setInv({ ...inv, email: e.target.value })} />
+                <fieldset className="space-y-1">
+                  <legend className="text-xs font-semibold">Módulos que podrá ver</legend>
+                  <div className="grid max-h-40 grid-cols-2 gap-1 overflow-y-auto rounded-lg border border-line p-2 text-xs">
+                    {offered.map((m) => (
+                      <label key={m.code} className="flex items-center gap-1">
+                        <input type="checkbox" checked={mods.includes(m.code)} onChange={(e) => setMods(e.target.checked ? [...mods, m.code] : mods.filter((x) => x !== m.code))} />
+                        {m.name}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted">Si no eliges ninguno, verá todos los módulos que su rol permite leer.</p>
+                </fieldset>
                 <Button disabled={!inv.email || !inv.name} onClick={access}>Dar acceso temporal</Button>
                 <p className="text-xs text-muted">El acceso vence al terminar la auditoría (más los días de gracia configurados).</p>
               </div>

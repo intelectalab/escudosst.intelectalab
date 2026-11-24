@@ -2,6 +2,7 @@
 
 namespace App\Modules\DSH\Http;
 
+use App\Core\Auth\Scope;
 use App\Core\Http\ApiProblem;
 use App\Http\Controllers\Controller;
 use App\Modules\DSH\Services\KpiService;
@@ -25,6 +26,7 @@ use Illuminate\Support\Str;
  *    management (solo con view=management) cumplimiento del SG-SST, accidentes y días perdidos vs el año anterior,
  *               puntaje del autodiagnóstico SUNAFIL, pendientes de aprobación, cumplimiento por sede y riesgos críticos
  * Cada bloque viene en null si su módulo no está en el plan.
+ * Con alcance por sede/área (App\Core\Auth\Scope) cada bloque cuenta solo los registros del alcance.
  */
 class HomeController extends Controller
 {
@@ -52,6 +54,7 @@ class HomeController extends Controller
         } else {
             $site = null;
         }
+        Scope::assertSite($site);
         $this->enabled = array_column(DB::select("select module_code from feature_flags where mode in ('enabled', 'read_only') and deleted_at is null"), 'module_code');
 
         $monthly = $this->on('EST') || $this->on('ACC') ? [
@@ -72,6 +75,12 @@ class HomeController extends Controller
         }
 
         return response()->json(['data' => $data]);
+    }
+
+    /** Indicadores acotados al alcance de la membresía (sedes y, si las tiene, áreas). */
+    private function kpis(): KpiService
+    {
+        return (new KpiService)->forAreas(Scope::areaMode() ? Scope::areaIds() : [])->forSites(Scope::siteIds());
     }
 
     private function on(string $module): bool
@@ -124,7 +133,7 @@ class HomeController extends Controller
     private function actions(?string $site): array
     {
         $bind = $site ? [$site] : [];
-        $where = "a.deleted_at is null and a.status in ('open','in_progress','overdue')".($site ? ' and a.site_id = ?' : '');
+        $where = "a.deleted_at is null and a.status in ('open','in_progress','overdue')".($site ? ' and a.site_id = ?' : '').Scope::andSql('a.site_id', 'a.area_id');
         $rows = DB::select(
             "select a.id, a.code, a.title, a.source_type, a.priority, a.status, a.due_on,
                     coalesce(u.full_name, w.full_name, coalesce(c.trade_name, c.legal_name)) as responsible
@@ -152,7 +161,7 @@ class HomeController extends Controller
                join iperc_rows r on r.iperc_version_id = v.id and r.deleted_at is null
                join risk_criteria c on c.id = m.risk_criteria_id
                left join positions p on p.id = coalesce(r.position_id, m.position_id)
-              where m.deleted_at is null and m.status = 'active'".($site ? ' and m.site_id = ?' : '').' order by m.code, r.row_number', $site ? [$site] : []);
+              where m.deleted_at is null and m.status = 'active'".($site ? ' and m.site_id = ?' : '').Scope::andSql('m.site_id', 'm.area_id').' order by m.code, r.row_number', $site ? [$site] : []);
 
         $cells = [];
         foreach ($rows as $r) {
@@ -255,7 +264,7 @@ class HomeController extends Controller
 
     private function management(int $year, ?string $site, ?array $monthly, string $today): array
     {
-        $kpis = new KpiService;
+        $kpis = $this->kpis();
         $all = $kpis->overview($year, $site);
 
         // Accidentes con baja y días perdidos del año vs el mismo periodo del año anterior.
@@ -263,7 +272,7 @@ class HomeController extends Controller
         $events = fn (int $y) => DB::selectOne(
             "select count(*) filter (where event_type in ('disabling_accident','fatal_accident')) as accidents, coalesce(sum(lost_days), 0) as days
                from sst_events where deleted_at is null and status <> 'discarded'
-                and (occurred_at at time zone 'America/Lima')::date between ? and ?".($site ? ' and site_id = ?' : ''),
+                and (occurred_at at time zone 'America/Lima')::date between ? and ?".($site ? ' and site_id = ?' : '').Scope::andSql('site_id', 'area_id'),
             array_merge(["{$y}-01-01", $y === (int) substr($today, 0, 4) ? $today : "{$y}-{$cut}"], $site ? [$site] : []));
         $cur = $this->on('ACC') ? $events($year) : null;
         $prev = $this->on('ACC') ? $events($year - 1) : null;
@@ -299,8 +308,8 @@ class HomeController extends Controller
     private function sites(int $year): array
     {
         $out = [];
-        foreach (DB::select("select id, name from sites where deleted_at is null and status = 'active' order by is_main desc, name limit 8") as $s) {
-            $avg = $this->average((new KpiService)->overview($year, $s->id));
+        foreach (DB::select("select id, name from sites s where deleted_at is null and status = 'active'".Scope::andSql('s.id', null, true).' order by is_main desc, name limit 8') as $s) {
+            $avg = $this->average($this->kpis()->overview($year, $s->id));
             $out[] = ['id' => $s->id, 'name' => $s->name, 'pct' => $avg['pct'] ?? null];
         }
 
@@ -344,7 +353,7 @@ class HomeController extends Controller
                left join iperc_controls c on c.iperc_row_id = r.id and c.deleted_at is null
                left join areas a on a.id = m.area_id left join sites s on s.id = m.site_id
                left join positions p on p.id = coalesce(r.position_id, m.position_id)
-              where m.deleted_at is null and m.status = 'active'".($site ? ' and m.site_id = ?' : '')."
+              where m.deleted_at is null and m.status = 'active'".($site ? ' and m.site_id = ?' : '').Scope::andSql('m.site_id', 'm.area_id')."
               group by r.id, m.id, a.name, s.name, p.name
              having count(c.id) filter (where c.status = 'proposed') > 0 or count(c.id) filter (where c.status in ('implemented','verified','existing')) = 0
               order by r.risk_score desc limit 5", $site ? [$site] : []);

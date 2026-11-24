@@ -430,8 +430,10 @@ class RegistersController extends Controller
     /** @return array{0: list<string>, 1: list<list<mixed>>} */
     private function data(string $type, string $from, string $to, ?string $site = null): array
     {
-        // Filtro por sede (M-REG §11: por sede o consolidado); sin sede, toda la empresa.
-        $sf = fn (string $col) => $site ? " and {$col} = '".$site."'" : '';
+        // Filtro por sede (M-REG §11: por sede o consolidado); sin sede, toda la empresa. Con alcance por sede/área
+        // (App\Core\Auth\Scope) el consolidado es solo de las sedes del alcance.
+        \App\Core\Auth\Scope::assertSite($site);
+        $sf = fn (string $col) => ($site ? " and {$col} = '".$site."'" : '').\App\Core\Auth\Scope::andSql($col, null, true);
         $d = fn ($v) => $v ? date('d/m/Y', strtotime((string) $v)) : '';
         $dt = fn ($v) => $v ? (new \DateTimeImmutable((string) $v))->setTimezone(new \DateTimeZone('America/Lima'))->format('d/m/Y H:i') : '';
         $range = [$from, $to];

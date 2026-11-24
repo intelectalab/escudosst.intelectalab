@@ -19,7 +19,9 @@ use Illuminate\Support\Str;
  *  POST /aui/audits/{id}/checklist          RN-AUI-07: precarga los ítems del checklist desde la plantilla de la norma (Ley 29783: las
  *                                           preguntas base de EscudoSST, las mismas de la línea base); no duplica ítems
  *  POST /aui/audits/{id}/auditor-access     flujo 1 y RN-AUI-02: invita al auditor externo con el rol «auditor externo» y acceso que vence
- *                                           al terminar la auditoría + auditor_access_grace_days; queda ligado a la auditoría
+ *                                           al terminar la auditoría + auditor_access_grace_days; queda ligado a la auditoría.
+ *                                           {modules?: ['AUI','DOC',…]} RN-AUI-08: módulos que verá (memberships.allowed_modules;
+ *                                           vacío = todos los de su rol); el periodo de la auditoría queda en audit_period_from/to
  */
 class AuditToolsController extends Controller
 {
@@ -78,6 +80,14 @@ class AuditToolsController extends Controller
         if (! $a->ends_on) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Indica la fecha de fin de la auditoría: de ella depende cuándo vence el acceso.', ['errors' => ['ends_on' => ['Indica la fecha de fin de la auditoría.']]]);
         }
+        // RN-AUI-08: módulos que verá el auditor (de los que existen; sin médicos, que su rol nunca ve).
+        $modules = array_values(array_unique(array_map(fn ($m) => strtoupper(trim((string) $m)), array_filter((array) ($request->input('modules') ?? []), 'is_scalar'))));
+        if ($modules !== []) {
+            $known = array_column(DB::select('select trim(code) as code from modules where deleted_at is null and code = any(?::text[])', ['{'.implode(',', array_map(fn ($m) => preg_replace('/[^A-Z0-9]/', '', $m), $modules)).'}']), 'code');
+            if (count($known) !== count($modules) || array_intersect($modules, Permissions::MEDICAL_MODULES) !== []) {
+                throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Uno de los módulos no existe o no se puede dar al auditor externo.', ['errors' => ['modules' => ['Elige módulos válidos (sin datos médicos).']]]);
+            }
+        }
         $grace = (int) LegalParams::number('auditor_access_grace_days', 0);
         $expires = date('Y-m-d', strtotime($a->ends_on.' +'.$grace.' days'));
         $sub = Request::create('/', 'POST', ['email' => $request->input('email'), 'full_name' => $request->input('full_name'), 'role_code' => 'external_auditor', 'expires_on' => $expires]);
@@ -85,8 +95,11 @@ class AuditToolsController extends Controller
         $res = $users->store($sub);
         $membership = $res->getData(true)['data']['id'];
         DB::update('update audits set external_auditor_membership_id = ?, updated_by = ?, updated_at = now() where id = ?', [$membership, (string) auth()->id(), $a->id]);
+        DB::update('update memberships set allowed_modules = ?::text[], audit_period_from = ?, audit_period_to = ?, updated_by = ?, updated_at = now() where id = ?',
+            [$modules ? '{'.implode(',', $modules).'}' : null, $a->starts_on, $a->ends_on, (string) auth()->id(), $membership]);
+        Permissions::flush();
 
-        return response()->json(['data' => ['membership_id' => $membership, 'expires_on' => $expires]], 201);
+        return response()->json(['data' => ['membership_id' => $membership, 'expires_on' => $expires, 'modules' => $modules ?: null]], 201);
     }
 
     /** GET /aui/findings.xlsx?year= — M-AUI §11: hallazgos del año por cláusula y tipo, con cuántos siguen abiertos. */

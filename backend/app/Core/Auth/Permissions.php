@@ -10,9 +10,9 @@ use Illuminate\Support\Facades\DB;
  * los del rol de su membresía, recortados por los módulos habilitados
  * (enabled; en read_only solo las acciones de lectura). Vale igual para un rol personalizado de la cuenta: sus
  * role_permissions (por role_id) son un subconjunto de las de su rol base (App\Modules\USR\Services\CustomRolesService).
+ * Se recortan además por los módulos permitidos de la membresía (allowed_modules / membership_scopes «module», App\Core\Auth\Scope);
+ * el recorte por sede/área se aplica a los registros (Scope::condition), no a los permisos.
  * El caché es por proceso: flush() tras cambiar un rol o la membresía.
- *
- * Pendiente: recorte por membership_scopes (sede/área) y allowed_modules.
  */
 final class Permissions
 {
@@ -30,12 +30,22 @@ final class Permissions
     public static function effective(): array
     {
         $membershipId = app(CompanyContext::class)->membershipId;
+        if (! isset(self::$cache[$membershipId]) && ($mods = Scope::modules()) !== null) {
+            self::$cache[$membershipId] = array_values(array_filter(self::load($membershipId),
+                fn (string $code) => in_array(strtoupper(explode('.', $code, 2)[0]), $mods, true)));
+        }
 
+        return self::$cache[$membershipId] ??= self::load($membershipId);
+    }
+
+    /** @return list<string> */
+    private static function load(string $membershipId): array
+    {
         // Sesión de soporte (docs/05 §4.6): solo lectura de los módulos que la empresa tiene, nunca datos médicos
         // ni permisos sensibles, sin importar los permisos del rol platform_support.
         $support = (bool) DB::selectOne('select is_support_session as s from memberships where id = ?', [$membershipId])?->s;
         if ($support) {
-            return self::$cache[$membershipId] ??= array_map(fn ($row) => $row->code, DB::select(
+            return array_map(fn ($row) => $row->code, DB::select(
                 "select p.code
                    from permissions p
                    join feature_flags f on f.module_code = p.module_code and f.deleted_at is null
@@ -47,7 +57,7 @@ final class Permissions
             ));
         }
 
-        return self::$cache[$membershipId] ??= array_map(
+        return array_map(
             fn ($row) => $row->code,
             DB::select(
                 "select p.code
@@ -66,5 +76,6 @@ final class Permissions
     public static function flush(): void
     {
         self::$cache = [];
+        Scope::flush();
     }
 }

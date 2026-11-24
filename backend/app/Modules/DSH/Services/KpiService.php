@@ -71,26 +71,26 @@ final class KpiService
     {
         $enabled = array_column(DB::select("select module_code from feature_flags where mode in ('enabled', 'read_only') and deleted_at is null"), 'module_code');
         $soon = DB::selectOne("select (?::date + 30) as d", [$this->today])->d;
-        $site = fn (string $col) => $this->site ? " and {$col} = '".addslashes($this->site)."'" : '';
+        $site = fn (string $col, ?string $area = null) => $this->siteSql($col).($area ? $this->areaSql($area) : '');
         $f = fn (array $x) => $this->site ? $x + ['site_id' => $this->site] : $x;
         $checks = [
-            ['ACR', 'bad', 'acciones correctivas vencidas', "select count(*) as n from corrective_actions where deleted_at is null and status in ('open','in_progress','overdue') and due_on < ?".$site('site_id'), [$this->today],
+            ['ACR', 'bad', 'acciones correctivas vencidas', "select count(*) as n from corrective_actions where deleted_at is null and status in ('open','in_progress','overdue') and due_on < ?".$site('site_id', 'area_id'), [$this->today],
                 ['corrective_actions', $f(['status' => 'open,in_progress,overdue', 'due_on__lt' => 'today'])]],
-            ['IPC', 'bad', 'matrices IPERC con revisión vencida', 'select count(*) as n from iperc_matrices where deleted_at is null and status in (\'active\', \'review_required\', \'review_overdue\') and next_review_on < ?'.$site('site_id'), [$this->today],
+            ['IPC', 'bad', 'matrices IPERC con revisión vencida', 'select count(*) as n from iperc_matrices where deleted_at is null and status in (\'active\', \'review_required\', \'review_overdue\') and next_review_on < ?'.$site('site_id', 'area_id'), [$this->today],
                 ['iperc_matrices', $f(['status' => 'active,review_required,review_overdue', 'next_review_on__lt' => 'today'])]],
-            ['IPC', 'amber', 'matrices IPERC sin versión aprobada', "select count(*) as n from iperc_matrices where deleted_at is null and status in ('active', 'review_required', 'review_overdue') and current_version_id is null".$site('site_id'), [],
+            ['IPC', 'amber', 'matrices IPERC sin versión aprobada', "select count(*) as n from iperc_matrices where deleted_at is null and status in ('active', 'review_required', 'review_overdue') and current_version_id is null".$site('site_id', 'area_id'), [],
                 ['iperc_matrices', $f(['status' => 'active,review_required,review_overdue', 'current_version_id__null' => '1'])]],
-            ['ACC', 'bad', 'notificaciones de accidentes fuera de plazo', "select count(*) as n from event_notifications n join sst_events e on e.id = n.event_id where n.deleted_at is null and n.status = 'pending' and n.deadline_at < now()".$site('e.site_id'), [],
+            ['ACC', 'bad', 'notificaciones de accidentes fuera de plazo', "select count(*) as n from event_notifications n join sst_events e on e.id = n.event_id where n.deleted_at is null and n.status = 'pending' and n.deadline_at < now()".$site('e.site_id', 'e.area_id'), [],
                 ['event_notifications', ['status' => 'pending', 'deadline_at__lt' => 'today']]],
-            ['INS', 'amber', 'inspecciones programadas sin ejecutar', "select count(*) as n from inspections where deleted_at is null and status = 'scheduled' and scheduled_on < ?".$site('site_id'), [$this->today],
+            ['INS', 'amber', 'inspecciones programadas sin ejecutar', "select count(*) as n from inspections where deleted_at is null and status = 'scheduled' and scheduled_on < ?".$site('site_id', 'area_id'), [$this->today],
                 ['inspections', $f(['status' => 'scheduled', 'scheduled_on__lt' => 'today'])]],
-            ['EMO', 'amber', 'aptitudes médicas que vencen en 30 días', "select count(*) as n from fitness_status f join workers w on w.id = f.worker_id where f.deleted_at is null and f.is_current and f.valid_until between ? and ? and w.status = 'active'".$site('w.current_site_id'), [$this->today, $soon],
+            ['EMO', 'amber', 'aptitudes médicas que vencen en 30 días', "select count(*) as n from fitness_status f join workers w on w.id = f.worker_id where f.deleted_at is null and f.is_current and f.valid_until between ? and ? and w.status = 'active'".$site('w.current_site_id', 'w.current_area_id'), [$this->today, $soon],
                 ['fitness_status', ['is_current' => 'true', 'valid_until__gte' => 'today', 'valid_until__lte' => $soon]]],
             ['EPP', 'amber', 'EPP entregados que vencen en 30 días', "select count(*) as n from ppe_deliveries where deleted_at is null and status = 'delivered' and expires_on between ? and ?".$site('site_id'), [$this->today, $soon],
                 ['ppe_deliveries', $f(['status' => 'delivered', 'expires_on__gte' => 'today', 'expires_on__lte' => $soon])]],
             ['FOT', 'amber', 'fotochecks que vencen en 30 días', "select count(*) as n from credentials where deleted_at is null and status = 'active' and expires_on between ? and ?", [$this->today, $soon],
                 ['credentials', ['status' => 'active', 'expires_on__gte' => 'today', 'expires_on__lte' => $soon]]],
-            ['ACT', 'amber', 'reportes de actos o condiciones sin revisar', "select count(*) as n from substandard_reports where deleted_at is null and status = 'received'".$site('site_id'), [],
+            ['ACT', 'amber', 'reportes de actos o condiciones sin revisar', "select count(*) as n from substandard_reports where deleted_at is null and status = 'received'".$site('site_id', 'area_id'), [],
                 ['substandard_reports', $f(['status' => 'received'])]],
             ['SCT', 'bad', 'pólizas SCTR vencidas', "select count(*) as n from sctr_policies where deleted_at is null and status = 'active' and ends_on < ?", [$this->today],
                 ['sctr_policies', ['status' => 'active', 'ends_on__lt' => 'today']]],
@@ -115,8 +115,9 @@ final class KpiService
         $s = $this->site;
 
         return [
-            'workers' => (int) DB::selectOne("select count(*) as n from workers where deleted_at is null and status in ('active','on_leave')".($s ? ' and current_site_id = ?' : ''), $s ? [$s] : [])->n,
-            'sites' => (int) DB::selectOne("select count(*) as n from sites where deleted_at is null and status = 'active'")->n,
+            'workers' => (int) DB::selectOne("select count(*) as n from workers where deleted_at is null and status in ('active','on_leave')".($s ? ' and current_site_id = ?' : '')
+                .$this->scopeSites('current_site_id').$this->areaSql('current_area_id'), $s ? [$s] : [])->n,
+            'sites' => (int) DB::selectOne("select count(*) as n from sites where deleted_at is null and status = 'active'".$this->scopeSites('id'))->n,
             'positions' => (int) DB::selectOne("select count(*) as n from positions where deleted_at is null and status = 'active'")->n,
         ];
     }
@@ -363,14 +364,35 @@ final class KpiService
         return " and {$col} = any('{".implode(',', $this->areas)."}'::uuid[])";
     }
 
+    /** Sedes del alcance de la membresía (App\Core\Auth\Scope): todo indicador por sede se limita a ellas. @var list<string> */
+    private array $scopeSites = [];
+
+    /** @param list<string> $sites  sedes del alcance (vacío = toda la empresa) */
+    public function forSites(array $sites): self
+    {
+        $this->scopeSites = array_values(array_filter($sites, fn ($a) => \Illuminate\Support\Str::isUuid($a)));
+
+        return $this;
+    }
+
+    private function scopeSites(string $col, bool $orNull = false): string
+    {
+        if (! $this->scopeSites) {
+            return '';
+        }
+        $in = "{$col} = any('{".implode(',', $this->scopeSites)."}'::uuid[])";
+
+        return $orNull ? " and ({$in} or {$col} is null)" : " and {$in}";
+    }
+
     private function siteSql(string $col, bool $orNull = false): string
     {
         if (! $this->site) {
-            return '';
+            return $this->scopeSites($col, $orNull);
         }
         $s = "'".str_replace("'", "''", $this->site)."'::uuid";
 
-        return $orNull ? " and ({$col} = {$s} or {$col} is null)" : " and {$col} = {$s}";
+        return ($orNull ? " and ({$col} = {$s} or {$col} is null)" : " and {$col} = {$s}").$this->scopeSites($col, $orNull);
     }
 
     private function fmt(float $n): string

@@ -2,6 +2,7 @@
 
 namespace App\Modules\REC;
 
+use App\Core\Auth\Scope;
 use App\Core\Support\Xlsx;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -35,7 +36,7 @@ class ListReportsController extends FieldReportsController
             "select s.name as site, a.name as area, p.name as position, w.full_name, w.document_type, '****' || w.document_last4 as document, w.employee_code,
                     w.hire_on, w.employment_type, w.contract_type
                from workers w left join sites s on s.id = w.current_site_id left join areas a on a.id = w.current_area_id left join positions p on p.id = w.current_position_id
-              where ".implode(' and ', $where).' order by s.name nulls last, a.name nulls last, p.name nulls last, w.full_name', $args);
+              where ".implode(' and ', $where).Scope::andSql('w.current_site_id', 'w.current_area_id').' order by s.name nulls last, a.name nulls last, p.name nulls last, w.full_name', $args);
 
         return $this->xlsx('padron-trabajadores', 'Padrón de trabajadores activos',
             ['Sede', 'Área', 'Puesto', 'Trabajador', 'Tipo de documento', 'Documento', 'Código', 'Fecha de ingreso', 'Tipo de empleo', 'Tipo de contrato'],
@@ -68,7 +69,7 @@ class ListReportsController extends FieldReportsController
             "select d.code, d.title, c.name as category, v.version_label, v.version_number, v.effective_on, v.effective_until, d.next_review_on, u.full_name as owner, d.status
                from documents d left join document_categories c on c.id = d.category_id left join document_versions v on v.id = d.current_version_id
                left join users u on u.id = d.owner_user_id
-              where d.deleted_at is null order by d.code");
+              where d.deleted_at is null".Scope::andSql('d.site_id', 'd.area_id').' order by d.code');
 
         return $this->xlsx('lista-maestra-documentos', 'Lista maestra de documentos',
             ['Código', 'Título', 'Categoría', 'Versión vigente', 'Vigente desde', 'Vigente hasta', 'Próxima revisión', 'Responsable', 'Estado'],
@@ -89,7 +90,7 @@ class ListReportsController extends FieldReportsController
                     case when ca.status not in ('verified', 'cancelled') then (current_date - (ca.created_at at time zone 'America/Lima')::date) end as age_days
                from corrective_actions ca left join sites s on s.id = ca.site_id left join users u on u.id = ca.responsible_user_id
                left join workers w on w.id = ca.responsible_worker_id left join contractors c on c.id = ca.contractor_id
-              where ca.deleted_at is null order by ca.created_at");
+              where ca.deleted_at is null".Scope::andSql('ca.site_id', 'ca.area_id').' order by ca.created_at');
         if (str_ends_with($request->path(), '.xlsx')) {
             $this->can('acr.corrective_actions.export');
 

@@ -40,6 +40,7 @@ class ResolveCompany
             throw ApiProblem::notFound('No tienes acceso a esta empresa.');
         }
 
+        \App\Core\Auth\Scope::flush();   // el alcance (sede/área/módulos) se relee en cada petición
         app()->instance(CompanyContext::class, new CompanyContext(
             companyId: $membership->company_id,
             membershipId: $membership->membership_id,

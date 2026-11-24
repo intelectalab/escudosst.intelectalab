@@ -76,7 +76,7 @@ class SearchController extends Controller
         return DB::select(
             "select w.id, w.full_name, w.document_last4, p.name as position_name
                from workers w left join positions p on p.id = w.current_position_id
-              where w.deleted_at is null and (w.full_name ilike ? or w.employee_code ilike ?{$byDoc}){$self}
+              where w.deleted_at is null and (w.full_name ilike ? or w.employee_code ilike ?{$byDoc}){$self}".\App\Core\Auth\Scope::andSql('w.current_site_id', 'w.current_area_id')."
               order by w.full_name limit 5",
             $bind
         );
@@ -86,7 +86,7 @@ class SearchController extends Controller
     {
         return DB::select(
             'select id, code, title, status from corrective_actions
-              where deleted_at is null and (code ilike ? or title ilike ?)
+              where deleted_at is null and (code ilike ? or title ilike ?)'.\App\Core\Auth\Scope::andSql('site_id', 'area_id').'
               order by updated_at desc limit 4',
             [$like, $like]
         );

@@ -23,7 +23,7 @@ class PermitStatsController extends Controller
         }
         $from = (string) ($request->query('from') ?: now('America/Lima')->startOfYear()->toDateString());
         $to = (string) ($request->query('to') ?: now('America/Lima')->toDateString());
-        $range = "w.deleted_at is null and (w.created_at at time zone 'America/Lima')::date between ? and ?";
+        $range = "w.deleted_at is null and (w.created_at at time zone 'America/Lima')::date between ? and ?".\App\Core\Auth\Scope::andSql('w.site_id', 'w.area_id');
         $suspendedEver = "w.status = 'suspended' or w.suspended_reason is not null";
         $q = fn (string $expr) => DB::select(
             "select {$expr} as k, count(*) as n,
