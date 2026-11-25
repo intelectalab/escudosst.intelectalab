@@ -493,6 +493,7 @@ class AulAdminController extends Controller
                     count(*) filter (where viewed_at is not null) as viewed, count(*) filter (where clicked_at is not null) as clicked,
                     count(*) filter (where status = 'converted') as converted, count(*) filter (where status = 'dismissed') as dismissed
                from course_recommendations where deleted_at is null");
+        $breakdown = self::funnelBreakdown();
         $items = DB::select(
             "select r.id, r.status, r.source, r.target_scope, r.reason_code, r.message, r.channel, r.sent_at, r.viewed_at, r.converted_at, r.dismissed_at, r.dismiss_reason, r.created_at,
                     c.code as course_code, c.title as course_title, coalesce(w.full_name, xl.first_name || ' ' || xl.last_name, r.buyer_company_name) as recipient,
@@ -512,7 +513,53 @@ class AulAdminController extends Controller
             $r->parameters = json_decode($r->parameters ?? '{}', true) ?: (object) [];
         }
 
-        return response()->json(['data' => ['funnel' => $funnel, 'items' => $items, 'rules' => $rules]]);
+        return response()->json(['data' => ['funnel' => $funnel, 'breakdown' => $breakdown, 'items' => $items, 'rules' => $rules]]);
+    }
+
+    /** Dimensiones del embudo de conversión (M-AUL §11): expresión SQL de la clave y de su nombre. */
+    private const FUNNEL_BY = [
+        'source' => ['r.source', 'null'],
+        'rule' => ['r.rule_id::text', 'rr.name'],
+        'course' => ['r.course_id::text', "concat_ws(' · ', c.code, c.title)"],
+        'channel' => ['r.channel', 'null'],
+        'area' => ['coalesce(r.target_area_id, w.current_area_id)::text', 'a.name'],
+        'buyer_company' => ['coalesce(r.buyer_company_ruc, xl.buyer_company_ruc)', 'coalesce(r.buyer_company_name, xl.buyer_company_name)'],
+    ];
+
+    /**
+     * M-AUL §11 «Conversión de recomendaciones»: embudo por fuente (regla, manual, IA), regla, curso, canal, área y empresa compradora,
+     * con la tasa de matrícula o compra (convertidas / enviadas) y los descartes.
+     * @return array<string, list<array<string, mixed>>>
+     */
+    public static function funnelBreakdown(): array
+    {
+        $names = ['source' => ['rule' => 'Regla', 'manual' => 'Manual', 'ai' => 'Asistente (IA)'], 'channel' => ['in_app' => 'Portal', 'email' => 'Correo', 'whatsapp' => 'WhatsApp']];
+        $empty = ['source' => 'Sin fuente', 'rule' => 'Sin regla (manual o IA)', 'course' => 'Sin curso', 'channel' => 'Sin canal', 'area' => 'Sin área', 'buyer_company' => 'Sin empresa compradora'];
+        $out = [];
+        foreach (self::FUNNEL_BY as $dim => [$key, $label]) {
+            $rows = DB::select(
+                "select {$key} as k, max({$label}) as label, count(*) as total, count(*) filter (where r.status = 'suggested') as suggested,
+                        count(*) filter (where r.sent_at is not null) as sent, count(*) filter (where r.viewed_at is not null) as viewed,
+                        count(*) filter (where r.clicked_at is not null) as clicked, count(*) filter (where r.status = 'converted') as converted,
+                        count(*) filter (where r.status = 'converted' and r.converted_enrollment_id is not null) as enrolled,
+                        count(*) filter (where r.status = 'converted' and r.converted_order_id is not null) as purchased,
+                        count(*) filter (where r.status = 'dismissed') as dismissed
+                   from course_recommendations r join courses c on c.id = r.course_id
+                   left join recommendation_rules rr on rr.id = r.rule_id left join workers w on w.id = r.worker_id
+                   left join areas a on a.id = coalesce(r.target_area_id, w.current_area_id)
+                   left join external_learners xl on xl.id = r.external_learner_id
+                  where r.deleted_at is null group by 1 order by count(*) desc, 2");
+            $out[$dim] = array_map(function ($r) use ($dim, $names, $empty) {
+                $sent = (int) $r->sent;
+
+                return ['key' => $r->k, 'label' => $r->k === null ? $empty[$dim] : ($names[$dim][$r->k] ?? $r->label ?? $r->k),
+                    'total' => (int) $r->total, 'suggested' => (int) $r->suggested, 'sent' => $sent, 'viewed' => (int) $r->viewed, 'clicked' => (int) $r->clicked,
+                    'converted' => (int) $r->converted, 'enrolled' => (int) $r->enrolled, 'purchased' => (int) $r->purchased, 'dismissed' => (int) $r->dismissed,
+                    'conversion_pct' => $sent > 0 ? round((int) $r->converted * 100 / $sent, 1) : null];
+            }, $rows);
+        }
+
+        return $out;
     }
 
     public function recommend(Request $request): JsonResponse

@@ -1300,7 +1300,11 @@
   "incident_occurred": "¿Ocurrió un incidente?",
   "incident_event_id": "Evento registrado",
   "voids_signature_id": "Firma anulada",
-  "auto_execution_rule": "Ejecución automática"
+  "auto_execution_rule": "Ejecución automática",
+  "diagnosed_on": "Fecha del diagnóstico",
+  "target_date": "Fecha comprometida",
+  "reminder_opt_in": "Quiere recordatorio",
+  "linked_records": "Registros vinculados como evidencia"
  },
  "values": {
   "A": "Tipo A",
@@ -1426,6 +1430,7 @@
   "compliant": "Cumple",
   "compliant_noncompliant": "Cumple / no cumple",
   "conditionally_approved": "Aprobado con condiciones",
+  "investigations.status.overdue": "Vencida",
   "vendor_evaluations.rating.approved": "A · Aprobado",
   "vendor_evaluations.rating.conditionally_approved": "B · Aprobado con condiciones",
   "vendor_evaluations.rating.rejected": "C · No aprobado",

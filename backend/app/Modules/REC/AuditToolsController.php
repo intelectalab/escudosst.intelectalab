@@ -3,6 +3,7 @@
 namespace App\Modules\REC;
 
 use App\Core\Auth\Permissions;
+use App\Core\Auth\Scope;
 use App\Core\Http\ApiProblem;
 use App\Core\Support\LegalParams;
 use App\Http\Controllers\Controller;
@@ -16,6 +17,10 @@ use Illuminate\Support\Str;
  * Auditorías (M-AUI):
  *  GET  /aui/calendar?year=                 SCR-AUI-01/02: auditorías del año por mes con su estado y la preparación: brechas del último
  *                                           autodiagnóstico SUNAFIL (M-SUN: puntaje y brechas críticas) para revisar antes de la auditoría
+ *                                           SCR-AUI-02: cada requisito del autodiagnóstico con su módulo, su resultado, enlace a la lista de
+ *                                           registros del módulo y los últimos registros que lo respaldan (solo si el rol los puede leer)
+ *  GET  /aui/record-types                   RN-AUI-07: tipos de registro del sistema que se pueden vincular como evidencia (por módulo)
+ *  GET  /aui/audits/{id}/checklist.xlsx     checklist de la auditoría con resultado, evidencia y registros vinculados
  *  POST /aui/audits/{id}/checklist          RN-AUI-07: precarga los ítems del checklist desde la plantilla de la norma (Ley 29783: las
  *                                           preguntas base de EscudoSST, las mismas de la línea base); no duplica ítems
  *  POST /aui/audits/{id}/auditor-access     flujo 1 y RN-AUI-02: invita al auditor externo con el rol «auditor externo» y acceso que vence
@@ -38,7 +43,75 @@ class AuditToolsController extends Controller
 
         return response()->json(['data' => ['year' => $year, 'audits' => $audits,
             'preparation' => $diag ? ['id' => $diag->id, 'title' => $diag->title, 'diagnostic_on' => $diag->diagnostic_on, 'score_pct' => $diag->score_pct === null ? null : (float) $diag->score_pct,
-                'critical_gaps' => json_decode((string) $diag->critical_gaps, true)] : null]]);
+                'critical_gaps' => json_decode((string) $diag->critical_gaps, true), 'requirements' => $this->requirements($diag->id)] : null]]);
+    }
+
+    /**
+     * SCR-AUI-02: requisitos del autodiagnóstico SUNAFIL guardado (cada obligación con su módulo y tabla) enlazados a los registros
+     * del sistema: la lista del módulo y los 5 registros más recientes de esa tabla, si el rol puede leerla.
+     * @return list<array<string, mixed>>
+     */
+    private function requirements(string $diagnosticId): array
+    {
+        $items = json_decode((string) DB::selectOne('select items from self_diagnostics where id = ?', [$diagnosticId])?->items, true) ?: [];
+        $perms = Permissions::effective();
+        $res = Registry::data()['resources'];
+        $out = [];
+        foreach ($items['areas'] ?? [] as $a) {
+            $table = $a['table'] ?? null;
+            $module = (string) ($a['module'] ?? '');
+            // Los datos de salud quedan solo como porcentaje agregado (M-SUN): sus registros no se listan aquí.
+            $readable = $table && isset($res[$table]) && $res[$table]['module'] === $module && ! in_array($module, Permissions::MEDICAL_MODULES, true)
+                && in_array(strtolower($module).".{$table}.read", $perms, true) && Scope::moduleAllowed($module);
+            $records = [];
+            $total = null;
+            if ($readable) {
+                $soft = Registry::softDelete($table) ? 'r.deleted_at is null' : 'true';
+                $scope = Scope::andTable($table, 'r');
+                $total = (int) DB::selectOne("select count(*) as n from \"{$table}\" r where {$soft}{$scope}")->n;
+                foreach (DB::select('select r.id, ('.LinkedRecords::labelExpr($table, 'r').")::text as label from \"{$table}\" r where {$soft}{$scope} order by r.created_at desc limit 5") as $r) {
+                    $records[] = ['id' => $r->id, 'label' => $r->label ?? $r->id, 'link' => LinkedRecords::link(['module' => $module, 'table' => $table, 'id' => $r->id])];
+                }
+            }
+            $out[] = ['code' => $a['code'] ?? null, 'name' => $a['name'] ?? '', 'module' => $module, 'table' => $table, 'pct' => $a['pct'] ?? null, 'result' => $a['result'] ?? null,
+                'severity_label' => $a['severity_label'] ?? null, 'detail' => $a['detail'] ?? null, 'readable' => $readable,
+                'link' => $readable ? '/m/'.strtolower($module).'?t='.$table : null, 'records_total' => $total, 'records' => $records];
+        }
+
+        return $out;
+    }
+
+    public function recordTypes(): JsonResponse
+    {
+        $this->can('aui.audit_checklist_items.read');
+
+        return response()->json(['data' => LinkedRecords::types()]);
+    }
+
+    /** Checklist de la auditoría con su evidencia: texto, archivo y registros del sistema vinculados (RN-AUI-07). */
+    public function checklistXlsx(string $id): \Symfony\Component\HttpFoundation\Response
+    {
+        $this->can('aui.audit_checklist_items.read');
+        $a = $this->audit($id);
+        $options = collect(Registry::data()['resources']['audit_checklist_items']['fields'])->firstWhere('name', 'result')['options'] ?? [];
+        $result = collect($options)->pluck('label', 'value')->all();
+        $rows = DB::select('select i.clause_code, i.requirement, i.result, i.evidence, i.file_id, i.linked_records
+                              from audit_checklist_items i where i.audit_id = ? and i.deleted_at is null order by i.sort_order, i.clause_code', [$a->id]);
+        $titles = collect(Registry::data()['resources'])->map(fn ($r) => $r['title'] ?? '')->all();
+        $out = [["Checklist de la auditoría {$a->code}"], ['Del '.($a->starts_on ? date('d/m/Y', strtotime($a->starts_on)) : '—').' al '.($a->ends_on ? date('d/m/Y', strtotime($a->ends_on)) : '—').'.'], [],
+            ['Cláusula', 'Requisito', 'Resultado', 'Evidencia', 'Archivo adjunto', 'Registros vinculados']];
+        foreach ($rows as $r) {
+            $links = array_map(fn ($l) => trim(($titles[$l['table'] ?? ''] ?? '').': '.($l['label'] ?? '')), json_decode((string) $r->linked_records, true) ?: []);
+            $out[] = [$r->clause_code ?? '', $r->requirement, $result[$r->result] ?? $r->result, $r->evidence ?? '', $r->file_id ? 'Sí' : '', implode(' | ', $links)];
+        }
+        if ($rows === []) {
+            $out[] = ['Sin ítems en el checklist'];
+        }
+
+        return response(\App\Core\Support\Xlsx::build('Checklist', $out, 4), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"checklist-{$a->code}.xlsx\"",
+        ]);
     }
 
     public function loadChecklist(string $id): JsonResponse

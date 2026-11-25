@@ -9,10 +9,16 @@ import { AppContext } from "@/components/AppContext";
 import { api, type ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "./Summary";
+import Link from "next/link";
 import { ReportButton } from "./CtrExtras";
 
 type Audit = { id: string; code: string; audit_type: string; standard: string; starts_on: string | null; ends_on: string | null; status: string; lead_auditor_name: string | null; site: string | null; ncs: number };
-type Data = { year: number; audits: Audit[]; preparation: { id: string; title: string; diagnostic_on: string | null; score_pct: number | null; critical_gaps: unknown } | null };
+type Requirement = {
+  code: string | null; name: string; module: string; table: string | null; pct: number | null; result: string | null; severity_label: string | null; detail: string | null;
+  readable: boolean; link: string | null; records_total: number | null; records: { id: string; label: string; link: string }[];
+};
+type Data = { year: number; audits: Audit[]; preparation: { id: string; title: string; diagnostic_on: string | null; score_pct: number | null; critical_gaps: unknown; requirements?: Requirement[] } | null };
+const RESULT: Record<string, [string, string]> = { complies: ["Cumple", "text-ok"], partial: ["Parcial", "text-amber-ink"], fails: ["No cumple", "text-bad"], na: ["No medible", "text-muted"] };
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Setiembre", "Octubre", "Noviembre", "Diciembre"];
 const TYPE: Record<string, string> = { internal: "Interna", external: "Externa", legal_mandatory: "Legal obligatoria", certification: "Certificación", client: "De cliente", supplier: "A proveedor" };
 const STATUS: Record<string, string> = { planned: "Planificada", in_progress: "En curso", report_draft: "Informe en borrador", completed: "Completada", closed: "Cerrada", cancelled: "Cancelada" };
@@ -88,6 +94,27 @@ export function AuiTools({ readOnly, onSaved }: { readOnly: boolean; onSaved: ()
           )}
         </Card>
       </div>
+      {(d?.preparation?.requirements?.length ?? 0) > 0 && (
+        <Card title="Evidencias por requisito del autodiagnóstico">
+          <ul className="grid gap-2 md:grid-cols-2">
+            {d!.preparation!.requirements!.map((r) => {
+              const [label, tone] = RESULT[r.result ?? "na"] ?? [r.result ?? "—", "text-muted"];
+              return (
+                <li key={r.code ?? r.name} className="space-y-1 rounded-lg border border-line p-3 text-sm">
+                  <p className="flex flex-wrap items-center justify-between gap-2"><b>{r.name}</b><span className={`text-xs font-semibold ${tone}`}>{label}{r.pct != null ? ` · ${r.pct}%` : ""}</span></p>
+                  {r.detail && <p className="text-xs text-muted">{r.detail}</p>}
+                  {r.readable && r.link ? (
+                    <>
+                      {r.records.length > 0 && <ul className="list-disc pl-5 text-xs">{r.records.map((x) => <li key={x.id}><Link href={x.link} className="text-brand hover:underline">{x.label}</Link></li>)}</ul>}
+                      <Link href={r.link} className="text-xs font-semibold text-brand hover:underline">Ver los {r.records_total ?? 0} registro(s) en el módulo</Link>
+                    </>
+                  ) : <p className="text-xs text-muted">{["EMO", "VMD", "DES", "PSI"].includes(r.module) ? "Datos de salud: solo el porcentaje agregado." : "Tu rol no ve los registros de este módulo."}</p>}
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
       {!readOnly && d && d.audits.length > 0 && (
         <Card title="Preparar una auditoría">
           <select className="input max-w-xl" aria-label="Auditoría" value={sel} onChange={(e) => setSel(e.target.value)}>
@@ -100,6 +127,8 @@ export function AuiTools({ readOnly, onSaved }: { readOnly: boolean; onSaved: ()
                 <p className="font-semibold">Checklist</p>
                 <p className="text-muted">Carga los ítems de la plantilla de la Ley 29783 (las preguntas base de EscudoSST). No duplica los ya cargados.</p>
                 <Button onClick={loadChecklist}>Cargar checklist de la Ley 29783</Button>
+                <p className="text-muted">En cada ítem del checklist puedes vincular registros del sistema como evidencia.</p>
+                <ReportButton path={`/aui/audits/${sel}/checklist.xlsx`} file="checklist-auditoria.xlsx" label="Checklist con evidencias en Excel" />
               </div>
               <div className="space-y-2 text-sm">
                 <p className="font-semibold">Acceso del auditor externo</p>

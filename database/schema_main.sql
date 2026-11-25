@@ -4416,6 +4416,8 @@ CREATE TABLE IF NOT EXISTS completion_commitments (
   signature_id uuid,
   ip_hash bytea,
   user_agent text,
+  target_date date,
+  reminder_opt_in boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -4426,6 +4428,8 @@ CREATE TABLE IF NOT EXISTS completion_commitments (
 );
 COMMENT ON TABLE completion_commitments IS '[AUL] Compromiso de culminación aceptado por el participante (obligatorio si el curso lo activa)';
 COMMENT ON COLUMN completion_commitments.commitment_text_snapshot IS 'texto exacto aceptado';
+COMMENT ON COLUMN completion_commitments.target_date IS 'fecha en que el participante se compromete a terminar el curso (opcional)';
+COMMENT ON COLUMN completion_commitments.reminder_opt_in IS 'el participante pidió recordatorio según target_date (M-AUL §10)';
 
 -- AUL · lms_connections (company)
 CREATE TABLE IF NOT EXISTS lms_connections (
@@ -5204,6 +5208,7 @@ CREATE TABLE IF NOT EXISTS sst_events (
   immediate_actions text,
   reporter_user_id uuid,
   register_number text,
+  diagnosed_on date,
   notification_deadline_at timestamptz,
   notification_overdue boolean NOT NULL DEFAULT false,
   status text NOT NULL DEFAULT 'reported' CHECK (status IN ('reported', 'registered', 'notified', 'under_investigation', 'closed', 'discarded')),
@@ -5227,6 +5232,7 @@ CREATE TABLE IF NOT EXISTS sst_events (
 );
 COMMENT ON TABLE sst_events IS '[ACC] Accidente, incidente peligroso, incidente o enfermedad ocupacional (registro y notificación en plazo)';
 COMMENT ON COLUMN sst_events.notification_deadline_at IS 'calculado con legal_parameters';
+COMMENT ON COLUMN sst_events.diagnosed_on IS 'fecha del diagnóstico de la enfermedad ocupacional: inicio del plazo de notificación (el diagnóstico queda en la base médica)';
 COMMENT ON COLUMN sst_events.idempotency_key IS 'clave idempotente generada por el cliente (offline)';
 COMMENT ON COLUMN sst_events.client_created_at IS 'instante de captura en el dispositivo';
 COMMENT ON COLUMN sst_events.version IS 'versión para control optimista y conflictos offline';
@@ -5488,15 +5494,18 @@ CREATE TABLE IF NOT EXISTS audit_checklist_items (
   evidence text,
   file_id uuid,
   sort_order integer NOT NULL DEFAULT 0,
+  linked_records jsonb NOT NULL DEFAULT '[]'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
   PRIMARY KEY (id),
-  CONSTRAINT uq_audit_checklist_items_company_id_id UNIQUE (company_id, id)
+  CONSTRAINT uq_audit_checklist_items_company_id_id UNIQUE (company_id, id),
+  CONSTRAINT ck_audit_checklist_items_linked_records CHECK (jsonb_typeof(linked_records) = 'array')
 );
 COMMENT ON TABLE audit_checklist_items IS '[AUI] Ítem verificado en la auditoría';
+COMMENT ON COLUMN audit_checklist_items.linked_records IS 'registros del sistema vinculados como evidencia: [{module, table, id, label}] (RN-AUI-07)';
 
 -- AUI · audit_findings (company)
 CREATE TABLE IF NOT EXISTS audit_findings (

@@ -57,7 +57,9 @@ class ActToolsController extends Controller
         $d = $request->validate([
             'event_type' => ['required', 'in:fatal_accident,disabling_accident,minor_accident,dangerous_incident,incident,occupational_disease'],
             'occurred_at' => ['nullable', 'date'], 'site_id' => ['nullable', 'uuid'],
-        ], ['event_type.required' => 'Elige qué tipo de evento es.']);
+            // M-ACC: el plazo de la enfermedad ocupacional corre desde el diagnóstico.
+            'diagnosed_on' => ['nullable', 'date_format:Y-m-d', 'required_if:event_type,occupational_disease'],
+        ], ['event_type.required' => 'Elige qué tipo de evento es.', 'diagnosed_on.required_if' => 'Indica la fecha del diagnóstico de la enfermedad ocupacional.']);
         $site = $d['site_id'] ?? $r->site_id;
         if (! $site) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Indica la sede donde ocurrió.', ['errors' => ['site_id' => ['Indica la sede donde ocurrió.']]]);
@@ -67,6 +69,7 @@ class ActToolsController extends Controller
             'occurred_at' => $d['occurred_at'] ?? $r->occurred_at ?? $r->reported_at, 'site_id' => $site, 'area_id' => $r->area_id,
             'exact_location' => $r->location_text, 'description' => "Escalado desde el reporte {$r->code}: {$r->description}",
             'is_contractor_event' => $r->contractor_id ? true : null, 'contractor_id' => $r->contractor_id,
+            'diagnosed_on' => $d['event_type'] === 'occupational_disease' ? $d['diagnosed_on'] : null,
         ], fn ($x) => $x !== null));
         DB::update("update substandard_reports set status = 'escalated', escalated_event_id = ?, classification = coalesce(classification, ?), triaged_by = coalesce(triaged_by, ?),
                      triaged_at = coalesce(triaged_at, now()), updated_at = now(), updated_by = ? where id = ?",

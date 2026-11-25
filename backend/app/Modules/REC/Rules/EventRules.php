@@ -141,7 +141,7 @@ class EventRules extends RecordRules
             \App\Modules\NOT\Notify::users(\App\Modules\NOT\Notify::roles(['committee_member', 'management', 'sst_manager'], 'investigations', $id), 'inv.approved', 'INV', $id, 'Informe de investigación aprobado',
                 "Se aprobó la investigación {$i->code} del evento {$i->event_code}: revisa sus causas y acciones.", '/m/inv?t=investigations&open='.$id, 'normal', 'inv.approved:'.$id);
         }
-        if ($res['table'] === 'sst_events' && ($op === 'create' || array_key_exists('event_type', $values) || array_key_exists('occurred_at', $values))) {
+        if ($res['table'] === 'sst_events' && ($op === 'create' || array_key_exists('event_type', $values) || array_key_exists('occurred_at', $values) || array_key_exists('diagnosed_on', $values))) {
             $this->obligations($id);
         }
         if ($res['table'] === 'sst_events' && ($op === 'create' || (array_key_exists('event_type', $values) && $values['event_type'] !== ($current?->event_type ?? null)))) {
@@ -196,6 +196,16 @@ class EventRules extends RecordRules
         }
         if (($occ = $values['occurred_at'] ?? null) && strtotime($occ) > time() + 300) {
             $this->fail('occurred_at', 'La fecha del evento no puede ser futura.');
+        }
+        // D.S. 005-2012-TR art. 110: el plazo de la enfermedad ocupacional corre desde el diagnóstico; solo se guarda su fecha (RN-ACC-10).
+        if ($this->value($values, $current, 'event_type') === 'occupational_disease' && ($op === 'create' || array_key_exists('event_type', $values) || array_key_exists('diagnosed_on', $values))) {
+            $diag = $this->value($values, $current, 'diagnosed_on');
+            if (! $diag) {
+                $this->fail('diagnosed_on', 'Indica la fecha del diagnóstico: desde ella corre el plazo de notificación de la enfermedad ocupacional.');
+            }
+            if (strtotime((string) $diag) > strtotime(now('America/Lima')->toDateString())) {
+                $this->fail('diagnosed_on', 'La fecha del diagnóstico no puede ser futura.');
+            }
         }
         $to = $values['status'] ?? null;
         if ($op === 'update' && $to && $to !== $current->status) {
@@ -406,8 +416,14 @@ class EventRules extends RecordRules
     private function obligations(string $id): void
     {
         $e = DB::selectOne('select * from sst_events where id = ?', [$id]);
-        [$deadline, $key] = $this->deadline($e->event_type, $e->occurred_at);
+        [$deadline, $key] = $this->deadline($e->event_type, $e->occurred_at, $e->diagnosed_on ?? null);
         DB::update('update sst_events set notification_deadline_at = ? where id = ?', [$deadline, $id]);
+        // Si cambia la fecha que inicia el cómputo (ocurrencia o diagnóstico), la notificación inicial aún pendiente toma el nuevo plazo.
+        if ($deadline) {
+            DB::update("update event_notifications set deadline_at = ?, legal_parameter_key = ?, updated_at = now()
+                         where event_id = ? and authority = 'mtpe_sat' and notification_type = 'initial' and status = 'pending' and deleted_at is null and deadline_at is distinct from ?::timestamptz",
+                [$deadline, $key, $id, $deadline]);
+        }
         if ($deadline && ! DB::selectOne("select 1 as ok from event_notifications where event_id = ? and notification_type = 'initial' and deleted_at is null", [$id])) {
             DB::insert(
                 "insert into event_notifications (company_id, event_id, authority, notification_type, legal_parameter_key, deadline_at, status, notes, created_by, updated_by)
@@ -482,7 +498,7 @@ class EventRules extends RecordRules
     }
 
     /** @return array{0: ?string, 1: ?string} [plazo ISO, clave del parámetro] */
-    private function deadline(string $type, string $occurred): array
+    private function deadline(string $type, string $occurred, ?string $diagnosed = null): array
     {
         $tz = new \DateTimeZone('America/Lima');
         $at = new \DateTimeImmutable($occurred);
@@ -494,7 +510,11 @@ class EventRules extends RecordRules
             case 'dangerous_incident':
                 return [$at->modify('+'.(int) LegalParams::number('dangerous_incident_notification_hours', 24, $on).' hours')->format(DATE_ATOM), 'dangerous_incident_notification_hours'];
             case 'occupational_disease':
-                return [$this->businessDays($at, (int) LegalParams::number('occupational_disease_notification_business_days', 5, $on))->setTime(23, 59)->format(DATE_ATOM),
+                // D.S. 005-2012-TR art. 110: desde el diagnóstico (sin fecha de diagnóstico, desde la ocurrencia, como antes).
+                $from = $diagnosed ? new \DateTimeImmutable(substr($diagnosed, 0, 10), $tz) : $at;
+                $on = $from->format('Y-m-d');
+
+                return [$this->businessDays($from, (int) LegalParams::number('occupational_disease_notification_business_days', 5, $on))->setTime(23, 59)->format(DATE_ATOM),
                     'occupational_disease_notification_business_days'];
             case 'disabling_accident':
             case 'minor_accident':

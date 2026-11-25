@@ -23,6 +23,8 @@ use Throwable;
  *  vta.licenses_available cupos comprados disponibles → representante de la empresa compradora (correo)
  * Cada hora (escudo:aul-alerts), por empresa con el módulo activo:
  *  aul.course_due        curso por vencer sin completar (course_due_notice_days) → participante y jefe del área
+ *  aul.commitment_reminder recordatorio por compromiso asumido: el participante que pidió recordatorio (reminder_opt_in) y no
+ *                        termina, course_due_notice_days antes de la fecha a la que se comprometió (target_date) → participante
  *  aul.inactive_learner  participante sin actividad (aul_inactive_learner_days) → capacitadores del curso y Jefe SST
  *  aul.recommendations_pending resumen diario (desde digest_hour) de recomendaciones por aprobar → Jefe SST
  *  vta.order_expiring    pedido por vencer sin pago (order_expiry_notice_minutes) → comprador (correo)
@@ -67,6 +69,7 @@ final class AulAlerts
             $n += $this->dueSoon($db, $company);
             $n += $this->inactive($db, $company);
             $n += $this->commitmentPending($db, $company);
+            $n += $this->commitmentReminder($db, $company);
             if ($digest ?? ((int) now('America/Lima')->format('G') >= self::days('digest_hour', 7))) {
                 $n += $this->pendingRecommendations($db, $company);
             }
@@ -263,6 +266,38 @@ final class AulAlerts
         foreach (self::participants($db, $ids) as $p) {
             $n += self::note($db, $company, 'aul.commitment_pending', $p->id, $p->user_id, $p->user_id ? null : $p->worker_id, 'Acepta el compromiso del curso',
                 "Para empezar «{$p->title}» acepta su compromiso de culminación.", self::learnerLink($p), 'normal', 'aul.commitment_pending:'.$p->id);
+        }
+
+        return $n;
+    }
+
+    /**
+     * M-AUL §10 «Recordatorio por compromiso asumido» → participante con reminder_opt_in, según el target_date de su compromiso:
+     * desde course_due_notice_days antes de esa fecha (la misma anticipación del curso por vencer), una vez por fecha comprometida.
+     */
+    private function commitmentReminder(ConnectionInterface $db, string $company): int
+    {
+        $days = self::days('course_due_notice_days', 7);
+        $rows = $db->select(
+            "select distinct on (cc.enrollment_id) cc.enrollment_id as id, cc.target_date
+               from completion_commitments cc join course_enrollments e on e.id = cc.enrollment_id
+              where cc.deleted_at is null and cc.reminder_opt_in and cc.target_date is not null
+                and e.deleted_at is null and e.status in ('enrolled', 'in_progress') and (e.access_until is null or e.access_until > now())
+                and cc.target_date between (now() at time zone 'America/Lima')::date and (now() at time zone 'America/Lima')::date + ?::int
+              order by cc.enrollment_id, cc.accepted_at desc", [$days]);
+        $target = [];
+        foreach ($rows as $r) {
+            $target[$r->id] = $r->target_date;
+        }
+        $n = 0;
+        foreach (self::participants($db, array_keys($target)) as $p) {
+            $pct = rtrim(rtrim(number_format((float) $p->progress_pct, 1), '0'), '.');
+            $key = "aul.commitment_reminder:{$p->id}:{$target[$p->id]}";
+            $body = "Te comprometiste a terminar «{$p->title}» el ".implode('/', array_reverse(explode('-', substr((string) $target[$p->id], 0, 10))))." y llevas {$pct} % de avance.";
+            $n += self::note($db, $company, 'aul.commitment_reminder', $p->id, $p->user_id, $p->user_id ? null : $p->worker_id, 'Recordatorio de tu compromiso', $body, self::learnerLink($p), 'normal', $key);
+            if ($p->email) {
+                $n += self::mail($db, $company, $p->email, $p->first_name, 'Recordatorio de tu compromiso', $body, $key);
+            }
         }
 
         return $n;

@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { NO_CREATE, OneTimeSecret, PanelActions, RecordActions, TraceStrip, describeFilter, lockedReason } from "./Process";
 import { JSON_EDITORS } from "./JsonEditors";
 import { EvidencePicker } from "./EvidencePicker";
+import { LinkedRecordsPicker } from "./LinkedRecordsPicker";
 import { PlanReferencePicker } from "./PlanReferencePicker";
 import { ModuleKpis } from "./ModuleKpis";
 import { SignaturePanel } from "./SignaturePanel";
@@ -671,6 +672,14 @@ export function RecordForm({
                     onChange={(t, i) => {
                       touched.current.add("reference_type").add("reference_id");
                       setValues((x) => ({ ...x, reference_type: t || null, reference_id: i || null }));
+                    }} />
+                </div>
+              ) : res.table === "audit_checklist_items" && f.name === "linked_records" ? (
+                <div key={f.name} className="sm:col-span-2">
+                  <LinkedRecordsPicker value={values.linked_records} disabled={!canEdit} error={errors.linked_records?.[0]}
+                    onChange={(v) => {
+                      touched.current.add("linked_records");
+                      setValues((x) => ({ ...x, linked_records: v }));
                     }} />
                 </div>
               ) : res.table === "requirement_evaluations" && f.name === "evidence_record_id" ? null : res.table === "requirement_evaluations" && f.name === "evidence_record_type" ? (

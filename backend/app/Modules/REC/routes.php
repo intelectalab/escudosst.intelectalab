@@ -157,6 +157,8 @@ Route::middleware(['auth:sanctum', 'company', 'module:PLA'])->prefix('pla')->con
 Route::middleware(['auth:sanctum', 'company', 'module:AUI'])->prefix('aui')->controller(\App\Modules\REC\AuditToolsController::class)->group(function () {
     Route::get('findings.xlsx', 'findingsByClause');
     Route::get('calendar', 'calendar');
+    Route::get('record-types', 'recordTypes');
+    Route::get('audits/{id}/checklist.xlsx', 'checklistXlsx')->whereUuid('id');
     Route::post('audits/{id}/checklist', 'loadChecklist')->whereUuid('id');
     Route::post('audits/{id}/auditor-access', 'auditorAccess')->whereUuid('id')->middleware('throttle:login');
 });

@@ -27,6 +27,7 @@ const BODY = ["Cabeza", "Ojos", "Cara", "Cuello", "Espalda", "Tórax", "Abdomen"
 type Data = {
   event_type: string;
   occurred_at: string;
+  diagnosed_on: string;
   site_id: string;
   site_label: string;
   exact_location: string;
@@ -56,11 +57,18 @@ type Data = {
 const typeLabel = (v: string) => TYPES.find((t) => t.value === v)?.label ?? v;
 
 /** Plazo estimado (el definitivo lo calcula el sistema al guardar con los parámetros legales vigentes). */
-function estimate(type: string, occurred: string): { at: Date | null; text: string } {
+function estimate(type: string, occurred: string, diagnosed = ""): { at: Date | null; text: string } {
+  if (type === "occupational_disease") {
+    // D.S. 005-2012-TR art. 110: el plazo corre desde el diagnóstico (5 días hábiles; los feriados los descuenta el sistema al guardar).
+    if (!diagnosed) return { at: null, text: "Indica la fecha del diagnóstico: desde ella corre el plazo de notificación de la enfermedad ocupacional." };
+    const [y, m, dd] = diagnosed.split("-").map(Number);
+    const end = new Date(y, m - 1, dd, 23, 59);
+    for (let n = 5; n > 0;) { end.setDate(end.getDate() + 1); if (end.getDay() !== 0 && end.getDay() !== 6) n--; }
+    return { at: end, text: "Notificación dentro de 5 días hábiles desde el diagnóstico (parámetro legal, a confirmar por especialista)." };
+  }
   const d = occurred ? new Date(occurred) : null;
   if (!d || Number.isNaN(d.getTime())) return { at: null, text: "Indica la fecha y hora del hecho." };
   if (type === "fatal_accident" || type === "dangerous_incident") return { at: new Date(d.getTime() + 24 * 3600 * 1000), text: "Notificación al Ministerio de Trabajo (SAT) dentro de 24 horas del hecho (parámetro legal, a confirmar por especialista)." };
-  if (type === "occupational_disease") return { at: null, text: "Notificación dentro de 5 días hábiles desde el diagnóstico (parámetro legal, a confirmar por especialista)." };
   if (type === "minor_accident" || type === "disabling_accident") {
     const end = new Date(d.getFullYear(), d.getMonth() + 2, 0, 23, 59);
     while (end.getDay() === 0 || end.getDay() === 6) end.setDate(end.getDate() - 1);
@@ -115,7 +123,7 @@ function WorkerCard({ id }: { id: string }) {
 
 export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const initial: Data = {
-    event_type: "minor_accident", occurred_at: toLocalInput(new Date().toISOString()), site_id: "", site_label: "", exact_location: "", latitude: null, longitude: null, photos: [], description: "",
+    event_type: "minor_accident", occurred_at: toLocalInput(new Date().toISOString()), diagnosed_on: "", site_id: "", site_label: "", exact_location: "", latitude: null, longitude: null, photos: [], description: "",
     activity_at_time: "", immediate_actions: "", iperc_row_id: "", iperc_row_label: "", person: "worker", worker_id: "", worker_label: "", external_name: "", injury_type: "", body_part: "", injury_agent: "",
     lost_days: "", medical_place: "", witnesses: [], notified: false, notification_number: "", notified_at: "",
   };
@@ -125,7 +133,9 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
     {
       title: "Qué pasó",
       validate: (d) =>
-        !d.occurred_at ? "Indica la fecha y hora del hecho." : new Date(d.occurred_at).getTime() > Date.now() + 300000 ? "La fecha del evento no puede ser futura." : !d.site_id ? "Elige la sede." : d.description.trim().length < 10 ? "Describe qué pasó (al menos una frase)." : null,
+        !d.occurred_at ? "Indica la fecha y hora del hecho." : new Date(d.occurred_at).getTime() > Date.now() + 300000 ? "La fecha del evento no puede ser futura."
+          : d.event_type === "occupational_disease" && !d.diagnosed_on ? "Indica la fecha del diagnóstico de la enfermedad ocupacional."
+          : d.event_type === "occupational_disease" && d.diagnosed_on > toLocalInput(new Date().toISOString()).slice(0, 10) ? "La fecha del diagnóstico no puede ser futura." : !d.site_id ? "Elige la sede." : d.description.trim().length < 10 ? "Describe qué pasó (al menos una frase)." : null,
       render: (d, set) => (
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField label="Tipo de evento">
@@ -136,6 +146,11 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
           <FormField label="Fecha y hora del hecho">
             <input className="input" type="datetime-local" value={d.occurred_at} max={toLocalInput(new Date().toISOString())} onChange={(e) => set({ occurred_at: e.target.value })} />
           </FormField>
+          {d.event_type === "occupational_disease" && (
+            <FormField label="Fecha del diagnóstico" hint="Desde esta fecha corre el plazo de notificación. El diagnóstico se registra en la base médica, no aquí.">
+              <input className="input" type="date" value={d.diagnosed_on} max={toLocalInput(new Date().toISOString()).slice(0, 10)} onChange={(e) => set({ diagnosed_on: e.target.value })} />
+            </FormField>
+          )}
           <FormField label="Sede">
             <RefSelect module="ACC" table="sst_events" field="site_id" label="Sede" value={d.site_id} onChange={(id, label) => set({ site_id: id, site_label: label })} />
           </FormField>
@@ -270,7 +285,7 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
       title: "Notificación",
       validate: (d) => (d.notified && !d.notification_number.trim() ? "Escribe el número de la constancia de notificación." : null),
       render: (d, set) => {
-        const est = estimate(d.event_type, d.occurred_at);
+        const est = estimate(d.event_type, d.occurred_at, d.diagnosed_on);
         return (
           <div className="space-y-4">
             <p className="rounded-lg bg-amber-soft px-3 py-2 text-sm text-amber-ink">{est.text}</p>
@@ -315,6 +330,7 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
         <div>
           <SummaryRow label="Tipo" value={typeLabel(d.event_type)} onEdit={() => goTo(0)} />
           <SummaryRow label="Fecha y hora" value={d.occurred_at.replace("T", " ").split(" ").map((p, i) => (i === 0 ? p.split("-").reverse().join("/") : p)).join(" ")} onEdit={() => goTo(0)} />
+          {d.event_type === "occupational_disease" && <SummaryRow label="Fecha del diagnóstico" value={d.diagnosed_on.split("-").reverse().join("/")} onEdit={() => goTo(0)} />}
           <SummaryRow label="Lugar" value={[d.site_label, d.exact_location].filter(Boolean).join(" · ")} onEdit={() => goTo(0)} />
           <SummaryRow label="Descripción" value={d.description} onEdit={() => goTo(0)} />
           <SummaryRow label="Ubicación y fotos" value={[d.latitude !== null ? "GPS tomado" : "Sin GPS", `${d.photos.length} foto(s)`].join(" · ")} onEdit={() => goTo(0)} />
@@ -328,6 +344,7 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
         const ev = await records.create("ACC", "sst_events", {
           event_type: d.event_type,
           occurred_at: new Date(d.occurred_at).toISOString(),
+          diagnosed_on: d.event_type === "occupational_disease" ? d.diagnosed_on : null,
           site_id: d.site_id,
           exact_location: d.exact_location.trim() || null,
           latitude: d.latitude, longitude: d.longitude,

@@ -21,6 +21,9 @@ class EventReportController extends Controller
         if (! in_array('acc.sst_events.read', Permissions::effective(), true)) {
             throw ApiProblem::forbidden('Tu rol no ve el reporte de eventos.');
         }
+        // El periodo lo elige el usuario (Desde / Hasta en la lista de eventos); sin fechas, del 1 de enero a hoy.
+        $request->validate(['from' => ['nullable', 'date_format:Y-m-d'], 'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from']],
+            ['to.after_or_equal' => 'La fecha «Hasta» debe ser igual o posterior a «Desde».']);
         $from = (string) ($request->query('from') ?: now('America/Lima')->startOfYear()->toDateString());
         $to = (string) ($request->query('to') ?: now('America/Lima')->toDateString());
         $range = "e.deleted_at is null and (e.occurred_at at time zone 'America/Lima')::date between ? and ?".\App\Core\Auth\Scope::andTable('sst_events', 'e');

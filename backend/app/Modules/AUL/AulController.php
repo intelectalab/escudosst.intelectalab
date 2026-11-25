@@ -107,11 +107,16 @@ class AulController extends Controller
         return response()->json(['data' => self::player($e->course_id, $e)]);
     }
 
-    /** POST /aul/enrollments/{id}/commitment — acepta el compromiso de culminación {target_date?}; guarda el texto aceptado y la fecha. */
+    /**
+     * POST /aul/enrollments/{id}/commitment — acepta el compromiso de culminación {target_date?, reminder_opt_in?}; guarda el texto
+     * aceptado, la fecha comprometida y si pidió recordatorio (M-AUL §5 y §10 «Recordatorio por compromiso asumido»).
+     */
     public function commitment(Request $request, string $id): JsonResponse
     {
         $e = $this->enrollment($id);
-        $d = $request->validate(['target_date' => ['nullable', 'date', 'after_or_equal:today']]);
+        $d = $request->validate(['target_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:today', 'required_if_accepted:reminder_opt_in'], 'reminder_opt_in' => ['boolean']],
+            ['target_date.required_if_accepted' => 'Para recibir el recordatorio indica la fecha en que te comprometes a terminar.',
+                'target_date.after_or_equal' => 'La fecha comprometida no puede ser pasada.']);
         $c = DB::selectOne('select completion_commitment, commitment_text from courses where id = ?', [$e->course_id]);
         if (! $c || $c->completion_commitment === 'none' || ! $c->completion_commitment) {
             throw new ApiProblem(409, 'conflict', 'Sin compromiso', 'Este curso no tiene compromiso de culminación.');
@@ -119,11 +124,14 @@ class AulController extends Controller
         if ($e->commitment_accepted_at) {
             throw new ApiProblem(409, 'conflict', 'Ya aceptado', 'Ya aceptaste el compromiso de este curso.');
         }
-        DB::insert('insert into completion_commitments (company_id, enrollment_id, course_id, commitment_text_snapshot, text_version, accepted_at, accepted_by_user_id, ip_hash, user_agent, created_by)
-                    values (?, ?, ?, ?, ?, now(), ?, decode(?, \'hex\'), ?, ?)',
+        DB::insert('insert into completion_commitments (company_id, enrollment_id, course_id, commitment_text_snapshot, text_version, accepted_at, accepted_by_user_id, ip_hash, user_agent,
+                        target_date, reminder_opt_in, created_by)
+                    values (?, ?, ?, ?, ?, now(), ?, decode(?, \'hex\'), ?, ?, ?::boolean, ?)',
             [$e->company_id, $e->id, $e->course_id, $c->commitment_text, 1, (string) auth()->id(),
-                hash_hmac('sha256', (string) $request->ip(), (string) config('app.key')), mb_substr((string) $request->userAgent(), 0, 300), (string) auth()->id()]);
-        DB::update('update course_enrollments set commitment_accepted_at = now(), due_on = coalesce(?::date, due_on), updated_at = now() where id = ?', [$d['target_date'] ?? null, $e->id]);
+                hash_hmac('sha256', (string) $request->ip(), (string) config('app.key')), mb_substr((string) $request->userAgent(), 0, 300),
+                $d['target_date'] ?? null, ! empty($d['reminder_opt_in']) ? 'true' : 'false', (string) auth()->id()]);
+        // La fecha comprometida es del participante: no cambia el vencimiento que fijó la empresa (due_on); su aviso es el recordatorio.
+        DB::update('update course_enrollments set commitment_accepted_at = now(), updated_at = now() where id = ?', [$e->id]);
 
         return response()->json(['data' => ['accepted' => true]], 201);
     }

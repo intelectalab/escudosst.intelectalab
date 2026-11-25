@@ -173,7 +173,9 @@ WRITABLE_JSON = {"investigations.chronology", "investigations.interviews", "inve
                  # M-POL RN-POL-01 (principios del art. 23) y M-EQE SCR-EQE-02 (checklist de la inspección por QR).
                  "sst_policies.principles_checklist", "equipment_checks.checklist", "change_requests.risk_assessment", "risk_criteria.level_bands", "risk_criteria.severity_scale", "risst_versions.content_outline",
                  # M-HOM: criterios con peso de la plantilla y puntajes por criterio de la evaluación.
-                 "vendor_evaluation_templates.criteria", "vendor_evaluations.scores"}
+                 "vendor_evaluation_templates.criteria", "vendor_evaluations.scores",
+                 # M-AUI RN-AUI-07: registros del sistema vinculados como evidencia del ítem del checklist.
+                 "audit_checklist_items.linked_records"}
 # Obligatorios en la base pero que calcula una regla si no se envían.
 COMPUTED = {"vendor_evaluation_templates.criteria", "vendor_evaluations.scores", "work_shifts.hours_per_day", "areas.depth", "iperc_rows.probability_value",
             "iperc_rows.hazard", "iperc_rows.risk", "measurements.result", "work_permits.valid_until", "access_events.result", "access_events.occurred_at", "api_clients.scopes", "webhooks.event_codes", "corrective_actions.code", "inspections.code", "trainings.code",

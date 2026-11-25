@@ -44,7 +44,7 @@ export function ModuleWizards({ code, readOnly }: { code: string; readOnly: bool
       {((a && can && !readOnly) || ["ACC", "ACT", "PTR"].includes(code)) && (
         <div className="flex flex-wrap items-center justify-end gap-2">
           {/* M-ACC §11: eventos agrupados por tipo, gravedad, sede, parte del cuerpo y agente. */}
-          {code === "ACC" && <ReportButton path="/acc/report.xlsx" file={`eventos-${new Date().getFullYear()}.xlsx`} label="Reporte de eventos en Excel" />}
+          {code === "ACC" && <AccReport />}
           {code === "PTR" && <ReportButton path="/ptr/stats.xlsx" file={`permisos-${new Date().getFullYear()}.xlsx`} label="Estadísticas y suspensiones en Excel" />}
           {code === "ACT" && <ReportButton path="/act/report.xlsx" file={`reportes-${new Date().getFullYear()}.xlsx`} label="Reporte por área, tipo y tiempo de atención" />}
           {a && can && !readOnly && (
@@ -63,5 +63,20 @@ export function ModuleWizards({ code, readOnly }: { code: string; readOnly: bool
       {open && code === "TRB" && <TrbImport onClose={close} onDone={done} />}
       <ModuleRecords key={version} code={code} readOnly={readOnly} />
     </div>
+  );
+}
+
+/** M-ACC §11: reporte agrupado del periodo que elige el usuario (por defecto, del 1 de enero a hoy). */
+function AccReport() {
+  const today = new Date().toISOString().slice(0, 10);
+  const [p, setP] = useState({ from: `${today.slice(0, 4)}-01-01`, to: today });
+  const ok = !!p.from && !!p.to && p.from <= p.to;
+  return (
+    <span className="inline-flex flex-wrap items-end gap-2 text-xs">
+      <label>Desde<input type="date" className="input mt-1 !w-36" value={p.from} max={p.to || undefined} onChange={(e) => setP({ ...p, from: e.target.value })} /></label>
+      <label>Hasta<input type="date" className="input mt-1 !w-36" value={p.to} min={p.from || undefined} onChange={(e) => setP({ ...p, to: e.target.value })} /></label>
+      {ok ? <ReportButton path={`/acc/report.xlsx?from=${p.from}&to=${p.to}`} file={`eventos-${p.from}-${p.to}.xlsx`} label="Reporte de eventos en Excel" />
+        : <span className="text-bad">La fecha «Desde» debe ser anterior o igual a «Hasta».</span>}
+    </span>
   );
 }

@@ -85,6 +85,7 @@ abstract class RecordRules
         'annual_plan_items' => ImprovementRules::class,
         'audits' => ImprovementRules::class,
         'audit_findings' => ImprovementRules::class,
+        'audit_checklist_items' => ImprovementRules::class,
         'management_reviews' => ImprovementRules::class,
         'management_review_outputs' => ImprovementRules::class,
         'measurements' => ImprovementRules::class,

@@ -24,6 +24,9 @@ Route::middleware(['auth:sanctum', 'company', 'module:VTA'])->prefix('vta')->gro
     Route::post('license-assignments/{id}/release', [VtaSalesController::class, 'release'])->whereUuid('id');
     Route::get('dashboard', [VtaSalesController::class, 'dashboard']);
     Route::get('reports.xlsx', [VtaSalesController::class, 'report']);
+    // M-VTA §11: conversión de recomendaciones y campañas en ventas (por pedido, campaña y empresa compradora).
+    Route::get('conversion', [\App\Modules\AUL\VtaConversionController::class, 'show']);
+    Route::get('conversion.xlsx', [\App\Modules\AUL\VtaConversionController::class, 'xlsx']);
     Route::post('campaigns', [VtaSalesController::class, 'campaign'])->middleware('throttle:10,1');
     Route::get('portal', [VtaPortalController::class, 'show']);
     Route::put('portal/consents', [VtaPortalController::class, 'consents'])->middleware('throttle:20,1');
@@ -108,6 +111,12 @@ Route::middleware(['auth:sanctum', 'company', 'module:AUL'])->prefix('aul/admin'
         Route::put('courses/{id}', 'link')->whereUuid('id')->middleware('permission:aul.lms_connections.update');
         Route::post('courses/{id}/push', 'push')->whereUuid('id')->middleware(['permission:aul.lms_connections.sync', 'throttle:10,1']);
         Route::post('courses/{id}/pull', 'pull')->whereUuid('id')->middleware(['permission:aul.lms_connections.sync', 'throttle:10,1']);
+    });
+    // M-AUL §11: avance y aprobados por área y cargo, y embudo de conversión de recomendaciones en Excel.
+    Route::controller(\App\Modules\AUL\AulReportsController::class)->prefix('reports')->group(function () {
+        Route::get('progress', 'progress')->middleware('permission:aul.course_enrollments.read');
+        Route::get('progress.xlsx', 'progressXlsx')->middleware('permission:aul.course_enrollments.read');
+        Route::get('conversion.xlsx', 'conversionXlsx')->middleware('permission:aul.course_recommendations.read');
     });
     Route::get('banks/{id}/import/template', [QuestionImport::class, 'template'])->whereUuid('id')->middleware('permission:aul.questions.import');
     Route::post('banks/{id}/import/preview', [QuestionImport::class, 'preview'])->whereUuid('id')->middleware(['permission:aul.questions.import', 'throttle:30,1']);

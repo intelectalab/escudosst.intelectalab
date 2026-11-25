@@ -330,9 +330,70 @@ export function VtaDashboard() {
               {d.coupons.length === 0 ? <p className="text-muted">Ningún cupón usado en el periodo.</p> : <ul>{d.coupons.map((c) => <li key={c.code}>{c.code} · {Number(c.uses)} usos · descuento {soles(c.discount)}</li>)}</ul>}
             </div>
           </div>
+          <VtaConversion from={p.from} to={p.to} />
         </>
       )}
     </section>
+  );
+}
+
+type Conv = {
+  orders: { id: string; order_number: string; paid_at: string | null; buyer: string; buyer_ruc: string | null; course: string; source: string; campaign: string | null; amount: number }[];
+  campaigns: { offer: string; sent_on: string; sent: number; viewed: number; clicked: number; converted: number; orders: number; amount: number; conversion_pct: number | null }[];
+  companies: { ruc: string; name: string | null; recommendations: number; converted: number; orders: number; amount: number; conversion_pct: number | null }[];
+};
+
+/** M-VTA §11: conversión de recomendaciones y campañas en ventas, por pedido, campaña y empresa compradora. */
+function VtaConversion({ from, to }: { from: string; to: string }) {
+  const [c, setC] = useState<Conv | null>(null);
+  const [tab, setTab] = useState<"orders" | "campaigns" | "companies">("orders");
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    api<{ data: Conv }>(`/vta/conversion?from=${from}&to=${to}`, { withCompany: true }).then((r) => { setC(r.data); setErr(null); }).catch((e) => setErr(errText(e)));
+  }, [from, to]);
+  if (!c) return err ? <p className="text-sm text-bad">{err}</p> : null;
+  const pct = (v: number | null) => (v == null ? "—" : `${v}%`);
+  const head = (cols: string[]) => <thead className="text-xs text-muted"><tr>{cols.map((h) => <th key={h} className="py-1 pr-3 font-semibold">{h}</th>)}</tr></thead>;
+  return (
+    <div className="space-y-2 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-semibold">Conversión de recomendaciones y campañas</p>
+        <div className="flex flex-wrap gap-1">
+          {([["orders", "Por pedido"], ["campaigns", "Por campaña"], ["companies", "Por empresa compradora"]] as const).map(([v, l]) => (
+            <button key={v} type="button" aria-pressed={tab === v} onClick={() => setTab(v)}
+              className={`rounded-md px-2 py-1 text-xs font-semibold ${tab === v ? "bg-brand text-white" : "text-muted hover:text-fg"}`}>{l}</button>
+          ))}
+          <Button size="sm" onClick={() => downloadFile(`/vta/conversion.xlsx?from=${from}&to=${to}`, `conversion-ventas-${from}-${to}.xlsx`).catch((e) => setErr(errText(e)))}>Excel</Button>
+        </div>
+      </div>
+      {err && <p className="text-bad">{err}</p>}
+      <div className="overflow-x-auto">
+        {tab === "orders" && (c.orders.length === 0 ? <p className="text-muted">Ningún pedido atribuido a una recomendación en el periodo.</p> : (
+          <table className="w-full min-w-[640px] text-left">{head(["Pedido", "Comprador", "Curso", "Recomendación", "Campaña", "Vendido"])}
+            <tbody className="divide-y divide-line">{c.orders.map((o) => (
+              <tr key={o.id}><td className="py-1 pr-3">{o.order_number}</td><td className="pr-3">{o.buyer}{o.buyer_ruc ? <span className="block text-xs text-muted">RUC {o.buyer_ruc}</span> : null}</td>
+                <td className="pr-3">{o.course}</td><td className="pr-3">{o.source}</td><td className="pr-3">{o.campaign ?? "—"}</td><td className="pr-3">{soles(o.amount)}</td></tr>
+            ))}</tbody>
+          </table>
+        ))}
+        {tab === "campaigns" && (c.campaigns.length === 0 ? <p className="text-muted">Sin campañas en el periodo.</p> : (
+          <table className="w-full min-w-[640px] text-left">{head(["Oferta", "Envío", "Enviadas", "Vistas", "Con clic", "Convertidas", "Pedidos", "Vendido", "Tasa"])}
+            <tbody className="divide-y divide-line">{c.campaigns.map((x, i) => (
+              <tr key={i}><td className="py-1 pr-3">{x.offer}</td><td className="pr-3">{x.sent_on.split("-").reverse().join("/")}</td><td className="pr-3">{x.sent}</td><td className="pr-3">{x.viewed}</td>
+                <td className="pr-3">{x.clicked}</td><td className="pr-3">{x.converted}</td><td className="pr-3">{x.orders}</td><td className="pr-3">{soles(x.amount)}</td><td className="pr-3 font-semibold">{pct(x.conversion_pct)}</td></tr>
+            ))}</tbody>
+          </table>
+        ))}
+        {tab === "companies" && (c.companies.length === 0 ? <p className="text-muted">Sin recomendaciones a empresas compradoras en el periodo.</p> : (
+          <table className="w-full min-w-[560px] text-left">{head(["Empresa", "RUC", "Recomendaciones", "Convertidas", "Pedidos", "Vendido", "Tasa"])}
+            <tbody className="divide-y divide-line">{c.companies.map((x) => (
+              <tr key={x.ruc}><td className="py-1 pr-3">{x.name ?? "—"}</td><td className="pr-3">{x.ruc}</td><td className="pr-3">{x.recommendations}</td><td className="pr-3">{x.converted}</td>
+                <td className="pr-3">{x.orders}</td><td className="pr-3">{soles(x.amount)}</td><td className="pr-3 font-semibold">{pct(x.conversion_pct)}</td></tr>
+            ))}</tbody>
+          </table>
+        ))}
+      </div>
+    </div>
   );
 }
 

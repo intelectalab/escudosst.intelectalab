@@ -17,6 +17,7 @@ const EVENT: [string, string][] = [["dangerous_incident", "Incidente peligroso"]
 
 export function EscalateReport({ row, onChanged }: { row: RecordRow; onChanged: () => void }) {
   const [type, setType] = useState("dangerous_incident");
+  const [diagnosed, setDiagnosed] = useState("");
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   if (row.escalated_event_id) return <p className="text-sm text-muted">Este reporte se escaló a un evento: su seguimiento continúa en Accidentes e incidentes.</p>;
@@ -24,7 +25,7 @@ export function EscalateReport({ row, onChanged }: { row: RecordRow; onChanged: 
   const go = async () => {
     setMsg(null);
     try {
-      await api(`/act/reports/${row.id}/escalate`, { method: "POST", withCompany: true, body: { event_type: type } });
+      await api(`/act/reports/${row.id}/escalate`, { method: "POST", withCompany: true, body: type === "occupational_disease" ? { event_type: type, diagnosed_on: diagnosed || null } : { event_type: type } });
       setMsg({ ok: true, text: "Escalado: se registró el evento y corren sus plazos de notificación." });
       setOpen(false);
       onChanged();
@@ -35,6 +36,11 @@ export function EscalateReport({ row, onChanged }: { row: RecordRow; onChanged: 
       {!open ? <button type="button" onClick={() => setOpen(true)} className="rounded-lg border border-bad px-3 py-1.5 font-semibold text-bad">Escalar a accidente o incidente</button> : (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line p-3">
           <select className="input !w-auto" value={type} onChange={(e) => setType(e.target.value)} aria-label="Tipo de evento">{EVENT.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+          {type === "occupational_disease" && (
+            <label className="text-xs">Fecha del diagnóstico
+              <input type="date" className="input mt-1 !w-40" value={diagnosed} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setDiagnosed(e.target.value)} />
+            </label>
+          )}
           <button type="button" onClick={go} className="rounded-lg bg-bad px-3 py-1.5 font-semibold text-white">Escalar</button>
           <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-line px-3 py-1.5 font-semibold">Cancelar</button>
         </div>

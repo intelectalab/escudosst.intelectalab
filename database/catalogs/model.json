@@ -37231,6 +37231,28 @@
     "comment": null
    },
    {
+    "name": "target_date",
+    "type": "date",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "reminder_opt_in",
+    "type": "boolean",
+    "not_null": true,
+    "default": "false",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -43626,6 +43648,17 @@
     "comment": null
    },
    {
+    "name": "diagnosed_on",
+    "type": "date",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -46134,6 +46167,17 @@
     "type": "integer",
     "not_null": true,
     "default": "0",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "linked_records",
+    "type": "jsonb",
+    "not_null": true,
+    "default": "'[]'::jsonb",
     "values": null,
     "ref": null,
     "encrypted": false,

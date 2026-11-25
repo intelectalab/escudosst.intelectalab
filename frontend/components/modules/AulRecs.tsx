@@ -17,6 +17,7 @@ import { Kpi } from "./Summary";
 import { RefSelect } from "./RefSelect";
 import { errorText } from "./Wizard";
 import { AulCrumbs, type CourseCard } from "./AulAdmin";
+import { ReportButton } from "./CtrExtras";
 
 type Funnel = { total: number; suggested: number; sent: number; viewed: number; clicked: number; converted: number; dismissed: number };
 type Item = {
@@ -30,7 +31,10 @@ type Rule = {
 };
 type RunResult = { supported: boolean; reached: number; created: number; skipped: number; sent_external: number; portal_only: number; preview: { name: string; course: string; reason: string; channel: string }[] };
 const SUPPORTED = ["certificate_expiring", "matrix_gap", "complementary", "learning_path_next", "inspection_finding", "incident_related", "similar_buyers"];
-type Data = { funnel: Funnel; items: Item[]; rules: Rule[] };
+type FunnelRow = { key: string | null; label: string; total: number; suggested: number; sent: number; viewed: number; clicked: number; converted: number; enrolled: number; purchased: number; dismissed: number; conversion_pct: number | null };
+type Dim = "source" | "rule" | "course" | "channel" | "area" | "buyer_company";
+type Data = { funnel: Funnel; breakdown: Record<Dim, FunnelRow[]>; items: Item[]; rules: Rule[] };
+const DIMS: [Dim, string][] = [["source", "Fuente"], ["rule", "Regla"], ["course", "Curso"], ["channel", "Canal"], ["area", "Área"], ["buyer_company", "Empresa compradora"]];
 
 const STATUS: Record<string, [string, ChipTone]> = {
   suggested: ["Por aprobar", "amber"], sent: ["Enviada", "brand"], viewed: ["Vista", "brand"], clicked: ["Clic", "brand"], converted: ["Convertida", "ok"], dismissed: ["Descartada", "na"], expired: ["Vencida", "na"],
@@ -92,6 +96,7 @@ export function AulRecs({ readOnly }: { readOnly: boolean }) {
             <Kpi label="Convertidas" value={String(f.converted)} color="text-ok" sub={f.sent ? `${Math.round((f.converted * 100) / f.sent)}% de las enviadas` : undefined} />
             <Kpi label="Descartadas" value={String(f.dismissed)} color="text-muted" />
           </div>
+          <FunnelBreakdown data={d.breakdown} />
           <div role="tablist" aria-label="Recomendaciones" className="flex gap-1 border-b border-line">
             {([["items", `Recomendaciones${pending.length ? ` (${pending.length} por aprobar)` : ""}`], ["rules", `Reglas (${d.rules.length})`]] as const).map(([v, l]) => (
               <button key={v} type="button" role="tab" aria-selected={tab === v} onClick={() => setTab(v)}
@@ -314,5 +319,43 @@ function CoursePick({ courses, value, onChange }: { courses: CourseCard[] | null
         </label>
       ))}
     </div>
+  );
+}
+
+/** M-AUL §11: embudo de conversión por fuente, regla, curso, canal, área y empresa compradora, con su Excel. */
+function FunnelBreakdown({ data }: { data: Record<Dim, FunnelRow[]> | undefined }) {
+  const [dim, setDim] = useState<Dim>("source");
+  const rows = data?.[dim] ?? [];
+  return (
+    <section className="space-y-2 rounded-xl border border-line bg-surface p-4 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-semibold">Conversión por</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select className="input !w-52" aria-label="Agrupar el embudo por" value={dim} onChange={(e) => setDim(e.target.value as Dim)}>
+            {DIMS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <ReportButton path="/aul/admin/reports/conversion.xlsx" file="aula-conversion-recomendaciones.xlsx" label="Embudo en Excel" />
+        </div>
+      </div>
+      {rows.length === 0 ? <p className="text-muted">Aún no hay recomendaciones.</p> : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left">
+            <thead className="text-xs text-muted">
+              <tr>{["Grupo", "Enviadas", "Vistas", "Con clic", "Matrícula", "Compra", "Descartadas", "Tasa"].map((h) => <th key={h} className="py-1 pr-3 font-semibold">{h}</th>)}</tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {rows.map((r) => (
+                <tr key={r.key ?? "none"}>
+                  <td className="py-1 pr-3">{r.label}{r.suggested ? <span className="block text-xs text-muted">{r.suggested} por aprobar</span> : null}</td>
+                  <td className="pr-3">{r.sent}</td><td className="pr-3">{r.viewed}</td><td className="pr-3">{r.clicked}</td>
+                  <td className="pr-3">{r.enrolled}</td><td className="pr-3">{r.purchased}</td><td className="pr-3">{r.dismissed}</td>
+                  <td className="pr-3 font-semibold">{r.conversion_pct == null ? "—" : `${r.conversion_pct}%`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }

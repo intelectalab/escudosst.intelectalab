@@ -89,8 +89,9 @@ function useHeartbeat(enrollmentId: string | null, lessonId: string | null, seco
 function Commitment({ enrollmentId, title, text, onAccepted }: { enrollmentId: string; title: string; text: string | null; onAccepted: () => void }) {
   const [target, setTarget] = useState("");
   const [ok, setOk] = useState(false);
+  const [remind, setRemind] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const accept = () => api(`/aul/enrollments/${enrollmentId}/commitment`, { method: "POST", withCompany: true, body: target ? { target_date: target } : {} })
+  const accept = () => api(`/aul/enrollments/${enrollmentId}/commitment`, { method: "POST", withCompany: true, body: target ? { target_date: target, reminder_opt_in: remind } : {} })
     .then(onAccepted).catch((e) => setErr(errText(e)));
   return (
     <section className="mx-auto max-w-xl space-y-3 rounded-2xl border border-line bg-surface p-5">
@@ -100,6 +101,9 @@ function Commitment({ enrollmentId, title, text, onAccepted }: { enrollmentId: s
       <label className="block text-sm">Fecha en la que me comprometo a terminar (opcional)
         <input type="date" value={target} onChange={(e) => setTarget(e.target.value)} className="mt-1 block rounded-lg border border-line bg-bg px-3 py-2" />
       </label>
+      {target && (
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={remind} onChange={(e) => setRemind(e.target.checked)} /> Quiero un recordatorio (en la app y por correo) antes de esa fecha</label>
+      )}
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} /> Leí y acepto el compromiso</label>
       {err && <p role="alert" className="text-sm text-bad">{err}</p>}
       <Button disabled={!ok} onClick={accept}>Aceptar y empezar</Button>

@@ -31,7 +31,7 @@ final class AlertDelivery
     private const WINDOW = '16 hours';
 
     /** Avisos que siempre van por correo en el momento (además de los críticos). */
-    private const EMAIL_EVENTS = ['com.election_called', 'aul.lms_sync_failed', 'aul.enrolled', 'aul.course_due', 'aul.course_completed', 'vta.paid_without_enrollment',
+    private const EMAIL_EVENTS = ['com.election_called', 'aul.lms_sync_failed', 'aul.enrolled', 'aul.course_due', 'aul.commitment_reminder', 'aul.course_completed', 'vta.paid_without_enrollment',
         // Canal «correo» de la tabla §10 de cada ficha (además de la campana).
         'acc.notification_overdue', 'acr.overdue', 'aui.upcoming', 'aui.external_due', 'cap.certificate_valid', 'cap.certificate_voided', 'cap.session_call', 'cap.expired_required',
         'cap.pending_validation', 'com.term_ending', 'com.meeting_upcoming', 'doc.review_pending', 'doc.review_due', 'dsh.kpi_red', 'emo.appointment', 'est.month_missing',

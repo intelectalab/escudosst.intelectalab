@@ -30,6 +30,7 @@ class ImprovementRules extends RecordRules
             'annual_plan_items' => $this->planItem($values, $current),
             'audits' => $this->audit($op, $values, $current),
             'audit_findings' => $this->auditFinding($values, $current),
+            'audit_checklist_items' => $this->checklistItem($values),
             'management_reviews' => $this->review($values, $current, $extra),
             'management_review_outputs' => $this->reviewOutput($values, $current),
             'measurements' => $this->measurement($values, $current, $extra),
@@ -216,6 +217,20 @@ class ImprovementRules extends RecordRules
             $values['reference_type'] = null;
             $values['reference_id'] = null;
         }
+    }
+
+    /** RN-AUI-07: los registros del sistema vinculados como evidencia existen, se pueden leer y quedan con su etiqueta. */
+    private function checklistItem(array &$values): void
+    {
+        if (! array_key_exists('linked_records', $values)) {
+            return;
+        }
+        $error = null;
+        $list = \App\Modules\REC\LinkedRecords::normalize($values['linked_records'], $error);
+        if ($list === null) {
+            $this->fail('linked_records', (string) $error);
+        }
+        $values['linked_records'] = $list;
     }
 
     private function audit(string $op, array &$values, ?object $current): void

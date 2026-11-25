@@ -15948,6 +15948,17 @@
      "name": "user_agent",
      "label": "Navegador",
      "type": "text"
+    },
+    {
+     "name": "target_date",
+     "label": "Fecha comprometida",
+     "type": "date"
+    },
+    {
+     "name": "reminder_opt_in",
+     "label": "Quiere recordatorio",
+     "type": "bool",
+     "default": false
     }
    ]
   },
@@ -19494,6 +19505,11 @@
      "readonly": true,
      "type": "ref",
      "ref": "users"
+    },
+    {
+     "name": "diagnosed_on",
+     "label": "Fecha del diagnóstico",
+     "type": "date"
     }
    ]
   },
@@ -20029,7 +20045,7 @@
       },
       {
        "value": "overdue",
-       "label": "Vencido"
+       "label": "Vencida"
       }
      ],
      "default": "open",
@@ -20972,6 +20988,11 @@
      "label": "Orden",
      "type": "int",
      "default": 0
+    },
+    {
+     "name": "linked_records",
+     "label": "Registros vinculados como evidencia",
+     "type": "json"
     }
    ]
   },

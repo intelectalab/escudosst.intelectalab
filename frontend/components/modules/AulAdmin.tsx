@@ -21,6 +21,7 @@ import { Bar, Kpi, fmtNum } from "./Summary";
 import { MoodleModal } from "./AulMoodle";
 import { RefSelect } from "./RefSelect";
 import { errorText } from "./Wizard";
+import { ReportButton } from "./CtrExtras";
 
 export type AulCan = {
   create_course: boolean; update_course: boolean; publish: boolean; edit_content: boolean; sections: boolean; enroll: boolean; grade: boolean; banks: boolean;
@@ -172,11 +173,65 @@ export function AulLanding({ readOnly }: { readOnly: boolean }) {
         <Icon name="clock" size={18} className="mt-0.5 shrink-0" />
         <span><b className="text-fg">Tiempo de permanencia real.</b> Se mide por actividad dentro del curso (lectura, video, respuestas); una ventana abierta sin interacción no suma. Así se acreditan las horas de capacitación.</span>
       </p>
+      <ProgressReport courses={data.courses} />
       {!readOnly && <ModuleSwitches />}
       {creating && <NewCourse onClose={() => setCreating(false)} />}
       {moodle && <MoodleModal readOnly={readOnly} onClose={() => setMoodle(false)} />}
       {trainers && <TrainersModal canEdit={data.can.trainers && !readOnly} onClose={() => setTrainers(false)} />}
     </div>
+  );
+}
+
+// ─────────────── Avance y aprobados por área y cargo (M-AUL §11) ───────────────
+
+type ProgressRow = { course_id: string; course: string; group_id: string | null; group: string; enrolled: number; not_started: number; in_progress: number; passed: number; failed: number; expired: number; avg_progress_pct: number; passed_pct: number | null };
+
+function ProgressReport({ courses }: { courses: CourseCard[] }) {
+  const [by, setBy] = useState<"area" | "position">("area");
+  const [course, setCourse] = useState("");
+  const [rows, setRows] = useState<ProgressRow[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const qs = `by=${by}${course ? `&course_id=${course}` : ""}`;
+  useEffect(() => {
+    api<{ data: { rows: ProgressRow[] } }>(`/aul/admin/reports/progress?${qs}`, { withCompany: true }).then((r) => { setRows(r.data.rows); setErr(null); }).catch((e) => setErr(errorText(e)));
+  }, [qs]);
+  if (err && !rows) return null;   // sin permiso de ver matrículas no se muestra
+  return (
+    <section className="space-y-2 rounded-xl border border-line bg-surface p-4 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-semibold">Avance y aprobados por {by === "area" ? "área" : "cargo"}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select className="input !w-40" aria-label="Agrupar por" value={by} onChange={(e) => setBy(e.target.value as "area" | "position")}>
+            <option value="area">Por área</option>
+            <option value="position">Por cargo</option>
+          </select>
+          <select className="input !w-64" aria-label="Curso" value={course} onChange={(e) => setCourse(e.target.value)}>
+            <option value="">Todos los cursos</option>
+            {courses.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.title}</option>)}
+          </select>
+          <ReportButton path={`/aul/admin/reports/progress.xlsx?${qs}`} file={`aula-avance-por-${by === "area" ? "area" : "cargo"}.xlsx`} label="Excel" />
+        </div>
+      </div>
+      {err && <p className="text-bad">{err}</p>}
+      {rows && (rows.length === 0 ? <p className="text-muted">Aún no hay matrículas.</p> : (
+        <div className="max-h-80 overflow-auto">
+          <table className="w-full min-w-[640px] text-left">
+            <thead className="text-xs text-muted">
+              <tr>{["Curso", by === "area" ? "Área" : "Cargo", "Matriculados", "Sin iniciar", "En curso", "Aprobados", "Desaprobados", "Avance", "% aprobados"].map((h) => <th key={h} className="py-1 pr-3 font-semibold">{h}</th>)}</tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {rows.map((r) => (
+                <tr key={`${r.course_id}-${r.group}`}>
+                  <td className="py-1 pr-3">{r.course}</td><td className="pr-3">{r.group}</td><td className="pr-3">{r.enrolled}</td><td className="pr-3">{r.not_started}</td>
+                  <td className="pr-3">{r.in_progress}</td><td className="pr-3 text-ok">{r.passed}</td><td className="pr-3 text-bad">{r.failed}</td>
+                  <td className="pr-3">{r.avg_progress_pct}%</td><td className="pr-3 font-semibold">{r.passed_pct == null ? "—" : `${r.passed_pct}%`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </section>
   );
 }
 

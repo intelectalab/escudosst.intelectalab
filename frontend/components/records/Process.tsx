@@ -22,6 +22,7 @@ import { GasEditor, gasValues, type GasLimit, type GasValues } from "./GasEditor
 import { PsiPanel } from "./PsiPanel";
 import { CriteriaEditor, ScoreForm } from "@/components/addons/HomPanels";
 import { IsoAssess, PseApply } from "@/components/addons/IsoPsePanels";
+import { LinkedRecordsList, asLinked } from "./LinkedRecordsPicker";
 import { LicenseSeats, PayOrder, RefundOrder, SellOffer } from "@/components/addons/VtaPanels";
 import { QuestionOptions } from "@/components/addons/AulLearner";
 import { RiskMapEditor } from "./RiskMapEditor";
@@ -205,6 +206,14 @@ function RecordActionsInner({
         <PetSteps versionId={row.id} readOnly={readOnly} />
         {!readOnly && <StepButtons code={code} table={res.table} row={row} canEdit={res.can.update} onChanged={onChanged} />}
       </div>
+    );
+  // M-AUI RN-AUI-07: registros del sistema vinculados como evidencia del ítem, con enlace a su ficha (también en solo lectura).
+  if (res.table === "audit_checklist_items")
+    return (
+      <section className="space-y-2 rounded-xl border border-line px-4 py-3 text-sm">
+        <p className="font-semibold">Registros del sistema vinculados como evidencia</p>
+        <LinkedRecordsList value={asLinked(row.linked_records)} />
+      </section>
     );
   if (readOnly) return null;
   if (res.table === "corrective_actions") return <CorrectiveFlow row={row} canEdit={res.can.update} onChanged={onChanged} />;
