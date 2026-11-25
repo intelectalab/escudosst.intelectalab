@@ -127,6 +127,8 @@ abstract class RecordRules
         'course_lessons' => AulRules::class,
         'api_clients' => ApiRules::class,
         'webhooks' => ApiRules::class,
+        'arco_requests' => PrivacyRules::class,
+        'data_breaches' => PrivacyRules::class,
     ];
 
     public static function for(string $table): ?self
@@ -156,9 +158,16 @@ abstract class RecordRules
         throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', $message, ['errors' => [$field => [$message]]]);
     }
 
+    /** Conflicto con otros datos (dependencias, duplicados, segregación de funciones): 409 conflict (docs/08 §7). */
     protected function conflict(string $message): never
     {
         throw new ApiProblem(409, 'conflict', 'No se puede hacer este cambio', $message);
+    }
+
+    /** El estado del registro no permite el cambio pedido (máquinas de estado, docs/06): 409 invalid_transition (docs/08 §6-7). */
+    protected function invalidTransition(string $message): never
+    {
+        throw ApiProblem::invalidTransition($message);
     }
 
     /** Valor final del campo: el nuevo si se envía, si no el actual. */

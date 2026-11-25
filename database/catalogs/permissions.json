@@ -26,7 +26,7 @@
   "verify",
   "vote"
  ],
- "count": 1261,
+ "count": 1264,
  "permissions": [
   {
    "code": "ten.accounts.read",
@@ -12532,6 +12532,39 @@
    "db": "main",
    "added": true,
    "description": "Eliminar (lógico) · arco_requests (Trabajadores y legajo)"
+  },
+  {
+   "code": "trb.data_breaches.read",
+   "module_code": "TRB",
+   "resource": "data_breaches",
+   "action": "read",
+   "is_sensitive": true,
+   "is_special": false,
+   "db": "main",
+   "added": true,
+   "description": "Ver · data_breaches (Trabajadores y legajo)"
+  },
+  {
+   "code": "trb.data_breaches.create",
+   "module_code": "TRB",
+   "resource": "data_breaches",
+   "action": "create",
+   "is_sensitive": true,
+   "is_special": false,
+   "db": "main",
+   "added": true,
+   "description": "Crear · data_breaches (Trabajadores y legajo)"
+  },
+  {
+   "code": "trb.data_breaches.update",
+   "module_code": "TRB",
+   "resource": "data_breaches",
+   "action": "update",
+   "is_sensitive": true,
+   "is_special": false,
+   "db": "main",
+   "added": true,
+   "description": "Editar · data_breaches (Trabajadores y legajo)"
   },
   {
    "code": "doc.files.read",

@@ -203,7 +203,7 @@ class EmoClinicalController extends Controller
         if (! $file || ! $file->isValid()) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa el archivo', 'Elige un archivo.', ['errors' => ['file' => ['Elige un archivo.']]]);
         }
-        $mime = (string) $file->getMimeType();
+        $mime = \App\Core\Support\UploadGuard::realMime($file);
         if (! isset(self::FILE_TYPES[$mime])) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa el archivo', 'Solo se aceptan PDF o imágenes (JPG, PNG).', ['errors' => ['file' => ['Tipo de archivo no permitido.']]]);
         }

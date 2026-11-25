@@ -39,7 +39,7 @@ class SiteAssetsController extends Controller
 
         // Se mira el contenido real, no la terminación del nombre: muchas imágenes bajadas de internet dicen
         // «.png» pero por dentro son AVIF o WEBP.
-        $mime = (string) $file->getMimeType();
+        $mime = \App\Core\Support\UploadGuard::realMime($file);
         $allowed = $isFavicon
             ? ['image/png' => 'png', 'image/x-icon' => 'ico', 'image/vnd.microsoft.icon' => 'ico']
             : ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp', 'image/avif' => 'avif'];

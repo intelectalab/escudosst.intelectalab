@@ -52,7 +52,7 @@ class PeopleRules extends RecordRules
         unset($values['approved_by'], $values['approved_at']);   // los pone la aprobación
         // RN-PRE-05: aprobado, el presupuesto solo cambia por reasignación entre líneas (o al pasar a ejecución o cierre).
         if ($current && in_array($current->status, ['approved', 'in_execution', 'closed'], true) && array_diff(array_keys($values), ['status']) !== []) {
-            $this->conflict('El presupuesto ya está aprobado: no se edita. Para mover dinero entre líneas pide una reasignación a gerencia.');
+            $this->invalidTransition('El presupuesto ya está aprobado: no se edita. Para mover dinero entre líneas pide una reasignación a gerencia.');
         }
         if ($op === 'create') {
             $values['status'] = 'draft';
@@ -97,7 +97,7 @@ class PeopleRules extends RecordRules
     {
         $st = DB::selectOne('select status from budgets where id = ?', [$this->value($values, $current, 'budget_id')])?->status;
         if (in_array($st, ['approved', 'in_execution', 'closed'], true) && array_diff(array_keys($values), ['executed_amount']) !== []) {
-            $this->conflict('El presupuesto ya está aprobado: sus líneas no se cambian. Registra los gastos en «Ejecución».');
+            $this->invalidTransition('El presupuesto ya está aprobado: sus líneas no se cambian. Registra los gastos en «Ejecución».');
         }
         if ((float) ($values['planned_amount'] ?? 0) < 0) {
             $this->fail('planned_amount', 'El monto no puede ser negativo.');
@@ -404,7 +404,7 @@ class PeopleRules extends RecordRules
         }
         // RN-CTR-05: para EMO solo la constancia de aptitud (resultado y vigencia), nunca informes clínicos ni diagnósticos.
         $req = ($r = $this->value($values, $current, 'requirement_id')) ? DB::selectOne('select document_kind, requirement_code, name from contractor_requirements where id = ?', [$r]) : null;
-        if ($req && preg_match('/emo|aptitud|m[eé]dic/iu', $req->document_kind.' '.$req->requirement_code.' '.$req->name)) {
+        if ($req && preg_match('/\bemo\b|aptitud|m[eé]dic/iu', $req->document_kind.' '.$req->requirement_code.' '.$req->name)) {
             if (! in_array($this->value($values, $current, 'fitness_result'), ['fit', 'fit_with_restrictions', 'unfit'], true)) {
                 $this->fail('fitness_result', 'Indica el resultado de la constancia de aptitud (apto, apto con restricciones o no apto).');
             }
@@ -509,7 +509,7 @@ class PeopleRules extends RecordRules
             return;
         }
         if ($current && in_array($current->status, ['revoked'], true)) {
-            $this->conflict('El fotocheck está revocado.');
+            $this->invalidTransition('El fotocheck está revocado.');
         }
         // Evaluación de requisitos (RN-FOT): activo si cumple todos los bloqueantes; si no, bloqueado con motivos.
         // RN-FOT-02: vence con el primero de sus requisitos que venza (sin pasar la vigencia del tipo), salvo fecha indicada a mano.
@@ -709,7 +709,7 @@ class PeopleRules extends RecordRules
             return;
         }
         if (in_array($current->status, ['closed', 'rejected', 'expired'], true) && $values !== []) {
-            $this->conflict('El permiso está cerrado: no se modifica.');
+            $this->invalidTransition('El permiso está cerrado: no se modifica.');
         }
         if (array_intersect(array_keys($values), ['executor_leader_worker_id', 'crew', 'valid_from', 'valid_until']) !== []) {
             $this->permitOverlap($values, $current);
@@ -949,7 +949,7 @@ class PeopleRules extends RecordRules
     {
         $permit = DB::selectOne('select status, requested_by from work_permits where id = ?', [$this->value($values, $current, 'work_permit_id')]);
         if (! in_array($permit?->status, ['draft', 'pending_approval'], true)) {
-            $this->conflict('Las aprobaciones se registran mientras el permiso espera aprobación.');
+            $this->invalidTransition('Las aprobaciones se registran mientras el permiso espera aprobación.');
         }
         if (in_array($values['decision'] ?? null, ['approved', 'rejected'], true)) {
             // Firma quien está conectado, en este momento; no se firma por otra persona.
@@ -985,7 +985,7 @@ class PeopleRules extends RecordRules
     {
         $st = DB::selectOne('select status from work_permits where id = ?', [$this->value($values, $current, 'work_permit_id')])?->status;
         if (in_array($st, ['closed', 'rejected', 'expired'], true)) {
-            $this->conflict('El permiso está cerrado: no se agregan verificaciones.');
+            $this->invalidTransition('El permiso está cerrado: no se agregan verificaciones.');
         }
         $values['checked_by'] = (string) auth()->id();
         $values['checked_at'] = now()->toIso8601String();
@@ -995,7 +995,7 @@ class PeopleRules extends RecordRules
     {
         $st = DB::selectOne('select b.status from budget_lines l join budgets b on b.id = l.budget_id where l.id = ?', [$this->value($values, $current, 'budget_line_id')])?->status;
         if (! in_array($st, ['approved', 'in_execution'], true)) {
-            $this->conflict('Los gastos se registran cuando el presupuesto está aprobado.');
+            $this->invalidTransition('Los gastos se registran cuando el presupuesto está aprobado.');
         }
         if ((float) $this->value($values, $current, 'amount') <= 0) {
             $this->fail('amount', 'El monto debe ser mayor que cero.');

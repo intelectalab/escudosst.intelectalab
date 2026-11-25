@@ -9,7 +9,9 @@
   "TRB": [
    "workers",
    "worker_assignments",
-   "worker_documents"
+   "worker_documents",
+   "arco_requests",
+   "data_breaches"
   ],
   "DOC": [
    "document_categories",
@@ -1282,6 +1284,390 @@
      "name": "notes",
      "label": "Notas",
      "type": "longtext"
+    }
+   ]
+  },
+  "arco_requests": {
+   "columns": [
+    "requester_name",
+    "request_type",
+    "received_at",
+    "due_on",
+    "assigned_to",
+    "status"
+   ],
+   "module": "TRB",
+   "tab": "Solicitudes ARCO",
+   "title": "Solicitudes de derechos ARCO (Ley 29733) de trabajadores, con plazo según parámetro",
+   "hybrid": false,
+   "immutable": false,
+   "soft_delete": true,
+   "stamps": true,
+   "updated_by": true,
+   "updated_at": true,
+   "label": "description",
+   "order": 99,
+   "uniques": [],
+   "fields": [
+    {
+     "name": "worker_id",
+     "label": "Trabajador",
+     "type": "ref",
+     "ref": "workers"
+    },
+    {
+     "name": "requester_name",
+     "label": "Nombre del solicitante",
+     "type": "text",
+     "list": true
+    },
+    {
+     "name": "requester_document",
+     "label": "Documento del solicitante",
+     "type": "text",
+     "encrypted": true
+    },
+    {
+     "name": "requester_contact",
+     "label": "Contacto del solicitante",
+     "type": "text",
+     "encrypted": true
+    },
+    {
+     "name": "request_type",
+     "label": "Tipo de solicitud",
+     "type": "enum",
+     "options": [
+      {
+       "value": "access",
+       "label": "Acceso"
+      },
+      {
+       "value": "rectification",
+       "label": "Rectificación"
+      },
+      {
+       "value": "cancellation",
+       "label": "Cancelación"
+      },
+      {
+       "value": "opposition",
+       "label": "Oposición"
+      },
+      {
+       "value": "portability",
+       "label": "Portabilidad"
+      }
+     ],
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "channel",
+     "label": "Canal",
+     "type": "enum",
+     "options": [
+      {
+       "value": "app",
+       "label": "App"
+      },
+      {
+       "value": "email",
+       "label": "Correo electrónico"
+      },
+      {
+       "value": "in_person",
+       "label": "Presencial"
+      },
+      {
+       "value": "letter",
+       "label": "Carta"
+      },
+      {
+       "value": "other",
+       "label": "Otro"
+      }
+     ]
+    },
+    {
+     "name": "received_at",
+     "label": "Recibido el",
+     "type": "datetime",
+     "list": true
+    },
+    {
+     "name": "description",
+     "label": "Descripción",
+     "type": "longtext",
+     "required": true
+    },
+    {
+     "name": "legal_parameter_key",
+     "label": "Parámetro legal",
+     "readonly": true,
+     "type": "text",
+     "default": "arco_response_business_days"
+    },
+    {
+     "name": "due_on",
+     "label": "Fecha límite",
+     "readonly": true,
+     "type": "date",
+     "list": true
+    },
+    {
+     "name": "status",
+     "label": "Estado",
+     "type": "enum",
+     "options": [
+      {
+       "value": "received",
+       "label": "Recibida"
+      },
+      {
+       "value": "in_review",
+       "label": "En revisión"
+      },
+      {
+       "value": "extension_requested",
+       "label": "Con prórroga"
+      },
+      {
+       "value": "resolved",
+       "label": "Atendida"
+      },
+      {
+       "value": "rejected",
+       "label": "Denegada"
+      },
+      {
+       "value": "withdrawn",
+       "label": "Retirada"
+      }
+     ],
+     "default": "received",
+     "list": true
+    },
+    {
+     "name": "assigned_to",
+     "label": "Asignado a",
+     "type": "ref",
+     "ref": "users",
+     "list": true
+    },
+    {
+     "name": "extension_reason",
+     "label": "Motivo de prórroga",
+     "type": "longtext"
+    },
+    {
+     "name": "resolution",
+     "label": "Resolución",
+     "type": "text"
+    },
+    {
+     "name": "resolved_at",
+     "label": "Resuelto el",
+     "readonly": true,
+     "type": "datetime"
+    },
+    {
+     "name": "response_file_id",
+     "label": "Archivo de respuesta",
+     "type": "file"
+    }
+   ]
+  },
+  "data_breaches": {
+   "columns": [
+    "code",
+    "title",
+    "detected_at",
+    "includes_sensitive_data",
+    "anpd_due_at",
+    "status"
+   ],
+   "module": "TRB",
+   "tab": "Brechas de seguridad",
+   "title": "Registro de brechas de seguridad de datos personales (Ley 29733, docs/10 §1.5): causa, medidas y plazo de notificación a la ANPD según parámetro (a confirmar)",
+   "hybrid": false,
+   "immutable": false,
+   "soft_delete": true,
+   "stamps": true,
+   "updated_by": true,
+   "updated_at": true,
+   "label": "title",
+   "order": 99,
+   "uniques": [],
+   "fields": [
+    {
+     "name": "code",
+     "label": "Código",
+     "readonly": true,
+     "type": "text",
+     "list": true
+    },
+    {
+     "name": "title",
+     "label": "Título",
+     "type": "text",
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "detected_at",
+     "label": "Detectada el",
+     "type": "datetime",
+     "required": true,
+     "list": true
+    },
+    {
+     "name": "detection_source",
+     "label": "Cómo se detectó",
+     "type": "enum",
+     "options": [
+      {
+       "value": "alert",
+       "label": "Alerta del sistema"
+      },
+      {
+       "value": "client_report",
+       "label": "Reporte de un cliente"
+      },
+      {
+       "value": "provider_report",
+       "label": "Reporte de un proveedor"
+      },
+      {
+       "value": "internal",
+       "label": "Detección interna"
+      },
+      {
+       "value": "other",
+       "label": "Otro"
+      }
+     ],
+     "default": "internal"
+    },
+    {
+     "name": "description",
+     "label": "Descripción",
+     "type": "longtext",
+     "required": true
+    },
+    {
+     "name": "data_categories",
+     "label": "Datos comprometidos",
+     "type": "text"
+    },
+    {
+     "name": "includes_sensitive_data",
+     "label": "Incluye datos sensibles (salud u otros)",
+     "type": "bool",
+     "default": false,
+     "list": true
+    },
+    {
+     "name": "affected_people_count",
+     "label": "Personas afectadas",
+     "type": "int"
+    },
+    {
+     "name": "affected_scope",
+     "label": "Alcance (áreas, sistemas, empresas)",
+     "type": "longtext"
+    },
+    {
+     "name": "responsible_user_id",
+     "label": "Responsable (usuario)",
+     "type": "ref",
+     "ref": "users"
+    },
+    {
+     "name": "containment_measures",
+     "label": "Medidas de contención",
+     "type": "text"
+    },
+    {
+     "name": "cause",
+     "label": "Causa",
+     "type": "text"
+    },
+    {
+     "name": "legal_parameter_key",
+     "label": "Parámetro legal",
+     "readonly": true,
+     "type": "text",
+     "default": "data_breach_notification_hours"
+    },
+    {
+     "name": "anpd_due_at",
+     "label": "Plazo para comunicar a la ANPD",
+     "readonly": true,
+     "type": "datetime",
+     "list": true
+    },
+    {
+     "name": "anpd_notified_at",
+     "label": "Comunicada a la ANPD el",
+     "type": "datetime"
+    },
+    {
+     "name": "anpd_reference",
+     "label": "N.º o referencia de la comunicación",
+     "type": "text"
+    },
+    {
+     "name": "holders_notification_required",
+     "label": "Hay que avisar a los titulares",
+     "type": "bool",
+     "default": false
+    },
+    {
+     "name": "holders_notified_at",
+     "label": "Titulares avisados el",
+     "type": "datetime"
+    },
+    {
+     "name": "corrective_measures",
+     "label": "Medidas correctivas",
+     "type": "text"
+    },
+    {
+     "name": "lessons_learned",
+     "label": "Lecciones aprendidas",
+     "type": "text"
+    },
+    {
+     "name": "status",
+     "label": "Estado",
+     "type": "enum",
+     "options": [
+      {
+       "value": "detected",
+       "label": "Detectada"
+      },
+      {
+       "value": "contained",
+       "label": "Contenida"
+      },
+      {
+       "value": "notified",
+       "label": "Comunicada"
+      },
+      {
+       "value": "closed",
+       "label": "Cerrada"
+      }
+     ],
+     "default": "detected",
+     "list": true
+    },
+    {
+     "name": "closed_at",
+     "label": "Cerrado el",
+     "readonly": true,
+     "type": "datetime"
     }
    ]
   },

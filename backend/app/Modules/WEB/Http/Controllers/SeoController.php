@@ -110,6 +110,8 @@ class SeoController extends Controller
         $d = $this->validated($request, null);
         $actor = $request->user()->id;
         $id = $this->db()->table('site_redirects')->insertGetId($d + ['created_by' => $actor, 'updated_by' => $actor]);
+        // El enlace roto de esa ruta (404 registrado) queda resuelto con la redirección.
+        $this->db()->update('update site_not_found_paths set resolved_at = now(), resolved_by = ? where path = ? and resolved_at is null', [$actor, $d['source_path']]);
         $accounts->audit($actor, 'site_redirect_created', 'site_redirects', $id, ['from' => $d['source_path'], 'to' => $d['target_url']]);
 
         return response()->json(['data' => ['id' => $id]], 201);

@@ -37,7 +37,7 @@ class FilesController extends Controller
         if (! $file || ! $file->isValid()) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa el archivo', 'Elige un archivo.', ['errors' => ['file' => ['Elige un archivo.']]]);
         }
-        $mime = (string) $file->getMimeType();
+        $mime = \App\Core\Support\UploadGuard::realMime($file);
         $ext = self::TYPES[$mime] ?? null;
         if (! $ext) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa el archivo', 'Solo se aceptan PDF, imágenes (JPG, PNG, WEBP), Word o Excel.',

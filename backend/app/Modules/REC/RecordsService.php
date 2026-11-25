@@ -403,7 +403,7 @@ final class RecordsService
         $s = DB::selectOne("select count(*) as n, count(*) filter (where status = 'signed') as signed from signature_requests
                              where subject_type = ? and subject_id = ? and deleted_at is null and status <> 'cancelled'", [$table, $id]);
         if ($s && (int) $s->n > 0 && (int) $s->n === (int) $s->signed) {
-            throw new ApiProblem(409, 'conflict', 'Registro firmado', 'El registro ya tiene todas sus firmas: no se edita. Para corregirlo crea una nueva versión o un anexo.');
+            throw new ApiProblem(409, 'invalid_transition', 'Registro firmado', 'El registro ya tiene todas sus firmas: no se edita. Para corregirlo crea una nueva versión o un anexo.');
         }
     }
 

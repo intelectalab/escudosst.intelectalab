@@ -345,6 +345,19 @@ Artisan::command('escudo:web-retention', function () {
 Schedule::command('escudo:web-retention')->dailyAt('03:10')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:web-retention');
 
 /*
+| docs/10 §9: borrado al vencer la conservación de lo que no tiene obligación legal de conservarse: particiones mensuales de
+| métricas del sitio y mensajes del chatbot (se crean por adelantado y se descartan completas), conversaciones del chatbot,
+| Core Web Vitals, consentimientos de cookies (cuando web.cookie_consent_validity tenga un valor) y claves Idempotency-Key
+| vencidas. Los registros SST, la historia clínica y la bitácora no se borran aquí (su purga necesita aprobación).
+| Queda en la bitácora qué se borró. Uso: php artisan escudo:retention
+*/
+Artisan::command('escudo:retention', function (\App\Core\Support\RetentionPurge $purge) {
+    $this->line(json_encode($purge->run(), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+})->purpose('Borra los datos sin obligación de conservarse cuando vence su plazo');
+
+Schedule::command('escudo:retention')->dailyAt('03:20')->timezone('America/Lima')->withoutOverlapping()->runInBackground()->name('escudo:retention');
+
+/*
 | M-AUD RN-AUD-06: archiva cifrados los meses de la bitácora que pasaron audit_retention_years (por empresa) en el disco de
 | copias y, si está configurado, en el almacenamiento externo. No borra registros: la purga necesita aprobación.
 | Uso: php artisan escudo:audit-archive [--before=AAAA-MM-01]

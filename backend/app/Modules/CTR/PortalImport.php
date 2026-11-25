@@ -119,9 +119,8 @@ class PortalImport extends Controller
     {
         $request->validate(['file' => ['required', 'file', 'max:5120']], ['file.required' => 'Elige el archivo de Excel.', 'file.max' => 'El archivo pesa más de 5 MB.']);
         $file = $request->file('file');
-        if (! in_array(strtolower($file->getClientOriginalExtension()), ['xlsx', 'csv'], true)) {
-            $this->fail('Sube la plantilla en Excel (.xlsx) o CSV.');
-        }
+        // docs/10 §6: extensión y tipo real del contenido (magic bytes), no solo el nombre del archivo.
+        \App\Core\Support\UploadGuard::spreadsheet($file, 'file', 'Sube la plantilla en Excel (.xlsx) o CSV.');
         try {
             $sheet = SheetReader::read($file->getRealPath(), $file->getClientOriginalName());
         } catch (\Throwable) {

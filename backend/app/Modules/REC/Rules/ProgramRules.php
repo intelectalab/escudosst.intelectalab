@@ -112,7 +112,7 @@ class ProgramRules extends RecordRules
             $this->sessionOpen($current->session_id);
         }
         if (in_array($res['table'], ['annual_programs', 'training_programs'], true) && $current->status !== 'draft') {
-            $this->conflict('Solo se archiva un programa en borrador.');
+            $this->invalidTransition('Solo se archiva un programa en borrador.');
         }
     }
 
@@ -126,13 +126,13 @@ class ProgramRules extends RecordRules
         $to = $values['status'] ?? null;
         if ($to === null || $to === $current->status) {
             if ($current->status === 'closed' && $values !== []) {
-                $this->conflict('El programa está cerrado: no se modifica.');
+                $this->invalidTransition('El programa está cerrado: no se modifica.');
             }
 
             return;
         }
         if (! in_array($to, self::FLOW[$current->status] ?? [], true)) {
-            $this->fail('status', 'No se puede pasar de «'.self::LABEL[$current->status].'» a «'.(self::LABEL[$to] ?? $to).'».');
+            $this->invalidTransition('No se puede pasar de «'.self::LABEL[$current->status].'» a «'.(self::LABEL[$to] ?? $to).'».');
         }
         $items = $table === 'annual_programs'
             ? (int) DB::selectOne("select count(*) as n from program_activities where program_id = ? and deleted_at is null and status <> 'cancelled'", [$current->id])->n
@@ -200,7 +200,7 @@ class ProgramRules extends RecordRules
         $closed = $current->planned_month && ($p->year < (int) $now->format('Y') || ($p->year == (int) $now->format('Y') && $current->planned_month < (int) $now->format('n')));
         $held = $current->training_id && DB::selectOne("select 1 as ok from training_sessions where training_id = ? and status = 'held' and deleted_at is null", [$current->training_id]);
         if (! $closed || $held || $current->status === 'done') {
-            $this->conflict('Solo se reprograma un tema de un mes ya cerrado que no se ejecutó; el programa aprobado no cambia de otra forma.');
+            $this->invalidTransition('Solo se reprograma un tema de un mes ya cerrado que no se ejecutó; el programa aprobado no cambia de otra forma.');
         }
         if (! trim((string) ($values['reschedule_reason'] ?? ''))) {
             $this->fail('reschedule_reason', 'Indica el motivo de la reprogramación.');
@@ -218,19 +218,19 @@ class ProgramRules extends RecordRules
     {
         $st = $programId ? DB::selectOne("select status from \"{$table}\" where id = ?", [$programId])?->status : null;
         if ($st !== null && $st !== 'draft' && $st !== 'committee_review') {
-            $this->conflict("El programa ya está aprobado: sus {$what} no cambian. Si hace falta, se aprueba una nueva versión.");
+            $this->invalidTransition("El programa ya está aprobado: sus {$what} no cambian. Si hace falta, se aprueba una nueva versión.");
         }
     }
 
     private function execution(string $op, array &$values, ?object $current, array &$extra): void
     {
         if ($current && $current->verified_at && $values !== []) {
-            $this->conflict('La ejecución ya fue validada: no se modifica. Si hubo un error, archívala y registra otra.');
+            $this->invalidTransition('La ejecución ya fue validada: no se modifica. Si hubo un error, archívala y registra otra.');
         }
         $activity = $this->value($values, $current, 'activity_id');
         $st = DB::selectOne('select p.status from program_activities a join annual_programs p on p.id = a.program_id where a.id = ?', [$activity])?->status;
         if (! in_array($st, ['approved', 'in_execution'], true)) {
-            $this->conflict('Las ejecuciones se registran cuando el programa está aprobado.');
+            $this->invalidTransition('Las ejecuciones se registran cuando el programa está aprobado.');
         }
         if (! $this->value($values, $current, 'description') && ! $this->value($values, $current, 'source_id')) {
             $this->fail('description', 'Describe la evidencia de lo ejecutado (o vincula el registro de origen).');
@@ -276,7 +276,7 @@ class ProgramRules extends RecordRules
     private function session(string $op, array &$values, ?object $current, array &$extra): void
     {
         if ($current && $current->status === 'cancelled' && $values !== []) {
-            $this->conflict('La sesión está anulada.');
+            $this->invalidTransition('La sesión está anulada.');
         }
         // RN-CAP-17: una sesión fuera del horario de trabajo de la sede (sus turnos activos) queda marcada y se registra con advertencia.
         if (array_intersect(array_keys($values), ['starts_at', 'ends_at', 'site_id']) || $op === 'create') {
@@ -372,11 +372,11 @@ class ProgramRules extends RecordRules
         $used = (int) DB::selectOne("select count(*) as n from training_evaluations where training_id = ? and {$who} = ? and evaluation_type = 'post' and deleted_at is null",
             [$values['training_id'] ?? null, $values[$who] ?? null])->n;
         if ($max > 0 && $used >= $max) {
-            $this->conflict("Ya usó los {$max} intentos de la evaluación final de esta capacitación.");
+            $this->invalidTransition("Ya usó los {$max} intentos de la evaluación final de esta capacitación.");
         }
         if (DB::selectOne("select 1 as ok from training_evaluations where training_id = ? and {$who} = ? and evaluation_type = 'post' and passed and deleted_at is null",
             [$values['training_id'] ?? null, $values[$who] ?? null])) {
-            $this->conflict('Ya aprobó la evaluación final de esta capacitación.');
+            $this->invalidTransition('Ya aprobó la evaluación final de esta capacitación.');
         }
     }
 
@@ -384,10 +384,10 @@ class ProgramRules extends RecordRules
     {
         $st = $session ? DB::selectOne('select status from training_sessions where id = ?', [$session])?->status : null;
         if ($st === 'cancelled') {
-            $this->conflict('La sesión está anulada: no admite asistencias.');
+            $this->invalidTransition('La sesión está anulada: no admite asistencias.');
         }
         if ($st === 'held') {
-            $this->conflict('La sesión ya se marcó como realizada: su lista de asistencia quedó cerrada (RN-CAP-19).');
+            $this->invalidTransition('La sesión ya se marcó como realizada: su lista de asistencia quedó cerrada (RN-CAP-19).');
         }
     }
 
@@ -411,7 +411,7 @@ class ProgramRules extends RecordRules
             $extra['voided_at'] = ['now()', []];
         }
         if ($current && $current->status === 'voided' && $values !== []) {
-            $this->conflict('El certificado está anulado: no se modifica.');
+            $this->invalidTransition('El certificado está anulado: no se modifica.');
         }
         // RN-CAP-11: el texto de un certificado validado no se edita; por un error de datos se reemite (uno nuevo que lo reemplaza).
         if ($current && $current->status === 'validated') {

@@ -71,7 +71,7 @@ class FieldOpsRules extends RecordRules
         }
         $to = $values['status'] ?? null;
         if ($current->status !== 'draft' && array_diff(array_keys($values), ['status']) !== []) {
-            $this->conflict('La observación ya fue enviada: no se edita.');
+            $this->invalidTransition('La observación ya fue enviada: no se edita.');
         }
         if (! $to || $to === $current->status) {
             return;
@@ -91,7 +91,7 @@ class FieldOpsRules extends RecordRules
     {
         $st = DB::selectOne('select status from behavior_observations where id = ?', [$this->value($values, $current, 'observation_id')])?->status;
         if ($st && $st !== 'draft' && array_diff(array_keys($values), ['corrective_action_id']) !== []) {
-            $this->conflict('La observación ya fue enviada: sus comportamientos no se cambian.');
+            $this->invalidTransition('La observación ya fue enviada: sus comportamientos no se cambian.');
         }
     }
 
@@ -104,7 +104,7 @@ class FieldOpsRules extends RecordRules
         }
         if ($this->value($values, $current, 'kit_id')
             && DB::selectOne("select 1 as ok from first_aid_kits where id = ? and status = 'retired'", [$this->value($values, $current, 'kit_id')])) {
-            $this->conflict('El botiquín está dado de baja.');
+            $this->invalidTransition('El botiquín está dado de baja.');
         }
     }
 

@@ -16,6 +16,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
 import { api, ApiError } from "@/lib/api";
 import { assetUrl } from "@/lib/site";
+import { MediaReport } from "@/components/site/SiteReports";
 
 type Usage = { label: string; name: string | null; href: string | null };
 
@@ -77,6 +78,9 @@ export default function MediosPage() {
           />
         ))}
       </div>
+
+      {/* M-WEB §11: archivos sin uso, imágenes sin texto alternativo y tamaño total. */}
+      <MediaReport version={all.length} />
 
       <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[13rem_minmax(0,1fr)]">
         <nav aria-label="Carpetas" className="rounded-2xl border border-line bg-surface p-2 shadow-sm">

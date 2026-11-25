@@ -113,11 +113,11 @@ class AcrRules extends RecordRules
         if ($res['table'] === 'action_evidences') {
             $st = DB::selectOne('select status from corrective_actions where id = ?', [$current->corrective_action_id])?->status;
             if ($st === 'verified') {
-                $this->conflict('La acción ya fue verificada: sus evidencias no se borran.');
+                $this->invalidTransition('La acción ya fue verificada: sus evidencias no se borran.');
             }
         }
         if ($res['table'] === 'corrective_actions' && $current->status !== 'open') {
-            $this->conflict('Solo se archiva una acción recién abierta. Si ya no aplica, anúlala indicando el motivo.');
+            $this->invalidTransition('Solo se archiva una acción recién abierta. Si ya no aplica, anúlala indicando el motivo.');
         }
     }
 
@@ -144,7 +144,7 @@ class AcrRules extends RecordRules
                 $this->fail('due_on', 'La nueva fecha meta no puede ser anterior a hoy.');
             }
             if (in_array($current->status, ['verified', 'cancelled'], true)) {
-                $this->conflict('La acción ya está cerrada: su fecha meta no cambia.');
+                $this->invalidTransition('La acción ya está cerrada: su fecha meta no cambia.');
             }
             if (trim((string) ($values['extension_reason'] ?? '')) === '') {
                 $this->fail('extension_reason', 'Indica el motivo de la ampliación de plazo.');
@@ -169,7 +169,7 @@ class AcrRules extends RecordRules
         unset($values['extension_count'], $values['original_due_on'], $values['extension_approved_by']);
         if ($op === 'update' && $current->status === 'pending_verification'
             && array_intersect(array_keys($values), ['responsible_user_id', 'responsible_worker_id', 'contractor_id']) !== []) {
-            $this->conflict('La acción está por verificar: no se cambia el responsable. Si hace falta, devuélvela a «En curso» primero.');
+            $this->invalidTransition('La acción está por verificar: no se cambia el responsable. Si hace falta, devuélvela a «En curso» primero.');
         }
         if (! $this->value($values, $current, 'responsible_user_id') && ! $this->value($values, $current, 'responsible_worker_id') && ! $this->value($values, $current, 'contractor_id')) {
             $this->fail('responsible_user_id', 'Indica el responsable (usuario, trabajador o contratista).');
@@ -200,7 +200,7 @@ class AcrRules extends RecordRules
             $to = $values['status'];
             $from = $current->status;
             if (! in_array($to, self::FLOW[$from] ?? [], true)) {
-                $this->fail('status', 'No se puede pasar de «'.(self::STATUS[$from] ?? $from).'» a «'.(self::STATUS[$to] ?? $to).'».');
+                $this->invalidTransition('No se puede pasar de «'.(self::STATUS[$from] ?? $from).'» a «'.(self::STATUS[$to] ?? $to).'».');
             }
             if ($to === 'cancelled' && ! $this->value($values, $current, 'cancel_reason')) {
                 $this->fail('cancel_reason', 'Para anular la acción indica el motivo.');
@@ -237,7 +237,7 @@ class AcrRules extends RecordRules
         if ($op === 'update' && in_array($current->status, ['verified', 'cancelled'], true)) {
             $allowed = array_diff(array_keys($values), ['verification_notes']);
             if ($allowed !== []) {
-                $this->conflict('La acción ya está '.(self::STATUS[$current->status]).': no se modifica.');
+                $this->invalidTransition('La acción ya está '.(self::STATUS[$current->status]).': no se modifica.');
             }
         }
     }
@@ -247,7 +247,7 @@ class AcrRules extends RecordRules
         $action = $this->value($values, $current, 'corrective_action_id');
         $st = DB::selectOne('select status from corrective_actions where id = ?', [$action])?->status;
         if (in_array($st, ['verified', 'cancelled'], true)) {
-            $this->conflict('La acción ya está cerrada: no se agregan ni cambian evidencias.');
+            $this->invalidTransition('La acción ya está cerrada: no se agregan ni cambian evidencias.');
         }
         if (trim((string) $this->value($values, $current, 'description')) === '' && ! $this->value($values, $current, 'file_id')) {
             $this->fail('description', 'Describe lo que se hizo o adjunta un archivo (foto, acta, registro).');

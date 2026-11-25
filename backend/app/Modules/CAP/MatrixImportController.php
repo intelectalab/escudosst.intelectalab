@@ -51,9 +51,8 @@ final class MatrixImportController
         $this->can('cap.position_training_requirements.create');
         $request->validate(['file' => ['required', 'file', 'max:5120']], ['file.required' => 'Elige el archivo de Excel.']);
         $file = $request->file('file');
-        if (! in_array(strtolower($file->getClientOriginalExtension()), ['xlsx', 'csv'], true)) {
-            throw new ApiProblem(422, 'validation_failed', 'Revisa el archivo', 'Sube el archivo en Excel (.xlsx) o CSV.', ['errors' => ['file' => ['Sube el archivo en Excel (.xlsx) o CSV.']]]);
-        }
+        // docs/10 §6: extensión y tipo real del contenido (magic bytes), no solo el nombre del archivo.
+        \App\Core\Support\UploadGuard::spreadsheet($file, 'file', 'Sube el archivo en Excel (.xlsx) o CSV.');
         try {
             $sheet = SheetReader::read($file->getRealPath(), $file->getClientOriginalName());
         } catch (\Throwable $e) {

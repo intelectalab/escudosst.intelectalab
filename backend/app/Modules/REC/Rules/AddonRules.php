@@ -258,7 +258,7 @@ class AddonRules extends RecordRules
     {
         // RN-HOM-04: una evaluación aprobada no se edita (solo puede pasar a vencida).
         if ($current && in_array($current->status, ['approved', 'rejected'], true) && array_diff(array_keys($values), ['status']) !== []) {
-            $this->conflict('La evaluación ya fue resuelta por gerencia: no se edita. Crea una nueva para volver a evaluar al proveedor.');
+            $this->invalidTransition('La evaluación ya fue resuelta por gerencia: no se edita. Crea una nueva para volver a evaluar al proveedor.');
         }
         if ($current && $current->status === 'approved' && ($values['status'] ?? 'approved') !== 'expired' && ($values['status'] ?? 'approved') !== 'approved') {
             $this->fail('status', 'Una evaluación aprobada solo puede pasar a vencida.');
@@ -339,7 +339,7 @@ class AddonRules extends RecordRules
     private function waste(array &$values, ?object $current): void
     {
         if ($current && $current->status === 'disposed' && $values !== []) {
-            $this->conflict('Este residuo ya se dispuso: el registro está cerrado y no se edita.');
+            $this->invalidTransition('Este residuo ya se dispuso: el registro está cerrado y no se edita.');
         }
         $type = $this->value($values, $current, 'waste_type');
         $status = $this->value($values, $current, 'status') ?? 'stored';
@@ -362,7 +362,7 @@ class AddonRules extends RecordRules
             $this->conflict('Para firmar o rechazar usa el botón «Firmar» de la solicitud: deja la evidencia de la firma.');
         }
         if (in_array($current->status, ['signed', 'declined', 'expired', 'cancelled'], true) && $values !== []) {
-            $this->conflict('La solicitud de firma ya está cerrada.');
+            $this->invalidTransition('La solicitud de firma ya está cerrada.');
         }
         $to = $values['status'] ?? null;
         if (in_array($to, ['signed', 'declined'], true)) {

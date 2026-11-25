@@ -125,6 +125,12 @@ class PlatformNotificationsController extends Controller
             $add('reviews_error', 'Sitio web', 'star', 'bad', (int) $r->n, $r->at,
                 'No se pudieron leer las reseñas de Google', 'Revisa el error en Reseñas. Mientras tanto se muestra la última copia.', '/plataforma/sitio/resenas');
 
+            // M-WEB §10: lectura del blog de WordPress fallida de forma repetida (al superar web.blog_feed_failure_threshold).
+            $threshold = max(1, $param('web.blog_feed_failure_threshold') ?: 3);
+            $b = $db->selectOne('select blog_feed_failures as n, blog_feed_failed_at as at from site_settings where deleted_at is null limit 1');
+            $add('blog_feed_failing', 'Sitio web', 'alert', 'bad', $b && (int) $b->n >= $threshold ? 1 : 0, $b->at ?? null,
+                'No se pueden leer los artículos del blog', "WordPress falló {$b?->n} veces seguidas. Revisa el enlace del blog en Marca y ajustes; mientras tanto la portada no muestra el bloque.", '/plataforma/sitio/marca');
+
             $days = $param('web.campaign_end_notice_days');
             if ($days > 0) {
                 $r = $db->selectOne(

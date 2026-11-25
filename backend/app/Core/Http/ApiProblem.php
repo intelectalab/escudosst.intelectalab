@@ -44,6 +44,12 @@ class ApiProblem extends RuntimeException
         return new self(400, 'bad_request', 'Petición inválida', $detail);
     }
 
+    /** Transición de estado no permitida (docs/08 §6 y §7, docs/02 §11): 409 con el código estable invalid_transition. */
+    public static function invalidTransition(string $detail): self
+    {
+        return new self(409, 'invalid_transition', 'No se puede hacer este cambio', $detail);
+    }
+
     public function toResponse(?string $traceId = null): JsonResponse
     {
         return self::make($this->status, $this->type, $this->title, $this->detail, $this->extra, $traceId);

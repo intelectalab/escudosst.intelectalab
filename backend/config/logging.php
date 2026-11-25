@@ -105,6 +105,20 @@ return [
             'processors' => [PsrLogMessageProcessor::class],
         ],
 
+        // Producción (docs/02 §12): JSON de una línea por registro al flujo del contenedor (docker logs). Se elige con
+        // LOG_STACK=json. Va a stderr porque php-fpm solo reenvía la salida de error de sus procesos (catch_workers_output);
+        // en la cola y el programador (CLI) también llega a los logs del contenedor.
+        'json' => [
+            'driver' => 'monolog',
+            'level' => env('LOG_LEVEL', 'info'),
+            'handler' => StreamHandler::class,
+            'handler_with' => [
+                'stream' => env('LOG_JSON_STREAM', 'php://stderr'),
+            ],
+            'formatter' => \App\Core\Support\Logging\StructuredJsonFormatter::class,
+            'processors' => [PsrLogMessageProcessor::class],
+        ],
+
         'syslog' => [
             'driver' => 'syslog',
             'level' => env('LOG_LEVEL', 'debug'),

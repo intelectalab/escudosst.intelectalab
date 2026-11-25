@@ -19,7 +19,7 @@ OUT = os.path.join(ROOT, "backend", "resources", "registry", "registry.json")
 # Módulos con pantallas propias (no pasan por el motor de registros).
 SKIP_MODULES = {"WEB", "SUS", "USR", "AUD"}
 # Tablas que se gestionan con su propio flujo o son internas.
-SKIP_TABLES = {"accounts", "companies", "files", "worker_consents", "arco_requests", "bulk_imports", "bulk_import_rows"}
+SKIP_TABLES = {"accounts", "companies", "files", "worker_consents", "bulk_imports", "bulk_import_rows"}
 SYSTEM = {"id", "company_id", "created_at", "created_by", "updated_at", "updated_by", "deleted_at",
           "idempotency_key", "device_id", "client_created_at", "sync_batch_id", "version"}
 # Secretos que solo se muestran una vez (al crear o rotar): nunca en formularios ni fichas (M-API RN-API-03).
@@ -32,6 +32,9 @@ READONLY = {"baseline_assessments.submitted_for_review_at", "sst_events.classifi
             "dossier_items.is_medical_certificate", "dossier_items.approved_by", "dossier_items.approved_at",
             # API RN-API-01: la aprobación de la lectura de la aptitud la registra quien tiene api.api_clients.approve.
             "api_clients.fitness_approved_by", "api_clients.fitness_approved_at",
+            # docs/10 §1.4 y §1.5: plazos de ARCO y de la comunicación a la ANPD los calcula el sistema con su parámetro.
+            "arco_requests.legal_parameter_key", "arco_requests.due_on", "arco_requests.resolved_at",
+            "data_breaches.code", "data_breaches.legal_parameter_key", "data_breaches.anpd_due_at", "data_breaches.closed_at",
             # IPERC: lo calcula el sistema o lo fija el flujo de aprobación (M-IPC RN-IPC-01, 02, 06, 08).
             "iperc_matrices.current_version_id", "iperc_matrices.next_review_on",
             "iperc_versions.version_number", "iperc_versions.status", "iperc_versions.prepared_by", "iperc_versions.prepared_at",
@@ -89,6 +92,8 @@ READONLY = {"baseline_assessments.submitted_for_review_at", "sst_events.classifi
 # Columnas de la lista elegidas a mano donde las automáticas no dicen lo importante.
 LIST = {
     # Columnas de cada lista principal como en el prototipo (prototipo/src/m-*.js) y las fichas docs/modulos.
+    "arco_requests": ["requester_name", "request_type", "received_at", "due_on", "assigned_to", "status"],
+    "data_breaches": ["code", "title", "detected_at", "includes_sensitive_data", "anpd_due_at", "status"],
     "monthly_statistics": ["period_year", "period_month", "site_id", "hours_worked", "frequency_index", "severity_index", "accident_rate_index", "is_closed"],
     "man_hours": ["period_year", "period_month", "site_id", "worker_count", "hours_worked"],
     "program_activities": ["code", "title", "goal_quantity", "executed_quantity", "progress_pct", "status"],
@@ -189,7 +194,8 @@ COMPUTED = {"vendor_evaluation_templates.criteria", "vendor_evaluations.scores",
             "baseline_assessments.assessment_on", "substandard_reports.code", "substandard_reports.reported_at", "substandard_reports.origin",
             "ats_forms.code", "drills.code", "risst_deliveries.delivered_on", "document_acknowledgements.acknowledged_at",
             "audits.code", "change_requests.code", "change_requests.requested_on", "change_reviews.reviewed_at",
-            "work_permits.code", "budget_executions.executed_on", "fitness_status.valid_from"}
+            "work_permits.code", "budget_executions.executed_on", "fitness_status.valid_from",
+            "arco_requests.due_on", "arco_requests.received_at", "arco_requests.requester_name", "arco_requests.channel"}
 LONG_TEXT = re.compile(r"(^|_)(description|notes|note|comment|comments|summary|functions|observations|content|body|"
                        r"details|detail|justification|reason|instructions|scope|recommendations|conclusions|text|"
                        r"statement|commitments|methodology|findings|lessons|answer|explanation|purpose|html)$")

@@ -185,7 +185,7 @@ class MediaController extends Controller
     /** [extensión, tipo] según el contenido real del archivo. */
     private function type(UploadedFile $file, bool $asIcon): array
     {
-        $mime = (string) $file->getMimeType();
+        $mime = \App\Core\Support\UploadGuard::realMime($file);
         if (! isset(self::TYPES[$mime])) {
             $real = strtoupper(explode('/', $mime)[1] ?? 'desconocido');
             $this->fail('file', "Este archivo es {$real} por dentro. Se aceptan imágenes PNG, JPG, WEBP o AVIF, documentos PDF y videos MP4 o WEBM (SVG no, por seguridad).");
@@ -233,7 +233,7 @@ class MediaController extends Controller
         is_resource($stream) && fclose($stream);
         $this->db()->insert(
             "insert into site_assets (id, kind, disk, path, mime_type, size_bytes, width, height, original_name, created_by) values (?, 'media', ?, ?, ?, ?, ?, ?, ?, ?)",
-            [$id, $disk, $path, $file->getMimeType(), $file->getSize(), $w ?: null, $h ?: null, mb_substr($file->getClientOriginalName(), 0, 200), $actor]
+            [$id, $disk, $path, \App\Core\Support\UploadGuard::realMime($file), $file->getSize(), $w ?: null, $h ?: null, mb_substr($file->getClientOriginalName(), 0, 200), $actor]
         );
 
         return ['id' => $id, 'w' => $w ?: null, 'h' => $h ?: null];

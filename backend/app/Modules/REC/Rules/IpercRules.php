@@ -105,7 +105,7 @@ class IpercRules extends RecordRules
     {
         if ($res['table'] === 'iperc_versions') {
             if ($current->status !== 'draft') {
-                $this->conflict('Solo se puede eliminar una versión en borrador.');
+                $this->invalidTransition('Solo se puede eliminar una versión en borrador.');
             }
             if ((int) DB::selectOne('select count(*) as n from iperc_versions where iperc_matrix_id = ? and deleted_at is null', [$current->iperc_matrix_id])->n === 1) {
                 $this->conflict('Es la única versión de la matriz. Archiva la matriz si ya no se usa.');
@@ -142,7 +142,7 @@ class IpercRules extends RecordRules
             $this->conflict('Las versiones se crean desde la matriz con «Nueva versión».');
         }
         if ($current && $current->status !== 'draft') {
-            $this->conflict('La versión ya no está en borrador: no se puede editar.');
+            $this->invalidTransition('La versión ya no está en borrador: no se puede editar.');
         }
     }
 
@@ -212,7 +212,7 @@ class IpercRules extends RecordRules
         // En una versión aprobada solo se sigue la implementación (estado, responsable, fecha); lo demás queda congelado.
         $frozen = array_intersect(array_keys($values), ['hierarchy', 'description', 'is_existing', 'iperc_row_id', 'ppe_item_id', 'procedure_id', 'training_id']);
         if ($status !== 'draft' && ($current === null || $frozen !== [])) {
-            $this->conflict('La versión ya fue enviada o aprobada: el control no se puede cambiar. Abre una nueva versión de la matriz.');
+            $this->invalidTransition('La versión ya fue enviada o aprobada: el control no se puede cambiar. Abre una nueva versión de la matriz.');
         }
         // SCR-IPC-04 / RN-IPC-10: vínculos del control a EPP, PETS y capacitación (la empresa y la existencia ya se validan como referencia).
         $ppe = $this->value($values, $current, 'ppe_item_id');
@@ -241,7 +241,7 @@ class IpercRules extends RecordRules
             $this->fail('iperc_version_id', 'La versión no existe.');
         }
         if ($v->status !== 'draft') {
-            $this->conflict('Esta versión ya fue enviada o aprobada y quedó congelada. Para cambiarla, abre una nueva versión de la matriz.');
+            $this->invalidTransition('Esta versión ya fue enviada o aprobada y quedó congelada. Para cambiarla, abre una nueva versión de la matriz.');
         }
 
         return $v;

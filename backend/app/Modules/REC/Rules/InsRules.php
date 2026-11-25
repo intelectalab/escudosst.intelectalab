@@ -19,7 +19,7 @@ class InsRules extends RecordRules
         if ($res['table'] === 'inspection_template_items') {
             $tpl = $this->value($values, $current, 'template_id');
             if ($tpl && DB::selectOne('select 1 as ok from inspections where template_id = ? and deleted_at is null limit 1', [$tpl])) {
-                $this->conflict('Esta plantilla ya se usó en inspecciones: para cambiar sus preguntas crea una nueva versión (las inspecciones pasadas conservan la suya).');
+                $this->invalidTransition('Esta plantilla ya se usó en inspecciones: para cambiar sus preguntas crea una nueva versión (las inspecciones pasadas conservan la suya).');
             }
 
             return;
@@ -51,7 +51,7 @@ class InsRules extends RecordRules
         }
         if ($current && in_array($current->status, ['completed', 'signed', 'closed'], true) && (array_diff(array_keys($values), ['summary', 'status']) !== []
             || (isset($values['status']) && $values['status'] !== $current->status && ! in_array($values['status'], ['signed', 'closed'], true)))) {
-            $this->conflict('La inspección ya fue finalizada: no se edita. Sus hallazgos siguen en Acciones correctivas.');
+            $this->invalidTransition('La inspección ya fue finalizada: no se edita. Sus hallazgos siguen en Acciones correctivas.');
         }
         $to = $values['status'] ?? null;
         $template = $this->value($values, $current, 'template_id');

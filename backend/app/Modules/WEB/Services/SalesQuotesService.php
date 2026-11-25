@@ -432,7 +432,7 @@ class SalesQuotesService
         if ($q->status !== 'accepted') {
             throw $this->conflict($q->status === 'payment_submitted' ? 'Ya recibimos tu constancia: la estamos revisando.' : 'Primero acepta la cotización.');
         }
-        $mime = $file->getMimeType();
+        $mime = \App\Core\Support\UploadGuard::realMime($file);
         if (! isset(self::EVIDENCE_MIMES[$mime])) {
             throw $this->invalid(['file' => ['Sube la constancia en PDF, JPG, PNG o WEBP.']]);
         }

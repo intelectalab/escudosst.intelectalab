@@ -164,7 +164,7 @@ class PpeCommitteeRules extends RecordRules
             $values['number'] = (int) DB::selectOne('select coalesce(max(number), 0) + 1 as n from committee_meetings where committee_id = ?', [$values['committee_id']])->n;
         }
         if ($current && $current->status === 'minutes_signed' && $values !== []) {
-            $this->conflict('El acta está firmada: la sesión no se modifica.');
+            $this->invalidTransition('El acta está firmada: la sesión no se modifica.');
         }
         $to = $values['status'] ?? null;
         if ($current && $to && $to !== $current->status) {
@@ -186,7 +186,7 @@ class PpeCommitteeRules extends RecordRules
         $m = DB::selectOne('select status, quorum_reached from committee_meetings where id = ?', [$this->value($values, $current, 'meeting_id')]);
         if ($op === 'create') {
             if (! in_array($m?->status, ['held', 'minutes_draft'], true)) {
-                $this->conflict('Los acuerdos se registran en una sesión realizada cuya acta aún no está firmada.');
+                $this->invalidTransition('Los acuerdos se registran en una sesión realizada cuya acta aún no está firmada.');
             }
             if (! $m->quorum_reached) {
                 $this->fail('meeting_id', 'La sesión no tuvo quórum: no se adoptan acuerdos (RN-COM-08).');

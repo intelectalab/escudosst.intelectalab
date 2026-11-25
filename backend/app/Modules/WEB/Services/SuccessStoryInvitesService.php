@@ -198,7 +198,7 @@ class SuccessStoryInvitesService
             ]);
 
             if ($logo) {
-                $logoId = $this->storeAsset('story_logo', $logo->getMimeType(), file_get_contents($logo->getRealPath()), $logo->getClientOriginalName(), $logo->getSize());
+                $logoId = $this->storeAsset('story_logo', \App\Core\Support\UploadGuard::realMime($logo), file_get_contents($logo->getRealPath()), $logo->getClientOriginalName(), $logo->getSize());
                 $db->update('update success_stories set logo_file_id = ? where id = ?', [$logoId, $storyId]);
             }
 

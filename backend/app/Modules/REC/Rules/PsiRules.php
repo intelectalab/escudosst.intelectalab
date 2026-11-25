@@ -72,7 +72,7 @@ class PsiRules extends RecordRules
     public function prepareDelete(array $res, object $current): void
     {
         if ($res['table'] === 'psychosocial_surveys' && $current->status !== 'draft') {
-            $this->conflict('Solo se archiva una encuesta en borrador; las que ya recibieron respuestas se conservan.');
+            $this->invalidTransition('Solo se archiva una encuesta en borrador; las que ya recibieron respuestas se conservan.');
         }
     }
 }

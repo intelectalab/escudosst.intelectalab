@@ -815,6 +815,33 @@ final class SstAlerts
                         and not exists (select 1 from absences x where x.worker_id = a.worker_id and x.id <> a.id and x.deleted_at is null and x.status <> 'cancelled'
                                          and x.starts_on <= a.ends_on + 1 and x.ends_on > a.ends_on)",
                 'des.return_to_work', 'high', 'Retorno de descanso por accidente', fn ($r) => "{$r->ref} retorna el ".date('d/m/Y', strtotime($r->due)).' de su descanso: programa el EMO de reintegro.', '/m/des?t=absences&open=', ['sst_manager', 'occupational_doctor'], false],
+            // docs/10 §1.4: solicitud ARCO por vencer (arco_due_notice_days hábiles antes) y vencida sin respuesta → asignado y administrador.
+            ['TRB', "select id, requester_name as ref, request_type as name, assigned_to as owner, due_on as due, 'arco_soon' as kind from arco_requests
+                      where deleted_at is null and status in ('received', 'in_review', 'extension_requested')
+                        and due_on between current_date and add_business_days(current_date, ".self::days('arco_due_notice_days', 3).')',
+                'trb.arco_due', 'high', 'Solicitud ARCO por vencer', fn ($r) => "La solicitud de {$r->ref} debe responderse a más tardar el ".date('d/m/Y', strtotime($r->due)).'.', '/m/trb?t=arco_requests&open=', ['account_admin'], false],
+            ['TRB', "select id, requester_name as ref, request_type as name, assigned_to as owner, due_on as due, 'arco_late' as kind from arco_requests
+                      where deleted_at is null and status in ('received', 'in_review', 'extension_requested') and due_on < current_date",
+                'trb.arco_overdue', 'critical', 'Solicitud ARCO vencida', fn ($r) => "Venció el plazo para responder la solicitud de {$r->ref} (".date('d/m/Y', strtotime($r->due)).'): respóndela cuanto antes.', '/m/trb?t=arco_requests&open=', ['account_admin'], true],
+            // docs/10 §1.5: brecha sin comunicar a la ANPD, por vencer (breach_warning_hours antes) o vencida (data_breach_notification_hours).
+            ['TRB', "select id, code as ref, title as name, responsible_user_id as owner, anpd_due_at as due, 'breach' as kind,
+                            case when anpd_due_at < now() then 'late' else 'soon' end as dk from data_breaches
+                      where deleted_at is null and status in ('detected', 'contained') and anpd_notified_at is null
+                        and anpd_due_at < now() + make_interval(hours => ".self::days('breach_warning_hours', 24).')',
+                'trb.breach_deadline', 'critical', 'Brecha de seguridad sin comunicar a la ANPD', fn ($r) => "{$r->ref} · {$r->name}: el plazo para comunicarla a la ANPD ".(strtotime($r->due) < time() ? 'venció el ' : 'vence el ').date('d/m/Y H:i', strtotime($r->due)).'.', '/m/trb?t=data_breaches&open=', ['account_admin'], false],
+            // docs/10 §4: acceso anómalo a datos sensibles: un usuario abrió los datos de sensitive_access_anomaly_workers trabajadores
+            // distintos o más dentro de sensitive_access_anomaly_minutes (ventana deslizante sobre la última hora). Solo dice quién y
+            // cuántos, nunca qué datos.
+            ['AUD', "select s.user_id as id, coalesce(u.full_name, u.email, 'Un usuario') as ref, max(c.n)::text as name, null as owner, max(s.occurred_at) as due,
+                            to_char(max(s.occurred_at) at time zone 'America/Lima', 'YYYYMMDDHH24') as dk, 'anomaly' as kind
+                       from sensitive_access_logs s left join users u on u.id = s.user_id
+                       cross join lateral (select count(distinct x.worker_id) as n from sensitive_access_logs x
+                                            where x.user_id = s.user_id and x.worker_id is not null and x.result = 'granted'
+                                              and x.occurred_at between s.occurred_at - make_interval(mins => ".max(1, self::days('sensitive_access_anomaly_minutes', 60)).") and s.occurred_at) c
+                      where s.result = 'granted' and s.worker_id is not null
+                        and s.occurred_at > now() - make_interval(mins => ".(60 + max(1, self::days('sensitive_access_anomaly_minutes', 60))).")
+                      group by s.user_id, u.full_name, u.email having max(c.n) >= ".max(1, self::days('sensitive_access_anomaly_workers', 20)),
+                'aud.sensitive_anomaly', 'critical', 'Acceso anómalo a datos sensibles', fn ($r) => "{$r->ref} abrió los datos sensibles de {$r->name} trabajadores distintos en ".self::days('sensitive_access_anomaly_minutes', 60).' minutos o menos. Revisa el reporte de accesos a datos sensibles.', '/m/aud?open=', ['account_admin', 'occupational_doctor'], false],
         ];
     }
 

@@ -248,10 +248,9 @@ class WorkerImport extends Controller
             'mode' => ['nullable', 'in:create,upsert,terminate'],
         ], ['file.required' => 'Elige el archivo de Excel.', 'file.max' => 'El archivo pesa más de 5 MB.']);
         $file = $request->file('file');
+        // docs/10 §6: extensión y tipo real del contenido (magic bytes), no solo el nombre del archivo.
+        \App\Core\Support\UploadGuard::spreadsheet($file, 'file', 'Sube la plantilla en Excel (.xlsx) o CSV.');
         $ext = strtolower($file->getClientOriginalExtension());
-        if (! in_array($ext, ['xlsx', 'csv'], true)) {
-            $this->fail('file', 'Sube la plantilla en Excel (.xlsx) o CSV.');
-        }
         try {
             $sheet = SheetReader::read($file->getRealPath(), $file->getClientOriginalName());
         } catch (\Throwable) {

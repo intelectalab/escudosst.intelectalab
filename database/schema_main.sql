@@ -6588,6 +6588,8 @@ CREATE TABLE IF NOT EXISTS site_settings (
   blog_url text,
   show_latest_blog_posts boolean NOT NULL DEFAULT false,
   latest_blog_posts_count smallint NOT NULL DEFAULT 3,
+  blog_feed_failures integer NOT NULL DEFAULT 0,
+  blog_feed_failed_at timestamptz,
   hero_video_urls jsonb NOT NULL DEFAULT '[]'::jsonb,
   announcement_bar jsonb,
   trust_badges_json jsonb NOT NULL DEFAULT '[]'::jsonb,
@@ -11267,7 +11269,10 @@ CREATE TRIGGER trg_legal_documents_updated_at BEFORE UPDATE ON legal_documents F
 CREATE TRIGGER trg_legal_document_versions_updated_at BEFORE UPDATE ON legal_document_versions FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
 CREATE TRIGGER trg_legal_acceptances_immutable BEFORE UPDATE OR DELETE ON legal_acceptances FOR EACH STATEMENT EXECUTE FUNCTION trg_forbid_mutation();
 CREATE TRIGGER trg_legal_acceptances_no_truncate BEFORE TRUNCATE ON legal_acceptances FOR EACH STATEMENT EXECUTE FUNCTION trg_forbid_mutation();
-CREATE TRIGGER trg_cookie_consents_immutable BEFORE UPDATE OR DELETE ON cookie_consents FOR EACH STATEMENT EXECUTE FUNCTION trg_forbid_mutation();
+CREATE TRIGGER trg_cookie_consents_immutable BEFORE UPDATE ON cookie_consents FOR EACH STATEMENT EXECUTE FUNCTION trg_forbid_mutation();
+-- docs/10 §9: solo la tarea de conservación (rol dueño, app.retention_purge = 'cookie_consents') borra consentimientos vencidos.
+CREATE TRIGGER trg_cookie_consents_no_delete BEFORE DELETE ON cookie_consents FOR EACH STATEMENT
+  WHEN (current_setting('app.retention_purge', true) IS DISTINCT FROM 'cookie_consents') EXECUTE FUNCTION trg_forbid_mutation();
 CREATE TRIGGER trg_cookie_consents_no_truncate BEFORE TRUNCATE ON cookie_consents FOR EACH STATEMENT EXECUTE FUNCTION trg_forbid_mutation();
 CREATE TRIGGER trg_consumer_complaints_no_delete BEFORE DELETE ON consumer_complaints FOR EACH STATEMENT EXECUTE FUNCTION trg_forbid_mutation();
 CREATE TRIGGER trg_consumer_complaints_no_truncate BEFORE TRUNCATE ON consumer_complaints FOR EACH STATEMENT EXECUTE FUNCTION trg_forbid_mutation();
@@ -15725,4 +15730,153 @@ ALTER TABLE sunafil_obligations FORCE ROW LEVEL SECURITY;
 CREATE POLICY rls_sunafil_obligations_company ON sunafil_obligations TO escudo_app USING (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid) WITH CHECK (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid);
 GRANT SELECT, INSERT, UPDATE ON sunafil_obligations TO escudo_app;
 GRANT SELECT, INSERT, UPDATE ON sunafil_obligations TO escudo_definer;
+-- API · idempotency_keys (platform, added): Idempotency-Key de los POST (docs/08 §8); vence según idempotency_key_hours
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  id uuid NOT NULL DEFAULT uuidv7(),
+  scope_hash text NOT NULL,
+  idempotency_key text NOT NULL,
+  company_id uuid,
+  user_id uuid,
+  method text NOT NULL,
+  route text NOT NULL,
+  request_hash text NOT NULL,
+  response_status smallint,
+  response_body text,
+  response_content_type text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  completed_at timestamptz,
+  expires_at timestamptz NOT NULL,
+  PRIMARY KEY (id),
+  CONSTRAINT uq_idempotency_keys_scope UNIQUE (scope_hash),
+  CONSTRAINT ck_idempotency_keys_key CHECK (length(idempotency_key) BETWEEN 1 AND 100)
+);
+COMMENT ON TABLE idempotency_keys IS '[API] Claves Idempotency-Key de los POST (docs/08 §8): respuesta original por clave, sesión, empresa y ruta; vence según idempotency_key_hours';
+CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expires ON idempotency_keys (expires_at);
+ALTER TABLE idempotency_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE idempotency_keys FORCE ROW LEVEL SECURITY;
+CREATE POLICY rls_idempotency_keys_platform ON idempotency_keys TO escudo_platform USING (true) WITH CHECK (true);
+REVOKE ALL ON idempotency_keys FROM PUBLIC, escudo_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON idempotency_keys TO escudo_platform;
+
+-- WEB · site_not_found_paths (platform, added): enlaces rotos (404) agregados por ruta, sin datos personales (M-WEB §11)
+CREATE TABLE IF NOT EXISTS site_not_found_paths (
+  id uuid NOT NULL DEFAULT uuidv7(),
+  path text NOT NULL,
+  hit_count integer NOT NULL DEFAULT 0,
+  first_seen_at timestamptz NOT NULL DEFAULT now(),
+  last_seen_at timestamptz NOT NULL DEFAULT now(),
+  last_referrer_host text,
+  internal_referrer boolean NOT NULL DEFAULT false,
+  resolved_at timestamptz,
+  resolved_by uuid REFERENCES users (id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (id),
+  CONSTRAINT uq_site_not_found_paths_path UNIQUE (path),
+  CONSTRAINT ck_site_not_found_paths_path CHECK (path ~ '^/' AND length(path) <= 300),
+  CONSTRAINT ck_site_not_found_paths_ref CHECK (last_referrer_host IS NULL OR length(last_referrer_host) <= 200)
+);
+COMMENT ON TABLE site_not_found_paths IS '[WEB] Enlaces rotos del sitio público: 404 agregados por ruta (sin IP ni datos personales), M-WEB §11';
+CREATE INDEX IF NOT EXISTS idx_site_not_found_paths_hits ON site_not_found_paths (resolved_at, hit_count DESC);
+CREATE TRIGGER trg_site_not_found_paths_updated_at BEFORE UPDATE ON site_not_found_paths FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
+ALTER TABLE site_not_found_paths ENABLE ROW LEVEL SECURITY;
+ALTER TABLE site_not_found_paths FORCE ROW LEVEL SECURITY;
+CREATE POLICY rls_site_not_found_paths_platform ON site_not_found_paths TO escudo_platform USING (true) WITH CHECK (true);
+REVOKE ALL ON site_not_found_paths FROM PUBLIC, escudo_app;
+GRANT SELECT, INSERT, UPDATE ON site_not_found_paths TO escudo_platform;
+
+-- WEB · site_web_vitals (platform, added): Core Web Vitals de visitantes con consentimiento analítico (RN-WEB-10)
+CREATE TABLE IF NOT EXISTS site_web_vitals (
+  id uuid NOT NULL DEFAULT uuidv7(),
+  occurred_at timestamptz NOT NULL DEFAULT now(),
+  path text NOT NULL,
+  device text NOT NULL CHECK (device IN ('desktop', 'mobile', 'tablet')),
+  metric text NOT NULL CHECK (metric IN ('LCP', 'INP', 'CLS')),
+  value numeric(12,4) NOT NULL CHECK (value >= 0),
+  PRIMARY KEY (id),
+  CONSTRAINT ck_site_web_vitals_path CHECK (path ~ '^/' AND length(path) <= 300)
+);
+COMMENT ON TABLE site_web_vitals IS '[WEB] Core Web Vitals medidos en el navegador de visitantes con consentimiento analítico (RN-WEB-10); sin sesión, IP ni navegador';
+CREATE INDEX IF NOT EXISTS idx_site_web_vitals_1 ON site_web_vitals (occurred_at, metric, device);
+ALTER TABLE site_web_vitals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE site_web_vitals FORCE ROW LEVEL SECURITY;
+CREATE POLICY rls_site_web_vitals_platform ON site_web_vitals TO escudo_platform USING (true) WITH CHECK (true);
+REVOKE ALL ON site_web_vitals FROM PUBLIC, escudo_app;
+GRANT SELECT, INSERT, DELETE ON site_web_vitals TO escudo_platform;
+
+-- TRB · data_breaches (company, added): registro de brechas de seguridad de datos personales (docs/10 §1.5)
+CREATE TABLE IF NOT EXISTS data_breaches (
+  id uuid NOT NULL DEFAULT uuidv7(),
+  company_id uuid NOT NULL REFERENCES companies (id),
+  code text,
+  title text NOT NULL,
+  detected_at timestamptz NOT NULL,
+  detection_source text NOT NULL DEFAULT 'internal' CHECK (detection_source IN ('alert', 'client_report', 'provider_report', 'internal', 'other')),
+  description text NOT NULL,
+  data_categories text,
+  includes_sensitive_data boolean NOT NULL DEFAULT false,
+  affected_people_count integer CHECK (affected_people_count IS NULL OR affected_people_count >= 0),
+  affected_scope text,
+  responsible_user_id uuid REFERENCES users (id),
+  containment_measures text,
+  cause text,
+  legal_parameter_key text NOT NULL DEFAULT 'data_breach_notification_hours',
+  anpd_due_at timestamptz,
+  anpd_notified_at timestamptz,
+  anpd_reference text,
+  holders_notification_required boolean NOT NULL DEFAULT false,
+  holders_notified_at timestamptz,
+  corrective_measures text,
+  lessons_learned text,
+  status text NOT NULL DEFAULT 'detected' CHECK (status IN ('detected', 'contained', 'notified', 'closed')),
+  closed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by uuid REFERENCES users (id),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by uuid REFERENCES users (id),
+  deleted_at timestamptz,
+  PRIMARY KEY (id),
+  CONSTRAINT uq_data_breaches_company_id_id UNIQUE (company_id, id),
+  CONSTRAINT ck_data_breaches_closed CHECK (status <> 'closed' OR closed_at IS NOT NULL),
+  CONSTRAINT ck_data_breaches_notified CHECK (anpd_notified_at IS NULL OR anpd_notified_at >= detected_at)
+);
+COMMENT ON TABLE data_breaches IS '[TRB] Registro de brechas de seguridad de datos personales (Ley 29733, docs/10 §1.5): causa, medidas y plazo de notificación a la ANPD según parámetro (a confirmar)';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_data_breaches_code ON data_breaches (company_id, code) WHERE code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_data_breaches_status ON data_breaches (company_id, status, anpd_due_at);
+CREATE TRIGGER trg_data_breaches_updated_at BEFORE UPDATE ON data_breaches FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
+ALTER TABLE data_breaches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE data_breaches FORCE ROW LEVEL SECURITY;
+CREATE POLICY rls_data_breaches_company ON data_breaches TO escudo_app USING (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid) WITH CHECK (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid);
+GRANT SELECT, INSERT, UPDATE ON data_breaches TO escudo_app;
+GRANT SELECT, INSERT, UPDATE ON data_breaches TO escudo_definer;
+
+-- docs/10 §9: la tarea de conservación (rol dueño) borra consentimientos de cookies vencidos.
+CREATE POLICY rls_cookie_consents_owner_purge_read ON cookie_consents FOR SELECT TO escudo_owner USING (true);
+CREATE POLICY rls_cookie_consents_owner_purge ON cookie_consents FOR DELETE TO escudo_owner USING (true);
+
+-- Particiones mensuales de site_events y chatbot_messages con las filas que hubieran caído en la partición por defecto (rol dueño).
+CREATE OR REPLACE FUNCTION public.web_partition_month(p_table text, p_month date) RETURNS text
+LANGUAGE plpgsql AS $$
+DECLARE
+  s date := date_trunc('month', p_month)::date;
+  e date := (date_trunc('month', p_month) + interval '1 month')::date;
+  n text := format('%s_%s', p_table, to_char(s, 'YYYYMM'));
+  d text := p_table || '_default';
+BEGIN
+  IF p_table NOT IN ('site_events', 'chatbot_messages') THEN
+    RAISE EXCEPTION 'tabla inválida' USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+  IF to_regclass(n) IS NOT NULL THEN
+    RETURN n;
+  END IF;
+  EXECUTE format('CREATE TABLE %I (LIKE %I INCLUDING DEFAULTS INCLUDING CONSTRAINTS)', n, p_table);
+  EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', d);
+  EXECUTE format('WITH m AS (DELETE FROM %I WHERE occurred_at >= %L AND occurred_at < %L RETURNING *) INSERT INTO %I SELECT * FROM m', d, s, e, n);
+  EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', d);
+  EXECUTE format('ALTER TABLE %I ATTACH PARTITION %I FOR VALUES FROM (%L) TO (%L)', p_table, n, s, e);
+  EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', n);
+  EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', n);
+  RETURN n;
+END $$;
+REVOKE ALL ON FUNCTION public.web_partition_month(text, date) FROM PUBLIC;
 -- Fin del esquema.

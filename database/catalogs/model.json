@@ -4984,6 +4984,354 @@
   "uniques": []
  },
  {
+  "table": "data_breaches",
+  "db": "main",
+  "module": "TRB",
+  "kind": "company",
+  "opts": [
+   "added"
+  ],
+  "comment": "Registro de brechas de seguridad de datos personales (Ley 29733, docs/10 §1.5): causa, medidas y plazo de notificación a la ANPD según parámetro (a confirmar)",
+  "immutable": false,
+  "columns": [
+   {
+    "name": "id",
+    "type": "uuid",
+    "not_null": true,
+    "default": "uuidv7()",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "company_id",
+    "type": "uuid",
+    "not_null": true,
+    "default": null,
+    "values": null,
+    "ref": "companies.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "code",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "title",
+    "type": "text",
+    "not_null": true,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "detected_at",
+    "type": "timestamptz",
+    "not_null": true,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "detection_source",
+    "type": "text",
+    "not_null": true,
+    "default": "'internal'::text",
+    "values": [
+     "alert",
+     "client_report",
+     "provider_report",
+     "internal",
+     "other"
+    ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "description",
+    "type": "text",
+    "not_null": true,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "data_categories",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "includes_sensitive_data",
+    "type": "boolean",
+    "not_null": true,
+    "default": "false",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "affected_people_count",
+    "type": "integer",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "affected_scope",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "responsible_user_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "users.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "containment_measures",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "cause",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "legal_parameter_key",
+    "type": "text",
+    "not_null": true,
+    "default": "'data_breach_notification_hours'::text",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "anpd_due_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": "detected_at + data_breach_notification_hours (parámetro a confirmar)"
+   },
+   {
+    "name": "anpd_notified_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "anpd_reference",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "holders_notification_required",
+    "type": "boolean",
+    "not_null": true,
+    "default": "false",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "holders_notified_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "corrective_measures",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "lessons_learned",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "status",
+    "type": "text",
+    "not_null": true,
+    "default": "'detected'::text",
+    "values": [
+     "detected",
+     "contained",
+     "notified",
+     "closed"
+    ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "closed_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "created_at",
+    "type": "timestamptz",
+    "not_null": true,
+    "default": "now()",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "created_by",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "users.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "updated_at",
+    "type": "timestamptz",
+    "not_null": true,
+    "default": "now()",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "updated_by",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "users.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "deleted_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   }
+  ],
+  "checks": [
+   "status <> 'closed' or closed_at is not null",
+   "anpd_notified_at is null or anpd_notified_at >= detected_at"
+  ],
+  "uniques": []
+ },
+ {
   "table": "bulk_imports",
   "db": "main",
   "module": "TRB",
@@ -55956,6 +56304,28 @@
     "comment": "días de historial de incidentes resueltos en /estado (RN-WEB-53)"
    },
    {
+    "name": "blog_feed_failures",
+    "type": "integer",
+    "not_null": true,
+    "default": "0",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "blog_feed_failed_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
     "name": "created_at",
     "type": "timestamptz",
     "not_null": true,
@@ -69898,5 +70268,403 @@
   ],
   "checks": [],
   "uniques": []
+ },
+ {
+  "table": "site_not_found_paths",
+  "db": "main",
+  "module": "WEB",
+  "kind": "platform",
+  "opts": [
+   "added"
+  ],
+  "comment": "Enlaces rotos del sitio público: 404 agregados por ruta (sin IP ni datos personales), M-WEB §11",
+  "immutable": false,
+  "columns": [
+   {
+    "name": "id",
+    "type": "uuid",
+    "not_null": true,
+    "default": "uuidv7()",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "path",
+    "type": "text",
+    "not_null": true,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "hit_count",
+    "type": "integer",
+    "not_null": true,
+    "default": "0",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "first_seen_at",
+    "type": "timestamptz",
+    "not_null": true,
+    "default": "now()",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "last_seen_at",
+    "type": "timestamptz",
+    "not_null": true,
+    "default": "now()",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "last_referrer_host",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "internal_referrer",
+    "type": "boolean",
+    "not_null": true,
+    "default": "false",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "resolved_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "resolved_by",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "users.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "created_at",
+    "type": "timestamptz",
+    "not_null": true,
+    "default": "now()",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "updated_at",
+    "type": "timestamptz",
+    "not_null": true,
+    "default": "now()",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   }
+  ],
+  "checks": [],
+  "uniques": [
+   "path"
+  ]
+ },
+ {
+  "table": "site_web_vitals",
+  "db": "main",
+  "module": "WEB",
+  "kind": "platform",
+  "opts": [
+   "added"
+  ],
+  "comment": "Core Web Vitals medidos en el navegador de visitantes con consentimiento analítico (RN-WEB-10); sin sesión, IP ni navegador",
+  "immutable": false,
+  "columns": [
+   {
+    "name": "id",
+    "type": "uuid",
+    "not_null": true,
+    "default": "uuidv7()",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "occurred_at",
+    "type": "timestamptz",
+    "not_null": true,
+    "default": "now()",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "path",
+    "type": "text",
+    "not_null": true,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "device",
+    "type": "text",
+    "not_null": true,
+    "default": null,
+    "values": [
+     "desktop",
+     "mobile",
+     "tablet"
+    ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "metric",
+    "type": "text",
+    "not_null": true,
+    "default": null,
+    "values": [
+     "LCP",
+     "INP",
+     "CLS"
+    ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "value",
+    "type": "numeric(12,4)",
+    "not_null": true,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   }
+  ],
+  "checks": [],
+  "uniques": []
+ },
+ {
+  "table": "idempotency_keys",
+  "db": "main",
+  "module": "API",
+  "kind": "platform",
+  "opts": [
+   "added"
+  ],
+  "comment": "Claves Idempotency-Key de los POST (docs/08 §8): respuesta original por clave, sesión, empresa y ruta; vence según idempotency_key_hours",
+  "immutable": false,
+  "columns": [
+   {
+    "name": "id",
+    "type": "uuid",
+    "not_null": true,
+    "default": "uuidv7()",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "scope_hash",
+    "type": "text",
+    "not_null": true,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "idempotency_key",
+    "type": "text",
+    "not_null": true,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "company_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "user_id",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "method",
+    "type": "text",
+    "not_null": true,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "route",
+    "type": "text",
+    "not_null": true,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "request_hash",
+    "type": "text",
+    "not_null": true,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "response_status",
+    "type": "smallint",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "response_body",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "response_content_type",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "created_at",
+    "type": "timestamptz",
+    "not_null": true,
+    "default": "now()",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "completed_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "expires_at",
+    "type": "timestamptz",
+    "not_null": true,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   }
+  ],
+  "checks": [],
+  "uniques": [
+   "scope_hash"
+  ]
  }
 ]

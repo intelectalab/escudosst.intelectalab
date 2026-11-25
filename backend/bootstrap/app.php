@@ -42,6 +42,8 @@ return Application::configure(basePath: dirname(__DIR__))
             at: ['127.0.0.1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
             headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR | \Illuminate\Http\Request::HEADER_X_FORWARDED_HOST | \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT | \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO,
         );
+        // docs/08 §8: Idempotency-Key en los POST (si la trae, repetir la misma petición devuelve la respuesta original).
+        $middleware->appendToGroup('api', \App\Core\Http\Middleware\Idempotency::class);
         $middleware->redirectGuestsTo(fn (Request $request) => $request->is('api/*') ? null : '/login');
 
         // Empresa activa: valida membresía y fija RLS (docs/01-arquitectura.md §4).

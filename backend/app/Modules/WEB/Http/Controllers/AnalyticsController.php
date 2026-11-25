@@ -124,6 +124,22 @@ class AnalyticsController extends Controller
         return $ua === '' || (bool) preg_match('/bot|crawl|spider|slurp|preview|headless|lighthouse|pingdom|uptime/i', $ua);
     }
 
+    /** Dispositivo, robot y ruta privada con las mismas reglas que las métricas (los usan 404 y Core Web Vitals). */
+    public static function deviceOf(string $ua): string
+    {
+        return (new self)->device($ua);
+    }
+
+    public static function botAgent(string $ua): bool
+    {
+        return (new self)->isBot($ua);
+    }
+
+    public static function privatePath(string $path): bool
+    {
+        return (new self)->isPrivate($path);
+    }
+
     private function isPrivate(string $path): bool
     {
         foreach (['/plataforma', '/inicio', '/m/', '/cuenta', '/soporte', '/select-company', '/login', '/invitacion', '/recuperar', '/restablecer',

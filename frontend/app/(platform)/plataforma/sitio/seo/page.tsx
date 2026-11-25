@@ -7,6 +7,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePlatformUser } from "@/components/PlatformContext";
 import { LinkPicker, type LinkPage } from "@/components/site/LinkPicker";
+import { BrokenLinksReport } from "@/components/site/SiteReports";
 import { Button } from "@/components/ui/Button";
 import { Chip, PageHeader, StatCard } from "@/components/ui/Display";
 import { FormField } from "@/components/ui/Form";
@@ -29,6 +30,8 @@ export default function SeoPage() {
   const [linkable, setLinkable] = useState<LinkPage[]>([]);
   const [pageFilter, setPageFilter] = useState<"all" | "in" | "out">("all");
   const [editing, setEditing] = useState<Redirect | "new" | null>(null);
+  const [prefill, setPrefill] = useState<string | undefined>(undefined);
+  const [reportVersion, setReportVersion] = useState(0);
   const [filter, setFilter] = useState<"all" | "active" | "off">("all");
   const [toast, setToast] = useState<{ text: string; tone: "ok" | "bad" } | null>(null);
 
@@ -233,14 +236,30 @@ export default function SeoPage() {
         </div>
       </div>
 
+      {/* M-WEB §11: redirecciones con más uso y enlaces rotos (404 registrados por el sitio). */}
+      <BrokenLinksReport
+        owner={owner}
+        version={reportVersion}
+        onRedirect={(path) => {
+          setPrefill(path);
+          setEditing("new");
+        }}
+      />
+
       {editing && (
         <RedirectModal
           row={editing === "new" ? null : editing}
+          initialSource={editing === "new" ? prefill : undefined}
           pages={linkable}
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            setEditing(null);
+            setPrefill(undefined);
+          }}
           onDone={(t) => {
             setEditing(null);
+            setPrefill(undefined);
             setToast({ text: t, tone: "ok" });
+            setReportVersion((v) => v + 1);
             load();
           }}
         />
@@ -302,8 +321,8 @@ function GoogleCard({ seo, owner, onSaved }: { seo: Seo; owner: boolean; onSaved
   );
 }
 
-function RedirectModal({ row, pages, onClose, onDone }: { row: Redirect | null; pages: LinkPage[]; onClose: () => void; onDone: (t: string) => void }) {
-  const [f, setF] = useState({ source_path: row?.source_path ?? "", target_url: row?.target_url ?? "/", status_code: String(row?.status_code ?? 301), is_active: row?.is_active ?? true, notes: row?.notes ?? "" });
+function RedirectModal({ row, initialSource, pages, onClose, onDone }: { row: Redirect | null; initialSource?: string; pages: LinkPage[]; onClose: () => void; onDone: (t: string) => void }) {
+  const [f, setF] = useState({ source_path: row?.source_path ?? initialSource ?? "", target_url: row?.target_url ?? "/", status_code: String(row?.status_code ?? 301), is_active: row?.is_active ?? true, notes: row?.notes ?? "" });
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [saving, setSaving] = useState(false);
 

@@ -105,7 +105,7 @@ class DocsFieldRules extends RecordRules
             $this->fail('risk_map_id', 'El mapa de riesgos no existe.');
         }
         if (! in_array($map->status, ['draft', 'in_review'], true)) {
-            $this->conflict('El mapa ya está aprobado o vigente: para cambiar pictogramas crea una nueva versión del mapa.');
+            $this->invalidTransition('El mapa ya está aprobado o vigente: para cambiar pictogramas crea una nueva versión del mapa.');
         }
         // RN-MAP-01: un marcador de peligro va ligado a una fila del IPERC vigente de la misma sede.
         $type = $this->value($values, $current, 'marker_type');
@@ -334,7 +334,7 @@ class DocsFieldRules extends RecordRules
             return;
         }
         if (in_array($current->status, ['current', 'review_required', 'obsolete'], true) && array_diff(array_keys($values), ['status']) !== []) {
-            $this->conflict('La versión ya está vigente u obsoleta: su contenido no cambia. Crea una nueva versión.');
+            $this->invalidTransition('La versión ya está vigente u obsoleta: su contenido no cambia. Crea una nueva versión.');
         }
         $to = $values['status'] ?? null;
         if (! $to || $to === $current->status) {
@@ -490,7 +490,7 @@ class DocsFieldRules extends RecordRules
         }
         // RN-CH5-04: una charla realizada no se modifica (su asistencia es evidencia de capacitación).
         if ($current && $current->status === 'held' && $values !== []) {
-            $this->conflict('La charla ya se realizó: no se modifica. Si hubo un error, registra una nueva charla.');
+            $this->invalidTransition('La charla ya se realizó: no se modifica. Si hubo un error, registra una nueva charla.');
         }
         // RN-CH5-01: se marca «realizada» con al menos un asistente que firmó (o que marcó su asistencia escaneando el QR él mismo).
         if (($values['status'] ?? null) === 'held' && $current
@@ -507,7 +507,7 @@ class DocsFieldRules extends RecordRules
         $talk = $this->value($values, $current, 'safety_talk_id');
         $st = $talk ? DB::selectOne('select status from safety_talks where id = ?', [$talk])?->status : null;
         if (in_array($st, ['held', 'cancelled'], true)) {
-            $this->conflict($st === 'held' ? 'La charla ya se realizó: su asistencia no se modifica.' : 'La charla está cancelada.');
+            $this->invalidTransition($st === 'held' ? 'La charla ya se realizó: su asistencia no se modifica.' : 'La charla está cancelada.');
         }
     }
 
@@ -523,7 +523,7 @@ class DocsFieldRules extends RecordRules
             $values['late_signature'] = true;
         }
         if (in_array($st, ['closed', 'cancelled'], true)) {
-            $this->conflict('El ATS está cerrado: no se modifica.');
+            $this->invalidTransition('El ATS está cerrado: no se modifica.');
         }
         // RN-ATS-03: con ats_block_untrained activo, la firma cargada desde la ficha tampoco se registra si al trabajador le falta la
         // capacitación exigida (igual que en la app del trabajador).
@@ -535,10 +535,10 @@ class DocsFieldRules extends RecordRules
         }
         if (in_array($st, ['signed', 'in_execution'], true)) {
             if (! $participant) {
-                $this->conflict('El ATS ya fue firmado: sus pasos, peligros y controles no se cambian. Si la tarea cambió, haz un ATS nuevo.');
+                $this->invalidTransition('El ATS ya fue firmado: sus pasos, peligros y controles no se cambian. Si la tarea cambió, haz un ATS nuevo.');
             }
             if ($current && $current->signed_at && $values !== []) {
-                $this->conflict('Esta firma ya está registrada: no se modifica.');
+                $this->invalidTransition('Esta firma ya está registrada: no se modifica.');
             }
             // RN-ATS-02: quien se suma después de firmado el ATS firma con marca de «firma tardía».
             if ($current === null || ($values['signed_at'] ?? null)) {
@@ -568,7 +568,7 @@ class DocsFieldRules extends RecordRules
         // RN-ATS-04: firmado o en ejecución, el ATS solo cambia de estado.
         if ($current && in_array($current->status, ['signed', 'in_execution'], true)
             && array_diff(array_keys($values), ['status', 'started_at', 'closed_at', 'work_permit_id']) !== [] && ($to === null || $to === $current->status)) {
-            $this->conflict('El ATS ya fue firmado: no se edita. Si la tarea cambió, devuélvelo a borrador (antes de iniciar) o haz un ATS nuevo.');
+            $this->invalidTransition('El ATS ya fue firmado: no se edita. Si la tarea cambió, devuélvelo a borrador (antes de iniciar) o haz un ATS nuevo.');
         }
         if ($to === 'signed' && $current) {
             $unsigned = (int) DB::selectOne('select count(*) as n from ats_participants where ats_form_id = ? and deleted_at is null and signed_at is null', [$current->id])->n;
@@ -615,7 +615,7 @@ class DocsFieldRules extends RecordRules
             }
         }
         if ($current && in_array($current->status, ['closed', 'cancelled'], true) && $values !== []) {
-            $this->conflict('El ATS está cerrado: no se modifica.');
+            $this->invalidTransition('El ATS está cerrado: no se modifica.');
         }
     }
 
@@ -629,7 +629,7 @@ class DocsFieldRules extends RecordRules
         }
         // RN-SIM-05: evaluado (o cancelado) el simulacro ya no se edita.
         if ($current && in_array($current->status, ['evaluated', 'cancelled'], true) && $values !== []) {
-            $this->conflict($current->status === 'evaluated' ? 'El simulacro ya fue evaluado: no se modifica.' : 'El simulacro está cancelado.');
+            $this->invalidTransition($current->status === 'evaluated' ? 'El simulacro ya fue evaluado: no se modifica.' : 'El simulacro está cancelado.');
         }
         $to = $values['status'] ?? null;
         if ($to === 'executed') {
@@ -737,7 +737,7 @@ class DocsFieldRules extends RecordRules
         // RN-RIS-07: una entrega firmada no cambia; un error se anula con motivo y se hace una nueva entrega.
         if ($current && in_array($current->status, ['signed', 'voided'], true)) {
             if ($current->status === 'voided' || array_diff(array_keys($values), ['status', 'void_reason']) !== [] || ($values['status'] ?? null) !== 'voided') {
-                $this->conflict($current->status === 'voided' ? 'La entrega está anulada.' : 'La entrega ya está firmada: no se modifica. Si hubo un error, anúlala con el motivo y registra otra.');
+                $this->invalidTransition($current->status === 'voided' ? 'La entrega está anulada.' : 'La entrega ya está firmada: no se modifica. Si hubo un error, anúlala con el motivo y registra otra.');
             }
         }
         if (($values['status'] ?? null) === 'voided') {

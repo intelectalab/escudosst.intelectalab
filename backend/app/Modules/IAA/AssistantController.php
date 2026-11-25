@@ -27,7 +27,7 @@ class AssistantController extends Controller
             'feature' => ['required', 'in:controls,causes,talk'],
             'text' => ['required', 'string', 'min:5', 'max:1500'],
         ], ['text.required' => 'Escribe el peligro, el evento o el tema.', 'text.min' => 'Escribe un poco más (al menos 5 letras).']);
-        if (preg_match('/(diagn[oó]stico|hipertensi[oó]n|diabetes|embarazo|gestante|VIH|c[aá]ncer|depresi[oó]n)/iu', $d['text'])) {
+        if (preg_match('/\b(diagn[oó]stico|hipertensi[oó]n|diabetes|embarazo|gestante|VIH|c[aá]ncer|depresi[oó]n)\b/iu', $d['text'])) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa el texto', 'No escribas datos de salud de personas: el asistente no los necesita.', ['errors' => ['text' => ['No escribas datos de salud de personas: el asistente no los necesita.']]]);
         }
         Usage::guard();

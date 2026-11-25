@@ -12,6 +12,7 @@ import { PageHeader, StatCard } from "@/components/ui/Display";
 import { Icon } from "@/components/ui/Icon";
 import { api, API_URL } from "@/lib/api";
 import { session } from "@/lib/session";
+import { CookieConsentReport, WebVitalsReport } from "@/components/site/SiteReports";
 
 type Data = {
   from: string;
@@ -282,6 +283,12 @@ export default function MetricasSitioPage() {
                 Configurar en SEO y redirecciones →
               </Link>
             </Panel>
+          </div>
+
+          {/* M-WEB §11 y RN-WEB-10: consentimientos de cookies por categoría y rendimiento medido en el navegador. */}
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+            <CookieConsentReport days={days} />
+            <WebVitalsReport />
           </div>
         </>
       )}

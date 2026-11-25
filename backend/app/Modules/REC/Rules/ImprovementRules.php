@@ -54,7 +54,7 @@ class ImprovementRules extends RecordRules
         }
         // RN-PLA-04/08: el plan aprobado, vigente o cerrado no cambia sus datos (solo su estado).
         if (in_array($current->status, ['approved', 'current', 'closed'], true) && array_diff(array_keys($values), ['status']) !== []) {
-            $this->conflict('El plan ya está aprobado o cerrado: sus datos no cambian. Crea una nueva versión.');
+            $this->invalidTransition('El plan ya está aprobado o cerrado: sus datos no cambian. Crea una nueva versión.');
         }
         $to = $values['status'] ?? null;
         if (! $to || $to === $current->status) {
@@ -154,7 +154,7 @@ class ImprovementRules extends RecordRules
     {
         $plan = DB::selectOne('select status, year from annual_plans where id = ?', [$this->value($values, $current, 'annual_plan_id')]);
         if (! in_array($plan?->status, ['draft', 'in_review'], true)) {
-            $this->conflict('El plan ya está aprobado: sus ítems no cambian.');
+            $this->invalidTransition('El plan ya está aprobado: sus ítems no cambian.');
         }
         $this->planItemReference($values, $current, (int) $plan->year);
     }
@@ -247,7 +247,7 @@ class ImprovementRules extends RecordRules
         }
         // RN-AUI-04: cerrada, la auditoría y su informe no cambian.
         if ($current && $current->status === 'closed' && $values !== []) {
-            $this->conflict('La auditoría está cerrada: su informe no se modifica.');
+            $this->invalidTransition('La auditoría está cerrada: su informe no se modifica.');
         }
         // RN-AUI-01: la auditoría legal obligatoria registra el número de registro del auditor ante el MTPE desde que se guarda.
         if ($this->value($values, $current, 'audit_type') === 'legal_mandatory' && trim((string) $this->value($values, $current, 'auditor_registration')) === '') {
@@ -285,7 +285,7 @@ class ImprovementRules extends RecordRules
     {
         $st = DB::selectOne('select status from audits where id = ?', [$this->value($values, $current, 'audit_id')])?->status;
         if (in_array($st, ['closed', 'cancelled'], true)) {
-            $this->conflict('La auditoría está cerrada: no se agregan ni cambian hallazgos.');
+            $this->invalidTransition('La auditoría está cerrada: no se agregan ni cambian hallazgos.');
         }
         $to = $values['status'] ?? null;
         $type = $this->value($values, $current, 'finding_type');
@@ -315,7 +315,7 @@ class ImprovementRules extends RecordRules
         }
         // RN-RVD-05: firmada y cerrada, la revisión no cambia.
         if ($current->status === 'closed' && $values !== []) {
-            $this->conflict('La revisión ya está cerrada y firmada: no se modifica.');
+            $this->invalidTransition('La revisión ya está cerrada y firmada: no se modifica.');
         }
         if ($to && $to !== $current->status) {
             $flow = ['planned' => ['in_progress'], 'in_progress' => ['completed', 'planned'], 'completed' => ['closed', 'in_progress'], 'closed' => []];
@@ -353,7 +353,7 @@ class ImprovementRules extends RecordRules
     {
         $st = DB::selectOne('select status from management_reviews where id = ?', [$this->value($values, $current, 'review_id')])?->status;
         if ($st === 'closed') {
-            $this->conflict('La revisión está cerrada: sus decisiones no cambian.');
+            $this->invalidTransition('La revisión está cerrada: sus decisiones no cambian.');
         }
     }
 
@@ -397,10 +397,10 @@ class ImprovementRules extends RecordRules
     {
         // RN-MAG-08: aprobada no cambia (solo se anula con motivo); anulada no cambia.
         if ($current && $current->status === 'voided' && $values !== []) {
-            $this->conflict('La medición está anulada.');
+            $this->invalidTransition('La medición está anulada.');
         }
         if ($current && $current->status === 'approved' && array_diff(array_keys($values), ['status', 'void_reason']) !== []) {
-            $this->conflict('La medición ya está aprobada: no se modifica. Si hay un error, anúlala con el motivo y registra una nueva.');
+            $this->invalidTransition('La medición ya está aprobada: no se modifica. Si hay un error, anúlala con el motivo y registra una nueva.');
         }
         $to = $values['status'] ?? null;
         if ($current && $to && $to !== $current->status) {
@@ -427,7 +427,7 @@ class ImprovementRules extends RecordRules
             return;
         }
         if ($current && $current->corrective_action_id && array_intersect(array_keys($values), ['value', 'unit', 'exposure_limit_id', 'measured_at']) !== []) {
-            $this->conflict('La medición ya originó su acción correctiva: no se cambia su valor. Registra una nueva medición.');
+            $this->invalidTransition('La medición ya originó su acción correctiva: no se cambia su valor. Registra una nueva medición.');
         }
         // RN-MAG-01: sin límite elegido, se usa el límite vigente del agente a la fecha de la medición.
         $limitId = $this->value($values, $current, 'exposure_limit_id');
@@ -501,7 +501,7 @@ class ImprovementRules extends RecordRules
             $this->fail('risk_level', 'Indica el nivel de riesgo resultante de la evaluación.');
         }
         if ($current && $current->status === 'reviewed' && $values !== []) {
-            $this->conflict('La evaluación ya fue revisada: no se modifica.');
+            $this->invalidTransition('La evaluación ya fue revisada: no se modifica.');
         }
         $values['assessor_user_id'] = $this->value($values, $current, 'assessor_user_id') ?? (string) auth()->id();
     }
@@ -603,7 +603,7 @@ class ImprovementRules extends RecordRules
     private function changeReview(string $op, array &$values, ?object $current): void
     {
         if ($current && $current->decision !== null && $values !== []) {
-            $this->conflict('La revisión ya fue registrada: no se modifica.');
+            $this->invalidTransition('La revisión ya fue registrada: no se modifica.');
         }
         if (array_key_exists('decision', $values) && $values['decision'] !== null) {
             $reviewer = $this->value($values, $current, 'reviewer_user_id');

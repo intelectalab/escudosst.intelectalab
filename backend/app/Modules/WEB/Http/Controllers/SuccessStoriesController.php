@@ -242,7 +242,7 @@ class SuccessStoriesController extends Controller
             'file.max' => $isConsent ? 'La autorización debe pesar menos de 5 MB.' : 'El logo debe pesar menos de 1 MB.',
         ]);
         $file = $request->file('file');
-        $mime = (string) $file->getMimeType();
+        $mime = \App\Core\Support\UploadGuard::realMime($file);
         $allowed = $isConsent
             ? ['application/pdf' => 'pdf', 'image/png' => 'png', 'image/jpeg' => 'jpg']
             : ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp', 'image/avif' => 'avif'];

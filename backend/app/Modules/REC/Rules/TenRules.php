@@ -62,7 +62,7 @@ class TenRules extends RecordRules
         // RN-TEN-07: una sede temporal ya terminada queda en solo lectura (solo se puede ampliar su fecha de fin o inactivarla).
         if ($current && $current->is_temporary && $current->ends_on && $current->ends_on < date('Y-m-d')
             && array_diff(array_keys($values), ['ends_on', 'status']) !== []) {
-            $this->conflict('La sede temporal terminó el '.date('d/m/Y', strtotime($current->ends_on)).': queda en solo lectura. Amplía su fecha de fin si la obra sigue.');
+            $this->invalidTransition('La sede temporal terminó el '.date('d/m/Y', strtotime($current->ends_on)).': queda en solo lectura. Amplía su fecha de fin si la obra sigue.');
         }
         $status = $this->value($values, $current, 'status') ?? 'active';
         if ($current && $current->status === 'active' && $status !== 'active' && $this->otherActiveSites($current->id) === 0) {

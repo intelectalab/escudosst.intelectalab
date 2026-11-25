@@ -54,9 +54,8 @@ class MeasurementsController extends Controller
             $this->fail('campaign_id', 'La campaña no existe o ya está cerrada.');
         }
         $file = $request->file('file');
-        if (! in_array(strtolower($file->getClientOriginalExtension()), ['xlsx', 'csv'], true)) {
-            $this->fail('file', 'Sube el archivo en Excel (.xlsx) o CSV.');
-        }
+        // docs/10 §6: extensión y tipo real del contenido (magic bytes), no solo el nombre del archivo.
+        \App\Core\Support\UploadGuard::spreadsheet($file, 'file', 'Sube el archivo en Excel (.xlsx) o CSV.');
         try {
             $sheet = SheetReader::read($file->getRealPath(), $file->getClientOriginalName());
         } catch (\Throwable) {

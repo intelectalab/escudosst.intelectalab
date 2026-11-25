@@ -20,12 +20,12 @@ class AulRules extends RecordRules
             return;
         }
         if ($res['table'] === 'courses' && $this->locked($current->id, $current->status) && $this->changes($values, $current, self::COURSE)) {
-            $this->conflict('El curso está publicado y tiene matriculados: su escala, nota mínima e intentos no cambian. Crea una nueva versión del curso.');
+            $this->invalidTransition('El curso está publicado y tiene matriculados: su escala, nota mínima e intentos no cambian. Crea una nueva versión del curso.');
         }
         if ($res['table'] === 'course_lessons' && $current->lesson_type === 'exam') {
             $st = DB::selectOne('select status from courses where id = ?', [$current->course_id])?->status;
             if ($this->locked($current->course_id, $st) && $this->changes($values, $current, self::EXAM)) {
-                $this->conflict('El curso está publicado y tiene matriculados: esta evaluación no cambia. Crea una nueva versión del curso.');
+                $this->invalidTransition('El curso está publicado y tiene matriculados: esta evaluación no cambia. Crea una nueva versión del curso.');
             }
         }
     }

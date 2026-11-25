@@ -80,7 +80,7 @@ class DiagnosticRules extends RecordRules
             return;
         }
         if (in_array($current->status, ['approved', 'archived'], true) && array_diff(array_keys($values), ['status']) !== []) {
-            $this->conflict('El diagnóstico está aprobado: no se modifica. Para actualizarlo, crea un nuevo diagnóstico.');
+            $this->invalidTransition('El diagnóstico está aprobado: no se modifica. Para actualizarlo, crea un nuevo diagnóstico.');
         }
         $to = $values['status'] ?? null;
         // M-LBA §9: se envía a revisión del comité o supervisor, que lo aprueba o lo devuelve con observaciones.
@@ -135,7 +135,7 @@ class DiagnosticRules extends RecordRules
     {
         $st = $assessment ? DB::selectOne('select status from baseline_assessments where id = ?', [$assessment])?->status : null;
         if (in_array($st, ['approved', 'archived'], true)) {
-            $this->conflict('El diagnóstico está aprobado: sus ítems no cambian.');
+            $this->invalidTransition('El diagnóstico está aprobado: sus ítems no cambian.');
         }
     }
 

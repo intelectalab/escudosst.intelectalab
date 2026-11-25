@@ -1309,7 +1309,21 @@
   "input_hash": "Huella de la entrada",
   "input_fields": "Campos enviados",
   "fitness_approved_by": "Aptitud aprobada por",
-  "fitness_approved_at": "Aptitud aprobada el"
+  "fitness_approved_at": "Aptitud aprobada el",
+  "detected_at": "Detectada el",
+  "detection_source": "Cómo se detectó",
+  "data_categories": "Datos comprometidos",
+  "includes_sensitive_data": "Incluye datos sensibles (salud u otros)",
+  "affected_people_count": "Personas afectadas",
+  "affected_scope": "Alcance (áreas, sistemas, empresas)",
+  "containment_measures": "Medidas de contención",
+  "cause": "Causa",
+  "anpd_due_at": "Plazo para comunicar a la ANPD",
+  "anpd_notified_at": "Comunicada a la ANPD el",
+  "anpd_reference": "N.º o referencia de la comunicación",
+  "holders_notification_required": "Hay que avisar a los titulares",
+  "holders_notified_at": "Titulares avisados el",
+  "corrective_measures": "Medidas correctivas"
  },
  "values": {
   "A": "Tipo A",
@@ -2055,7 +2069,22 @@
   "pets_model": "PETS modelo",
   "record_format": "Formato de registro",
   "risk_criteria": "Criterios IPERC",
-  "legal_parameter": "Valor legal"
+  "legal_parameter": "Valor legal",
+  "data_breaches.detection_source.alert": "Alerta del sistema",
+  "data_breaches.detection_source.client_report": "Reporte de un cliente",
+  "data_breaches.detection_source.provider_report": "Reporte de un proveedor",
+  "data_breaches.detection_source.internal": "Detección interna",
+  "data_breaches.detection_source.other": "Otro",
+  "data_breaches.status.detected": "Detectada",
+  "data_breaches.status.contained": "Contenida",
+  "data_breaches.status.notified": "Comunicada",
+  "data_breaches.status.closed": "Cerrada",
+  "arco_requests.status.received": "Recibida",
+  "arco_requests.status.in_review": "En revisión",
+  "arco_requests.status.extension_requested": "Con prórroga",
+  "arco_requests.status.resolved": "Atendida",
+  "arco_requests.status.rejected": "Denegada",
+  "arco_requests.status.withdrawn": "Retirada"
  },
  "tables": {
   "absences": "Ausencias",
@@ -2237,6 +2266,8 @@
   "notification_deliveries": "Envíos de avisos",
   "certificate_verifications": "Verificaciones",
   "credential_verifications": "Verificaciones del fotocheck",
-  "access_events": "Ingresos y salidas"
+  "access_events": "Ingresos y salidas",
+  "arco_requests": "Solicitudes ARCO",
+  "data_breaches": "Brechas de seguridad"
  }
 }

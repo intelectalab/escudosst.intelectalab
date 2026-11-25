@@ -75,7 +75,7 @@ class EventRules extends RecordRules
     {
         $st = $eventId ? DB::selectOne('select status from sst_events where id = ?', [$eventId])?->status : null;
         if (in_array($st, ['closed', 'discarded'], true)) {
-            $this->conflict('El evento está '.($st === 'closed' ? 'cerrado' : 'descartado').': no se agregan ni cambian sus datos.');
+            $this->invalidTransition('El evento está '.($st === 'closed' ? 'cerrado' : 'descartado').': no se agregan ni cambian sus datos.');
         }
     }
 
@@ -83,10 +83,10 @@ class EventRules extends RecordRules
     {
         $st = $invId ? DB::selectOne('select status from investigations where id = ?', [$invId])?->status : null;
         if ($st === 'closed') {
-            $this->conflict('La investigación está cerrada: no se agregan ni cambian sus causas ni su equipo.');
+            $this->invalidTransition('La investigación está cerrada: no se agregan ni cambian sus causas ni su equipo.');
         }
         if (in_array($st, ['approved', 'actions_in_progress'], true)) {
-            $this->conflict('El informe de la investigación está aprobado: no se cambian sus causas ni su equipo. Si hace falta, agrega una adenda.');
+            $this->invalidTransition('El informe de la investigación está aprobado: no se cambian sus causas ni su equipo. Si hace falta, agrega una adenda.');
         }
     }
 
@@ -248,7 +248,7 @@ class EventRules extends RecordRules
             }
         }
         if ($current && in_array($current->status, ['closed', 'discarded'], true) && $values !== []) {
-            $this->conflict('El evento está cerrado: no se modifica.');
+            $this->invalidTransition('El evento está cerrado: no se modifica.');
         }
     }
 
@@ -275,7 +275,7 @@ class EventRules extends RecordRules
             $extra['notification_overdue'] = ['?::boolean', [$deadline && strtotime($at) > strtotime($deadline) ? 'true' : 'false']];
         }
         if ($current && $current->notification_overdue && array_key_exists('notified_at', $values) && $values['notified_at'] !== $current->notified_at) {
-            $this->conflict('La notificación ya quedó fuera de plazo: su fecha no se cambia.');
+            $this->invalidTransition('La notificación ya quedó fuera de plazo: su fecha no se cambia.');
         }
     }
 
@@ -360,7 +360,7 @@ class EventRules extends RecordRules
         if ($current && in_array($current->status, ['approved', 'actions_in_progress', 'closed'], true)) {
             $locked = array_diff(array_keys($values), ['status', 'addenda']);
             if ($locked !== []) {
-                $this->conflict('El informe de la investigación está aprobado: no se modifica. Agrega una adenda con la precisión.');
+                $this->invalidTransition('El informe de la investigación está aprobado: no se modifica. Agrega una adenda con la precisión.');
             }
             if (array_key_exists('addenda', $values)) {
                 $old = json_decode((string) ($current->addenda ?? '[]'), true) ?: [];

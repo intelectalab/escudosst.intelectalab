@@ -132,9 +132,8 @@ class ReconcileController extends Controller
         $ok = fn (string $v) => (bool) preg_match('/^(?=.*\d)[A-Z0-9]{8,12}$/', $v);
         $cells = [];
         if ($file = $request->file('file')) {
-            if (! in_array(strtolower($file->getClientOriginalExtension()), ['xlsx', 'csv'], true)) {
-                $this->fail('file', 'Sube la lista en Excel (.xlsx) o CSV.');
-            }
+            // docs/10 §6: extensión y tipo real del contenido (magic bytes), no solo el nombre del archivo.
+            \App\Core\Support\UploadGuard::spreadsheet($file, 'file', 'Sube la lista en Excel (.xlsx) o CSV.');
             try {
                 $sheet = SheetReader::read($file->getRealPath(), $file->getClientOriginalName());
             } catch (\Throwable) {

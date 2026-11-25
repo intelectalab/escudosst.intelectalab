@@ -43,6 +43,9 @@ use Illuminate\Support\Facades\Route;
 
 // Métricas propias: solo llegan si el visitante aceptó cookies analíticas (lo controla el sitio).
 Route::middleware('throttle:web-events')->post('public/events', [AnalyticsController::class, 'store']);
+// M-WEB §11 y RN-WEB-10: 404 del sitio (agregado por ruta) y Core Web Vitals (solo con consentimiento analítico).
+Route::middleware('throttle:web-events')->post('public/not-found', [\App\Modules\WEB\Http\Controllers\SiteReportsController::class, 'notFound']);
+Route::middleware('throttle:web-events')->post('public/web-vitals', [\App\Modules\WEB\Http\Controllers\SiteReportsController::class, 'webVitals']);
 
 // Chatbot: conversación con límite propio (cada mensaje es una llamada).
 Route::middleware('throttle:web-chat')->prefix('public/chatbot')->group(function () {
@@ -241,6 +244,11 @@ Route::middleware(['auth:sanctum', 'platform', FlushChatbotIndex::class])->prefi
     Route::delete('media/{id}', [MediaController::class, 'destroy'])->whereUuid('id')->middleware('platform.owner');
     Route::get('success-stories/{id}/gallery', [SuccessStoriesController::class, 'gallery'])->whereUuid('id');
     Route::put('success-stories/{id}/gallery', [SuccessStoriesController::class, 'saveGallery'])->whereUuid('id');
+    Route::get('reports/links', [\App\Modules\WEB\Http\Controllers\SiteReportsController::class, 'links']);
+    Route::post('reports/links/{id}/resolve', [\App\Modules\WEB\Http\Controllers\SiteReportsController::class, 'resolveLink'])->whereUuid('id')->middleware('platform.owner');
+    Route::get('reports/cookie-consents', [\App\Modules\WEB\Http\Controllers\SiteReportsController::class, 'cookieConsents']);
+    Route::get('reports/media', [\App\Modules\WEB\Http\Controllers\SiteReportsController::class, 'media']);
+    Route::get('reports/web-vitals', [\App\Modules\WEB\Http\Controllers\SiteReportsController::class, 'webVitalsReport']);
     Route::get('redirects', [SeoController::class, 'index']);
     Route::post('redirects', [SeoController::class, 'store'])->middleware('platform.owner');
     Route::patch('redirects/{id}', [SeoController::class, 'update'])->whereUuid('id')->middleware('platform.owner');

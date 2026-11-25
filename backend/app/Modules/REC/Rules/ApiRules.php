@@ -34,7 +34,7 @@ class ApiRules extends RecordRules
                 self::$fresh = $secret;
             }
             if ($current && $current->status === 'revoked' && $values !== []) {
-                $this->conflict('El cliente está revocado: crea uno nuevo.');
+                $this->invalidTransition('El cliente está revocado: crea uno nuevo.');
             }
             // Permisos por recurso (M-API SCR-API-01): «read», «*» o «recurso.read»; ningún permiso abre datos de salud (RN-API-01).
             foreach ((array) ($values['scopes'] ?? []) as $sc) {
