@@ -106,14 +106,14 @@ export function CatalogGrid({ catalog, offers }: { catalog: string; offers: Cata
 }
 
 type Offer = { slug: string; price: number; allows_company_purchase: boolean; min_company_seats: number | null; seats_left: number | null };
-type Placed = { order_number: string; total: number; expires_at: string | null; payment_instructions: string | null };
+type Placed = { order_number: string; total: number; discount?: number; expires_at: string | null; payment_instructions: string | null };
 
 const onlyDigits = (v: string, max: number) => v.replace(/\D/g, "").slice(0, max);
 
 export function CoursePurchaseForm({ catalog, company, offer }: { catalog: string; company: string; offer: Offer }) {
   const minSeats = Math.max(2, offer.min_company_seats ?? 2);
   const [buyer, setBuyer] = useState<"person" | "company">("person");
-  const [f, setF] = useState({ document_type: "DNI", document_number: "", first_name: "", last_name: "", legal_name: "", ruc: "", email: "", phone: "", seats: String(minSeats), website: "" });
+  const [f, setF] = useState({ document_type: "DNI", document_number: "", first_name: "", last_name: "", legal_name: "", ruc: "", email: "", phone: "", seats: String(minSeats), coupon_code: "", website: "" });
   const [privacy, setPrivacy] = useState(false);
   const [marketing, setMarketing] = useState(false);
   const [key] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : undefined));
@@ -137,7 +137,7 @@ export function CoursePurchaseForm({ catalog, company, offer }: { catalog: strin
       const res = await fetch(`${API}/api/v1/public/courses/${encodeURIComponent(catalog)}/${encodeURIComponent(offer.slug)}/order`, {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({ ...body, privacy_consent: privacy, marketing_consent: marketing, idempotency_key: key, website: f.website || undefined }),
+        body: JSON.stringify({ ...body, coupon_code: f.coupon_code.trim() || undefined, privacy_consent: privacy, marketing_consent: marketing, idempotency_key: key, website: f.website || undefined }),
       });
       const j = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -161,6 +161,7 @@ export function CoursePurchaseForm({ catalog, company, offer }: { catalog: strin
         <p>
           Pedido <b className="font-mono text-[var(--site-navy-title)]">{placed.order_number}</b> por <b className="text-[var(--site-navy-title)]">{soles(placed.total)}</b>, pendiente de pago.
         </p>
+        {!!placed.discount && placed.discount > 0 && <p>Cupón aplicado: descuento de {soles(placed.discount)}.</p>}
         {placed.payment_instructions ? (
           <div className="rounded-xl bg-[var(--site-surface)] p-4 text-left">
             <b className="mb-1 block text-[var(--site-navy-title)]">Cómo pagar</b>
@@ -247,8 +248,12 @@ export function CoursePurchaseForm({ catalog, company, offer }: { catalog: strin
           <input className="input" type="tel" maxLength={20} autoComplete="tel" value={f.phone} onChange={(e) => set("phone", e.target.value)} />
         </Field>
       </div>
+      {/* SCR-VTA-16: el cupón se valida en el servidor al solicitar la compra (RN-VTA-11). */}
+      <Field label="Cupón de descuento" optional error={err("coupon_code")}>
+        <input className="input" maxLength={40} autoComplete="off" value={f.coupon_code} onChange={(e) => set("coupon_code", e.target.value.toUpperCase())} aria-invalid={!!err("coupon_code")} />
+      </Field>
       <div className="flex items-center justify-between rounded-xl bg-[var(--site-surface)] px-4 py-3 text-sm">
-        <span className="text-[var(--site-text-2)]">{isCompany ? `${qty} cupos × ${soles(offer.price)}` : "Total"}</span>
+        <span className="text-[var(--site-text-2)]">{isCompany ? `${qty} cupos × ${soles(offer.price)}` : "Total"}{f.coupon_code.trim() ? " (antes del cupón)" : ""}</span>
         <b className="font-display text-lg text-[var(--site-navy-title)]">{soles(offer.price * qty)}</b>
       </div>
       <Check checked={privacy} onChange={setPrivacy} error={err("privacy_consent")}>

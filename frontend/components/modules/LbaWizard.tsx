@@ -270,6 +270,8 @@ function LbaResult({ id, pending, answered }: { id: string; pending: number; ans
     setBusy(status);
     setMsg(null);
     try {
+      // M-LBA: draft → in_review → approved. Para aprobar desde aquí, el diagnóstico pasa antes por revisión.
+      if (status === "approved" && row?.status !== "in_review") await records.update("LBA", "baseline_assessments", id, { status: "in_review" });
       const r = await records.update("LBA", "baseline_assessments", id, { status });
       setRow(r.data);
       if (status === "approved") {

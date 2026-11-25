@@ -8685,9 +8685,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_position_training_requirements_2 ON positio
 CREATE UNIQUE INDEX IF NOT EXISTS uq_courses_1 ON courses (company_id, code) NULLS NOT DISTINCT;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_course_sections_1 ON course_sections (course_id, section_number);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_course_lessons_1 ON course_lessons (course_id, lesson_number);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_course_enrollments_1 ON course_enrollments (company_id, course_id, worker_id) WHERE (worker_id IS NOT NULL AND status NOT IN ('cancelled', 'expired')) AND deleted_at IS NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_course_enrollments_2 ON course_enrollments (company_id, course_id, contractor_worker_id) WHERE (contractor_worker_id IS NOT NULL AND status NOT IN ('cancelled', 'expired')) AND deleted_at IS NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_course_enrollments_3 ON course_enrollments (company_id, course_id, external_learner_id) WHERE (external_learner_id IS NOT NULL AND status NOT IN ('cancelled', 'expired')) AND deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_course_enrollments_1 ON course_enrollments (company_id, course_id, worker_id) WHERE (worker_id IS NOT NULL AND status IN ('enrolled', 'in_progress')) AND deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_course_enrollments_2 ON course_enrollments (company_id, course_id, contractor_worker_id) WHERE (contractor_worker_id IS NOT NULL AND status IN ('enrolled', 'in_progress')) AND deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_course_enrollments_3 ON course_enrollments (company_id, course_id, external_learner_id) WHERE (external_learner_id IS NOT NULL AND status IN ('enrolled', 'in_progress')) AND deleted_at IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_quiz_attempts_1 ON quiz_attempts (company_id, enrollment_id, lesson_id, attempt_number) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_quiz_attempts_idempotency ON quiz_attempts (company_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_question_banks_1 ON question_banks (company_id, code) WHERE deleted_at IS NULL;

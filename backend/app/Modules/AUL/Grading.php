@@ -46,9 +46,11 @@ final class Grading
         }
         $min = (float) $scale->min_value;
         $max = (float) $scale->max_value;
-        $v = round($min + ($max - $min) * $pct / 100, (int) $scale->decimals);
+        $dec = (int) $scale->decimals;
+        $v = number_format(round($min + ($max - $min) * $pct / 100, $dec), $dec, '.', '');
 
-        return rtrim(rtrim(number_format($v, (int) $scale->decimals, '.', ''), '0'), '.') ?: '0';
+        // Solo se quitan los ceros de la parte decimal («14,50» → «14,5»); los de la parte entera se quedan («20», «10»).
+        return $dec > 0 ? rtrim(rtrim($v, '0'), '.') : $v;
     }
 
     /**

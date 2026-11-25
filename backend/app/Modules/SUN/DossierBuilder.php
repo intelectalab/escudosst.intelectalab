@@ -72,7 +72,7 @@ class DossierBuilder extends Controller
      */
     public function status(string $dossier): JsonResponse
     {
-        $d = Str::isUuid($dossier) ? DB::selectOne('select id, status, built_at, error_message, scope from inspection_dossiers where id = ? and deleted_at is null', [$dossier]) : null;
+        $d = Str::isUuid($dossier) ? DB::selectOne('select id, status, built_at, error_message, scope, requested_by from inspection_dossiers where id = ? and deleted_at is null', [$dossier]) : null;
         if (! $d) {
             throw ApiProblem::notFound('El expediente no existe o es de otra empresa.');
         }
@@ -87,7 +87,9 @@ class DossierBuilder extends Controller
 
         return response()->json(['data' => [
             'id' => $d->id, 'status' => $d->status, 'built_at' => $d->built_at, 'error_message' => $d->error_message,
-            'pending' => in_array($d->status, ['queued', 'building'], true),
+            // Un expediente recién registrado queda «en cola» por omisión, pero nadie pidió armarlo todavía (requested_by
+            // se fija al pedir el armado): no está pendiente y la pantalla no debe quedarse en «Generando…».
+            'pending' => $d->status === 'building' || ($d->status === 'queued' && $d->requested_by !== null),
             'items' => $items, 'total' => count($items),
             'gaps' => count(array_filter($items, fn ($i) => in_array($i->status, self::GAP_STATUSES, true))),
             'worker' => $workers[0] ?? null, 'workers' => $workers,

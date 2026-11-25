@@ -59,11 +59,13 @@ final class Progress
 
     /**
      * Certificado al completar el curso (si el curso emite certificado): con código verificable por QR, como los de
-     * capacitaciones presenciales. Lo valida quien publicó el curso (o quien lo creó). No se duplica (RN-AUL-18).
+     * capacitaciones presenciales, y la plantilla del curso (o la del tema de CAP que acredita). No se duplica (RN-AUL-18).
+     * Si la plantilla exige validación, nace «por validar» y lo valida el Jefe SST en CAP (RN-CAP-08, SCR-CAP-10); si no,
+     * queda validado a nombre de quien publicó el curso (o quien lo creó).
      */
     public static function certificate(object $e, ?float $score): ?array
     {
-        $c = DB::selectOne('select id, title, hours, certificate_enabled, certificate_validity_months, public_verification_enabled, published_by, created_by from courses where id = ?', [$e->course_id]);
+        $c = DB::selectOne('select id, title, hours, certificate_enabled, certificate_validity_months, public_verification_enabled, published_by, created_by, certificate_template_id from courses where id = ?', [$e->course_id]);
         if (! $c || ! $c->certificate_enabled) {
             return null;
         }
@@ -82,19 +84,22 @@ final class Progress
         } while (DB::selectOne('select 1 as ok from training_certificates where certificate_code = ?', [$code]));
         $validator = $c->published_by ?? $c->created_by ?? (string) auth()->id();
         // RN-AUL-18 / RN-CAP-04: el certificado cuenta para la capacitación de CAP ligada al curso (matriz, fotocheck, permisos).
-        $training = DB::selectOne('select id from trainings where course_id = ? and deleted_at is null order by created_at limit 1', [$c->id])?->id;
+        $training = DB::selectOne('select id, certificate_template_id from trainings where course_id = ? and deleted_at is null order by created_at limit 1', [$c->id]);
+        $templateId = $c->certificate_template_id ?? $training?->certificate_template_id;
+        $pending = $templateId && DB::selectOne('select requires_validation from certificate_templates where id = ? and deleted_at is null', [$templateId])?->requires_validation;
+        $status = $pending ? 'pending_validation' : 'validated';
         DB::insert(
             "insert into training_certificates (company_id, course_id, training_id, course_enrollment_id, worker_id, contractor_worker_id, external_learner_id, certificate_code, verification_code,
-                holder_name, holder_document_masked, course_title, issued_on, expires_on, hours, score, public_verification_enabled, status, validated_by, validated_at, created_by, updated_by)
-             values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_date, case when ?::int is null then null else (current_date + make_interval(months => ?::int))::date end, ?, ?, ?, 'validated', ?, now(), ?, ?)",
-            [$e->company_id, $c->id, $e->external_learner_id ? null : $training, $e->id, $e->worker_id, $e->contractor_worker_id, $e->external_learner_id, $code, strtoupper(substr(hash('sha256', Str::random(40)), 0, 32)),
+                holder_name, holder_document_masked, course_title, issued_on, expires_on, hours, score, public_verification_enabled, certificate_template_id, status, validated_by, validated_at, created_by, updated_by)
+             values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_date, case when ?::int is null then null else (current_date + make_interval(months => ?::int))::date end, ?, ?, ?, ?, ?, ?, case when ? then now() end, ?, ?)",
+            [$e->company_id, $c->id, $e->external_learner_id ? null : $training?->id, $e->id, $e->worker_id, $e->contractor_worker_id, $e->external_learner_id, $code, strtoupper(substr(hash('sha256', Str::random(40)), 0, 32)),
                 $holder->name ?? 'Participante', ($holder->last4 ?? null) ? '****'.$holder->last4 : null, $c->title, $c->certificate_validity_months, $c->certificate_validity_months,
-                $c->hours, $score, $c->public_verification_enabled ? 'true' : 'false', $validator, (string) auth()->id(), (string) auth()->id()]
+                $c->hours, $score, $c->public_verification_enabled ? 'true' : 'false', $templateId, $status, $pending ? null : $validator, $pending ? 'false' : 'true', (string) auth()->id(), (string) auth()->id()]
         );
         $id = DB::selectOne('select id from training_certificates where certificate_code = ?', [$code])->id;
         DB::update('update course_enrollments set certificate_id = ? where id = ?', [$id, $e->id]);
-        \App\Modules\API\Webhooks::queue('training_certificates', 'create', $id, ['status' => 'validated']);
+        \App\Modules\API\Webhooks::queue('training_certificates', 'create', $id, ['status' => $status]);
 
-        return ['code' => $code, 'id' => $id];
+        return ['code' => $code, 'id' => $id, 'status' => $status];
     }
 }

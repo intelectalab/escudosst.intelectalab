@@ -12,6 +12,8 @@ import { session } from "@/lib/session";
 import { downloadFile, uploadFile, type RecordRow } from "@/lib/records";
 import { useProviders } from "./TestModeBanner";
 
+/** Fecha de hoy en Lima (AAAA-MM-DD): con toISOString, desde las 19:00 sería «mañana» y el servidor la rechaza. */
+const limaToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima" }).format(new Date());
 const errText = (e: unknown) => Object.values((e as ApiError).errors ?? {})[0]?.[0] ?? (e as ApiError).detail ?? (e as ApiError).title;
 
 export function SellOffer({ row, onChanged }: { row: RecordRow; onChanged: () => void }) {
@@ -53,7 +55,7 @@ export function SellOffer({ row, onChanged }: { row: RecordRow; onChanged: () =>
 
 export function PayOrder({ id, label, onChanged }: { id: string; label?: string; onChanged: () => void }) {
   const providers = useProviders();
-  const [f, setF] = useState({ method: "yape", reference: "", paid_on: new Date().toISOString().slice(0, 10), evidence_file_id: "" });
+  const [f, setF] = useState({ method: "yape", reference: "", paid_on: limaToday(), evidence_file_id: "" });
   const [fileName, setFileName] = useState("");
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const live = providers?.payments?.live;
@@ -76,7 +78,7 @@ export function PayOrder({ id, label, onChanged }: { id: string; label?: string;
           </select>
         </label>
         {f.method !== "cash" && <label className="text-xs">N.° de operación<input className="input mt-1 !w-40" value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} /></label>}
-        <label className="text-xs">Fecha<input type="date" className="input mt-1 !w-40" value={f.paid_on} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setF({ ...f, paid_on: e.target.value })} /></label>
+        <label className="text-xs">Fecha<input type="date" className="input mt-1 !w-40" value={f.paid_on} max={limaToday()} onChange={(e) => setF({ ...f, paid_on: e.target.value })} /></label>
         <label className="text-xs">Constancia del pago (foto o PDF)
           <input type="file" accept="image/*,application/pdf" className="mt-1 block text-xs" onChange={(e) => {
             const file = e.target.files?.[0];
@@ -279,7 +281,7 @@ const soles = (n: number) => `S/ ${Number(n).toLocaleString("es-PE", { minimumFr
 
 /** SCR-VTA-01 y 20: panel de ventas del periodo y reporte en Excel. */
 export function VtaDashboard() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = limaToday();
   const [p, setP] = useState({ from: `${today.slice(0, 8)}01`, to: today });
   const [d, setD] = useState<Dash | null>(null);
   const [err, setErr] = useState<string | null>(null);

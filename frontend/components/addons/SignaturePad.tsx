@@ -11,6 +11,10 @@ export function SignaturePad({ onChange, height = 180 }: { onChange: (dataUrl: s
   const canvas = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const [empty, setEmpty] = useState(true);
+  // El aviso de cambio se guarda en una referencia: si quien usa el componente pasa una función nueva en cada render
+  // (p. ej. «onChange={(d) => setPng(d)}»), el lienzo no debe borrarse al dibujar.
+  const changed = useRef(onChange);
+  useEffect(() => { changed.current = onChange; }, [onChange]);
 
   const reset = useCallback(() => {
     const c = canvas.current!;
@@ -26,8 +30,8 @@ export function SignaturePad({ onChange, height = 180 }: { onChange: (dataUrl: s
     ctx.lineJoin = "round";
     ctx.strokeStyle = "#0b2440";
     setEmpty(true);
-    onChange(null, "drawn");
-  }, [height, onChange]);
+    changed.current(null, "drawn");
+  }, [height]);
   useEffect(() => { reset(); }, [reset]);
 
   const point = (e: React.PointerEvent) => {
@@ -41,7 +45,7 @@ export function SignaturePad({ onChange, height = 180 }: { onChange: (dataUrl: s
     out.width = Math.round(c.width * scale);
     out.height = Math.round(c.height * scale);
     out.getContext("2d")!.drawImage(c, 0, 0, out.width, out.height);
-    onChange(kind === "drawn" ? out.toDataURL("image/png") : out.toDataURL("image/jpeg", 0.85), kind);
+    changed.current(kind === "drawn" ? out.toDataURL("image/png") : out.toDataURL("image/jpeg", 0.85), kind);
   };
 
   function upload(file: File) {

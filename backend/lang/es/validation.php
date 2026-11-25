@@ -3,7 +3,11 @@
 // Mensajes de validación en español sencillo. Las reglas que no están aquí usan el texto en inglés de Laravel.
 return [
     'accepted' => 'Debes aceptar «:attribute».',
+    'after' => '«:attribute» debe ser una fecha posterior a :date.',
+    'after_or_equal' => '«:attribute» debe ser una fecha igual o posterior a :date.',
     'array' => '«:attribute» no tiene el formato esperado.',
+    'before' => '«:attribute» debe ser una fecha anterior a :date.',
+    'before_or_equal' => '«:attribute» debe ser una fecha igual o anterior a :date.',
     'boolean' => '«:attribute» debe ser sí o no.',
     'date' => '«:attribute» no es una fecha válida.',
     'email' => '«:attribute» no es un correo válido.',
@@ -33,5 +37,11 @@ return [
         'worker_id' => 'trabajador',
         'program_id' => 'programa',
         'document' => 'documento',
+        'paid_on' => 'fecha del pago',
+    ],
+
+    // Valores mostrados en los mensajes (p. ej. «igual o anterior a hoy»).
+    'values' => [
+        'paid_on' => ['today' => 'hoy'],
     ],
 ];

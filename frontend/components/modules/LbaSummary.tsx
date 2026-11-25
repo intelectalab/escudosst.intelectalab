@@ -77,11 +77,13 @@ export function LbaSummary() {
   const toolbar = canEdit ? (
     <div className="flex justify-end">
       <Button variant="primary" icon="plus" onClick={() => setWizard(true)}>Nuevo diagnóstico</Button>
-      {wizard && <LbaWizard onClose={() => setWizard(false)} onDone={() => setReload((n) => n + 1)} />}
     </div>
   ) : null;
+  // El asistente va siempre en el mismo lugar del árbol: si la lista pasa de vacía a tener diagnósticos mientras está
+  // abierto, no se vuelve a montar (perdía los pasos y las respuestas).
+  const wizardEl = canEdit && wizard ? <LbaWizard onClose={() => setWizard(false)} onDone={() => setReload((n) => n + 1)} /> : null;
   if (list === null) return <div className="h-40 animate-pulse rounded-xl bg-surface" />;
-  if (list.length === 0) return toolbar;
+  if (list.length === 0) return <>{toolbar}{wizardEl}</>;
   const open = gaps.filter((g) => g.status === "open" || g.status === "in_progress").length;
   const closed = gaps.filter((g) => g.status === "closed" || g.status === "accepted_risk").length;
   const href = (filters: Record<string, string>) => `/m/lba?t=baseline_assessments&open=${sel}${Object.entries(filters).map(([k, v]) => `&f[${k}]=${v}`).join("")}`;
@@ -91,6 +93,7 @@ export function LbaSummary() {
   const tone = (t: string) => (t === "ok" ? "bg-ok" : t === "amber" ? "bg-[#F4B90F]" : "bg-bad");
 
   return (
+    <>
     <section className="space-y-4" aria-label="Resultado del diagnóstico">
       {toolbar}
       {list.length > 1 && (
@@ -155,5 +158,7 @@ export function LbaSummary() {
         </table>
       </div>
     </section>
+    {wizardEl}
+    </>
   );
 }

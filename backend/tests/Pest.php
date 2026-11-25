@@ -10,6 +10,11 @@ pest()->extend(TestCase::class)
     ->use(DatabaseTransactions::class)
     ->in('Feature');
 
+// Unitarias: lógica pura con la aplicación cargada (configuración, fachadas), sin migraciones ni base de datos; lo que
+// consulta la base se simula con DB::shouldReceive.
+pest()->extend(\Illuminate\Foundation\Testing\TestCase::class)
+    ->in('Unit');
+
 /*
 | Datos de docker/postgres/dev-seed.sql usados en las pruebas.
 | Un usuario Jefe SST por plan, cada uno solo en su empresa.

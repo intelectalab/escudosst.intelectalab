@@ -559,7 +559,12 @@ function InspectionRun({ row, onChanged }: { row: RecordRow; onChanged: () => vo
   const load = () =>
     api<{ data: Checklist }>(`/ins/inspections/${row.id}/checklist`, { withCompany: true }).then((r) => {
       setData(r.data);
-      setAnswers(Object.fromEntries(r.data.items.map((i) => [i.id, { answer: i.answer ?? "", comment: i.comment ?? "", photo_file_id: i.photo_file_id }])));
+      // Una lectura que llega tarde (la ficha se vuelve a leer al abrirse) no borra lo que la persona ya marcó y aún no guardó.
+      setAnswers((prev) =>
+        Object.fromEntries(
+          r.data.items.map((i) => [i.id, !i.answer && prev[i.id]?.answer ? prev[i.id] : { answer: i.answer ?? "", comment: i.comment ?? "", photo_file_id: i.photo_file_id }]),
+        ),
+      );
     });
   useEffect(() => {
     load().catch(() => setData(null));
@@ -1544,9 +1549,9 @@ function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => voi
       setBusy(false);
     }
   };
-  // Si se abrió mientras la cola lo arma, espera a que termine.
+  // Si se abrió mientras la cola lo arma, espera a que termine (uno recién registrado, sin armado pedido, no espera nada).
   useEffect(() => {
-    if (!["queued", "building"].includes(String(row.status))) return;
+    if (!(row.status === "building" || (row.status === "queued" && row.requested_by))) return;
     setBusy(true);
     setMsg("Generando… el expediente se arma en segundo plano.");
     waitDossier(row.id).then(finish).catch(() => setMsg(null)).finally(() => setBusy(false));
