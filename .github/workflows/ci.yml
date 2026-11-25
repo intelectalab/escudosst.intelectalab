@@ -1,0 +1,175 @@
+# Integración continua de EscudoSST (docs/12 §1 y docs/15 §8).
+#  - backend:   PostgreSQL 17 (principal y médica) y Redis con los mismos scripts de arranque de compose.dev.yml (esquema,
+#               semillas y datos ficticios; escudo_main_test para las pruebas), migraciones con el rol dueño, comprobación
+#               de que database/schema_main.sql está al día con las migraciones y todas las pruebas Pest.
+#  - schema:    database/schema_main.sql, las semillas y schema_medical.sql cargan en PostgreSQL 16 y 17.
+#  - frontend:  TypeScript (tsc) y ESLint. (Las pruebas E2E con Playwright necesitan la aplicación levantada: no corren aquí.)
+#  - security:  composer audit y npm audit (vulnerabilidades altas o críticas).
+# Los secretos de esta corrida se generan en el momento: no usa secretos del repositorio ni datos reales.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (Pest + PostgreSQL 17 + Redis)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      DC: docker compose -f compose.dev.yml
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar backend/.env (llaves de prueba generadas aquí)
+        run: |
+          cp backend/.env.example backend/.env
+          key() { echo "base64:$(openssl rand -base64 32)"; }
+          set_env() {
+            if grep -q "^$1=" backend/.env; then sed -i "s|^$1=.*|$1=$2|" backend/.env; else echo "$1=$2" >> backend/.env; fi
+          }
+          set_env APP_KEY "$(key)"
+          set_env MEDICAL_FIELD_KEY "$(key)"
+          set_env BACKUP_KEY "$(key)"
+          set_env BACKUP_MEDICAL_KEY "$(key)"
+          set_env DB_BACKUP_PASSWORD ci_backup
+          # Prueba de restauración: el superusuario del contenedor de desarrollo (compose.dev.yml) puede crear bases.
+          set_env BACKUP_RESTORE_DB_PASSWORD postgres_dev
+
+      - name: Levantar PostgreSQL (principal y médica), Redis y Mailpit
+        run: |
+          $DC up -d pg-main pg-medical redis mailpit
+          # El arranque carga el esquema, las semillas y los datos ficticios con un servidor temporal que solo escucha
+          # por socket: la base está lista cuando responde por TCP.
+          for svc in pg-main pg-medical; do
+            for i in $(seq 1 120); do
+              if $DC exec -T "$svc" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then break; fi
+              sleep 3
+            done
+            $DC exec -T "$svc" pg_isready -h 127.0.0.1 -U postgres
+          done
+          $DC logs pg-main | tail -n 20
+
+      - name: Activar el usuario de copias de seguridad
+        run: |
+          $DC exec -T pg-main psql -v ON_ERROR_STOP=1 -U postgres -d escudo_main -c "ALTER ROLE escudo_backup LOGIN PASSWORD 'ci_backup'"
+          $DC exec -T pg-medical psql -v ON_ERROR_STOP=1 -U postgres -d escudo_medical -c "ALTER ROLE escudo_backup LOGIN PASSWORD 'ci_backup'"
+
+      - name: Construir la imagen de PHP e instalar dependencias
+        run: |
+          $DC build api
+          $DC run --rm --no-deps -e HOME=/tmp api composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Migraciones (rol dueño) en escudo_main y escudo_main_test
+        run: |
+          $DC run --rm --no-deps -e HOME=/tmp api php artisan migrate --database=pgsql_owner --path=database/migrations/main --force
+          $DC run --rm --no-deps -e HOME=/tmp -e DB_DATABASE=escudo_main_test api php artisan migrate --database=pgsql_owner --path=database/migrations/main --force
+
+      - name: schema_main.sql al día con las migraciones
+        run: |
+          # Base nueva solo con el esquema, comparada con la base ya migrada (database/tools/structure.sql).
+          $DC exec -T pg-main psql -q -v ON_ERROR_STOP=1 -U postgres -c "CREATE DATABASE escudo_schema_check"
+          $DC exec -T pg-main psql -q -v ON_ERROR_STOP=1 -U postgres -d escudo_schema_check -f /database/schema_main.sql
+          $DC exec -T pg-main psql -X -U postgres -d escudo_schema_check -f /database/tools/structure.sql > esquema.txt
+          $DC exec -T pg-main psql -X -U postgres -d escudo_main -f /database/tools/structure.sql > migrada.txt
+          $DC exec -T pg-main psql -q -U postgres -c "DROP DATABASE escudo_schema_check"
+          if ! diff esquema.txt migrada.txt; then
+            echo "::error::database/schema_main.sql no arma la misma base que las migraciones (líneas < esquema, > migrada)."
+            exit 1
+          fi
+
+      - name: Pruebas Pest
+        run: $DC run --rm --no-deps -e HOME=/tmp api php vendor/bin/pest
+
+      - name: Registros de las bases si algo falló
+        if: failure()
+        run: $DC logs --tail=200 pg-main pg-medical
+
+      - name: Apagar
+        if: always()
+        run: $DC down -v
+
+  schema:
+    name: Esquema en PostgreSQL ${{ matrix.pg }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: ["16", "17"]
+    services:
+      postgres:
+        image: postgres:${{ matrix.pg }}
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cargar schema_main.sql, semillas y schema_medical.sql
+        run: |
+          psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE escudo_main" -c "CREATE DATABASE escudo_medical"
+          psql -q -v ON_ERROR_STOP=1 -d escudo_main -f database/schema_main.sql
+          for f in database/seeds/*.sql; do psql -q -v ON_ERROR_STOP=1 -d escudo_main -f "$f"; done
+          psql -q -v ON_ERROR_STOP=1 -d escudo_medical -f database/schema_medical.sql
+          psql -At -d escudo_main -c "select count(*) || ' tablas, ' || count(*) filter (where relforcerowsecurity) || ' con RLS forzado' from pg_class where relnamespace = 'public'::regnamespace and relkind in ('r', 'p')"
+
+  frontend:
+    name: Frontend (TypeScript + ESLint)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: TypeScript
+        run: npx tsc --noEmit -p .
+      - name: ESLint
+        run: npx eslint .
+
+  security:
+    name: Seguridad de dependencias
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          tools: composer
+          coverage: none
+      - name: composer audit
+        working-directory: backend
+        run: composer audit --locked --no-interaction
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: npm audit (altas o críticas)
+        working-directory: frontend
+        run: npm audit --audit-level=high

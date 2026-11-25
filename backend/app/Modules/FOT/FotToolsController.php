@@ -3,6 +3,7 @@
 namespace App\Modules\FOT;
 
 use App\Core\Auth\Permissions;
+use App\Core\Auth\Scope;
 use App\Core\Http\ApiProblem;
 use App\Core\Tenancy\CompanyContext;
 use App\Http\Controllers\Controller;
@@ -38,8 +39,9 @@ class FotToolsController extends Controller
         $label = fn ($r) => ['type' => self::TYPES[$r->requirement_type] ?? $r->requirement_type, 'description' => $r->description, 'blocking' => (bool) $r->is_blocking, 'grace_days' => $r->grace_days];
         $general = array_map($label, array_values(array_filter($reqs, fn ($r) => ! $r->position_id)));
         $positions = [];
-        foreach (DB::select("select p.id, p.name, (select count(*) from workers w where w.current_position_id = p.id and w.status = 'active' and w.deleted_at is null) as workers
-                              from positions p where p.deleted_at is null and p.status = 'active' order by p.name") as $p) {
+        // Alcance por sede/área (docs/03 §3): solo los cargos y trabajadores que la membresía ve.
+        foreach (DB::select("select p.id, p.name, (select count(*) from workers w where w.current_position_id = p.id and w.status = 'active' and w.deleted_at is null".Scope::andTable('workers', 'w').") as workers
+                              from positions p where p.deleted_at is null and p.status = 'active'".Scope::andTable('positions', 'p').' order by p.name') as $p) {
             $own = array_map($label, array_values(array_filter($reqs, fn ($r) => $r->position_id === $p->id)));
             $positions[] = ['id' => $p->id, 'name' => $p->name, 'workers' => (int) $p->workers, 'requirements' => $own, 'total' => count($own) + count($general)];
         }
@@ -83,7 +85,8 @@ class FotToolsController extends Controller
     {
         $this->can('fot.credentials.read');
         $f = array_filter(['credential_type_id' => $request->query('credential_type_id'), 'site_id' => $request->query('site_id'), 'area_id' => $request->query('area_id')], fn ($v) => Str::isUuid((string) $v));
-        $sql = "select c.id from credentials c left join workers w on w.id = c.worker_id where c.deleted_at is null and c.status in ('active', 'issued')";
+        Scope::assertSite($f['site_id'] ?? null);
+        $sql = "select c.id from credentials c left join workers w on w.id = c.worker_id where c.deleted_at is null and c.status in ('active', 'issued')".Scope::andWorker('c.worker_id');
         $bind = [];
         if (isset($f['credential_type_id'])) {
             $sql .= ' and c.credential_type_id = ?';

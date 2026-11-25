@@ -263,7 +263,7 @@ class GateController extends Controller
                     count(distinct coalesce(e.worker_id, e.contractor_worker_id)) as people
                from access_events e left join access_points p on p.id = e.access_point_id
                left join contractor_workers cw on cw.id = e.contractor_worker_id left join contractors ct on ct.id = cw.contractor_id
-              where (e.occurred_at at time zone 'America/Lima')::date between ? and ? group by 1 order by 1", [$from, $to]);
+              where (e.occurred_at at time zone 'America/Lima')::date between ? and ?".\App\Core\Auth\Scope::andTable('access_events', 'e').' group by 1 order by 1', [$from, $to]);
         $out = [["Ingresos por {$label}"], ["Del {$from} al {$to}."], [], [$label, 'Ingresos', 'Salidas', 'Negados', 'Por excepción', 'Sin conexión', 'Personas distintas']];
         foreach ($rows as $r) {
             $out[] = [$r->g, (int) $r->ins, (int) $r->outs, (int) $r->denied, (int) $r->overridden, (int) $r->offline, (int) $r->people];
@@ -295,6 +295,11 @@ class GateController extends Controller
      */
     private function scopedSites(): array
     {
+        // Alcance de la membresía (Scope: sedes, y las sedes de sus áreas); los roles que no se recortan conservan las sedes asignadas.
+        if (\App\Core\Auth\Scope::restricted()) {
+            return \App\Core\Auth\Scope::siteIds();
+        }
+
         return array_column(DB::select(
             "select distinct site_id from membership_scopes where membership_id = ? and scope_type = 'site' and site_id is not null and deleted_at is null",
             [app(CompanyContext::class)->membershipId]), 'site_id');
@@ -442,7 +447,7 @@ class GateController extends Controller
             "select count(*) filter (where direction = 'in' and result in ('granted','overridden')) as granted,
                     count(*) filter (where result = 'denied' and direction = 'in') as denied,
                     count(*) filter (where result = 'overridden') as overridden
-               from access_events where (occurred_at at time zone 'America/Lima')::date = (now() at time zone 'America/Lima')::date");
+               from access_events e where (e.occurred_at at time zone 'America/Lima')::date = (now() at time zone 'America/Lima')::date".\App\Core\Auth\Scope::andTable('access_events', 'e'));
         $inside = (int) DB::selectOne('select count(*) as n from ('.$this->insideSql(false).') x')->n;
 
         return ['granted_today' => (int) $k->granted, 'denied_today' => (int) $k->denied, 'overridden_today' => (int) $k->overridden, 'inside' => $inside];
@@ -459,7 +464,7 @@ class GateController extends Controller
                          coalesce(e.worker_id::text, e.contractor_worker_id::text, 'v:' || coalesce(encode(v.document_hash, 'hex'), lower(e.visitor_name))) as subject_key
                     from access_events e left join access_visits v on v.access_event_id = e.id
                    where (e.occurred_at at time zone 'America/Lima')::date = (now() at time zone 'America/Lima')::date
-                     and not (e.direction = 'in' and e.result = 'denied')
+                     and not (e.direction = 'in' and e.result = 'denied')".\App\Core\Auth\Scope::andTable('access_events', 'e')."
                 ), last as (
                   select distinct on (subject_key) * from today order by subject_key, occurred_at desc, id desc
                 )

@@ -45,12 +45,14 @@ class AulAdminController extends Controller
     {
         $this->staff();
         $trainer = $this->trainerFilter('c.id');
+        // Alcance por sede/área: las matrículas se cuentan por el trabajador (los participantes externos cuentan para todos).
+        $scope = \App\Core\Auth\Scope::andWorker('e.worker_id');
         $courses = DB::select(
             "select c.id, c.code, c.title, c.category, c.hours, c.status, c.sequential, c.public_verification_enabled, c.certificate_enabled, c.passing_score,
                     c.max_attempts, c.completion_commitment, g.name as scale_name,
-                    (select count(*) from course_enrollments e where e.course_id = c.id and e.deleted_at is null and e.status <> 'cancelled') as enrolled,
-                    (select count(*) from course_enrollments e where e.course_id = c.id and e.deleted_at is null and e.status = 'completed') as passed,
-                    (select count(*) from course_enrollments e where e.course_id = c.id and e.deleted_at is null and e.status in ('enrolled', 'in_progress')) as active,
+                    (select count(*) from course_enrollments e where e.course_id = c.id and e.deleted_at is null and e.status <> 'cancelled'{$scope}) as enrolled,
+                    (select count(*) from course_enrollments e where e.course_id = c.id and e.deleted_at is null and e.status = 'completed'{$scope}) as passed,
+                    (select count(*) from course_enrollments e where e.course_id = c.id and e.deleted_at is null and e.status in ('enrolled', 'in_progress'){$scope}) as active,
                     (select string_agg(distinct u.full_name, ', ') from trainer_permissions t join users u on u.id = t.trainer_user_id
                       where t.course_id = c.id and t.deleted_at is null) as trainers
                from courses c left join grading_scales g on g.id = c.grading_scale_id
@@ -59,7 +61,7 @@ class AulAdminController extends Controller
         $ids = array_column($courses, 'id');
         $hours = $ids ? (float) DB::selectOne(
             "select coalesce(sum(c.hours), 0) as h from course_enrollments e join courses c on c.id = e.course_id
-              where e.deleted_at is null and e.status = 'completed' and e.completed_at >= date_trunc('month', now()) and e.course_id in (".implode(',', array_fill(0, count($ids), '?')).')', $ids)->h : 0;
+              where e.deleted_at is null and e.status = 'completed' and e.completed_at >= date_trunc('month', now()){$scope} and e.course_id in (".implode(',', array_fill(0, count($ids), '?')).')', $ids)->h : 0;
         foreach ($courses as $c) {
             $c->hours = $c->hours === null ? null : (float) $c->hours;
             $c->passing_score = $c->passing_score === null ? null : (float) $c->passing_score;
@@ -548,7 +550,7 @@ class AulAdminController extends Controller
                    left join recommendation_rules rr on rr.id = r.rule_id left join workers w on w.id = r.worker_id
                    left join areas a on a.id = coalesce(r.target_area_id, w.current_area_id)
                    left join external_learners xl on xl.id = r.external_learner_id
-                  where r.deleted_at is null group by 1 order by count(*) desc, 2");
+                  where r.deleted_at is null".\App\Core\Auth\Scope::andSql('w.current_site_id', 'coalesce(r.target_area_id, w.current_area_id)').' group by 1 order by count(*) desc, 2');
             $out[$dim] = array_map(function ($r) use ($dim, $names, $empty) {
                 $sent = (int) $r->sent;
 

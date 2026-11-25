@@ -20,10 +20,11 @@ return new class extends Migration
                        add column if not exists manual_payment_evidence_file_id uuid references files(id), add column if not exists refunded_total numeric(12,2) not null default 0,
                        add column if not exists refund_reason text');
         DB::statement('alter table order_items add column if not exists refunded_quantity integer not null default 0');
-        $ck = DB::selectOne("select conname from pg_constraint where conrelid = 'orders'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%''voided''%' and pg_get_constraintdef(oid) like '%status%'");
+        $ck = DB::selectOne("select conname from pg_constraint where conrelid = 'orders'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%''voided''%' and pg_get_constraintdef(oid) like '%''paid''%' and pg_get_constraintdef(oid) like '%status%'");
         if ($ck) {
             DB::statement("alter table orders drop constraint {$ck->conname}");
         }
+        DB::statement('alter table orders drop constraint if exists ck_orders_status');   // base creada desde schema_main.sql: ya la trae
         DB::statement("alter table orders add constraint ck_orders_status check (status in ('pending', 'paid', 'failed', 'voided', 'expired', 'partially_refunded', 'refunded'))");
         DB::statement("alter table orders drop constraint if exists ck_orders_manual_method");
         DB::statement("alter table orders add constraint ck_orders_manual_method check (manual_payment_method is null or manual_payment_method in ('yape', 'plin', 'transfer', 'deposit', 'cash', 'other'))");

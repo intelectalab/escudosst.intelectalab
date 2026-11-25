@@ -382,6 +382,21 @@ final class Scope
         return ' and '.$sql;
     }
 
+    /**
+     * Para tablas sin sede ni área propias que apuntan a un trabajador (fotochecks, matrículas, verificaciones…): texto
+     * « and (...)» que deja las filas cuyo trabajador está en el alcance. Las filas sin trabajador propio (contratistas,
+     * participantes externos) son de toda la empresa y se leen. '' si no hay recorte.
+     */
+    public static function andWorker(string $workerExpr): string
+    {
+        $c = self::andTable('workers', 'scope_w');
+        if ($c === '') {
+            return '';
+        }
+
+        return " and ({$workerExpr} is null or exists (select 1 from workers scope_w where scope_w.id = {$workerExpr}".$c.'))';
+    }
+
     /** Una sede/área concreta está dentro del alcance (para crear o mover un registro). Sin sede ni área: no. */
     public static function allows(?string $site, ?string $area): bool
     {

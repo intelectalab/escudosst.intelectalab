@@ -125,12 +125,12 @@ class ErgoToolsController extends Controller
         $this->can('psi.ergonomic_assessments.read');
         $rows = DB::select(
             "select p.id as position_id, p.name as position,
-                    (select count(*) from workers w where w.current_position_id = p.id and w.status = 'active' and w.deleted_at is null) as workers,
+                    (select count(*) from workers w where w.current_position_id = p.id and w.status = 'active' and w.deleted_at is null".\App\Core\Auth\Scope::andTable('workers', 'w').") as workers,
                     e.id, e.method, e.assessed_on, e.score, e.risk_level, e.recommendations, u.full_name as assessor, c.code as action_code, c.status as action_status
                from positions p
-               left join lateral (select * from ergonomic_assessments x where x.position_id = p.id and x.deleted_at is null and x.status <> 'draft' order by x.assessed_on desc, x.created_at desc limit 1) e on true
+               left join lateral (select * from ergonomic_assessments x where x.position_id = p.id and x.deleted_at is null and x.status <> 'draft'".\App\Core\Auth\Scope::andTable('ergonomic_assessments', 'x')." order by x.assessed_on desc, x.created_at desc limit 1) e on true
                left join users u on u.id = e.assessor_user_id left join corrective_actions c on c.id = e.corrective_action_id
-              where p.deleted_at is null and p.status = 'active' order by (e.risk_level = 'very_high') desc nulls last, (e.risk_level = 'high') desc nulls last, p.name");
+              where p.deleted_at is null and p.status = 'active'".\App\Core\Auth\Scope::andTable('positions', 'p')." order by (e.risk_level = 'very_high') desc nulls last, (e.risk_level = 'high') desc nulls last, p.name");
         $evaluated = array_filter($rows, fn ($r) => $r->id !== null);
         $high = array_filter($evaluated, fn ($r) => in_array($r->risk_level, ['high', 'very_high'], true));
         $closed = array_filter($high, fn ($r) => in_array($r->action_status, ['verified', 'closed'], true));

@@ -89,6 +89,7 @@ Route::middleware(['auth:sanctum', 'platform'])->prefix('internal')->group(funct
     Route::post('health/run-daily', [HealthController::class, 'runDaily']);
     Route::get('backups', [BackupsController::class, 'index']);
     Route::post('backups', [BackupsController::class, 'store'])->middleware(['platform.owner', 'throttle:sus-backups']);
+    Route::post('backups/restore-test', [BackupsController::class, 'restoreTest'])->middleware(['platform.owner', 'throttle:sus-backups']);
     Route::post('subscriptions/{subscription}/change-plan', [SubscriptionsController::class, 'changePlan']);
     Route::post('subscriptions/{subscription}/suspend', [SubscriptionsController::class, 'suspend']);
     Route::post('subscriptions/{subscription}/reactivate', [SubscriptionsController::class, 'reactivate']);

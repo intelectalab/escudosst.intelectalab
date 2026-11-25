@@ -42,6 +42,12 @@ class PlatformNotificationsController extends Controller
                 $failed ? 'Revisa el error en Salud del sistema y vuelve a intentarlo.' : 'No hay una copia reciente. Revisa Salud del sistema.', '/plataforma/salud');
         }
 
+        // Prueba de restauración: avisa si la última falló (docs/15 §9). Si solo está vencida, se ve en Salud del sistema.
+        foreach (app(\App\Modules\SUS\Services\BackupRestoreTestService::class)->status()['targets'] as $b) {
+            $add("restore_test_{$b['target']}", 'Sistema', 'database', 'bad', $b['last_status'] === 'failed' ? 1 : 0, $b['last_ok_at'],
+                "Falló la prueba de restauración: {$b['label']}", 'La copia no se pudo restaurar o no pasó las revisiones. Revisa Salud del sistema.', '/plataforma/salud');
+        }
+
         // Reclamos: lo más urgente primero (plazo legal).
         $open = collect($complaints->list())->whereIn('light', ['red', 'amber']);
         $red = $open->where('light', 'red')->count();

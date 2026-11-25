@@ -83,6 +83,16 @@ El script regenera todo, levanta un cluster temporal (`initdb` en el directorio 
 
 **Último resultado (PostgreSQL 16.15, 01/11/2026): todo en verde, 472 comprobaciones de aislamiento e inalterabilidad superadas.**
 
+**Esquema al día con las migraciones.** `tools/structure.sql` saca la huella de la estructura de una base (tablas, columnas, restricciones, índices, disparadores, políticas, funciones, permisos y comentarios). Una base nueva cargada solo con `schema_main.sql` debe dar la misma huella que la base migrada:
+
+```bash
+psql -X -d escudo_schema_check -f database/tools/structure.sql > esquema.txt   # base nueva desde schema_main.sql
+psql -X -d escudo_main         -f database/tools/structure.sql > migrada.txt   # base con todas las migraciones
+diff esquema.txt migrada.txt                                                      # sin diferencias = al día
+```
+
+La integración continua (`.github/workflows/ci.yml`) hace esta comprobación y además corre todas las migraciones sobre la base creada desde el esquema (así se ve si alguna migración no se puede repetir).
+
 ## Conteos
 
 | | `escudo_main` | `escudo_medical` |

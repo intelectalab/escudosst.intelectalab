@@ -203,6 +203,9 @@ CREATE TABLE IF NOT EXISTS sites (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  requires_sctr boolean NOT NULL DEFAULT false,
+  evacuation_target_seconds integer,
+  min_extinguishers integer,
   PRIMARY KEY (id),
   CONSTRAINT uq_sites_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_sites_1 CHECK (NOT is_temporary OR starts_on IS NOT NULL),
@@ -254,6 +257,7 @@ CREATE TABLE IF NOT EXISTS positions (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  requires_sctr boolean NOT NULL DEFAULT false,
   PRIMARY KEY (id),
   CONSTRAINT uq_positions_company_id_id UNIQUE (company_id, id)
 );
@@ -314,6 +318,8 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  platform_role text,
+  email_invalid_at timestamptz,
   PRIMARY KEY (id)
 );
 COMMENT ON TABLE users IS '[USR] Identidad global de una persona; puede tener membresías en varias empresas';
@@ -958,7 +964,7 @@ CREATE TABLE IF NOT EXISTS notification_deliveries (
   channel text NOT NULL CHECK (channel IN ('email', 'whatsapp', 'in_app', 'push', 'sms')),
   provider text,
   provider_message_id text,
-  status text NOT NULL CHECK (status IN ('queued', 'sent', 'delivered', 'read', 'failed', 'bounced', 'suppressed')),
+  status text NOT NULL CHECK (status IN ('queued', 'sent', 'delivered', 'read', 'failed', 'bounced', 'suppressed', 'cancelled')),
   attempt integer NOT NULL DEFAULT 1,
   error_code text,
   error_message text,
@@ -1434,6 +1440,9 @@ CREATE TABLE IF NOT EXISTS baseline_assessments (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  review_notes text,
+  submitted_for_review_at timestamptz,
+  previous_assessment_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_baseline_assessments_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_baseline_assessments_1 CHECK (score_pct IS NULL OR score_pct BETWEEN 0 AND 100)
@@ -1514,6 +1523,8 @@ CREATE TABLE IF NOT EXISTS sst_policies (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  document_version_id uuid,
+  principles_checklist jsonb NOT NULL DEFAULT '[]'::jsonb,
   PRIMARY KEY (id),
   CONSTRAINT uq_sst_policies_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_sst_policies_1 CHECK (approved_by IS NULL OR prepared_by IS NULL OR approved_by <> prepared_by)
@@ -1541,6 +1552,7 @@ CREATE TABLE IF NOT EXISTS sst_objectives (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  indicator_kpi_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_sst_objectives_company_id_id UNIQUE (company_id, id)
 );
@@ -1589,6 +1601,9 @@ CREATE TABLE IF NOT EXISTS legal_norms (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  company_id uuid,
+  sectors text[],
+  topics text[],
   PRIMARY KEY (id)
 );
 COMMENT ON TABLE legal_norms IS '[MRL] Catálogo de normas legales peruanas (SST y relacionadas)';
@@ -1663,6 +1678,11 @@ CREATE TABLE IF NOT EXISTS legal_requirements (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  needs_review boolean NOT NULL DEFAULT false,
+  review_reason text,
+  review_flagged_at timestamptz,
+  reviewed_at timestamptz,
+  reviewed_by uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_legal_requirements_company_id_id UNIQUE (company_id, id)
 );
@@ -1685,6 +1705,8 @@ CREATE TABLE IF NOT EXISTS requirement_evaluations (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  evidence_record_type text,
+  evidence_record_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_requirement_evaluations_company_id_id UNIQUE (company_id, id)
 );
@@ -1709,6 +1731,15 @@ CREATE TABLE IF NOT EXISTS annual_plans (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  baseline_assessment_id uuid,
+  policy_id uuid,
+  training_program_id uuid,
+  version_number integer NOT NULL DEFAULT 1,
+  previous_plan_id uuid,
+  document_version_id uuid,
+  closed_at timestamptz,
+  closed_by uuid,
+  closure_report_file_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_annual_plans_company_id_id UNIQUE (company_id, id)
 );
@@ -1734,6 +1765,9 @@ CREATE TABLE IF NOT EXISTS annual_plan_items (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  item_type text,
+  reference_type text,
+  reference_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_annual_plan_items_company_id_id UNIQUE (company_id, id)
 );
@@ -1757,6 +1791,8 @@ CREATE TABLE IF NOT EXISTS annual_programs (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  version_number integer NOT NULL DEFAULT 1,
+  previous_program_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_annual_programs_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_annual_programs_1 CHECK (progress_pct BETWEEN 0 AND 100)
@@ -1781,7 +1817,7 @@ CREATE TABLE IF NOT EXISTS program_activities (
   ends_on date,
   frequency text,
   goal_quantity integer NOT NULL DEFAULT 1,
-  executed_quantity integer NOT NULL DEFAULT 0,
+  executed_quantity numeric(10,2) NOT NULL DEFAULT 0,
   budget_line_id uuid,
   status text NOT NULL DEFAULT 'planned' CHECK (status IN ('planned', 'in_progress', 'done', 'overdue', 'cancelled')),
   progress_pct numeric(5,2) NOT NULL DEFAULT 0,
@@ -1794,6 +1830,7 @@ CREATE TABLE IF NOT EXISTS program_activities (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  previous_activity_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_program_activities_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_program_activities_1 CHECK (planned_months <@ ARRAY[1,2,3,4,5,6,7,8,9,10,11,12]::smallint[]),
@@ -1820,6 +1857,8 @@ CREATE TABLE IF NOT EXISTS activity_executions (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  status text NOT NULL DEFAULT 'executed'::text,
+  planned_month smallint,
   PRIMARY KEY (id),
   CONSTRAINT uq_activity_executions_company_id_id UNIQUE (company_id, id)
 );
@@ -1869,6 +1908,9 @@ CREATE TABLE IF NOT EXISTS training_program_items (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  reschedule_reason text,
+  original_month smallint,
+  target_positions uuid[] NOT NULL DEFAULT '{}'::uuid[],
   PRIMARY KEY (id),
   CONSTRAINT uq_training_program_items_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_training_program_items_1 CHECK (planned_month IS NULL OR planned_month BETWEEN 1 AND 12)
@@ -1896,6 +1938,7 @@ CREATE TABLE IF NOT EXISTS risst_versions (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  content_outline jsonb NOT NULL DEFAULT '[]'::jsonb,
   PRIMARY KEY (id),
   CONSTRAINT uq_risst_versions_company_id_id UNIQUE (company_id, id)
 );
@@ -1906,13 +1949,13 @@ CREATE TABLE IF NOT EXISTS risst_deliveries (
   id uuid NOT NULL DEFAULT uuidv7(),
   company_id uuid NOT NULL,
   risst_version_id uuid NOT NULL,
-  worker_id uuid NOT NULL,
+  worker_id uuid,
   delivered_on date,
   method text NOT NULL DEFAULT 'app_signature' CHECK (method IN ('app_signature', 'physical_signed', 'email', 'in_person')),
   signature_id uuid,
   acknowledgement_file_id uuid,
   delivered_by uuid,
-  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'signed')),
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'signed', 'voided')),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -1923,6 +1966,8 @@ CREATE TABLE IF NOT EXISTS risst_deliveries (
   client_created_at timestamptz,
   sync_batch_id uuid,
   version integer NOT NULL DEFAULT 1,
+  void_reason text,
+  contractor_worker_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_risst_deliveries_company_id_id UNIQUE (company_id, id)
 );
@@ -2010,6 +2055,8 @@ CREATE TABLE IF NOT EXISTS elections (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  tie_break_rule text NOT NULL DEFAULT 'seniority'::text,
+  roll_snapshot_at timestamptz,
   PRIMARY KEY (id),
   CONSTRAINT uq_elections_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_elections_1 CHECK (voting_closes_at IS NULL OR voting_opens_at IS NULL OR voting_closes_at > voting_opens_at),
@@ -2129,6 +2176,7 @@ CREATE TABLE IF NOT EXISTS budgets (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  total_approved numeric(14,2),
   PRIMARY KEY (id),
   CONSTRAINT uq_budgets_company_id_id UNIQUE (company_id, id)
 );
@@ -2174,6 +2222,8 @@ CREATE TABLE IF NOT EXISTS budget_executions (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  is_overrun boolean NOT NULL DEFAULT false,
+  overrun_reason text,
   PRIMARY KEY (id),
   CONSTRAINT uq_budget_executions_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_budget_executions_1 CHECK (amount <> 0)
@@ -2246,12 +2296,15 @@ CREATE TABLE IF NOT EXISTS iperc_matrices (
   current_version_id uuid,
   sector_pack_item_id uuid,
   next_review_on date,
-  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'review_required', 'review_overdue', 'archived')),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  review_reason text,
+  review_flagged_at timestamptz,
+  document_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_iperc_matrices_company_id_id UNIQUE (company_id, id)
 );
@@ -2281,6 +2334,7 @@ CREATE TABLE IF NOT EXISTS iperc_versions (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  committee_meeting_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_iperc_versions_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_iperc_versions_1 CHECK (approved_by IS NULL OR prepared_by IS NULL OR approved_by <> prepared_by)
@@ -2378,7 +2432,7 @@ CREATE TABLE IF NOT EXISTS risk_maps (
   plan_file_id uuid NOT NULL,
   image_width integer,
   image_height integer,
-  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'in_review', 'approved', 'current', 'obsolete')),
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'in_review', 'approved', 'current', 'review_required', 'obsolete')),
   approved_by uuid,
   approved_at timestamptz,
   effective_on date,
@@ -2387,6 +2441,8 @@ CREATE TABLE IF NOT EXISTS risk_maps (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  review_reason text,
+  unmarked_justifications jsonb NOT NULL DEFAULT '{}'::jsonb,
   PRIMARY KEY (id),
   CONSTRAINT uq_risk_maps_company_id_id UNIQUE (company_id, id)
 );
@@ -2539,6 +2595,14 @@ CREATE TABLE IF NOT EXISTS measurements (
   client_created_at timestamptz,
   sync_batch_id uuid,
   version integer NOT NULL DEFAULT 1,
+  ratio_to_limit numeric(10,4),
+  status text NOT NULL DEFAULT 'draft'::text,
+  void_reason text,
+  approved_by uuid,
+  approved_at timestamptz,
+  original_value numeric,
+  original_unit text,
+  unit_conversion_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_measurements_company_id_id UNIQUE (company_id, id)
 );
@@ -2601,6 +2665,7 @@ CREATE TABLE IF NOT EXISTS ergonomic_assessments (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  checklist jsonb NOT NULL DEFAULT '[]'::jsonb,
   PRIMARY KEY (id),
   CONSTRAINT uq_ergonomic_assessments_company_id_id UNIQUE (company_id, id)
 );
@@ -2627,6 +2692,7 @@ CREATE TABLE IF NOT EXISTS psychosocial_surveys (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  instrument_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_psychosocial_surveys_company_id_id UNIQUE (company_id, id)
 );
@@ -2705,6 +2771,9 @@ CREATE TABLE IF NOT EXISTS procedure_versions (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  steps jsonb NOT NULL DEFAULT '[]'::jsonb,
+  required_training_ids uuid[],
+  iperc_row_ids uuid[],
   PRIMARY KEY (id),
   CONSTRAINT uq_procedure_versions_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_procedure_versions_1 CHECK (approved_by IS NULL OR prepared_by IS NULL OR approved_by <> prepared_by)
@@ -2739,6 +2808,14 @@ CREATE TABLE IF NOT EXISTS change_requests (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  introduces_new_hazards boolean NOT NULL DEFAULT false,
+  temporary_until date,
+  impact_level text,
+  management_approved_by uuid,
+  management_approved_at timestamptz,
+  verified_by uuid,
+  verified_at timestamptz,
+  verification_notes text,
   PRIMARY KEY (id),
   CONSTRAINT uq_change_requests_company_id_id UNIQUE (company_id, id)
 );
@@ -2751,15 +2828,16 @@ CREATE TABLE IF NOT EXISTS change_reviews (
   change_request_id uuid NOT NULL,
   reviewer_user_id uuid NOT NULL,
   review_area text,
-  decision text NOT NULL CHECK (decision IN ('approve', 'approve_with_conditions', 'reject', 'request_info')),
+  decision text CHECK (decision IN ('approve', 'approve_with_conditions', 'reject', 'request_info')),
   comments text,
   conditions text,
-  reviewed_at timestamptz NOT NULL DEFAULT now(),
+  reviewed_at timestamptz DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  is_required boolean NOT NULL DEFAULT true,
   PRIMARY KEY (id),
   CONSTRAINT uq_change_reviews_company_id_id UNIQUE (company_id, id)
 );
@@ -2784,6 +2862,7 @@ CREATE TABLE IF NOT EXISTS inspection_templates (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  previous_template_id uuid,
   PRIMARY KEY (id)
 );
 COMMENT ON TABLE inspection_templates IS '[INS] Plantilla de inspección (global, de paquete sectorial o propia)';
@@ -2837,7 +2916,7 @@ CREATE TABLE IF NOT EXISTS inspections (
   summary text,
   program_activity_id uuid,
   signature_request_id uuid,
-  status text NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'in_progress', 'completed', 'closed', 'overdue', 'cancelled')),
+  status text NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'in_progress', 'completed', 'signed', 'closed', 'overdue', 'cancelled')),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -2848,6 +2927,7 @@ CREATE TABLE IF NOT EXISTS inspections (
   client_created_at timestamptz,
   sync_batch_id uuid,
   version integer NOT NULL DEFAULT 1,
+  signed_at timestamptz,
   PRIMARY KEY (id),
   CONSTRAINT uq_inspections_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_inspections_1 CHECK (completed_at IS NULL OR started_at IS NULL OR completed_at >= started_at)
@@ -2948,6 +3028,7 @@ CREATE TABLE IF NOT EXISTS report_points (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  token_rotation integer NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   CONSTRAINT uq_report_points_company_id_id UNIQUE (company_id, id)
 );
@@ -2979,7 +3060,7 @@ CREATE TABLE IF NOT EXISTS substandard_reports (
   ip_hash bytea,
   classification text,
   risk_level text CHECK (risk_level IN ('low', 'medium', 'high', 'critical')),
-  status text NOT NULL DEFAULT 'received' CHECK (status IN ('received', 'triaged', 'rejected', 'action_assigned', 'closed')),
+  status text NOT NULL DEFAULT 'received' CHECK (status IN ('received', 'triaged', 'rejected', 'action_assigned', 'escalated', 'closed')),
   triaged_by uuid,
   triaged_at timestamptz,
   rejection_reason text,
@@ -2996,6 +3077,7 @@ CREATE TABLE IF NOT EXISTS substandard_reports (
   client_created_at timestamptz,
   sync_batch_id uuid,
   version integer NOT NULL DEFAULT 1,
+  escalated_event_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_substandard_reports_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_substandard_reports_1 CHECK (NOT is_anonymous OR (reporter_worker_id IS NULL AND reporter_user_id IS NULL AND reporter_contact IS NULL)),
@@ -3038,6 +3120,7 @@ CREATE TABLE IF NOT EXISTS safety_talks (
   client_created_at timestamptz,
   sync_batch_id uuid,
   version integer NOT NULL DEFAULT 1,
+  topic_bank_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_safety_talks_company_id_id UNIQUE (company_id, id)
 );
@@ -3096,7 +3179,7 @@ CREATE TABLE IF NOT EXISTS ats_forms (
   longitude numeric(9,6),
   started_at timestamptz,
   closed_at timestamptz,
-  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'signed', 'in_execution', 'closed', 'cancelled')),
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'signed', 'in_execution', 'closed', 'cancelled', 'not_closed')),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -3107,6 +3190,11 @@ CREATE TABLE IF NOT EXISTS ats_forms (
   client_created_at timestamptz,
   sync_batch_id uuid,
   version integer NOT NULL DEFAULT 1,
+  is_high_risk boolean NOT NULL DEFAULT false,
+  site_photo_file_id uuid,
+  closing_notes text,
+  incident_occurred boolean NOT NULL DEFAULT false,
+  incident_event_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_ats_forms_company_id_id UNIQUE (company_id, id)
 );
@@ -3164,6 +3252,7 @@ CREATE TABLE IF NOT EXISTS ats_participants (
   client_created_at timestamptz,
   sync_batch_id uuid,
   version integer NOT NULL DEFAULT 1,
+  late_signature boolean NOT NULL DEFAULT false,
   PRIMARY KEY (id),
   CONSTRAINT uq_ats_participants_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_ats_participants_1 CHECK ((worker_id IS NOT NULL) <> (contractor_worker_id IS NOT NULL))
@@ -3345,6 +3434,7 @@ CREATE TABLE IF NOT EXISTS behavior_observations (
   client_created_at timestamptz,
   sync_batch_id uuid,
   version integer NOT NULL DEFAULT 1,
+  behavior_list_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_behavior_observations_company_id_id UNIQUE (company_id, id)
 );
@@ -3403,6 +3493,7 @@ CREATE TABLE IF NOT EXISTS ppe_items (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  training_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_ppe_items_company_id_id UNIQUE (company_id, id)
 );
@@ -3478,7 +3569,7 @@ CREATE TABLE IF NOT EXISTS ppe_deliveries (
   signature_id uuid,
   returned_at timestamptz,
   return_condition text,
-  status text NOT NULL DEFAULT 'delivered' CHECK (status IN ('delivered', 'returned', 'replaced', 'lost')),
+  status text NOT NULL DEFAULT 'delivered' CHECK (status IN ('pending_signature', 'delivered', 'due_for_replacement', 'returned', 'replaced', 'lost')),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -3516,12 +3607,18 @@ CREATE TABLE IF NOT EXISTS emergency_equipment (
   expires_on date,
   latitude numeric(9,6),
   longitude numeric(9,6),
-  status text NOT NULL DEFAULT 'operational' CHECK (status IN ('operational', 'needs_maintenance', 'out_of_service', 'retired')),
+  status text NOT NULL DEFAULT 'operational' CHECK (status IN ('operational', 'needs_maintenance', 'out_of_service', 'retired', 'inspection_overdue')),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  last_recharge_on date,
+  next_recharge_on date,
+  last_hydrostatic_test_on date,
+  next_hydrostatic_test_on date,
+  manufacture_date date,
+  next_inspection_on date,
   PRIMARY KEY (id),
   CONSTRAINT uq_emergency_equipment_company_id_id UNIQUE (company_id, id)
 );
@@ -3632,6 +3729,8 @@ CREATE TABLE IF NOT EXISTS drills (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  alarm_time timestamptz,
+  evacuation_complete_time timestamptz,
   PRIMARY KEY (id),
   CONSTRAINT uq_drills_company_id_id UNIQUE (company_id, id)
 );
@@ -3735,6 +3834,8 @@ CREATE TABLE IF NOT EXISTS trainings (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  certificate_template_id uuid,
+  public_verification_enabled boolean NOT NULL DEFAULT false,
   PRIMARY KEY (id),
   CONSTRAINT uq_trainings_company_id_id UNIQUE (company_id, id)
 );
@@ -3765,6 +3866,8 @@ CREATE TABLE IF NOT EXISTS training_sessions (
   client_created_at timestamptz,
   sync_batch_id uuid,
   version integer NOT NULL DEFAULT 1,
+  out_of_hours boolean NOT NULL DEFAULT false,
+  out_of_hours_reason text,
   PRIMARY KEY (id),
   CONSTRAINT uq_training_sessions_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_training_sessions_1 CHECK (ends_at IS NULL OR ends_at > starts_at)
@@ -3874,6 +3977,7 @@ CREATE TABLE IF NOT EXISTS training_certificates (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  replaces_certificate_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_training_certificates_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_training_certificates_1 CHECK (training_id IS NOT NULL OR course_id IS NOT NULL),
@@ -3925,6 +4029,7 @@ CREATE TABLE IF NOT EXISTS certificate_templates (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  requires_validation boolean NOT NULL DEFAULT false,
   PRIMARY KEY (id),
   CONSTRAINT ck_certificate_templates_1 CHECK (code_prefix ~ '^[A-Z0-9]{2,12}$'),
   CONSTRAINT ck_certificate_templates_2 CHECK (NOT is_default OR status = 'active')
@@ -3939,12 +4044,12 @@ COMMENT ON COLUMN certificate_templates.code_prefix IS 'prefijo del código legi
 -- CAP · certificate_verifications (imm)
 CREATE TABLE IF NOT EXISTS certificate_verifications (
   id uuid NOT NULL DEFAULT uuidv7(),
-  company_id uuid NOT NULL,
-  certificate_id uuid NOT NULL,
+  company_id uuid,
+  certificate_id uuid,
   queried_code text NOT NULL,
   verified_at timestamptz NOT NULL DEFAULT now(),
   channel text NOT NULL DEFAULT 'public_web' CHECK (channel IN ('public_web', 'public_qr', 'app')),
-  result text NOT NULL CHECK (result IN ('valid', 'expired', 'voided', 'pending_validation', 'not_public')),
+  result text NOT NULL CHECK (result IN ('valid', 'expired', 'voided', 'pending_validation', 'not_public', 'invalid')),
   response_snapshot jsonb,
   ip_hash bytea,
   user_agent text,
@@ -3978,6 +4083,8 @@ CREATE TABLE IF NOT EXISTS position_training_requirements (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  effective_from date DEFAULT ((now() AT TIME ZONE 'America/Lima'::text))::date,
+  effective_to date,
   PRIMARY KEY (id),
   CONSTRAINT uq_position_training_requirements_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_position_training_requirements_source CHECK (source IN ('manual', 'pca', 'iperc', 'sector_package')),
@@ -4036,6 +4143,9 @@ CREATE TABLE IF NOT EXISTS courses (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  version_number integer NOT NULL DEFAULT 1,
+  previous_course_id uuid,
+  allow_self_enrollment boolean NOT NULL DEFAULT false,
   PRIMARY KEY (id),
   CONSTRAINT ck_courses_1 CHECK ((source = 'catalog') = (company_id IS NULL)),
   CONSTRAINT ck_courses_2 CHECK (source <> 'external' OR (lms_connection_id IS NOT NULL AND external_course_id IS NOT NULL)),
@@ -4074,6 +4184,8 @@ CREATE TABLE IF NOT EXISTS course_sections (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  unlock_rule text NOT NULL DEFAULT 'always'::text,
+  unlock_on date,
   PRIMARY KEY (id)
 );
 COMMENT ON TABLE course_sections IS '[AUL] Sección (unidad o módulo) de un curso que agrupa lecciones';
@@ -4455,6 +4567,7 @@ CREATE TABLE IF NOT EXISTS lms_connections (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  token_enc text,
   PRIMARY KEY (id),
   CONSTRAINT uq_lms_connections_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_lms_connections_1 CHECK (base_url ~ '^https://'),
@@ -4599,6 +4712,7 @@ CREATE TABLE IF NOT EXISTS credential_requirements (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  training_program_item_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_credential_requirements_company_id_id UNIQUE (company_id, id)
 );
@@ -4745,6 +4859,7 @@ CREATE TABLE IF NOT EXISTS absences (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  previous_absence_id uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_absences_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_absences_1 CHECK (ends_on >= starts_on)
@@ -4770,6 +4885,8 @@ CREATE TABLE IF NOT EXISTS work_adjustments (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  restricted_hazard_families text[] NOT NULL DEFAULT '{}'::text[],
+  compatibility_justification text,
   PRIMARY KEY (id),
   CONSTRAINT uq_work_adjustments_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_work_adjustments_1 CHECK (ends_on IS NULL OR ends_on >= starts_on)
@@ -4940,6 +5057,11 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  manual_payment_method text,
+  manual_payment_reference text,
+  manual_payment_evidence_file_id uuid,
+  refunded_total numeric(12,2) NOT NULL DEFAULT 0,
+  refund_reason text,
   PRIMARY KEY (id),
   CONSTRAINT uq_orders_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_orders_1 CHECK (currency = 'PEN'),
@@ -4982,6 +5104,7 @@ CREATE TABLE IF NOT EXISTS order_items (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  refunded_quantity integer NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   CONSTRAINT uq_order_items_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_order_items_1 CHECK (quantity > 0),
@@ -5224,6 +5347,10 @@ CREATE TABLE IF NOT EXISTS sst_events (
   client_created_at timestamptz,
   sync_batch_id uuid,
   version integer NOT NULL DEFAULT 1,
+  iperc_row_id uuid,
+  photo_file_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+  classified_at timestamptz,
+  classified_by uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_sst_events_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_sst_events_1 CHECK (reported_at >= occurred_at - interval '1 day'),
@@ -5269,6 +5396,7 @@ CREATE TABLE IF NOT EXISTS event_people (
   client_created_at timestamptz,
   sync_batch_id uuid,
   version integer NOT NULL DEFAULT 1,
+  injury_agent text,
   PRIMARY KEY (id),
   CONSTRAINT uq_event_people_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_event_people_1 CHECK (worker_id IS NOT NULL OR contractor_worker_id IS NOT NULL OR external_person_name IS NOT NULL)
@@ -5294,7 +5422,7 @@ CREATE TABLE IF NOT EXISTS event_notifications (
   channel text CHECK (channel IN ('sat_online', 'in_person', 'email', 'other')),
   receipt_file_id uuid,
   notified_by uuid,
-  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'acknowledged', 'not_required')),
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'acknowledged', 'not_required', 'overdue')),
   notification_overdue boolean NOT NULL DEFAULT false,
   notes text,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -5328,12 +5456,18 @@ CREATE TABLE IF NOT EXISTS investigations (
   approved_at timestamptz,
   ai_assisted boolean NOT NULL DEFAULT false,
   ai_suggestion_id uuid,
-  status text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'analysis', 'committee_review', 'approved', 'actions_in_progress', 'closed')),
+  status text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'analysis', 'committee_review', 'approved', 'actions_in_progress', 'closed', 'overdue')),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  scat_contact jsonb NOT NULL DEFAULT '[]'::jsonb,
+  management_cause_justification text,
+  addenda jsonb NOT NULL DEFAULT '[]'::jsonb,
+  chronology jsonb NOT NULL DEFAULT '[]'::jsonb,
+  interviews jsonb NOT NULL DEFAULT '[]'::jsonb,
+  evidence_file_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
   PRIMARY KEY (id),
   CONSTRAINT uq_investigations_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_investigations_1 CHECK (NOT ai_assisted OR ai_suggestion_id IS NOT NULL)
@@ -5389,7 +5523,7 @@ CREATE TABLE IF NOT EXISTS corrective_actions (
   id uuid NOT NULL DEFAULT uuidv7(),
   company_id uuid NOT NULL,
   code text NOT NULL,
-  source_type text NOT NULL CHECK (source_type IN ('inspection', 'finding', 'audit', 'event', 'investigation', 'report', 'baseline', 'legal_requirement', 'committee_agreement', 'management_review', 'monitoring', 'iperc', 'drill', 'observation', 'change', 'environmental_aspect', 'other')),
+  source_type text NOT NULL CHECK (source_type IN ('inspection', 'finding', 'audit', 'event', 'investigation', 'report', 'baseline', 'legal_requirement', 'committee_agreement', 'management_review', 'monitoring', 'iperc', 'drill', 'observation', 'change', 'other', 'environmental_aspect', 'equipment_check')),
   source_id uuid,
   action_type text NOT NULL DEFAULT 'corrective' CHECK (action_type IN ('corrective', 'preventive', 'improvement')),
   control_hierarchy text CHECK (control_hierarchy IN ('elimination', 'substitution', 'engineering', 'administrative', 'signage', 'ppe')),
@@ -5415,6 +5549,10 @@ CREATE TABLE IF NOT EXISTS corrective_actions (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  original_due_on date,
+  extension_count integer NOT NULL DEFAULT 0,
+  extension_reason text,
+  extension_approved_by uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_corrective_actions_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_corrective_actions_1 CHECK (responsible_user_id IS NOT NULL OR responsible_worker_id IS NOT NULL OR contractor_id IS NOT NULL),
@@ -5525,6 +5663,7 @@ CREATE TABLE IF NOT EXISTS audit_findings (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  dismiss_reason text,
   PRIMARY KEY (id),
   CONSTRAINT uq_audit_findings_company_id_id UNIQUE (company_id, id)
 );
@@ -5549,6 +5688,8 @@ CREATE TABLE IF NOT EXISTS man_hours (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  validated_by uuid,
+  validated_at timestamptz,
   PRIMARY KEY (id),
   CONSTRAINT uq_man_hours_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_man_hours_1 CHECK (period_month BETWEEN 1 AND 12),
@@ -5588,6 +5729,8 @@ CREATE TABLE IF NOT EXISTS monthly_statistics (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  adjustments jsonb NOT NULL DEFAULT '[]'::jsonb,
+  includes_contractors boolean NOT NULL DEFAULT false,
   PRIMARY KEY (id),
   CONSTRAINT uq_monthly_statistics_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_monthly_statistics_1 CHECK (period_month BETWEEN 1 AND 12)
@@ -5615,6 +5758,8 @@ CREATE TABLE IF NOT EXISTS management_reviews (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  period_start date,
+  period_end date,
   PRIMARY KEY (id),
   CONSTRAINT uq_management_reviews_company_id_id UNIQUE (company_id, id)
 );
@@ -5652,7 +5797,7 @@ CREATE TABLE IF NOT EXISTS register_exports (
   format text NOT NULL DEFAULT 'pdf' CHECK (format IN ('pdf', 'xlsx', 'zip')),
   template_version text,
   filters jsonb,
-  status text NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'generating', 'ready', 'failed', 'expired')),
+  status text NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'generating', 'ready', 'failed', 'expired', 'generated', 'pending_signature', 'signed', 'superseded')),
   file_id uuid,
   sha256 bytea,
   rows_count integer,
@@ -5665,6 +5810,10 @@ CREATE TABLE IF NOT EXISTS register_exports (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  snapshot jsonb,
+  data_hash text,
+  format_version text,
+  superseded_by uuid,
   PRIMARY KEY (id),
   CONSTRAINT uq_register_exports_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_register_exports_1 CHECK (period_to >= period_from)
@@ -5774,6 +5923,7 @@ CREATE TABLE IF NOT EXISTS contractor_documents (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  fitness_result text,
   PRIMARY KEY (id),
   CONSTRAINT uq_contractor_documents_company_id_id UNIQUE (company_id, id)
 );
@@ -5804,6 +5954,8 @@ CREATE TABLE IF NOT EXISTS contractor_accreditations (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  site_ids uuid[] NOT NULL DEFAULT '{}'::uuid[],
+  contractor_worker_ids uuid[] NOT NULL DEFAULT '{}'::uuid[],
   PRIMARY KEY (id),
   CONSTRAINT uq_contractor_accreditations_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_contractor_accreditations_1 CHECK (approved_by IS NULL OR reviewed_by IS NULL OR approved_by <> reviewed_by)
@@ -5907,6 +6059,8 @@ CREATE TABLE IF NOT EXISTS access_events (
   device_id uuid,
   client_created_at timestamptz,
   sync_batch_id uuid,
+  deny_codes jsonb,
+  is_offline boolean NOT NULL DEFAULT false,
   PRIMARY KEY (id),
   CONSTRAINT uq_access_events_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_access_events_1 CHECK (result <> 'overridden' OR override_reason IS NOT NULL)
@@ -5930,6 +6084,7 @@ CREATE TABLE IF NOT EXISTS vendor_evaluation_templates (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  validity_months integer,
   PRIMARY KEY (id)
 );
 COMMENT ON TABLE vendor_evaluation_templates IS '[HOM] Plantilla de homologación de proveedores con criterios ponderados';
@@ -5950,12 +6105,14 @@ CREATE TABLE IF NOT EXISTS vendor_evaluations (
   rating text CHECK (rating IN ('approved', 'conditionally_approved', 'rejected')),
   valid_until date,
   file_id uuid,
-  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'completed', 'approved', 'expired')),
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'submitted', 'completed', 'approved', 'rejected', 'expired')),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  approved_by uuid,
+  approved_at timestamptz,
   PRIMARY KEY (id),
   CONSTRAINT uq_vendor_evaluations_company_id_id UNIQUE (company_id, id)
 );
@@ -6043,6 +6200,11 @@ CREATE TABLE IF NOT EXISTS dossier_items (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  exclusion_reason text,
+  manual_sort boolean NOT NULL DEFAULT false,
+  snapshot jsonb,
+  snapshot_hash text,
+  frozen_at timestamptz,
   PRIMARY KEY (id),
   CONSTRAINT uq_dossier_items_company_id_id UNIQUE (company_id, id)
 );
@@ -6065,7 +6227,7 @@ CREATE TABLE IF NOT EXISTS dossier_share_links (
   view_count integer NOT NULL DEFAULT 0,
   allow_download boolean NOT NULL DEFAULT false,
   password_hash text,
-  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'expired', 'exhausted', 'revoked')),
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('pending_approval', 'active', 'expired', 'exhausted', 'revoked', 'rejected')),
   revoked_at timestamptz,
   revoked_by uuid,
   last_accessed_at timestamptz,
@@ -6074,6 +6236,12 @@ CREATE TABLE IF NOT EXISTS dossier_share_links (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  max_downloads integer,
+  download_count integer NOT NULL DEFAULT 0,
+  valid_days integer,
+  requires_approval boolean NOT NULL DEFAULT false,
+  approved_by uuid,
+  approved_at timestamptz,
   PRIMARY KEY (id),
   CONSTRAINT uq_dossier_share_links_company_id_id UNIQUE (company_id, id),
   CONSTRAINT ck_dossier_share_links_1 CHECK (max_views IS NULL OR view_count <= max_views),
@@ -6106,6 +6274,8 @@ CREATE TABLE IF NOT EXISTS devices (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  credential_hash bytea,
+  last_login_at timestamptz,
   PRIMARY KEY (id),
   CONSTRAINT uq_devices_company_id_id UNIQUE (company_id, id)
 );
@@ -6313,6 +6483,9 @@ CREATE TABLE IF NOT EXISTS client_invitations (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  target_legal_name text,
+  suggested_plan_code text,
+  invited_by_user_id uuid,
   PRIMARY KEY (id)
 );
 COMMENT ON TABLE client_invitations IS '[CON] Invitación de la consultora a una empresa con cuenta propia (company_id = empresa invitada)';
@@ -6351,6 +6524,8 @@ CREATE TABLE IF NOT EXISTS sector_pack_items (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  item_key text,
+  version integer NOT NULL DEFAULT 1,
   PRIMARY KEY (id)
 );
 ALTER TABLE sector_pack_items DROP CONSTRAINT IF EXISTS ck_sector_pack_items_type;
@@ -6367,12 +6542,16 @@ CREATE TABLE IF NOT EXISTS company_sector_packs (
   applied_at timestamptz,
   applied_by uuid,
   items_applied jsonb,
-  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'removed')),
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('installed', 'update_available', 'updated', 'uninstalled', 'active', 'removed')),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  installed_version integer,
+  item_map jsonb NOT NULL DEFAULT '{}'::jsonb,
+  update_available boolean NOT NULL DEFAULT false,
+  uninstalled_at timestamptz,
   PRIMARY KEY (id),
   CONSTRAINT uq_company_sector_packs_company_id_id UNIQUE (company_id, id)
 );
@@ -6618,6 +6797,10 @@ CREATE TABLE IF NOT EXISTS site_settings (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
+  story_authorization_template text,
+  story_authorization_version integer NOT NULL DEFAULT 1,
+  payment_instructions text,
+  quote_validity_days integer NOT NULL DEFAULT 15,
   PRIMARY KEY (id),
   CONSTRAINT ck_site_settings_1 CHECK (singleton),
   CONSTRAINT ck_site_settings_2 CHECK (jsonb_typeof(content_blocked_terms) = 'array' AND jsonb_typeof(comparison_blocked_terms) = 'array' AND jsonb_typeof(assessment_level_thresholds) = 'object'),
@@ -7943,6 +8126,7 @@ CREATE TABLE IF NOT EXISTS chatbot_messages (
   occurred_at timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
+  answer_kind text,
   PRIMARY KEY (id, occurred_at),
   CONSTRAINT ck_chatbot_messages_1 CHECK (length(body) BETWEEN 1 AND 2000),
   CONSTRAINT ck_chatbot_messages_2 CHECK (sender = 'bot' OR (NOT used_ai AND intent_id IS NULL))
@@ -7953,7 +8137,7 @@ COMMENT ON COLUMN chatbot_messages.occurred_at IS 'clave de partición (conserva
 -- WEB · crm_connections (platform)
 CREATE TABLE IF NOT EXISTS crm_connections (
   id uuid NOT NULL DEFAULT uuidv7(),
-  provider text NOT NULL CHECK (provider IN ('kallpa', 'generic_webhook')),
+  provider text NOT NULL CHECK (provider IN ('kallpa', 'generic_webhook', 'fidelia')),
   name text NOT NULL,
   base_url text,
   secret_ref text,
@@ -11483,8 +11667,12 @@ CREATE TRIGGER trg_audit_logs_chain BEFORE INSERT ON audit_logs FOR EACH ROW EXE
 -- Recalcula feature_flags de una empresa desde su suscripción (plan acumulativo + complementos).
 -- Regla: lo que deja de estar contratado pasa a read_only (nunca se borra); lo nunca contratado queda locked.
 -- Las excepciones manuales (source = 'override') vigentes se respetan.
-CREATE OR REPLACE FUNCTION public.refresh_feature_flags(p_company_id uuid) RETURNS integer
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+CREATE OR REPLACE FUNCTION public.refresh_feature_flags(p_company_id uuid)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
 DECLARE
   sub subscriptions;
   m record;
@@ -11538,14 +11726,14 @@ BEGIN
     END IF;
     -- company_enabled solo se fija al crear el flag (VTA en falso); después lo decide la empresa.
     INSERT INTO feature_flags (company_id, module_code, mode, source, valid_from, company_enabled)
-    VALUES (p_company_id, m.code, new_mode, new_source, now(), m.code <> 'VTA' AND new_mode <> 'disabled_by_company')
+    VALUES (p_company_id, m.code, new_mode, new_source, now(), m.code <> 'VTA')
     ON CONFLICT (company_id, module_code) WHERE deleted_at IS NULL
     DO UPDATE SET mode = EXCLUDED.mode, source = EXCLUDED.source, valid_from = now(), valid_until = NULL
      WHERE feature_flags.mode IS DISTINCT FROM EXCLUDED.mode OR feature_flags.source IS DISTINCT FROM EXCLUDED.source;
     n := n + 1;
   END LOOP;
   RETURN n;
-END $$;
+END $function$;
 
 -- ------------------------------------------------------------------ Alta de empresa
 -- seed_company_defaults(company_id): deja lista una empresa recién creada.
@@ -15855,8 +16043,10 @@ CREATE POLICY rls_cookie_consents_owner_purge_read ON cookie_consents FOR SELECT
 CREATE POLICY rls_cookie_consents_owner_purge ON cookie_consents FOR DELETE TO escudo_owner USING (true);
 
 -- Particiones mensuales de site_events y chatbot_messages con las filas que hubieran caído en la partición por defecto (rol dueño).
-CREATE OR REPLACE FUNCTION public.web_partition_month(p_table text, p_month date) RETURNS text
-LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION public.web_partition_month(p_table text, p_month date)
+ RETURNS text
+ LANGUAGE plpgsql
+AS $function$
 DECLARE
   s date := date_trunc('month', p_month)::date;
   e date := (date_trunc('month', p_month) + interval '1 month')::date;
@@ -15870,6 +16060,8 @@ BEGIN
     RETURN n;
   END IF;
   EXECUTE format('CREATE TABLE %I (LIKE %I INCLUDING DEFAULTS INCLUDING CONSTRAINTS)', n, p_table);
+  -- Las filas del mes que estaban en la partición por defecto pasan a la nueva (la regla de inalterable es de la tabla padre).
+  -- El dueño de la tabla solo salta RLS sin FORCE: se quita un momento en la partición por defecto y se vuelve a poner.
   EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', d);
   EXECUTE format('WITH m AS (DELETE FROM %I WHERE occurred_at >= %L AND occurred_at < %L RETURNING *) INSERT INTO %I SELECT * FROM m', d, s, e, n);
   EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', d);
@@ -15877,6 +16069,1521 @@ BEGIN
   EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', n);
   EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', n);
   RETURN n;
-END $$;
+END $function$;
 REVOKE ALL ON FUNCTION public.web_partition_month(text, date) FROM PUBLIC;
 -- Fin del esquema.
+
+-- =====================================================================================
+-- Puesta al día con las migraciones de backend/database/migrations/main (hasta 2026_11_25_001170).
+-- Las columnas nuevas de tablas existentes quedaron dentro de su CREATE TABLE; aquí van las tablas nuevas
+-- (como las deja pg_dump de la base migrada) y los cambios de restricciones, índices, disparadores, políticas,
+-- permisos y comentarios de tablas existentes. Comprobado contra escudo_main migrada.
+-- =====================================================================================
+
+-- ---------- Funciones nuevas o cambiadas por migraciones
+SET check_function_bodies = false;
+CREATE OR REPLACE FUNCTION public.aul_attribute_conversion()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+declare
+    v_days int;
+    v_rec uuid;
+begin
+    if new.worker_id is null and new.external_learner_id is null then
+        return new;
+    end if;
+    select case when value ~ '^[0-9]+$' then value::int end into v_days
+      from legal_parameters
+     where key = 'recommendation_attribution_days' and (company_id is null or company_id = new.company_id)
+       and valid_from <= current_date and (valid_to is null or valid_to >= current_date) and deleted_at is null
+     order by company_id nulls last, valid_from desc limit 1;
+    select r.id into v_rec
+      from course_recommendations r
+     where r.company_id = new.company_id and r.course_id = new.course_id and r.deleted_at is null
+       and r.status in ('sent', 'viewed', 'clicked')
+       and ((new.worker_id is not null and r.worker_id = new.worker_id) or (new.external_learner_id is not null and r.external_learner_id = new.external_learner_id))
+       and coalesce(r.clicked_at, r.viewed_at) is not null
+       and coalesce(r.clicked_at, r.viewed_at) <= coalesce(new.enrolled_at, now())
+       and (v_days is null or coalesce(r.clicked_at, r.viewed_at) >= coalesce(new.enrolled_at, now()) - make_interval(days => v_days))
+     order by coalesce(r.clicked_at, r.viewed_at) desc
+     limit 1;
+    if v_rec is not null then
+        update course_recommendations
+           set status = 'converted', converted_at = now(), converted_enrollment_id = new.id,
+               converted_order_id = (select i.order_id from order_items i where i.id = new.order_item_id), updated_at = now()
+         where id = v_rec;
+    end if;
+    return new;
+end $function$;
+CREATE OR REPLACE FUNCTION public.trg_feature_flags_company_mode()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  IF NEW.mode = 'disabled_by_company' THEN
+    NEW.company_enabled := false;
+  END IF;
+  RETURN NEW;
+END $function$;
+CREATE OR REPLACE FUNCTION public.vta_attribute_license_conversion()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+declare
+    v_days int;
+    v_rec uuid;
+    v_order uuid;
+begin
+    if new.buyer_ruc is null or new.order_item_id is null then
+        return new;
+    end if;
+    select case when value ~ '^[0-9]+$' then value::int end into v_days
+      from legal_parameters
+     where key = 'recommendation_attribution_days' and (company_id is null or company_id = new.company_id)
+       and valid_from <= current_date and (valid_to is null or valid_to >= current_date) and deleted_at is null
+     order by company_id nulls last, valid_from desc limit 1;
+    select i.order_id into v_order from order_items i where i.id = new.order_item_id;
+    select r.id into v_rec
+      from course_recommendations r
+      left join external_learners xl on xl.id = r.external_learner_id
+     where r.company_id = new.company_id and r.course_id = new.course_id and r.deleted_at is null
+       and r.status in ('sent', 'viewed', 'clicked')
+       and coalesce(r.buyer_company_ruc, xl.buyer_company_ruc) = new.buyer_ruc
+       and coalesce(r.clicked_at, r.viewed_at) is not null
+       and coalesce(r.clicked_at, r.viewed_at) <= coalesce(new.created_at, now())
+       and (v_days is null or coalesce(r.clicked_at, r.viewed_at) >= coalesce(new.created_at, now()) - make_interval(days => v_days))
+     order by coalesce(r.clicked_at, r.viewed_at) desc
+     limit 1;
+    if v_rec is not null then
+        update course_recommendations
+           set status = 'converted', converted_at = now(), converted_order_id = v_order, updated_at = now()
+         where id = v_rec;
+    end if;
+    return new;
+end $function$;
+RESET check_function_bodies;
+
+-- ---------- Tablas nuevas (access_visits, activity_reschedules, api_access_tokens, api_idempotency_keys, api_usage, assistant_knowledge, assistant_misses, audit_archives, backup_runs, behavior_lists, budget_transfers, chatbot_alias_votes, chatbot_aliases, demo_calendar_tokens, dossier_share_accesses, election_roll, emo_protocols, legal_norm_requirements, newsletter_deliveries, platform_providers, ppe_replacement_requests, psychosocial_instruments, sales_quotes, scat_catalog_items, signature_strokes, site_assets, success_story_consents, success_story_invites, support_tickets, sync_operations, talk_topics, unit_conversions, user_signatures)
+SET check_function_bodies = false;
+CREATE TABLE IF NOT EXISTS public.access_visits (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    company_id uuid NOT NULL,
+    access_event_id uuid NOT NULL,
+    host_name text NOT NULL,
+    purpose text,
+    document_hash bytea,
+    induction_accepted_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    CONSTRAINT access_visits_host_name_check CHECK (((length(host_name) >= 2) AND (length(host_name) <= 160)))
+);
+
+ALTER TABLE ONLY public.access_visits FORCE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.activity_reschedules (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    company_id uuid NOT NULL,
+    activity_id uuid NOT NULL,
+    year smallint NOT NULL,
+    from_month smallint NOT NULL,
+    to_month smallint NOT NULL,
+    reason text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    CONSTRAINT activity_reschedules_from_month_check CHECK (((from_month >= 1) AND (from_month <= 12))),
+    CONSTRAINT activity_reschedules_reason_check CHECK (((length(reason) >= 5) AND (length(reason) <= 500))),
+    CONSTRAINT activity_reschedules_to_month_check CHECK (((to_month >= 1) AND (to_month <= 12))),
+    CONSTRAINT ck_activity_reschedules_month CHECK ((from_month <> to_month))
+);
+
+ALTER TABLE ONLY public.activity_reschedules FORCE ROW LEVEL SECURITY;
+
+COMMENT ON TABLE public.activity_reschedules IS '[PAS] Reprogramación de una actividad-mes con motivo (RN-PAS-02)';
+
+CREATE TABLE IF NOT EXISTS public.api_access_tokens (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    company_id uuid NOT NULL,
+    api_client_id uuid NOT NULL,
+    token_hash text NOT NULL,
+    scopes text[] DEFAULT '{}'::text[] NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    revoked_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY public.api_access_tokens FORCE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.api_idempotency_keys (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    company_id uuid NOT NULL,
+    api_client_id uuid NOT NULL,
+    idempotency_key text NOT NULL,
+    request_hash text NOT NULL,
+    response_status integer NOT NULL,
+    response_body jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY public.api_idempotency_keys FORCE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.api_usage (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    company_id uuid NOT NULL,
+    api_client_id uuid NOT NULL,
+    day date NOT NULL,
+    resource text NOT NULL,
+    calls integer DEFAULT 0 NOT NULL,
+    denied integer DEFAULT 0 NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY public.api_usage FORCE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.assistant_knowledge (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    feature text NOT NULL,
+    title text NOT NULL,
+    keywords text[] DEFAULT '{}'::text[] NOT NULL,
+    items jsonb DEFAULT '[]'::jsonb NOT NULL,
+    status text DEFAULT 'active'::text NOT NULL,
+    uses integer DEFAULT 0 NOT NULL,
+    created_by uuid,
+    updated_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT assistant_knowledge_feature_check CHECK ((feature = ANY (ARRAY['controls'::text, 'causes'::text, 'talk'::text]))),
+    CONSTRAINT assistant_knowledge_items_check CHECK ((jsonb_typeof(items) = 'array'::text)),
+    CONSTRAINT assistant_knowledge_status_check CHECK ((status = ANY (ARRAY['active'::text, 'disabled'::text]))),
+    CONSTRAINT assistant_knowledge_title_check CHECK (((length(title) >= 2) AND (length(title) <= 120)))
+);
+
+CREATE TABLE IF NOT EXISTS public.assistant_misses (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    feature text NOT NULL,
+    question text NOT NULL,
+    times integer DEFAULT 1 NOT NULL,
+    status text DEFAULT 'open'::text NOT NULL,
+    last_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT assistant_misses_feature_check CHECK ((feature = ANY (ARRAY['controls'::text, 'causes'::text, 'talk'::text]))),
+    CONSTRAINT assistant_misses_question_check CHECK (((length(question) >= 2) AND (length(question) <= 300))),
+    CONSTRAINT assistant_misses_status_check CHECK ((status = ANY (ARRAY['open'::text, 'taught'::text, 'ignored'::text])))
+);
+
+CREATE TABLE IF NOT EXISTS public.audit_archives (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    company_id uuid,
+    period date NOT NULL,
+    rows_count integer NOT NULL,
+    sha256 text NOT NULL,
+    local_key text NOT NULL,
+    remote_key text,
+    remote_status text DEFAULT 'skipped'::text NOT NULL,
+    archived_at timestamp with time zone DEFAULT now() NOT NULL,
+    purge_approved_by uuid,
+    purge_approved_at timestamp with time zone,
+    CONSTRAINT audit_archives_remote_status_check CHECK ((remote_status = ANY (ARRAY['ok'::text, 'skipped'::text, 'failed'::text])))
+);
+
+CREATE TABLE IF NOT EXISTS public.backup_runs (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    target text NOT NULL,
+    trigger text NOT NULL,
+    status text DEFAULT 'running'::text NOT NULL,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    finished_at timestamp with time zone,
+    disk text,
+    path text,
+    size_bytes bigint,
+    sha256 text,
+    error text,
+    requested_by uuid,
+    deleted_at timestamp with time zone,
+    remote_status text,
+    remote_key text,
+    remote_uploaded_at timestamp with time zone,
+    remote_error text,
+    remote_deleted_at timestamp with time zone,
+    CONSTRAINT backup_runs_remote_status_check CHECK (((remote_status IS NULL) OR (remote_status = ANY (ARRAY['skipped'::text, 'ok'::text, 'failed'::text])))),
+    CONSTRAINT backup_runs_size_bytes_check CHECK (((size_bytes IS NULL) OR (size_bytes >= 0))),
+    CONSTRAINT backup_runs_status_check CHECK ((status = ANY (ARRAY['running'::text, 'ok'::text, 'failed'::text]))),
+    CONSTRAINT backup_runs_target_check CHECK ((target = ANY (ARRAY['main'::text, 'medical'::text]))),
+    CONSTRAINT backup_runs_trigger_check CHECK ((trigger = ANY (ARRAY['schedule'::text, 'manual'::text])))
+);
+
+ALTER TABLE ONLY public.backup_runs FORCE ROW LEVEL SECURITY;
+
+COMMENT ON TABLE public.backup_runs IS '[SUS] Registro de copias de seguridad cifradas (base principal y médica): resultado, tamaño y ubicación. deleted_at = borrada por retención';
+
+COMMENT ON COLUMN public.backup_runs.remote_status IS 'Copia externa (S3/B2): skipped = sin configurar, ok = subida, failed = no se pudo subir';
+
+COMMENT ON COLUMN public.backup_runs.remote_deleted_at IS 'Copia externa borrada por retención (BACKUP_REMOTE_RETENTION_DAYS)';
+
+CREATE TABLE IF NOT EXISTS public.behavior_lists (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    version_number integer NOT NULL,
+    status text DEFAULT 'draft'::text NOT NULL,
+    items jsonb DEFAULT '[]'::jsonb NOT NULL,
+    change_summary text,
+    published_at timestamp with time zone,
+    published_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by uuid,
+    deleted_at timestamp with time zone,
+    CONSTRAINT behavior_lists_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'current'::text, 'obsolete'::text])))
+);
+
+ALTER TABLE ONLY public.behavior_lists FORCE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.budget_transfers (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    budget_id uuid NOT NULL,
+    from_line_id uuid NOT NULL,
+    to_line_id uuid NOT NULL,
+    amount numeric(14,2) NOT NULL,
+    reason text NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    requested_by uuid,
+    decided_by uuid,
+    decided_at timestamp with time zone,
+    decision_note text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by uuid,
+    deleted_at timestamp with time zone,
+    CONSTRAINT budget_transfers_amount_check CHECK ((amount > (0)::numeric)),
+    CONSTRAINT budget_transfers_check CHECK ((from_line_id <> to_line_id)),
+    CONSTRAINT budget_transfers_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])))
+);
+
+ALTER TABLE ONLY public.budget_transfers FORCE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.chatbot_alias_votes (
+    alias_id uuid NOT NULL,
+    conversation_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    voter_hash text
+);
+
+ALTER TABLE ONLY public.chatbot_alias_votes FORCE ROW LEVEL SECURITY;
+
+COMMENT ON TABLE public.chatbot_alias_votes IS '[WEB] Conversaciones que eligieron un alias sugerido (se activa con 3 distintas)';
+
+COMMENT ON COLUMN public.chatbot_alias_votes.voter_hash IS 'Hash de la conexión de quien eligió (para contar personas distintas); sin la IP en claro';
+
+CREATE TABLE IF NOT EXISTS public.chatbot_aliases (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    term text NOT NULL,
+    target_type text NOT NULL,
+    target_key text NOT NULL,
+    status text DEFAULT 'suggested'::text NOT NULL,
+    source text NOT NULL,
+    uses integer DEFAULT 0 NOT NULL,
+    created_by uuid,
+    updated_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chatbot_aliases_source_check CHECK ((source = ANY (ARRAY['visitor'::text, 'owner'::text]))),
+    CONSTRAINT chatbot_aliases_status_check CHECK ((status = ANY (ARRAY['suggested'::text, 'active'::text, 'disabled'::text]))),
+    CONSTRAINT chatbot_aliases_target_key_check CHECK (((length(target_key) >= 1) AND (length(target_key) <= 300))),
+    CONSTRAINT chatbot_aliases_target_type_check CHECK ((target_type = ANY (ARRAY['intent'::text, 'faq'::text, 'help_article'::text, 'resource'::text, 'story'::text, 'page'::text]))),
+    CONSTRAINT chatbot_aliases_term_check CHECK (((length(term) >= 2) AND (length(term) <= 120))),
+    CONSTRAINT chatbot_aliases_uses_check CHECK ((uses >= 0))
+);
+
+ALTER TABLE ONLY public.chatbot_aliases FORCE ROW LEVEL SECURITY;
+
+COMMENT ON TABLE public.chatbot_aliases IS '[WEB] Sinónimos aprendidos por el asistente del sitio (término normalizado → respuesta publicada)';
+
+CREATE TABLE IF NOT EXISTS public.demo_calendar_tokens (
+    host_id uuid NOT NULL,
+    provider text NOT NULL,
+    account_email text,
+    refresh_token_encrypted text NOT NULL,
+    access_token_encrypted text,
+    access_expires_at timestamp with time zone,
+    last_error text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT demo_calendar_tokens_provider_check CHECK ((provider = ANY (ARRAY['google'::text, 'microsoft'::text])))
+);
+
+ALTER TABLE ONLY public.demo_calendar_tokens FORCE ROW LEVEL SECURITY;
+
+COMMENT ON TABLE public.demo_calendar_tokens IS '[WEB] Token cifrado del calendario externo de un anfitrión de demos (referenciado por demo_hosts.calendar_secret_ref)';
+
+CREATE TABLE IF NOT EXISTS public.dossier_share_accesses (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    company_id uuid NOT NULL,
+    share_link_id uuid NOT NULL,
+    action text NOT NULL,
+    detail text,
+    ip_prefix text,
+    user_agent text,
+    user_id uuid,
+    occurred_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT dossier_share_accesses_action_check CHECK ((action = ANY (ARRAY['created'::text, 'approved'::text, 'rejected'::text, 'view'::text, 'download'::text, 'denied'::text, 'revoked'::text])))
+);
+
+ALTER TABLE ONLY public.dossier_share_accesses FORCE ROW LEVEL SECURITY;
+
+COMMENT ON TABLE public.dossier_share_accesses IS '[SUN] Historial de accesos y cambios del enlace del inspector · INALTERABLE: solo INSERT.';
+
+CREATE TABLE IF NOT EXISTS public.election_roll (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    company_id uuid NOT NULL,
+    election_id uuid NOT NULL,
+    worker_id uuid NOT NULL,
+    excluded boolean DEFAULT false NOT NULL,
+    exclusion_reason text,
+    has_voted boolean DEFAULT false NOT NULL,
+    voted_on date,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by uuid,
+    vote_token_hash bytea,
+    vote_token_enc text,
+    vote_token_issued_at timestamp with time zone,
+    CONSTRAINT ck_election_roll_reason CHECK (((NOT excluded) OR (exclusion_reason IS NOT NULL))),
+    CONSTRAINT ck_election_roll_vote CHECK ((NOT (excluded AND has_voted)))
+);
+
+ALTER TABLE ONLY public.election_roll FORCE ROW LEVEL SECURITY;
+
+COMMENT ON COLUMN public.election_roll.vote_token_hash IS '[COM] Hash del token de voto por enlace (un solo uso, RN-COM-03)';
+
+CREATE TABLE IF NOT EXISTS public.emo_protocols (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    code text NOT NULL,
+    name text NOT NULL,
+    exams jsonb DEFAULT '[]'::jsonb NOT NULL,
+    exposures text,
+    notes text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by uuid,
+    deleted_at timestamp with time zone
+);
+
+ALTER TABLE ONLY public.emo_protocols FORCE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.legal_norm_requirements (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    legal_norm_id uuid NOT NULL,
+    article text,
+    requirement text NOT NULL,
+    topic text,
+    evidence_expected text,
+    frequency text,
+    sort_order integer DEFAULT 0 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by uuid,
+    deleted_at timestamp with time zone,
+    applicability text,
+    to_confirm boolean DEFAULT true NOT NULL,
+    confirmed_by text,
+    confirmed_at timestamp with time zone
+);
+
+COMMENT ON TABLE public.legal_norm_requirements IS '[MRL] Catálogo global de requisitos por norma (texto referencial, a confirmar por especialista)';
+
+COMMENT ON COLUMN public.legal_norm_requirements.applicability IS '[MRL] A quién aplica el requisito (sector, tamaño, actividad)';
+
+COMMENT ON COLUMN public.legal_norm_requirements.to_confirm IS '[MRL] Texto referencial pendiente de validación por especialista SST/legal';
+
+CREATE TABLE IF NOT EXISTS public.newsletter_deliveries (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    issue_id uuid NOT NULL,
+    subscriber_id uuid NOT NULL,
+    status text NOT NULL,
+    error text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT newsletter_deliveries_status_check CHECK ((status = ANY (ARRAY['sent'::text, 'failed'::text])))
+);
+
+ALTER TABLE ONLY public.newsletter_deliveries FORCE ROW LEVEL SECURITY;
+
+COMMENT ON TABLE public.newsletter_deliveries IS '[WEB] Envío de una edición del boletín a un suscriptor (idempotencia por edición y suscriptor)';
+
+CREATE TABLE IF NOT EXISTS public.platform_providers (
+    code text NOT NULL,
+    provider text,
+    mode text DEFAULT 'test'::text NOT NULL,
+    settings jsonb DEFAULT '{}'::jsonb NOT NULL,
+    secret_enc text,
+    secret_hint text,
+    last_tested_at timestamp with time zone,
+    last_test_ok boolean,
+    last_test_message text,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by uuid,
+    CONSTRAINT platform_providers_code_check CHECK ((code = ANY (ARRAY['ai'::text, 'payments'::text, 'einvoice'::text, 'whatsapp'::text, 'esign'::text, 'backups'::text]))),
+    CONSTRAINT platform_providers_mode_check CHECK ((mode = ANY (ARRAY['test'::text, 'live'::text])))
+);
+
+CREATE TABLE IF NOT EXISTS public.ppe_replacement_requests (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    worker_id uuid NOT NULL,
+    ppe_delivery_id uuid,
+    ppe_item_id uuid NOT NULL,
+    reason text NOT NULL,
+    notes text,
+    status text DEFAULT 'pending'::text NOT NULL,
+    resolution_note text,
+    resolved_by uuid,
+    resolved_at timestamp with time zone,
+    new_delivery_id uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by uuid,
+    deleted_at timestamp with time zone,
+    CONSTRAINT ppe_replacement_requests_reason_check CHECK ((reason = ANY (ARRAY['worn'::text, 'damaged'::text, 'lost'::text, 'size'::text, 'other'::text]))),
+    CONSTRAINT ppe_replacement_requests_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'attended'::text, 'rejected'::text])))
+);
+
+ALTER TABLE ONLY public.ppe_replacement_requests FORCE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.psychosocial_instruments (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    version_number integer NOT NULL,
+    title text NOT NULL,
+    status text DEFAULT 'draft'::text NOT NULL,
+    questions jsonb DEFAULT '{}'::jsonb NOT NULL,
+    cutoffs jsonb DEFAULT '{"high": 66.7, "medium": 33.3}'::jsonb NOT NULL,
+    change_summary text,
+    published_at timestamp with time zone,
+    published_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by uuid,
+    deleted_at timestamp with time zone,
+    CONSTRAINT psychosocial_instruments_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'current'::text, 'obsolete'::text])))
+);
+
+ALTER TABLE ONLY public.psychosocial_instruments FORCE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.sales_quotes (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    number text NOT NULL,
+    demo_request_id uuid,
+    status text DEFAULT 'draft'::text NOT NULL,
+    contact_name text NOT NULL,
+    contact_email text NOT NULL,
+    contact_phone text,
+    billing_period text DEFAULT 'monthly'::text NOT NULL,
+    companies jsonb DEFAULT '[]'::jsonb NOT NULL,
+    annual_discount_pct numeric(5,2) DEFAULT 0 NOT NULL,
+    subtotal numeric(12,2) DEFAULT 0 NOT NULL,
+    discount_amount numeric(12,2) DEFAULT 0 NOT NULL,
+    total numeric(12,2) DEFAULT 0 NOT NULL,
+    currency character(3) DEFAULT 'PEN'::bpchar NOT NULL,
+    valid_until date,
+    client_notes text,
+    internal_notes text,
+    token_hash text,
+    sent_at timestamp with time zone,
+    sent_count integer DEFAULT 0 NOT NULL,
+    pdf_file_id uuid,
+    accepted_at timestamp with time zone,
+    accepted_ip_hash bytea,
+    rejected_at timestamp with time zone,
+    reject_reason text,
+    evidence_file_id uuid,
+    payment_method text,
+    payment_reference text,
+    payment_paid_on date,
+    payment_amount numeric(12,2),
+    payment_submitted_at timestamp with time zone,
+    evidence_rejected_reason text,
+    confirmed_at timestamp with time zone,
+    confirmed_by uuid,
+    account_id uuid,
+    cancel_reason text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by uuid,
+    deleted_at timestamp with time zone,
+    CONSTRAINT sales_quotes_billing_period_check CHECK ((billing_period = ANY (ARRAY['monthly'::text, 'annual'::text]))),
+    CONSTRAINT sales_quotes_discount_amount_check CHECK ((discount_amount >= (0)::numeric)),
+    CONSTRAINT sales_quotes_payment_method_check CHECK ((payment_method = ANY (ARRAY['transfer'::text, 'deposit'::text, 'yape'::text, 'plin'::text, 'other'::text]))),
+    CONSTRAINT sales_quotes_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'sent'::text, 'accepted'::text, 'rejected'::text, 'payment_submitted'::text, 'paid'::text, 'cancelled'::text]))),
+    CONSTRAINT sales_quotes_total_check CHECK ((total >= (0)::numeric))
+);
+
+ALTER TABLE ONLY public.sales_quotes FORCE ROW LEVEL SECURITY;
+
+COMMENT ON TABLE public.sales_quotes IS '[WEB] Cotización formal enviada al cliente: aceptación, constancia de pago y alta de la cuenta';
+
+CREATE TABLE IF NOT EXISTS public.scat_catalog_items (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    level text NOT NULL,
+    code text NOT NULL,
+    label text NOT NULL,
+    explanation text,
+    category text,
+    sort_order integer DEFAULT 0 NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    to_confirm boolean DEFAULT true NOT NULL,
+    confirmed_by text,
+    confirmed_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by uuid,
+    CONSTRAINT scat_catalog_items_code_check CHECK ((code ~ '^[A-Z]{1,4}[0-9]{2,3}$'::text)),
+    CONSTRAINT scat_catalog_items_level_check CHECK ((level = ANY (ARRAY['contact'::text, 'immediate_act'::text, 'immediate_condition'::text, 'basic_personal'::text, 'basic_job'::text, 'nac'::text])))
+);
+
+COMMENT ON TABLE public.scat_catalog_items IS '[INV] Catálogo SCAT global de EscudoSST (a confirmar por especialista SST); lo edita el dueño de la plataforma';
+
+CREATE TABLE IF NOT EXISTS public.signature_strokes (
+    signature_id uuid NOT NULL,
+    company_id uuid NOT NULL,
+    image bytea NOT NULL,
+    mime_type text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT signature_strokes_image_check CHECK ((octet_length(image) <= 600000)),
+    CONSTRAINT signature_strokes_mime_type_check CHECK ((mime_type = ANY (ARRAY['image/png'::text, 'image/jpeg'::text])))
+);
+
+CREATE TABLE IF NOT EXISTS public.site_assets (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    kind text NOT NULL,
+    disk text NOT NULL,
+    path text NOT NULL,
+    mime_type text NOT NULL,
+    size_bytes bigint NOT NULL,
+    width integer,
+    height integer,
+    original_name text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    CONSTRAINT site_assets_kind_check CHECK ((kind = ANY (ARRAY['logo'::text, 'logo_dark'::text, 'favicon'::text, 'story_logo'::text, 'story_consent'::text, 'story_signature'::text, 'media'::text, 'report'::text, 'quote_pdf'::text, 'payment_evidence'::text]))),
+    CONSTRAINT site_assets_size_bytes_check CHECK ((size_bytes >= 0))
+);
+
+COMMENT ON TABLE public.site_assets IS '[WEB] Archivos de la plataforma para el sitio: logo, favicon, logos de casos de éxito y autorizaciones de casos (privadas)';
+
+CREATE TABLE IF NOT EXISTS public.success_story_consents (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    story_id uuid NOT NULL,
+    invite_id uuid,
+    company_name text NOT NULL,
+    company_ruc text,
+    signer_name text NOT NULL,
+    signer_role text NOT NULL,
+    signer_doc_type text NOT NULL,
+    signer_doc_number text NOT NULL,
+    signer_email text NOT NULL,
+    authorization_version text NOT NULL,
+    authorization_text text NOT NULL,
+    text_sha256 text NOT NULL,
+    file_id uuid,
+    accepted_at timestamp with time zone DEFAULT now() NOT NULL,
+    ip_hash text,
+    user_agent text,
+    withdraw_token_hash text NOT NULL,
+    withdrawn_at timestamp with time zone,
+    withdraw_reason text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    signature_file_id uuid,
+    CONSTRAINT success_story_consents_company_ruc_check CHECK (((company_ruc IS NULL) OR (company_ruc ~ '^[0-9]{11}$'::text))),
+    CONSTRAINT success_story_consents_signer_doc_type_check CHECK ((signer_doc_type = ANY (ARRAY['DNI'::text, 'CE'::text, 'PAS'::text])))
+);
+
+ALTER TABLE ONLY public.success_story_consents FORCE ROW LEVEL SECURITY;
+
+COMMENT ON TABLE public.success_story_consents IS '[WEB] Evidencia de la autorización electrónica de un caso de éxito: texto aceptado, firmante (documento cifrado), fecha, IP (hash) y constancia. Inalterable salvo el retiro';
+
+COMMENT ON COLUMN public.success_story_consents.signer_doc_number IS 'Cifrado por la aplicación (Crypt)';
+
+CREATE TABLE IF NOT EXISTS public.success_story_invites (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    client_name text NOT NULL,
+    sector text,
+    contact_name text NOT NULL,
+    contact_email text NOT NULL,
+    message text,
+    token_hash text NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    status text DEFAULT 'sent'::text NOT NULL,
+    story_id uuid,
+    sent_count integer DEFAULT 1 NOT NULL,
+    last_sent_at timestamp with time zone DEFAULT now() NOT NULL,
+    submitted_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT success_story_invites_status_check CHECK ((status = ANY (ARRAY['sent'::text, 'submitted'::text, 'cancelled'::text])))
+);
+
+ALTER TABLE ONLY public.success_story_invites FORCE ROW LEVEL SECURITY;
+
+COMMENT ON TABLE public.success_story_invites IS '[WEB] Invitaciones a clientes para contar su caso de éxito (enlace con token, vence en 30 días)';
+
+CREATE TABLE IF NOT EXISTS public.support_tickets (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    code text NOT NULL,
+    company_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    topic text DEFAULT 'question'::text NOT NULL,
+    subject text NOT NULL,
+    message text NOT NULL,
+    page text,
+    status text DEFAULT 'open'::text NOT NULL,
+    reply text,
+    replied_by uuid,
+    replied_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT support_tickets_message_check CHECK (((length(message) >= 5) AND (length(message) <= 4000))),
+    CONSTRAINT support_tickets_page_check CHECK (((page IS NULL) OR (length(page) <= 200))),
+    CONSTRAINT support_tickets_reply_check CHECK (((reply IS NULL) OR (length(reply) <= 4000))),
+    CONSTRAINT support_tickets_status_check CHECK ((status = ANY (ARRAY['open'::text, 'answered'::text, 'closed'::text]))),
+    CONSTRAINT support_tickets_subject_check CHECK (((length(subject) >= 3) AND (length(subject) <= 120))),
+    CONSTRAINT support_tickets_topic_check CHECK ((topic = ANY (ARRAY['question'::text, 'problem'::text, 'suggestion'::text, 'billing'::text])))
+);
+
+CREATE TABLE IF NOT EXISTS public.sync_operations (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    company_id uuid NOT NULL,
+    sync_batch_id uuid NOT NULL,
+    device_id uuid NOT NULL,
+    idempotency_key text NOT NULL,
+    entity_type text NOT NULL,
+    operation text NOT NULL,
+    client_entity_id uuid,
+    entity_id uuid,
+    result text NOT NULL,
+    reason text,
+    needs_review boolean DEFAULT false NOT NULL,
+    captured_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT sync_operations_idempotency_key_check CHECK (((length(idempotency_key) >= 8) AND (length(idempotency_key) <= 80))),
+    CONSTRAINT sync_operations_operation_check CHECK ((operation = ANY (ARRAY['create'::text, 'update'::text]))),
+    CONSTRAINT sync_operations_result_check CHECK ((result = ANY (ARRAY['applied'::text, 'conflict'::text, 'rejected'::text])))
+);
+
+ALTER TABLE ONLY public.sync_operations FORCE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.talk_topics (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    title text NOT NULL,
+    content text,
+    hazard_keywords text[] DEFAULT '{}'::text[] NOT NULL,
+    duration_minutes integer,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by uuid,
+    deleted_at timestamp with time zone
+);
+
+ALTER TABLE ONLY public.talk_topics FORCE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.unit_conversions (
+    id uuid DEFAULT public.uuidv7() NOT NULL,
+    company_id uuid,
+    agent_type_id uuid,
+    from_unit text NOT NULL,
+    to_unit text NOT NULL,
+    factor numeric(18,8) NOT NULL,
+    source text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by uuid,
+    deleted_at timestamp with time zone,
+    CONSTRAINT unit_conversions_check CHECK ((lower(TRIM(BOTH FROM from_unit)) <> lower(TRIM(BOTH FROM to_unit)))),
+    CONSTRAINT unit_conversions_factor_check CHECK ((factor > (0)::numeric))
+);
+
+ALTER TABLE ONLY public.unit_conversions FORCE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.user_signatures (
+    user_id uuid NOT NULL,
+    image bytea NOT NULL,
+    mime_type text NOT NULL,
+    kind text NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT user_signatures_image_check CHECK ((octet_length(image) <= 600000)),
+    CONSTRAINT user_signatures_kind_check CHECK ((kind = ANY (ARRAY['drawn'::text, 'uploaded'::text]))),
+    CONSTRAINT user_signatures_mime_type_check CHECK ((mime_type = ANY (ARRAY['image/png'::text, 'image/jpeg'::text])))
+);
+
+ALTER TABLE ONLY public.access_visits
+    ADD CONSTRAINT access_visits_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.activity_reschedules
+    ADD CONSTRAINT activity_reschedules_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.api_access_tokens
+    ADD CONSTRAINT api_access_tokens_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.api_access_tokens
+    ADD CONSTRAINT api_access_tokens_token_hash_key UNIQUE (token_hash);
+
+ALTER TABLE ONLY public.api_idempotency_keys
+    ADD CONSTRAINT api_idempotency_keys_api_client_id_idempotency_key_key UNIQUE (api_client_id, idempotency_key);
+
+ALTER TABLE ONLY public.api_idempotency_keys
+    ADD CONSTRAINT api_idempotency_keys_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.api_usage
+    ADD CONSTRAINT api_usage_api_client_id_day_resource_key UNIQUE (api_client_id, day, resource);
+
+ALTER TABLE ONLY public.api_usage
+    ADD CONSTRAINT api_usage_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.assistant_knowledge
+    ADD CONSTRAINT assistant_knowledge_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.assistant_misses
+    ADD CONSTRAINT assistant_misses_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.audit_archives
+    ADD CONSTRAINT audit_archives_company_id_period_key UNIQUE (company_id, period);
+
+ALTER TABLE ONLY public.audit_archives
+    ADD CONSTRAINT audit_archives_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.backup_runs
+    ADD CONSTRAINT backup_runs_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.behavior_lists
+    ADD CONSTRAINT behavior_lists_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.budget_transfers
+    ADD CONSTRAINT budget_transfers_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.chatbot_alias_votes
+    ADD CONSTRAINT chatbot_alias_votes_pkey PRIMARY KEY (alias_id, conversation_id);
+
+ALTER TABLE ONLY public.chatbot_aliases
+    ADD CONSTRAINT chatbot_aliases_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.demo_calendar_tokens
+    ADD CONSTRAINT demo_calendar_tokens_pkey PRIMARY KEY (host_id);
+
+ALTER TABLE ONLY public.dossier_share_accesses
+    ADD CONSTRAINT dossier_share_accesses_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.election_roll
+    ADD CONSTRAINT election_roll_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.emo_protocols
+    ADD CONSTRAINT emo_protocols_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.legal_norm_requirements
+    ADD CONSTRAINT legal_norm_requirements_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.newsletter_deliveries
+    ADD CONSTRAINT newsletter_deliveries_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.platform_providers
+    ADD CONSTRAINT platform_providers_pkey PRIMARY KEY (code);
+
+ALTER TABLE ONLY public.ppe_replacement_requests
+    ADD CONSTRAINT ppe_replacement_requests_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.psychosocial_instruments
+    ADD CONSTRAINT psychosocial_instruments_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.sales_quotes
+    ADD CONSTRAINT sales_quotes_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.scat_catalog_items
+    ADD CONSTRAINT scat_catalog_items_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.signature_strokes
+    ADD CONSTRAINT signature_strokes_pkey PRIMARY KEY (signature_id);
+
+ALTER TABLE ONLY public.site_assets
+    ADD CONSTRAINT site_assets_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.success_story_consents
+    ADD CONSTRAINT success_story_consents_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.success_story_consents
+    ADD CONSTRAINT success_story_consents_withdraw_token_hash_key UNIQUE (withdraw_token_hash);
+
+ALTER TABLE ONLY public.success_story_invites
+    ADD CONSTRAINT success_story_invites_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.success_story_invites
+    ADD CONSTRAINT success_story_invites_token_hash_key UNIQUE (token_hash);
+
+ALTER TABLE ONLY public.support_tickets
+    ADD CONSTRAINT support_tickets_code_key UNIQUE (code);
+
+ALTER TABLE ONLY public.support_tickets
+    ADD CONSTRAINT support_tickets_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.sync_operations
+    ADD CONSTRAINT sync_operations_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.talk_topics
+    ADD CONSTRAINT talk_topics_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.unit_conversions
+    ADD CONSTRAINT unit_conversions_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.access_visits
+    ADD CONSTRAINT uq_access_visits_event UNIQUE (access_event_id);
+
+ALTER TABLE ONLY public.assistant_misses
+    ADD CONSTRAINT uq_assistant_misses UNIQUE (feature, question);
+
+ALTER TABLE ONLY public.chatbot_aliases
+    ADD CONSTRAINT uq_chatbot_aliases UNIQUE (term, target_type, target_key);
+
+ALTER TABLE ONLY public.newsletter_deliveries
+    ADD CONSTRAINT uq_newsletter_deliveries UNIQUE (issue_id, subscriber_id);
+
+ALTER TABLE ONLY public.sales_quotes
+    ADD CONSTRAINT uq_sales_quotes_number UNIQUE (number);
+
+ALTER TABLE ONLY public.user_signatures
+    ADD CONSTRAINT user_signatures_pkey PRIMARY KEY (user_id);
+
+CREATE UNIQUE INDEX behavior_lists_version ON public.behavior_lists USING btree (company_id, version_number) WHERE (deleted_at IS NULL);
+
+CREATE UNIQUE INDEX emo_protocols_company_code ON public.emo_protocols USING btree (company_id, lower(code)) WHERE (deleted_at IS NULL);
+
+CREATE INDEX idx_backup_runs_target ON public.backup_runs USING btree (target, started_at DESC);
+
+CREATE INDEX idx_chatbot_aliases_term ON public.chatbot_aliases USING btree (term) WHERE (status = 'active'::text);
+
+CREATE INDEX idx_success_story_consents_story ON public.success_story_consents USING btree (story_id);
+
+CREATE INDEX ix_access_visits_document ON public.access_visits USING btree (company_id, document_hash) WHERE (document_hash IS NOT NULL);
+
+CREATE INDEX ix_activity_reschedules_activity ON public.activity_reschedules USING btree (company_id, activity_id);
+
+CREATE INDEX ix_dossier_share_accesses_link ON public.dossier_share_accesses USING btree (company_id, share_link_id, occurred_at);
+
+CREATE INDEX ix_sales_quotes_request ON public.sales_quotes USING btree (demo_request_id);
+
+CREATE INDEX ix_scat_catalog_items_level ON public.scat_catalog_items USING btree (level, sort_order);
+
+CREATE INDEX ix_support_tickets_company ON public.support_tickets USING btree (company_id, created_at DESC);
+
+CREATE INDEX ix_support_tickets_status ON public.support_tickets USING btree (status, created_at DESC);
+
+CREATE INDEX ix_sync_operations_client_entity ON public.sync_operations USING btree (company_id, client_entity_id) WHERE (client_entity_id IS NOT NULL);
+
+CREATE UNIQUE INDEX psychosocial_instruments_version ON public.psychosocial_instruments USING btree (company_id, version_number) WHERE (deleted_at IS NULL);
+
+CREATE UNIQUE INDEX uq_election_roll_vote_token ON public.election_roll USING btree (vote_token_hash) WHERE (vote_token_hash IS NOT NULL);
+
+CREATE UNIQUE INDEX uq_election_roll_worker ON public.election_roll USING btree (company_id, election_id, worker_id);
+
+CREATE UNIQUE INDEX uq_legal_norm_requirements ON public.legal_norm_requirements USING btree (legal_norm_id, COALESCE(article, ''::text), requirement) WHERE (deleted_at IS NULL);
+
+CREATE UNIQUE INDEX uq_sales_quotes_token ON public.sales_quotes USING btree (token_hash) WHERE (token_hash IS NOT NULL);
+
+CREATE UNIQUE INDEX uq_scat_catalog_items_code ON public.scat_catalog_items USING btree (code);
+
+CREATE UNIQUE INDEX uq_sync_operations_key ON public.sync_operations USING btree (company_id, idempotency_key);
+
+CREATE UNIQUE INDEX uq_unit_conversions_1 ON public.unit_conversions USING btree (COALESCE(company_id, '00000000-0000-0000-0000-000000000000'::uuid), COALESCE(agent_type_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(TRIM(BOTH FROM from_unit)), lower(TRIM(BOTH FROM to_unit))) WHERE (deleted_at IS NULL);
+
+CREATE TRIGGER trg_access_visits_immutable BEFORE DELETE OR UPDATE ON public.access_visits FOR EACH STATEMENT EXECUTE FUNCTION public.trg_forbid_mutation();
+
+CREATE TRIGGER trg_activity_reschedules_immutable BEFORE DELETE OR UPDATE ON public.activity_reschedules FOR EACH STATEMENT EXECUTE FUNCTION public.trg_forbid_mutation();
+
+CREATE TRIGGER trg_dossier_share_accesses_immutable BEFORE DELETE OR UPDATE ON public.dossier_share_accesses FOR EACH STATEMENT EXECUTE FUNCTION public.trg_forbid_mutation();
+
+ALTER TABLE ONLY public.access_visits
+    ADD CONSTRAINT access_visits_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.access_visits
+    ADD CONSTRAINT access_visits_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.activity_reschedules
+    ADD CONSTRAINT activity_reschedules_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.activity_reschedules
+    ADD CONSTRAINT activity_reschedules_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.api_access_tokens
+    ADD CONSTRAINT api_access_tokens_api_client_id_fkey FOREIGN KEY (api_client_id) REFERENCES public.api_clients(id);
+
+ALTER TABLE ONLY public.api_access_tokens
+    ADD CONSTRAINT api_access_tokens_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.api_idempotency_keys
+    ADD CONSTRAINT api_idempotency_keys_api_client_id_fkey FOREIGN KEY (api_client_id) REFERENCES public.api_clients(id);
+
+ALTER TABLE ONLY public.api_idempotency_keys
+    ADD CONSTRAINT api_idempotency_keys_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.api_usage
+    ADD CONSTRAINT api_usage_api_client_id_fkey FOREIGN KEY (api_client_id) REFERENCES public.api_clients(id);
+
+ALTER TABLE ONLY public.api_usage
+    ADD CONSTRAINT api_usage_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.assistant_knowledge
+    ADD CONSTRAINT assistant_knowledge_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.assistant_knowledge
+    ADD CONSTRAINT assistant_knowledge_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.audit_archives
+    ADD CONSTRAINT audit_archives_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.backup_runs
+    ADD CONSTRAINT backup_runs_requested_by_fkey FOREIGN KEY (requested_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.behavior_lists
+    ADD CONSTRAINT behavior_lists_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.budget_transfers
+    ADD CONSTRAINT budget_transfers_budget_id_fkey FOREIGN KEY (budget_id) REFERENCES public.budgets(id);
+
+ALTER TABLE ONLY public.budget_transfers
+    ADD CONSTRAINT budget_transfers_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.budget_transfers
+    ADD CONSTRAINT budget_transfers_from_line_id_fkey FOREIGN KEY (from_line_id) REFERENCES public.budget_lines(id);
+
+ALTER TABLE ONLY public.budget_transfers
+    ADD CONSTRAINT budget_transfers_to_line_id_fkey FOREIGN KEY (to_line_id) REFERENCES public.budget_lines(id);
+
+ALTER TABLE ONLY public.chatbot_alias_votes
+    ADD CONSTRAINT chatbot_alias_votes_alias_id_fkey FOREIGN KEY (alias_id) REFERENCES public.chatbot_aliases(id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.chatbot_aliases
+    ADD CONSTRAINT chatbot_aliases_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.chatbot_aliases
+    ADD CONSTRAINT chatbot_aliases_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.demo_calendar_tokens
+    ADD CONSTRAINT demo_calendar_tokens_host_id_fkey FOREIGN KEY (host_id) REFERENCES public.demo_hosts(id);
+
+ALTER TABLE ONLY public.dossier_share_accesses
+    ADD CONSTRAINT dossier_share_accesses_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.dossier_share_accesses
+    ADD CONSTRAINT dossier_share_accesses_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.election_roll
+    ADD CONSTRAINT election_roll_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.election_roll
+    ADD CONSTRAINT election_roll_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.election_roll
+    ADD CONSTRAINT election_roll_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.emo_protocols
+    ADD CONSTRAINT emo_protocols_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.access_visits
+    ADD CONSTRAINT fk_access_visits_event FOREIGN KEY (company_id, access_event_id) REFERENCES public.access_events(company_id, id);
+
+ALTER TABLE ONLY public.activity_reschedules
+    ADD CONSTRAINT fk_activity_reschedules_activity FOREIGN KEY (company_id, activity_id) REFERENCES public.program_activities(company_id, id);
+
+ALTER TABLE ONLY public.dossier_share_accesses
+    ADD CONSTRAINT fk_dossier_share_accesses_link FOREIGN KEY (company_id, share_link_id) REFERENCES public.dossier_share_links(company_id, id);
+
+ALTER TABLE ONLY public.election_roll
+    ADD CONSTRAINT fk_election_roll_election FOREIGN KEY (company_id, election_id) REFERENCES public.elections(company_id, id);
+
+ALTER TABLE ONLY public.election_roll
+    ADD CONSTRAINT fk_election_roll_worker FOREIGN KEY (company_id, worker_id) REFERENCES public.workers(company_id, id);
+
+ALTER TABLE ONLY public.sync_operations
+    ADD CONSTRAINT fk_sync_operations_batch FOREIGN KEY (company_id, sync_batch_id) REFERENCES public.sync_batches(company_id, id);
+
+ALTER TABLE ONLY public.sync_operations
+    ADD CONSTRAINT fk_sync_operations_device FOREIGN KEY (company_id, device_id) REFERENCES public.devices(company_id, id);
+
+ALTER TABLE ONLY public.legal_norm_requirements
+    ADD CONSTRAINT legal_norm_requirements_legal_norm_id_fkey FOREIGN KEY (legal_norm_id) REFERENCES public.legal_norms(id);
+
+ALTER TABLE ONLY public.newsletter_deliveries
+    ADD CONSTRAINT newsletter_deliveries_issue_id_fkey FOREIGN KEY (issue_id) REFERENCES public.newsletter_issues(id);
+
+ALTER TABLE ONLY public.newsletter_deliveries
+    ADD CONSTRAINT newsletter_deliveries_subscriber_id_fkey FOREIGN KEY (subscriber_id) REFERENCES public.newsletter_subscribers(id);
+
+ALTER TABLE ONLY public.ppe_replacement_requests
+    ADD CONSTRAINT ppe_replacement_requests_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.ppe_replacement_requests
+    ADD CONSTRAINT ppe_replacement_requests_new_delivery_id_fkey FOREIGN KEY (new_delivery_id) REFERENCES public.ppe_deliveries(id);
+
+ALTER TABLE ONLY public.ppe_replacement_requests
+    ADD CONSTRAINT ppe_replacement_requests_ppe_delivery_id_fkey FOREIGN KEY (ppe_delivery_id) REFERENCES public.ppe_deliveries(id);
+
+ALTER TABLE ONLY public.ppe_replacement_requests
+    ADD CONSTRAINT ppe_replacement_requests_ppe_item_id_fkey FOREIGN KEY (ppe_item_id) REFERENCES public.ppe_items(id);
+
+ALTER TABLE ONLY public.ppe_replacement_requests
+    ADD CONSTRAINT ppe_replacement_requests_worker_id_fkey FOREIGN KEY (worker_id) REFERENCES public.workers(id);
+
+ALTER TABLE ONLY public.psychosocial_instruments
+    ADD CONSTRAINT psychosocial_instruments_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.sales_quotes
+    ADD CONSTRAINT sales_quotes_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+ALTER TABLE ONLY public.sales_quotes
+    ADD CONSTRAINT sales_quotes_confirmed_by_fkey FOREIGN KEY (confirmed_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.sales_quotes
+    ADD CONSTRAINT sales_quotes_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.sales_quotes
+    ADD CONSTRAINT sales_quotes_demo_request_id_fkey FOREIGN KEY (demo_request_id) REFERENCES public.demo_requests(id);
+
+ALTER TABLE ONLY public.sales_quotes
+    ADD CONSTRAINT sales_quotes_evidence_file_id_fkey FOREIGN KEY (evidence_file_id) REFERENCES public.site_assets(id);
+
+ALTER TABLE ONLY public.sales_quotes
+    ADD CONSTRAINT sales_quotes_pdf_file_id_fkey FOREIGN KEY (pdf_file_id) REFERENCES public.site_assets(id);
+
+ALTER TABLE ONLY public.sales_quotes
+    ADD CONSTRAINT sales_quotes_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.signature_strokes
+    ADD CONSTRAINT signature_strokes_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.site_assets
+    ADD CONSTRAINT site_assets_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.success_story_consents
+    ADD CONSTRAINT success_story_consents_file_id_fkey FOREIGN KEY (file_id) REFERENCES public.site_assets(id);
+
+ALTER TABLE ONLY public.success_story_consents
+    ADD CONSTRAINT success_story_consents_invite_id_fkey FOREIGN KEY (invite_id) REFERENCES public.success_story_invites(id);
+
+ALTER TABLE ONLY public.success_story_consents
+    ADD CONSTRAINT success_story_consents_signature_file_id_fkey FOREIGN KEY (signature_file_id) REFERENCES public.site_assets(id);
+
+ALTER TABLE ONLY public.success_story_consents
+    ADD CONSTRAINT success_story_consents_story_id_fkey FOREIGN KEY (story_id) REFERENCES public.success_stories(id);
+
+ALTER TABLE ONLY public.success_story_invites
+    ADD CONSTRAINT success_story_invites_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.success_story_invites
+    ADD CONSTRAINT success_story_invites_story_id_fkey FOREIGN KEY (story_id) REFERENCES public.success_stories(id);
+
+ALTER TABLE ONLY public.support_tickets
+    ADD CONSTRAINT support_tickets_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.support_tickets
+    ADD CONSTRAINT support_tickets_replied_by_fkey FOREIGN KEY (replied_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.support_tickets
+    ADD CONSTRAINT support_tickets_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.sync_operations
+    ADD CONSTRAINT sync_operations_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.talk_topics
+    ADD CONSTRAINT talk_topics_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.unit_conversions
+    ADD CONSTRAINT unit_conversions_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
+
+ALTER TABLE ONLY public.unit_conversions
+    ADD CONSTRAINT unit_conversions_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.unit_conversions
+    ADD CONSTRAINT unit_conversions_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.user_signatures
+    ADD CONSTRAINT user_signatures_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+ALTER TABLE public.access_visits ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.activity_reschedules ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.api_access_tokens ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.api_idempotency_keys ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.api_usage ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.backup_runs ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.behavior_lists ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.budget_transfers ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.chatbot_alias_votes ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.chatbot_aliases ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.demo_calendar_tokens ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.dossier_share_accesses ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.election_roll ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.emo_protocols ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.newsletter_deliveries ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.ppe_replacement_requests ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.psychosocial_instruments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY rls_access_visits_company ON public.access_visits TO escudo_app USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_activity_reschedules_company ON public.activity_reschedules TO escudo_app USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_api_access_tokens_company ON public.api_access_tokens USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_api_idempotency_keys_company ON public.api_idempotency_keys USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_api_usage_company ON public.api_usage USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_backup_runs_platform ON public.backup_runs TO escudo_platform USING (true) WITH CHECK (true);
+
+CREATE POLICY rls_behavior_lists_company ON public.behavior_lists USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_budget_transfers_company ON public.budget_transfers USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_chatbot_alias_votes_platform ON public.chatbot_alias_votes TO escudo_platform USING (true) WITH CHECK (true);
+
+CREATE POLICY rls_chatbot_aliases_platform ON public.chatbot_aliases TO escudo_platform USING (true) WITH CHECK (true);
+
+CREATE POLICY rls_demo_calendar_tokens_platform ON public.demo_calendar_tokens TO escudo_platform USING (true) WITH CHECK (true);
+
+CREATE POLICY rls_dossier_share_accesses_company ON public.dossier_share_accesses TO escudo_app USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_election_roll_company ON public.election_roll TO escudo_app USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_emo_protocols_company ON public.emo_protocols USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_newsletter_deliveries_platform ON public.newsletter_deliveries TO escudo_platform USING (true) WITH CHECK (true);
+
+CREATE POLICY rls_ppe_replacement_requests_company ON public.ppe_replacement_requests USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_psychosocial_instruments_company ON public.psychosocial_instruments USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_sales_quotes_platform ON public.sales_quotes TO escudo_platform USING (true) WITH CHECK (true);
+
+CREATE POLICY rls_success_story_consents_platform ON public.success_story_consents TO escudo_platform USING (true) WITH CHECK (true);
+
+CREATE POLICY rls_success_story_invites_platform ON public.success_story_invites TO escudo_platform USING (true) WITH CHECK (true);
+
+CREATE POLICY rls_sync_operations_company ON public.sync_operations TO escudo_app USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_talk_topics_company ON public.talk_topics USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_unit_conversions_company_insert ON public.unit_conversions FOR INSERT TO escudo_app WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_unit_conversions_company_read ON public.unit_conversions FOR SELECT TO escudo_app USING (((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid) OR (company_id IS NULL)));
+
+CREATE POLICY rls_unit_conversions_company_update ON public.unit_conversions FOR UPDATE TO escudo_app USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_unit_conversions_platform ON public.unit_conversions TO escudo_platform USING ((company_id IS NULL)) WITH CHECK ((company_id IS NULL));
+
+ALTER TABLE public.sales_quotes ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.success_story_consents ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.success_story_invites ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.sync_operations ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.talk_topics ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.unit_conversions ENABLE ROW LEVEL SECURITY;
+
+GRANT SELECT,INSERT ON TABLE public.access_visits TO escudo_app;
+
+GRANT SELECT,INSERT ON TABLE public.activity_reschedules TO escudo_app;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.api_access_tokens TO escudo_app;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.api_access_tokens TO escudo_definer;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.api_idempotency_keys TO escudo_app;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.api_idempotency_keys TO escudo_definer;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.api_usage TO escudo_app;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.api_usage TO escudo_definer;
+
+GRANT SELECT ON TABLE public.assistant_knowledge TO escudo_app;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.assistant_knowledge TO escudo_platform;
+
+GRANT UPDATE(uses) ON TABLE public.assistant_knowledge TO escudo_app;
+
+GRANT SELECT,INSERT ON TABLE public.assistant_misses TO escudo_app;
+GRANT SELECT,UPDATE ON TABLE public.assistant_misses TO escudo_platform;
+
+GRANT UPDATE(times) ON TABLE public.assistant_misses TO escudo_app;
+
+GRANT UPDATE(last_at) ON TABLE public.assistant_misses TO escudo_app;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.audit_archives TO escudo_platform;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.audit_archives TO escudo_app;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.audit_archives TO escudo_definer;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.backup_runs TO escudo_platform;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.behavior_lists TO escudo_app;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.behavior_lists TO escudo_definer;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.budget_transfers TO escudo_app;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.budget_transfers TO escudo_definer;
+
+GRANT SELECT,INSERT ON TABLE public.chatbot_alias_votes TO escudo_platform;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.chatbot_aliases TO escudo_platform;
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.demo_calendar_tokens TO escudo_platform;
+
+GRANT SELECT,INSERT ON TABLE public.dossier_share_accesses TO escudo_app;
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.election_roll TO escudo_app;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.emo_protocols TO escudo_app;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.emo_protocols TO escudo_definer;
+
+GRANT SELECT ON TABLE public.legal_norm_requirements TO escudo_app;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.legal_norm_requirements TO escudo_platform;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.newsletter_deliveries TO escudo_platform;
+
+GRANT SELECT,UPDATE ON TABLE public.platform_providers TO escudo_platform;
+GRANT SELECT ON TABLE public.platform_providers TO escudo_app;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.ppe_replacement_requests TO escudo_app;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.ppe_replacement_requests TO escudo_definer;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.psychosocial_instruments TO escudo_app;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.psychosocial_instruments TO escudo_definer;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.sales_quotes TO escudo_platform;
+
+GRANT SELECT ON TABLE public.scat_catalog_items TO escudo_app;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.scat_catalog_items TO escudo_platform;
+
+GRANT SELECT,INSERT ON TABLE public.signature_strokes TO escudo_app;
+
+GRANT SELECT,INSERT ON TABLE public.site_assets TO escudo_platform;
+
+GRANT SELECT,INSERT ON TABLE public.success_story_consents TO escudo_platform;
+
+GRANT UPDATE(withdrawn_at) ON TABLE public.success_story_consents TO escudo_platform;
+
+GRANT UPDATE(withdraw_reason) ON TABLE public.success_story_consents TO escudo_platform;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.success_story_invites TO escudo_platform;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.support_tickets TO escudo_platform;
+
+GRANT SELECT,INSERT ON TABLE public.sync_operations TO escudo_app;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.talk_topics TO escudo_app;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.talk_topics TO escudo_definer;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.unit_conversions TO escudo_app;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.unit_conversions TO escudo_platform;
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.user_signatures TO escudo_app;
+RESET check_function_bodies;
+
+-- ---------- Restricciones de tablas existentes
+ALTER TABLE baseline_assessments DROP CONSTRAINT IF EXISTS baseline_assessments_status_check;
+ALTER TABLE dossier_items DROP CONSTRAINT IF EXISTS dossier_items_status_check;
+ALTER TABLE event_notifications DROP CONSTRAINT IF EXISTS event_notifications_authority_check;
+ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
+ALTER TABLE program_activities DROP CONSTRAINT IF EXISTS program_activities_auto_execution_rule_check;
+ALTER TABLE activity_executions ADD CONSTRAINT activity_executions_planned_month_check CHECK (((planned_month IS NULL) OR ((planned_month >= 1) AND (planned_month <= 12))));
+ALTER TABLE activity_executions ADD CONSTRAINT activity_executions_status_check CHECK ((status = ANY (ARRAY['executed'::text, 'partial'::text])));
+ALTER TABLE annual_plan_items ADD CONSTRAINT annual_plan_items_item_type_check CHECK (((item_type IS NULL) OR (item_type = ANY (ARRAY['objective'::text, 'goal'::text, 'human_resource'::text, 'material_resource'::text, 'financial_resource'::text, 'program'::text, 'indicator'::text]))));
+ALTER TABLE annual_plan_items ADD CONSTRAINT annual_plan_items_reference_type_check CHECK (((reference_type IS NULL) OR (reference_type = ANY (ARRAY['sst_objectives'::text, 'annual_programs'::text, 'training_programs'::text]))));
+ALTER TABLE baseline_assessments ADD CONSTRAINT ck_baseline_assessments_status CHECK ((status = ANY (ARRAY['draft'::text, 'in_progress'::text, 'completed'::text, 'in_review'::text, 'approved'::text, 'archived'::text])));
+ALTER TABLE budgets ADD CONSTRAINT budgets_total_approved_check CHECK (((total_approved IS NULL) OR (total_approved >= (0)::numeric)));
+ALTER TABLE change_requests ADD CONSTRAINT change_requests_impact_level_check CHECK (((impact_level IS NULL) OR (impact_level = ANY (ARRAY['low'::text, 'medium'::text, 'high'::text]))));
+ALTER TABLE client_invitations ADD CONSTRAINT client_invitations_suggested_plan_code_check CHECK (((suggested_plan_code IS NULL) OR (suggested_plan_code = ANY (ARRAY['E'::text, 'P'::text, 'C'::text]))));
+ALTER TABLE contractor_documents ADD CONSTRAINT ck_contractor_documents_fitness CHECK (((fitness_result IS NULL) OR (fitness_result = ANY (ARRAY['fit'::text, 'fit_with_restrictions'::text, 'unfit'::text]))));
+ALTER TABLE course_sections ADD CONSTRAINT course_sections_unlock_rule_check CHECK (((unlock_rule = ANY (ARRAY['always'::text, 'after_previous'::text, 'from_date'::text])) AND ((unlock_rule <> 'from_date'::text) OR (unlock_on IS NOT NULL))));
+ALTER TABLE dossier_items ADD CONSTRAINT ck_dossier_items_status CHECK ((status = ANY (ARRAY['included'::text, 'missing'::text, 'expired'::text, 'not_applicable'::text, 'excluded'::text, 'pending_approval'::text])));
+ALTER TABLE dossier_share_links ADD CONSTRAINT ck_dossier_share_links_3 CHECK (((max_downloads IS NULL) OR (download_count <= max_downloads)));
+ALTER TABLE dossier_share_links ADD CONSTRAINT dossier_share_links_max_downloads_check CHECK (((max_downloads IS NULL) OR (max_downloads > 0)));
+ALTER TABLE elections ADD CONSTRAINT ck_elections_tie_break_rule CHECK ((tie_break_rule = ANY (ARRAY['seniority'::text, 'lottery'::text])));
+ALTER TABLE event_notifications ADD CONSTRAINT ck_event_notifications_authority CHECK ((authority = ANY (ARRAY['mtpe_sat'::text, 'sunafil'::text, 'essalud'::text, 'eps'::text, 'insurer_sctr'::text, 'osinergmin'::text, 'medical_center'::text, 'principal_company'::text, 'other'::text])));
+ALTER TABLE measurements ADD CONSTRAINT measurements_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'approved'::text, 'voided'::text])));
+ALTER TABLE orders ADD CONSTRAINT ck_orders_manual_method CHECK (((manual_payment_method IS NULL) OR (manual_payment_method = ANY (ARRAY['yape'::text, 'plin'::text, 'transfer'::text, 'deposit'::text, 'cash'::text, 'other'::text]))));
+ALTER TABLE orders ADD CONSTRAINT ck_orders_refunded_total CHECK (((refunded_total >= (0)::numeric) AND (refunded_total <= total)));
+ALTER TABLE orders ADD CONSTRAINT ck_orders_status CHECK ((status = ANY (ARRAY['pending'::text, 'paid'::text, 'failed'::text, 'voided'::text, 'expired'::text, 'partially_refunded'::text, 'refunded'::text])));
+ALTER TABLE position_training_requirements ADD CONSTRAINT position_training_requirements_effective_check CHECK (((effective_to IS NULL) OR (effective_from IS NULL) OR (effective_to >= (effective_from - 1))));
+ALTER TABLE program_activities ADD CONSTRAINT ck_program_activities_auto_execution_rule CHECK ((auto_execution_rule = ANY (ARRAY['manual'::text, 'on_source_record'::text])));
+ALTER TABLE risst_deliveries ADD CONSTRAINT risst_deliveries_who_check CHECK (((worker_id IS NOT NULL) OR (contractor_worker_id IS NOT NULL)));
+ALTER TABLE site_settings ADD CONSTRAINT site_settings_quote_validity_days_check CHECK (((quote_validity_days >= 1) AND (quote_validity_days <= 90)));
+ALTER TABLE sites ADD CONSTRAINT sites_evacuation_target_seconds_check CHECK (((evacuation_target_seconds IS NULL) OR (evacuation_target_seconds > 0)));
+ALTER TABLE sites ADD CONSTRAINT sites_min_extinguishers_check CHECK (((min_extinguishers IS NULL) OR (min_extinguishers >= 0)));
+ALTER TABLE users ADD CONSTRAINT users_platform_role_check CHECK (
+CASE
+    WHEN is_platform_staff THEN COALESCE((platform_role = ANY (ARRAY['owner'::text, 'support'::text])), false)
+    ELSE (platform_role IS NULL)
+END);
+ALTER TABLE vendor_evaluation_templates ADD CONSTRAINT vendor_evaluation_templates_validity_months_check CHECK (((validity_months IS NULL) OR (validity_months > 0)));
+ALTER TABLE absences ADD CONSTRAINT absences_previous_absence_id_fkey FOREIGN KEY (previous_absence_id) REFERENCES absences(id);
+ALTER TABLE annual_plans ADD CONSTRAINT annual_plans_baseline_assessment_id_fkey FOREIGN KEY (baseline_assessment_id) REFERENCES baseline_assessments(id);
+ALTER TABLE annual_plans ADD CONSTRAINT annual_plans_closed_by_fkey FOREIGN KEY (closed_by) REFERENCES users(id);
+ALTER TABLE annual_plans ADD CONSTRAINT annual_plans_closure_report_fk FOREIGN KEY (company_id, closure_report_file_id) REFERENCES files(company_id, id);
+ALTER TABLE annual_plans ADD CONSTRAINT annual_plans_document_version_fk FOREIGN KEY (company_id, document_version_id) REFERENCES document_versions(company_id, id);
+ALTER TABLE annual_plans ADD CONSTRAINT annual_plans_policy_id_fkey FOREIGN KEY (policy_id) REFERENCES sst_policies(id);
+ALTER TABLE annual_plans ADD CONSTRAINT annual_plans_previous_plan_id_fkey FOREIGN KEY (previous_plan_id) REFERENCES annual_plans(id);
+ALTER TABLE annual_plans ADD CONSTRAINT annual_plans_training_program_id_fkey FOREIGN KEY (training_program_id) REFERENCES training_programs(id);
+ALTER TABLE annual_programs ADD CONSTRAINT annual_programs_previous_program_id_fkey FOREIGN KEY (previous_program_id) REFERENCES annual_programs(id);
+ALTER TABLE ats_forms ADD CONSTRAINT ats_forms_incident_event_id_fkey FOREIGN KEY (incident_event_id) REFERENCES sst_events(id);
+ALTER TABLE ats_forms ADD CONSTRAINT ats_forms_site_photo_file_id_fkey FOREIGN KEY (site_photo_file_id) REFERENCES files(id);
+ALTER TABLE baseline_assessments ADD CONSTRAINT baseline_assessments_previous_assessment_id_fkey FOREIGN KEY (previous_assessment_id) REFERENCES baseline_assessments(id);
+ALTER TABLE behavior_observations ADD CONSTRAINT behavior_observations_behavior_list_id_fkey FOREIGN KEY (behavior_list_id) REFERENCES behavior_lists(id);
+ALTER TABLE client_invitations ADD CONSTRAINT client_invitations_invited_by_user_id_fkey FOREIGN KEY (invited_by_user_id) REFERENCES users(id);
+ALTER TABLE corrective_actions ADD CONSTRAINT corrective_actions_extension_approved_by_fkey FOREIGN KEY (extension_approved_by) REFERENCES users(id);
+ALTER TABLE courses ADD CONSTRAINT courses_previous_course_id_fkey FOREIGN KEY (previous_course_id) REFERENCES courses(id);
+ALTER TABLE credential_requirements ADD CONSTRAINT credential_requirements_training_program_item_id_fkey FOREIGN KEY (training_program_item_id) REFERENCES training_program_items(id);
+ALTER TABLE dossier_share_links ADD CONSTRAINT dossier_share_links_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES users(id);
+ALTER TABLE equipment_checks ADD CONSTRAINT equipment_checks_photo_file_id_fkey FOREIGN KEY (photo_file_id) REFERENCES files(id);
+ALTER TABLE inspection_templates ADD CONSTRAINT inspection_templates_previous_template_id_fkey FOREIGN KEY (previous_template_id) REFERENCES inspection_templates(id);
+ALTER TABLE iperc_matrices ADD CONSTRAINT iperc_matrices_document_id_fkey FOREIGN KEY (document_id) REFERENCES documents(id);
+ALTER TABLE iperc_versions ADD CONSTRAINT iperc_versions_committee_meeting_id_fkey FOREIGN KEY (committee_meeting_id) REFERENCES committee_meetings(id);
+ALTER TABLE legal_norms ADD CONSTRAINT legal_norms_company_id_fkey FOREIGN KEY (company_id) REFERENCES companies(id);
+ALTER TABLE legal_requirements ADD CONSTRAINT legal_requirements_reviewed_by_fkey FOREIGN KEY (reviewed_by) REFERENCES users(id);
+ALTER TABLE measurements ADD CONSTRAINT measurements_unit_conversion_id_fkey FOREIGN KEY (unit_conversion_id) REFERENCES unit_conversions(id);
+ALTER TABLE orders ADD CONSTRAINT orders_manual_payment_evidence_file_id_fkey FOREIGN KEY (manual_payment_evidence_file_id) REFERENCES files(id);
+ALTER TABLE ppe_items ADD CONSTRAINT ppe_items_training_id_fkey FOREIGN KEY (training_id) REFERENCES trainings(id);
+ALTER TABLE program_activities ADD CONSTRAINT program_activities_previous_activity_id_fkey FOREIGN KEY (previous_activity_id) REFERENCES program_activities(id);
+ALTER TABLE psychosocial_surveys ADD CONSTRAINT psychosocial_surveys_instrument_id_fkey FOREIGN KEY (instrument_id) REFERENCES psychosocial_instruments(id);
+ALTER TABLE register_exports ADD CONSTRAINT register_exports_superseded_by_fkey FOREIGN KEY (superseded_by) REFERENCES register_exports(id);
+ALTER TABLE risst_deliveries ADD CONSTRAINT risst_deliveries_contractor_worker_id_fkey FOREIGN KEY (contractor_worker_id) REFERENCES contractor_workers(id);
+ALTER TABLE safety_talks ADD CONSTRAINT safety_talks_topic_bank_id_fkey FOREIGN KEY (topic_bank_id) REFERENCES talk_topics(id);
+ALTER TABLE sst_events ADD CONSTRAINT sst_events_classified_by_fkey FOREIGN KEY (classified_by) REFERENCES users(id);
+ALTER TABLE sst_events ADD CONSTRAINT sst_events_iperc_row_id_fkey FOREIGN KEY (iperc_row_id) REFERENCES iperc_rows(id);
+ALTER TABLE sst_objectives ADD CONSTRAINT sst_objectives_indicator_kpi_id_fkey FOREIGN KEY (indicator_kpi_id) REFERENCES kpi_definitions(id);
+ALTER TABLE sst_policies ADD CONSTRAINT sst_policies_document_version_id_fkey FOREIGN KEY (document_version_id) REFERENCES document_versions(id);
+ALTER TABLE substandard_reports ADD CONSTRAINT substandard_reports_escalated_event_id_fkey FOREIGN KEY (escalated_event_id) REFERENCES sst_events(id);
+ALTER TABLE training_certificates ADD CONSTRAINT training_certificates_replaces_certificate_id_fkey FOREIGN KEY (replaces_certificate_id) REFERENCES training_certificates(id);
+ALTER TABLE trainings ADD CONSTRAINT trainings_certificate_template_id_fkey FOREIGN KEY (certificate_template_id) REFERENCES certificate_templates(id);
+
+-- ---------- Índices de tablas existentes
+DROP INDEX IF EXISTS uq_annual_plans_1;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_annual_plans_year_version ON annual_plans (company_id, year, version_number) WHERE (deleted_at IS NULL);
+DROP INDEX IF EXISTS uq_annual_programs_1;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_annual_programs_1 ON annual_programs (company_id, year, version_number) WHERE (deleted_at IS NULL);
+CREATE INDEX IF NOT EXISTS ix_client_invitations_account ON client_invitations (consultancy_account_id, status);
+CREATE INDEX IF NOT EXISTS ix_legal_norms_company ON legal_norms (company_id) WHERE (company_id IS NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_legal_requirements_needs_review ON legal_requirements (company_id) WHERE needs_review;
+CREATE UNIQUE INDEX IF NOT EXISTS risst_deliveries_contractor_worker ON risst_deliveries (company_id, risst_version_id, contractor_worker_id) WHERE ((deleted_at IS NULL) AND (contractor_worker_id IS NOT NULL));
+CREATE INDEX IF NOT EXISTS idx_training_program_items_target_positions ON training_program_items USING gin (target_positions);
+
+-- ---------- Disparadores de tablas existentes
+CREATE TRIGGER trg_aul_attribute_conversion AFTER INSERT ON course_enrollments FOR EACH ROW EXECUTE FUNCTION aul_attribute_conversion();
+CREATE TRIGGER trg_vta_attribute_license_conversion AFTER INSERT ON course_licenses FOR EACH ROW EXECUTE FUNCTION vta_attribute_license_conversion();
+CREATE TRIGGER trg_feature_flags_company_mode BEFORE INSERT ON feature_flags FOR EACH ROW EXECUTE FUNCTION trg_feature_flags_company_mode();
+
+-- ---------- RLS y políticas de tablas existentes
+ALTER TABLE legal_norms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE legal_norms NO FORCE ROW LEVEL SECURITY;
+CREATE POLICY rls_certificate_verifications_invalid_insert ON certificate_verifications FOR INSERT TO public WITH CHECK (((company_id IS NULL) AND (certificate_id IS NULL) AND (result = 'invalid'::text)));
+CREATE POLICY rls_client_invitations_platform ON client_invitations TO escudo_platform USING (true) WITH CHECK (true);
+CREATE POLICY rls_legal_norms_company_insert ON legal_norms FOR INSERT TO escudo_app WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+CREATE POLICY rls_legal_norms_company_update ON legal_norms FOR UPDATE TO escudo_app USING ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)) WITH CHECK ((company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid));
+CREATE POLICY rls_legal_norms_platform ON legal_norms TO escudo_platform USING ((company_id IS NULL)) WITH CHECK ((company_id IS NULL));
+CREATE POLICY rls_legal_norms_read ON legal_norms FOR SELECT TO escudo_app USING (((company_id IS NULL) OR (company_id = (NULLIF(current_setting('app.company_id'::text, true), ''::text))::uuid)));
+
+-- ---------- Permisos de tablas existentes
+GRANT SELECT, INSERT, UPDATE ON client_invitations TO escudo_platform;
+GRANT INSERT, UPDATE ON legal_norms TO escudo_app;
+
+-- ---------- Comentarios de tablas existentes
+COMMENT ON COLUMN access_events.deny_codes IS '[ING] Códigos neutros de los motivos de negación (RN-ING-02)';
+COMMENT ON COLUMN chatbot_messages.answer_kind IS 'Cómo respondió el bot: guided (respuesta del panel), assistant:<tipo> (asistente con datos del sitio) o fallback (no supo)';
+COMMENT ON COLUMN data_breaches.anpd_due_at IS 'detected_at + data_breach_notification_hours (parámetro a confirmar)';
+COMMENT ON COLUMN devices.credential_hash IS 'SHA-256 del secreto del dispositivo (app del trabajador: ingreso con DNI + PIN)';
+COMMENT ON COLUMN equipment_checks.photo_file_id IS 'foto de la inspección (SCR-EQE-02)';
+COMMENT ON COLUMN idempotency_keys.scope_hash IS 'sha256 de clave + sesión (o IP en hash si es público) + empresa + método y ruta';
+COMMENT ON COLUMN investigations.scat_contact IS '[INV] Tipos de contacto o evento del método SCAT (códigos del catálogo)';
+COMMENT ON COLUMN legal_norms.company_id IS 'NULL = norma del catálogo global de EscudoSST; con valor = norma propia de la empresa';
+COMMENT ON COLUMN legal_requirements.needs_review IS '[MRL] Requiere revisión por cambio de su norma en el catálogo (RN-MRL-05)';
+COMMENT ON COLUMN lms_connections.token_enc IS '[CIFRADO EN APLICACIÓN] token del servicio web de Moodle';
+COMMENT ON TABLE sector_packs IS '[PSE] Paquete sectorial (construcción, minería, agroindustria, manufactura, retail, oficinas, clínicas)';
+COMMENT ON COLUMN signatures.voids_signature_id IS NULL;
+COMMENT ON COLUMN signatures.void_reason IS NULL;
+COMMENT ON COLUMN site_not_found_paths.internal_referrer IS 'el enlace roto está en una página del propio sitio';
+COMMENT ON COLUMN site_settings.story_authorization_template IS 'Texto de la autorización de casos de éxito con marcadores {firmante}, {documento}, etc. Null = texto modelo';
+COMMENT ON COLUMN site_settings.blog_feed_failures IS 'lecturas fallidas seguidas del blog de WordPress (se reinicia al leerlo bien)';
+COMMENT ON COLUMN site_web_vitals.value IS 'LCP e INP en milisegundos; CLS sin unidad';
+COMMENT ON COLUMN users.platform_role IS 'Rol en el panel de la plataforma: owner (Dueño) o support (Soporte). Solo si is_platform_staff';
+COMMENT ON COLUMN work_adjustments.restricted_hazard_families IS '[VUL] Familias de peligro (hazard_catalog.hazard_family) que la adecuación restringe';
+COMMENT ON COLUMN work_adjustments.compatibility_justification IS '[VUL] Justificación cuando el puesto tiene peligros restringidos y no se reubica (RN-VUL-02)';
+
+-- SUS · backup_restore_tests (platform, added): pruebas de restauración de las copias en una base temporal (docs/15 §9)
+CREATE TABLE IF NOT EXISTS backup_restore_tests (
+  id uuid NOT NULL DEFAULT uuidv7(),
+  backup_run_id uuid REFERENCES backup_runs (id),
+  target text NOT NULL CHECK (target IN ('main', 'medical')),
+  trigger text NOT NULL CHECK (trigger IN ('schedule', 'manual')),
+  status text NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'ok', 'failed')),
+  started_at timestamptz NOT NULL DEFAULT now(),
+  finished_at timestamptz,
+  duration_ms integer CHECK (duration_ms IS NULL OR duration_ms >= 0),
+  temp_database text,
+  tables_count integer,
+  rls_tables_count integer,
+  migrations_count integer,
+  row_counts jsonb NOT NULL DEFAULT '{}'::jsonb,
+  checks jsonb NOT NULL DEFAULT '[]'::jsonb,
+  error text,
+  requested_by uuid REFERENCES users (id),
+  PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_backup_restore_tests_target ON backup_restore_tests (target, started_at DESC);
+COMMENT ON TABLE backup_restore_tests IS '[SUS] Pruebas de restauración de copias de seguridad en una base temporal: resultado, duración y revisiones (tablas, RLS, migraciones, filas)';
+ALTER TABLE backup_restore_tests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE backup_restore_tests FORCE ROW LEVEL SECURITY;
+CREATE POLICY rls_backup_restore_tests_platform ON backup_restore_tests TO escudo_platform USING (true) WITH CHECK (true);
+GRANT SELECT, INSERT, UPDATE ON backup_restore_tests TO escudo_platform;
+
+-- ---------- Propiedad de lo agregado después del bloque de propiedad (sin tocar permisos de escudo_definer)
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE n.nspname = 'public' AND c.relkind IN ('r','p') AND pg_get_userbyid(c.relowner) <> 'escudo_owner' LOOP
+    EXECUTE format('ALTER TABLE %I OWNER TO escudo_owner', r.relname);
+  END LOOP;
+  FOR r IN SELECT p.oid::regprocedure AS f FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname = 'public' AND p.prosecdef AND pg_get_userbyid(p.proowner) <> 'escudo_definer' LOOP
+    EXECUTE format('ALTER FUNCTION %s OWNER TO escudo_definer', r.f);
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', r.f);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO escudo_app, escudo_platform', r.f);
+  END LOOP;
+  -- Las demás funciones son de escudo_owner: las migraciones (rol dueño) pueden reemplazarlas con CREATE OR REPLACE.
+  FOR r IN SELECT p.oid::regprocedure AS f FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname = 'public' AND NOT p.prosecdef AND pg_get_userbyid(p.proowner) <> 'escudo_owner' LOOP
+    EXECUTE format('ALTER FUNCTION %s OWNER TO escudo_owner', r.f);
+  END LOOP;
+END $$;

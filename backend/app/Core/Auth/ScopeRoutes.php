@@ -42,6 +42,7 @@ final class ScopeRoutes
         'epp/replacement-requests/{id}' => ['id' => 'worker:ppe_replacement_requests'],
         'est/man-hours/{id}' => ['id' => 'man_hours'],
         'est/months/{id}' => ['id' => 'monthly_statistics'],
+        'fot/credentials/{id}' => ['id' => 'worker:credentials'],
         'fir/requests/{id}/remind' => ['id' => 'subject:signature_requests'],
         'fir/signatures/{id}' => ['id' => 'subject:signatures'],
         'fir/subject/{table}/{id}' => ['id' => '@table'],

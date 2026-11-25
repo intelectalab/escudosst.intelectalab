@@ -34,8 +34,8 @@ class CommitteeController extends Controller
     {
         $c = DB::selectOne(
             "select id, committee_type, name, period_start_on, period_end_on, installation_on, status, members_required
-               from committees where deleted_at is null and status in ('active', 'forming')
-              order by (status = 'active') desc, period_start_on desc limit 1");
+               from committees where deleted_at is null and status in ('active', 'forming')".\App\Core\Auth\Scope::andTable('committees', 'committees')."
+              order by (status = 'active') desc, ".(\App\Core\Auth\Scope::restricted() ? '(site_id is null), ' : '').'period_start_on desc limit 1');
         if (! $c) {
             return response()->json(['data' => null]);
         }

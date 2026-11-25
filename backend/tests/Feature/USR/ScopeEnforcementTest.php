@@ -246,3 +246,116 @@ it('el auditor externo solo ve los registros con fecha dentro del periodo de su 
     $this->getJson("/api/v1/records/INS/inspections/{$old}", $h)->assertOk();
     $this->getJson("/api/v1/records/INS/inspections/{$s['ins_a']}", $h)->assertNotFound();
 });
+
+/** Trabajador de Andinas en la sede indicada (por el motor de registros, como el Jefe SST). */
+function scpWorker(array $boss, string $site, string $name): string
+{
+    return test()->postJson('/api/v1/records/TRB/workers', ['document_number' => (string) random_int(40000000, 49999999), 'first_name' => $name,
+        'paternal_last_name' => 'Alcance', 'current_site_id' => $site], $boss)->assertCreated()->json('data.id');
+}
+
+it('fotochecks: resumen, lote, historial y evaluación solo con los trabajadores del alcance', function () {
+    $s = scpSetup();
+    $boss = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
+    $wa = scpWorker($boss, $s['a'], 'Ana');
+    $wb = scpWorker($boss, $s['b'], 'Beto');
+    [$ca, $cb] = scpDb(function () use ($wa, $wb) {
+        $type = DB::selectOne('select id from credential_types where deleted_at is null order by name limit 1')->id;
+        $mk = fn (string $w, string $n) => DB::selectOne("insert into credentials (company_id, credential_type_id, worker_id, credential_number, token_hash, status, expires_on)
+            values (?, ?, ?, ?, sha256(convert_to(?, 'UTF8')), 'active', current_date + 200) returning id", [ANDINAS_ID, $type, $w, $n, $n])->id;
+
+        return [$mk($wa, 'SCP-FOT-A-'.random_int(1000, 9999)), $mk($wb, 'SCP-FOT-B-'.random_int(1000, 9999))];
+    });
+    $active = fn (?array $sites) => (int) scpDb(fn () => DB::selectOne("select count(*) as n from credentials c left join workers w on w.id = c.worker_id
+        where c.deleted_at is null and c.status = 'active' and (c.expires_on is null or c.expires_on >= current_date)".($sites ? ' and (c.worker_id is null or w.current_site_id = any(?::uuid[]) or (w.current_site_id is null and w.current_area_id is null))' : ''),
+        $sites ? ['{'.implode(',', $sites).'}'] : [])->n);
+
+    $h = scpScoped();
+    expect($this->getJson('/api/v1/fot/summary', $h)->assertOk()->json('data.kpis.active'))->toBe($active([$s['a']]));
+    $batch = $this->getJson('/api/v1/fot/credentials/batch', $h)->assertOk()->json('data');
+    expect($batch)->toContain($ca)->not->toContain($cb);
+    $this->getJson("/api/v1/fot/credentials/batch?site_id={$s['b']}", $h)->assertForbidden();
+    $this->getJson("/api/v1/fot/credentials/{$cb}/verifications", $h)->assertNotFound();
+    $this->getJson("/api/v1/fot/credentials/{$ca}/verifications", $h)->assertOk();
+    $this->getJson("/api/v1/fot/evaluate?worker_id={$wb}", $h)->assertNotFound();
+    $this->getJson('/api/v1/fot/matrix', $h)->assertOk();
+
+    Permissions::flush();
+    $boss = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
+    expect($this->getJson('/api/v1/fot/summary', $boss)->assertOk()->json('data.kpis.active'))->toBe($active(null));
+    expect($this->getJson('/api/v1/fot/credentials/batch', $boss)->assertOk()->json('data'))->toContain($ca)->toContain($cb);
+    $this->getJson("/api/v1/fot/credentials/{$cb}/verifications", $boss)->assertOk();
+});
+
+it('portería, monitoreo, comité y ergonomía: los paneles cuentan solo lo de la sede del alcance', function () {
+    $s = scpSetup();
+    [$pa, $pb, $ma, $mb, $ka] = scpDb(function () use ($s) {
+        DB::update("update feature_flags set mode = 'enabled' where company_id = ? and module_code in ('ING', 'PSI', 'MAG', 'COM') and deleted_at is null", [ANDINAS_ID]);
+        $point = fn (string $site, string $code) => DB::selectOne('insert into access_points (company_id, site_id, code, name) values (?, ?, ?, ?) returning id', [ANDINAS_ID, $site, $code, "Puerta {$code}"])->id;
+        $pa = $point($s['a'], 'SCP-PA');
+        $pb = $point($s['b'], 'SCP-PB');
+        foreach ([$pa => 'Visita en A', $pb => 'Visita en B'] as $p => $name) {
+            DB::insert("insert into access_events (company_id, access_point_id, occurred_at, direction, subject_type, result, visitor_name, visitor_document_masked)
+                        values (?, ?, now(), 'in', 'visitor', 'granted', ?, '****1234')", [ANDINAS_ID, $p, $name]);
+        }
+        $agent = DB::selectOne('select id from agent_types where deleted_at is null order by name limit 1')->id;
+        $mp = fn (string $site, string $code) => DB::selectOne("insert into monitoring_points (company_id, site_id, agent_type_id, code, name, status) values (?, ?, ?, ?, ?, 'active') returning id",
+            [ANDINAS_ID, $site, $agent, $code, "Punto {$code}"])->id;
+        $committee = fn (string $site, string $name) => DB::selectOne("insert into committees (company_id, site_id, committee_type, name, period_start_on, period_end_on, status)
+            values (?, ?, 'subcommittee', ?, current_date - 30, current_date + 700, 'active') returning id", [ANDINAS_ID, $site, $name])->id;
+        $committee($s['b'], 'Subcomité de B');
+
+        return [$pa, $pb, $mp($s['a'], 'SCP-MA'), $mp($s['b'], 'SCP-MB'), $committee($s['a'], 'Subcomité de A')];
+    });
+    $h = scpScoped();
+
+    // Portería: puntos, personas dentro y conteos del día de su sede.
+    $gate = $this->getJson('/api/v1/ing/gate', $h)->assertOk();
+    expect(collect($gate->json('data.points'))->pluck('id')->all())->toContain($pa)->not->toContain($pb);
+    $inside = $this->getJson('/api/v1/ing/inside', $h)->assertOk();
+    $names = collect($inside->json('data.people'))->pluck('name');
+    expect($names)->toContain('Visita en A')->not->toContain('Visita en B');
+    expect($inside->json('data.kpis.inside'))->toBe(count($inside->json('data.people')));
+
+    // Monitoreo: brechas y tendencia de su sede.
+    $gaps = collect($this->getJson('/api/v1/mag/gaps', $h)->assertOk()->json('data.never'))->pluck('id');
+    expect($gaps)->toContain($ma)->not->toContain($mb);
+    $this->getJson("/api/v1/mag/trend?point_id={$mb}", $h)->assertNotFound();
+    $this->getJson("/api/v1/mag/trend?point_id={$ma}", $h)->assertOk();
+
+    // Comité: el de su sede (no el subcomité de la otra).
+    expect($this->getJson('/api/v1/com/committee', $h)->assertOk()->json('data.committee.id'))->toBe($ka);
+
+    // Ergonomía: el informe por puesto cuenta solo los trabajadores de su sede.
+    $this->getJson('/api/v1/psi/ergonomics/report', $h)->assertOk();
+
+    Permissions::flush();
+    $boss = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
+    $all = collect($this->getJson('/api/v1/ing/inside', $boss)->assertOk()->json('data.people'))->pluck('name');
+    expect($all)->toContain('Visita en A')->toContain('Visita en B');
+    expect(collect($this->getJson('/api/v1/mag/gaps', $boss)->assertOk()->json('data.never'))->pluck('id'))->toContain($ma)->toContain($mb);
+    $this->getJson("/api/v1/mag/trend?point_id={$mb}", $boss)->assertOk();
+});
+
+it('aula: el panel cuenta las matrículas de los trabajadores del alcance', function () {
+    $s = scpSetup();
+    $boss = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
+    $wa = scpWorker($boss, $s['a'], 'Carla');
+    $wb = scpWorker($boss, $s['b'], 'Dante');
+    $course = scpDb(function () use ($wa, $wb) {
+        DB::update("update feature_flags set mode = 'enabled' where company_id = ? and module_code = 'AUL' and deleted_at is null", [ANDINAS_ID]);
+        $c = DB::selectOne("insert into courses (company_id, code, title, status, source, published_at) values (?, ?, 'Curso de alcance', 'published', 'internal', now()) returning id", [ANDINAS_ID, 'SCP-'.random_int(100, 999)])->id;
+        foreach ([$wa, $wb] as $w) {
+            DB::insert("insert into course_enrollments (company_id, course_id, worker_id, source, status) values (?, ?, ?, 'manual', 'enrolled')", [ANDINAS_ID, $c, $w]);
+        }
+
+        return $c;
+    });
+
+    $row = collect($this->getJson('/api/v1/aul/admin/overview', scpScoped())->assertOk()->json('data.courses'))->firstWhere('id', $course);
+    expect((int) $row['enrolled'])->toBe(1);
+
+    Permissions::flush();
+    $row = collect($this->getJson('/api/v1/aul/admin/overview', authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID))->assertOk()->json('data.courses'))->firstWhere('id', $course);
+    expect((int) $row['enrolled'])->toBe(2);
+});

@@ -94,6 +94,20 @@ return [
             'region' => env('BACKUP_S3_REGION', ''),
             'retention_days' => (int) env('BACKUP_REMOTE_RETENTION_DAYS', 30),
         ],
+        // Prueba de restauración (docs/15 §9): la última copia buena se restaura en una base temporal del mismo servidor
+        // (o de BACKUP_RESTORE_DB_HOST si se indica un servidor aislado), se revisa y se borra. Necesita un usuario que
+        // pueda crear bases (CREATEDB); por defecto el superusuario del contenedor de PostgreSQL.
+        'restore' => [
+            'host' => env('BACKUP_RESTORE_DB_HOST', ''),
+            'port' => env('BACKUP_RESTORE_DB_PORT', ''),
+            'username' => env('BACKUP_RESTORE_DB_USERNAME') ?: 'postgres',
+            'password' => env('BACKUP_RESTORE_DB_PASSWORD') ?: (string) env('POSTGRES_SUPERUSER_PASSWORD', ''),
+            // Semanal: día (0 = domingo … 6 = sábado) y hora de Lima. Ajustable.
+            'weekly_day' => (int) env('BACKUP_RESTORE_TEST_DAY', 0),
+            'weekly_at' => env('BACKUP_RESTORE_TEST_AT', '04:00'),
+            // Si la última prueba buena es más vieja que esto, el panel la marca «vencida» (ciclo vigente).
+            'max_age_days' => (int) env('BACKUP_RESTORE_MAX_AGE_DAYS', 8),
+        ],
     ],
 
     // Disco donde se guardan el logo y el favicon del sitio (local en desarrollo; B2 en producción).

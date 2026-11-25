@@ -9,6 +9,10 @@
 #   ./deploy/escudo.sh migrate    migraciones (rol dueño)
 #   ./deploy/escudo.sh logs api   ver registros
 # NUNCA usar «down -v»: borra las bases de datos.
+#
+# Límites de memoria (docs/15 §2.2 «Límites de memoria y CPU por servicio»): mem_limit por servicio, con valores de
+# partida para un VPS de 8 GB (suman ~7 GB y dejan margen al sistema y al nginx del servidor). Se ajustan sin tocar este
+# archivo con MEM_* en deploy/backend.env (p. ej. MEM_PG_MAIN=3g). Al llegar al límite Docker reinicia el contenedor.
 
 name: escudo-prod
 
@@ -60,6 +64,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
+    # shm_size: memoria compartida para PostgreSQL (Docker da 64 MB por defecto; las consultas en paralelo la usan).
+    mem_limit: ${MEM_PG_MAIN:-2g}
+    shm_size: 512m
     restart: unless-stopped
     networks: [interna]
 
@@ -82,6 +89,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
+    mem_limit: ${MEM_PG_MEDICAL:-1g}
+    shm_size: 256m
     restart: unless-stopped
     networks: [interna]
 
@@ -90,22 +99,26 @@ services:
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Falta REDIS_PASSWORD}"]
     volumes:
       - redis_data:/data
+    mem_limit: ${MEM_REDIS:-512m}
     restart: unless-stopped
     networks: [interna]
 
   api:
     <<: *api-base
     command: ["php-fpm"]
+    mem_limit: ${MEM_API:-1g}
 
   # Cola de trabajos (correos y tareas en segundo plano).
   worker:
     <<: *api-base
     command: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600"]
+    mem_limit: ${MEM_WORKER:-768m}
 
   # Programador: copias diarias, boletín, recordatorios de demos, CRM, métricas y vencimientos (zona America/Lima).
   scheduler:
     <<: *api-base
     command: ["php", "artisan", "schedule:work"]
+    mem_limit: ${MEM_SCHEDULER:-768m}   # aquí corren la copia diaria y la prueba de restauración semanal (pg_dump / pg_restore)
     restart: unless-stopped   # si el programador se cae, Docker lo vuelve a levantar (copias y avisos no se detienen)
 
   web:
@@ -121,6 +134,7 @@ services:
       # Las páginas que arma el servidor llaman a la API por la red interna (no salen a internet).
       API_INTERNAL_URL: http://proxy
       NEXT_PUBLIC_SITE_URL: ${FRONTEND_URL:?Falta FRONTEND_URL}
+    mem_limit: ${MEM_WEB:-768m}
     restart: unless-stopped
     networks: [interna]
 
@@ -131,6 +145,7 @@ services:
     ports:
       - "127.0.0.1:8096:80"   # solo el nginx del servidor llega aquí
     depends_on: [api, web]
+    mem_limit: ${MEM_PROXY:-128m}
     restart: unless-stopped
     networks: [interna]
 

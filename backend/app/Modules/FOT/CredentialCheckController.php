@@ -35,10 +35,10 @@ class CredentialCheckController extends Controller
             "select count(*) filter (where status = 'active' and (expires_on is null or expires_on >= ?::date)) as active,
                     count(*) filter (where status = 'active' and expires_on between ?::date and ?::date + 30) as expiring,
                     count(*) filter (where status in ('blocked','expired') or (status = 'active' and expires_on < ?::date)) as not_enabled
-               from credentials where deleted_at is null", [$today, $today, $today, $today]);
+               from credentials c where deleted_at is null".\App\Core\Auth\Scope::andWorker('c.worker_id'), [$today, $today, $today, $today]);
         $ver = (int) DB::selectOne(
-            "select count(*) as n from credential_verifications
-              where date_trunc('month', verified_at at time zone 'America/Lima') = date_trunc('month', ?::date)", [$today])->n;
+            "select count(*) as n from credential_verifications v join credentials c on c.id = v.credential_id
+              where date_trunc('month', v.verified_at at time zone 'America/Lima') = date_trunc('month', ?::date)".\App\Core\Auth\Scope::andWorker('c.worker_id'), [$today])->n;
         $types = DB::select('select id, name, applies_to, validity_months from credential_types where deleted_at is null and coalesce(is_active, true) order by name');
 
         return response()->json(['data' => [
@@ -50,6 +50,7 @@ class CredentialCheckController extends Controller
     public function evaluate(Request $request): JsonResponse
     {
         $workerId = (string) $request->query('worker_id', '');
+        \App\Core\Auth\ScopeRoutes::assertWorker($workerId);   // alcance por sede/área: 404 fuera de él
         $w = Str::isUuid($workerId) ? DB::selectOne(
             'select w.id, w.full_name, w.document_last4, w.status, p.id as position_id, p.name as position, c.trade_name, c.legal_name
                from workers w left join positions p on p.id = w.current_position_id left join companies c on c.id = w.company_id

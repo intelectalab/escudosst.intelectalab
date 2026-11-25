@@ -165,10 +165,12 @@ Schedule::call(fn () => app(SupportAccessService::class)->expire())->everyFiftee
 Artisan::command('escudo:backup {--target=all : main, medical o all}', function (\App\Modules\SUS\Services\BackupService $backups) {
     $target = (string) $this->option('target');
     $targets = $target === 'all' ? array_keys(\App\Modules\SUS\Services\BackupService::TARGETS) : [$target];
+    $failed = false;
     foreach ($targets as $t) {
         $id = $backups->run($t, 'schedule');
         $run = \Illuminate\Support\Facades\DB::connection('platform')->selectOne('select status, size_bytes, error, remote_status, remote_error from backup_runs where id = ?', [$id]);
         $run->status === 'ok' ? $this->info("{$t}: copia lista (".number_format($run->size_bytes / 1024, 1).' KB)') : $this->error("{$t}: falló — {$run->error}");
+        $failed = $failed || $run->status !== 'ok';
         match ($run->remote_status) {
             'ok' => $this->info("{$t}: copia externa subida"),
             'failed' => $this->error("{$t}: copia externa falló — {$run->remote_error}"),
@@ -179,12 +181,46 @@ Artisan::command('escudo:backup {--target=all : main, medical o all}', function 
     if ($target === 'all') {
         $this->info('Copias vencidas borradas: '.$backups->prune());
     }
+
+    // Código de salida distinto de cero si alguna copia local falló: deploy/escudo.sh update no sigue sin copia previa.
+    // (Si solo falla la copia externa, la local sirve y no se detiene.)
+    return $failed ? 1 : 0;
 })->purpose('Copia de seguridad cifrada de las bases de datos');
 
 Artisan::command('escudo:backup:decrypt {input} {output} {--target=main}', function (\App\Modules\SUS\Services\BackupService $backups) {
     $backups->decrypt($this->argument('input'), $this->argument('output'), (string) $this->option('target'));
     $this->info('Descifrado. Restaura con: pg_restore --clean --if-exists -d <base> '.$this->argument('output'));
 })->purpose('Descifra un archivo de copia de seguridad para restaurarlo');
+
+/*
+| Prueba de restauración (docs/15 §9 «Restauración probada»): restaura la última copia buena en una base temporal, revisa
+| tablas, RLS, migraciones y filas de tablas clave, borra la base y deja el resultado en «Salud del sistema».
+| Uso: php artisan escudo:backup:restore-test [--target=main|medical|all]   (sale con 1 si alguna prueba falla)
+*/
+Artisan::command('escudo:backup:restore-test {--target=all : main, medical o all}', function (\App\Modules\SUS\Services\BackupRestoreTestService $tests) {
+    $target = (string) $this->option('target');
+    $targets = $target === 'all' ? array_keys(\App\Modules\SUS\Services\BackupService::TARGETS) : [$target];
+    $failed = false;
+    foreach ($targets as $t) {
+        $id = $tests->run($t, 'schedule');
+        $r = \Illuminate\Support\Facades\DB::connection('platform')->selectOne('select status, duration_ms, tables_count, rls_tables_count, migrations_count, error from backup_restore_tests where id = ?', [$id]);
+        if ($r->status === 'ok') {
+            $this->info("{$t}: restauración probada en ".round($r->duration_ms / 1000, 1)." s — {$r->tables_count} tablas, {$r->rls_tables_count} con RLS".($r->migrations_count !== null ? ", {$r->migrations_count} migraciones" : ''));
+        } else {
+            $failed = true;
+            $this->error("{$t}: la prueba de restauración falló — {$r->error}");
+        }
+    }
+
+    return $failed ? 1 : 0;
+})->purpose('Prueba de restauración de la última copia de seguridad en una base temporal');
+
+Schedule::command('escudo:backup:restore-test')
+    ->weeklyOn(config('escudo.backups.restore.weekly_day'), config('escudo.backups.restore.weekly_at'))
+    ->timezone('America/Lima')
+    ->withoutOverlapping(180)
+    ->runInBackground()
+    ->name('escudo:backup:restore-test');
 
 Schedule::command('escudo:backup')
     ->dailyAt(config('escudo.backups.daily_at'))

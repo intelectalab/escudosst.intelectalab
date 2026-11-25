@@ -81,12 +81,36 @@ Contenedores internos, sin puertos hacia afuera: pg-main, pg-medical, redis, wor
    cd /var/www/escudosst
    ./deploy/escudo.sh update
    ```
-   Hace `git pull`, construye, reinicia y corre las migraciones.
+   Primero hace una **copia de seguridad cifrada** de la base principal y la médica (`escudo:backup`). Si la copia
+   falla, **se detiene sin cambiar nada** y muestra el error (también queda en «Salud del sistema › Copias de seguridad»).
+   Con la copia lista hace `git pull`, construye, reinicia y corre las migraciones.
+   Solo en la primera instalación, cuando aún no hay contenedores levantados, se puede saltar la copia con
+   `SKIP_BACKUP=1 ./deploy/escudo.sh update`.
+
+## Prueba de restauración
+
+`./deploy/escudo.sh restore-test` (o `./deploy/escudo.sh restore-test --target=main`) toma la última copia buena,
+comprueba su huella, la descifra, la restaura en una base temporal `escudo_restore_test_…` del mismo servidor de
+PostgreSQL, revisa que tenga tablas, tablas con RLS forzado, el registro de migraciones (base principal) y filas en las
+tablas clave, borra la base temporal y deja el resultado y la duración en «Salud del sistema › Copias de seguridad ›
+Pruebas de restauración». Sale con error si alguna prueba falla.
+
+- Corre sola una vez por semana (domingo 04:00, hora de Lima): `BACKUP_RESTORE_TEST_DAY` (0 = domingo … 6 = sábado) y
+  `BACKUP_RESTORE_TEST_AT` la cambian. Si no hay una prueba buena en `BACKUP_RESTORE_MAX_AGE_DAYS` días (8), el panel la
+  marca «vencida»: sin prueba vigente no se publica una versión (docs/12 §9).
+- Necesita un usuario de PostgreSQL que pueda crear bases: por defecto `postgres` con `POSTGRES_SUPERUSER_PASSWORD`
+  (`BACKUP_RESTORE_DB_USERNAME` y `BACKUP_RESTORE_DB_PASSWORD` lo cambian). Para restaurar en un servidor aislado,
+  `BACKUP_RESTORE_DB_HOST` y `BACKUP_RESTORE_DB_PORT` (ese servidor debe tener los mismos roles `escudo_*`).
+- La restauración temporal ocupa disco y CPU unos minutos: el horario por defecto es de madrugada.
 
 ## Cuidados
 
 - **Nunca** `docker compose ... down -v`: borra las bases de datos.
-- Copia de seguridad cifrada diaria a las 02:30 en el volumen `api_storage`.
+- Copia de seguridad cifrada diaria a las 02:30 en el volumen `api_storage`, y otra antes de cada `update`.
+- **Límites de memoria por contenedor** en `compose.prod.yml` (`mem_limit`): pg-main 2 GB, pg-medical 1 GB, redis 512 MB,
+  api 1 GB, worker 768 MB, scheduler 768 MB (la copia y la prueba de restauración corren ahí), web 768 MB, proxy 128 MB.
+  Son valores de partida para un VPS de 8 GB: se ajustan con las variables `MEM_*` de `deploy/backend.env` (por ejemplo
+  `MEM_PG_MAIN=3g`). Si un contenedor llega a su límite, Docker lo reinicia (`docker inspect` muestra `OOMKilled`).
 - **Dominios propios de consultoras (automático):** una sola vez, agrega al cron de root del servidor (`sudo crontab -e`) la línea `*/10 * * * * cd /var/www/escudosst && ./deploy/escudo.sh domains-sync >> /var/log/escudo-dominios.log 2>&1`. Desde ahí, cuando una consultora verifica su dominio en la página (y su CNAME apunta a este servidor), se publica solo con su certificado en unos 10 minutos. Sin esa línea, se publica a mano con `./deploy/escudo.sh domain <dominio>`.
 - **Vigilante:** cada hora `escudo:watch` revisa que haya copia de seguridad de las últimas 26 horas (si falta, la hace y avisa al correo de contacto del sitio) y avisa si el disco pasa el 85 % (`DISK_ALERT_PCT`).
 - **Archivos médicos aparte:** los resultados de EMO, certificados de descanso médico y copias de registros médicos van cifrados con `MEDICAL_FIELD_KEY` en su propio volumen `medical_files` (no en `api_storage`). La base médica también está aparte (`pg_medical_data`). `update` deja el volumen con permisos solo para la aplicación. Para respaldarlo fuera del servidor: `docker run --rm -v escudo-prod_medical_files:/m -v "$PWD":/out alpine tar czf /out/medicos-$(date +%F).tgz -C /m .` (los archivos ya van cifrados; guarda la copia en un lugar privado).

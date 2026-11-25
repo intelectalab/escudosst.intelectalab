@@ -141,6 +141,7 @@ class MeasurementsController extends Controller
         if (! Str::isUuid($point)) {
             throw ApiProblem::badRequest('Elige el punto de monitoreo.');
         }
+        \App\Core\Auth\Scope::assertRecord('monitoring_points', $point);   // alcance por sede/área: 404 fuera de él
         $agent = $request->query('agent_type_id');
         $rows = DB::select(
             "select m.measured_at, m.value, m.unit, m.ratio_to_limit, m.result, a.name as agent, l.limit_value, l.unit as limit_unit
@@ -190,8 +191,8 @@ class MeasurementsController extends Controller
             "select p.id, p.code, p.name, s.name as site, a.name as agent, x.last_at
                from monitoring_points p left join sites s on s.id = p.site_id left join agent_types a on a.id = p.agent_type_id
                left join lateral (select max(m.measured_at) as last_at from measurements m where m.monitoring_point_id = p.id and m.deleted_at is null and m.status = 'approved') x on true
-              where p.deleted_at is null and p.status = 'active' and (x.last_at is null or x.last_at < now() - make_interval(months => ?::int))
-              order by x.last_at nulls first, p.name", [$months]);
+              where p.deleted_at is null and p.status = 'active' and (x.last_at is null or x.last_at < now() - make_interval(months => ?::int))".\App\Core\Auth\Scope::andSql('p.site_id', 'p.area_id').'
+              order by x.last_at nulls first, p.name', [$months]);
 
         return response()->json(['data' => ['months' => $months, 'never' => array_values(array_filter($rows, fn ($r) => $r->last_at === null)),
             'overdue' => array_values(array_filter($rows, fn ($r) => $r->last_at !== null))]]);
