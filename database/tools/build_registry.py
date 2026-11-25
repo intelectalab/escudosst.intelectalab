@@ -132,7 +132,7 @@ LIST = {
     "ppe_position_requirements": ["position_id", "ppe_item_id", "quantity", "replacement_days", "is_mandatory"],
     "ppe_stock_movements": ["moved_at", "ppe_item_id", "site_id", "movement_type", "quantity"],
     "ppe_deliveries": ["worker_id", "ppe_item_id", "quantity", "delivered_at", "expires_on", "status"],
-    "emergency_equipment": ["code", "equipment_type", "site_id", "area_id", "next_maintenance_on", "expires_on", "status"],
+    "emergency_equipment": ["code", "equipment_type", "site_id", "next_inspection_on", "next_recharge_on", "next_hydrostatic_test_on", "next_maintenance_on", "expires_on", "status"],
     "first_aid_kits": ["code", "kit_type", "site_id", "responsible_worker_id", "last_checked_on", "status"],
     "drills": ["code", "scheduled_at", "drill_type", "site_id", "participants_count", "evacuation_time_seconds", "status"],
     "brigades": ["name", "brigade_type", "leader_worker_id", "site_id", "status"],

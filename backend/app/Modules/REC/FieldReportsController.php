@@ -50,6 +50,9 @@ class FieldReportsController extends Controller
                 'template' => $i->template_id ? DB::selectOne('select name, version_number from inspection_templates where id = ?', [$i->template_id]) : null,
                 'site' => $this->name('sites', $i->site_id), 'area' => $this->name('areas', $i->area_id),
                 'inspector' => $this->person($i->inspector_user_id, $i->inspector_worker_id),
+                // SCR-INS-03: ubicación GPS capturada al ejecutar la inspección.
+                'latitude' => $i->latitude === null ? null : (float) $i->latitude, 'longitude' => $i->longitude === null ? null : (float) $i->longitude,
+                'location_accuracy_m' => $i->location_accuracy_m === null ? null : (float) $i->location_accuracy_m,
             ],
             'answers' => $answers,
             'findings' => $findings,

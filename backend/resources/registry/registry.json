@@ -12001,7 +12001,9 @@
     "code",
     "equipment_type",
     "site_id",
-    "area_id",
+    "next_inspection_on",
+    "next_recharge_on",
+    "next_hydrostatic_test_on",
     "next_maintenance_on",
     "expires_on",
     "status"
@@ -12091,8 +12093,7 @@
      "name": "area_id",
      "label": "Área",
      "type": "ref",
-     "ref": "areas",
-     "list": true
+     "ref": "areas"
     },
     {
      "name": "location_text",
@@ -12185,7 +12186,8 @@
      "name": "next_recharge_on",
      "label": "Próxima recarga",
      "readonly": true,
-     "type": "date"
+     "type": "date",
+     "list": true
     },
     {
      "name": "last_hydrostatic_test_on",
@@ -12196,7 +12198,8 @@
      "name": "next_hydrostatic_test_on",
      "label": "Próxima prueba hidrostática",
      "readonly": true,
-     "type": "date"
+     "type": "date",
+     "list": true
     },
     {
      "name": "manufacture_date",
@@ -12207,7 +12210,8 @@
      "name": "next_inspection_on",
      "label": "Próxima inspección",
      "readonly": true,
-     "type": "date"
+     "type": "date",
+     "list": true
     }
    ]
   },
@@ -12326,6 +12330,11 @@
      "name": "comments",
      "label": "Comentarios",
      "type": "longtext"
+    },
+    {
+     "name": "photo_file_id",
+     "label": "Foto",
+     "type": "file"
     }
    ]
   },

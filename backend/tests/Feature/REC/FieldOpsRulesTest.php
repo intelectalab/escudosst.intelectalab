@@ -41,7 +41,19 @@ it('el botiquín toma su estado de sus ítems', function () {
 it('la brigada: un solo líder, sin cesados, mínimo de miembros y el cese la deja', function () {
     $b = $this->postJson('/api/v1/records/SIM/brigades', ['site_id' => $this->site, 'brigade_type' => 'evacuation', 'name' => 'Brigada de evacuación', 'status' => 'inactive'], $this->h)
         ->assertCreated()->json('data.id');
-    $w = fn ($dni, $n) => $this->postJson('/api/v1/records/TRB/workers', ['document_number' => $dni, 'first_name' => $n, 'paternal_last_name' => 'Brigada'], $this->h)->json('data.id');
+    // RN-SIM-03: cada brigadista con su capacitación de brigada vigente (sin training_id, un «Entrenamiento de simulacro»).
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    $tr = DB::selectOne("insert into trainings (company_id, title, training_type) values (?, 'Entrenamiento de brigadas', 'drill_training') returning id", [HUAYLAS_ID])->id;
+    $me = DB::connection('platform')->selectOne('select id from users where email = ?', [CORPORATIVO_EMAIL])->id;
+    $w = function ($dni, $n) use ($tr, $me) {
+        $id = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => $dni, 'first_name' => $n, 'paternal_last_name' => 'Brigada'], $this->h)->json('data.id');
+        DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+        DB::insert("insert into training_certificates (company_id, worker_id, training_id, certificate_code, verification_code, holder_name, course_title, issued_on, expires_on, status, validated_by, validated_at)
+                    values (?, ?, ?, ?, ?, ?, 'Entrenamiento de brigadas', current_date - 5, current_date + 300, 'validated', ?, now())",
+            [HUAYLAS_ID, $id, $tr, sprintf('BRG-%s-%06d', date('Y'), random_int(1, 999999)), strtoupper(bin2hex(random_bytes(8))), $n, $me]);
+
+        return $id;
+    };
     $lead = $w('63636301', 'Lider');
     $this->postJson('/api/v1/records/SIM/brigade_members', ['brigade_id' => $b, 'worker_id' => $lead, 'role' => 'leader'], $this->h)->assertCreated();
     $this->patchJson("/api/v1/records/SIM/brigades/{$b}", ['status' => 'active'], $this->h)->assertStatus(422)->assertJsonPath('errors.status.0', fn ($m) => str_contains($m, 'al menos'));

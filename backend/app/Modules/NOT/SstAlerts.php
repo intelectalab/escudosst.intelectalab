@@ -74,6 +74,9 @@ final class SstAlerts
         if ($retention > 0) {
             $db->delete('delete from access_events where occurred_at < now() - make_interval(days => ?::int)', [$retention]);
         }
+        // M-INS §9: la inspección programada que pasó su fecha sin ejecutarse queda «vencida» (overdue); se puede ejecutar igual.
+        $db->update("update inspections set status = 'overdue', updated_at = now()
+                      where status = 'scheduled' and scheduled_on < (now() at time zone 'America/Lima')::date and deleted_at is null");
         // M-INS RN-INS-07: la inspección firmada pasa a «cerrada» cuando todas las acciones de sus hallazgos están cerradas.
         $db->update("update inspections i set status = 'closed', updated_at = now() where i.status = 'signed' and i.deleted_at is null
                       and not exists (select 1 from findings f left join corrective_actions c on c.id = f.corrective_action_id
@@ -304,7 +307,7 @@ final class SstAlerts
                       where deleted_at is null and status in ('active', 'review_overdue') and next_review_on <= current_date + ".self::days('iperc_review_notice_days', 30),
                 'ipc.review', 'normal', 'IPERC por revisar', fn ($r) => "La matriz {$r->ref} · {$r->name} debe revisarse antes del ".date('d/m/Y', strtotime($r->due)).'.', '/m/ipc?t=matrices&matriz=', ['sst_manager'], true],
             ['INS', "select id, code as ref, title as name, inspector_user_id as owner, scheduled_on as due, 'late' as kind from inspections
-                      where deleted_at is null and status = 'scheduled' and scheduled_on < current_date",
+                      where deleted_at is null and status in ('scheduled', 'overdue') and scheduled_on < current_date",
                 'ins.late', 'normal', 'Inspección sin ejecutar', fn ($r) => "{$r->ref} · {$r->name} estaba programada para el ".date('d/m/Y', strtotime($r->due)).'.', '/m/ins?t=inspections&open=', ['sst_manager'], true],
             // M-INS §10: inspección programada próxima → inspector asignado.
             ['INS', "select id, code as ref, title as name, inspector_user_id as owner, scheduled_on as due, 'soon' as kind from inspections

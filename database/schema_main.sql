@@ -3540,6 +3540,7 @@ CREATE TABLE IF NOT EXISTS equipment_checks (
   checked_by uuid,
   provider_name text,
   certificate_file_id uuid,
+  photo_file_id uuid,
   next_due_on date,
   comments text,
   created_at timestamptz NOT NULL DEFAULT now(),

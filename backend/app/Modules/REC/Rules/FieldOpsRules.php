@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
  * - M-OBS RN-OBS-02: los conteos «seguro» y «en riesgo» se calculan desde los ítems observados (no se escriben a mano).
  * - M-OBS RN-OBS-04: una observación enviada o revisada no se edita; se envía con al menos un comportamiento observado.
  * - M-EQE RN-EQE-04: el estado del botiquín (completo, incompleto, con vencidos) se calcula desde sus ítems.
- * - M-SIM RN-SIM-03/04: solo trabajadores activos en la brigada, un único líder vigente (queda como líder de la brigada)
+ * - M-SIM RN-SIM-03/04: solo trabajadores activos y con la capacitación de brigada vigente, un único líder vigente (queda como líder de la brigada)
  *   y la brigada se activa con el mínimo de miembros (parámetro «min_brigade_members», a confirmar).
  */
 class FieldOpsRules extends RecordRules
@@ -116,10 +116,14 @@ class FieldOpsRules extends RecordRules
             $this->fail('worker_id', 'El trabajador está cesado: no integra la brigada.');
         }
         // RN-SIM-03: el brigadista tiene la capacitación de brigada vigente (certificado validado sin vencer, o asistió a la capacitación).
+        // Con training_id se exige esa capacitación; sin él, la que corresponde al tipo de brigada (ver brigadeTrainingValid).
         $training = $this->value($values, $current, 'training_id');
-        if ($status === 'active' && $worker && $training && (array_key_exists('training_id', $values) || array_key_exists('worker_id', $values) || array_key_exists('status', $values))
-            && ! self::trainedFor($worker, $training)) {
-            $this->fail('training_id', 'El trabajador no tiene vigente esta capacitación de brigada: registra su asistencia o renueva su certificado.');
+        if ($status === 'active' && $worker && (array_key_exists('training_id', $values) || array_key_exists('worker_id', $values) || array_key_exists('status', $values))) {
+            $type = DB::selectOne('select brigade_type from brigades where id = ?', [$this->value($values, $current, 'brigade_id')])?->brigade_type;
+            if (! self::brigadeTrainingValid($worker, $type, $training)) {
+                $this->fail('training_id', $training ? 'El trabajador no tiene vigente esta capacitación de brigada: registra su asistencia o renueva su certificado.'
+                    : 'El trabajador no tiene vigente la capacitación de brigada de este tipo de brigada (Capacitaciones, tipo «Entrenamiento de simulacro» o la configurada para la brigada): registra su asistencia o elige la capacitación.');
+            }
         }
         if ($status === 'active' && $this->value($values, $current, 'role') === 'leader'
             && DB::selectOne("select 1 as ok from brigade_members where brigade_id = ? and role = 'leader' and status = 'active' and deleted_at is null
@@ -129,6 +133,33 @@ class FieldOpsRules extends RecordRules
         if (($values['status'] ?? null) === 'inactive' && ! $this->value($values, $current, 'ends_on')) {
             $values['ends_on'] = date('Y-m-d');
         }
+    }
+
+    /**
+     * M-SIM RN-SIM-03: el brigadista tiene vigente la capacitación de su brigada. Regla:
+     *  1. Si el integrante tiene training_id, esa capacitación.
+     *  2. Si no, las capacitaciones que el parámetro «brigade_required_trainings» (JSON {tipo_de_brigada: [código o id de capacitación]},
+     *     clave «*» para todos los tipos) indica para el tipo de brigada: basta una vigente.
+     *  3. Sin parámetro para ese tipo, cualquier capacitación de tipo «Entrenamiento de simulacro» (drill_training) vigente.
+     */
+    public static function brigadeTrainingValid(string $worker, ?string $brigadeType, ?string $training): bool
+    {
+        if ($training) {
+            return self::trainedFor($worker, $training);
+        }
+        $map = json_decode(\App\Core\Support\LegalParams::text('brigade_required_trainings', '{}'), true);
+        $refs = is_array($map) ? array_values(array_filter((array) ($map[$brigadeType] ?? $map['*'] ?? []), 'is_string')) : [];
+        $arr = '{'.implode(',', array_map(fn ($r) => '"'.str_replace(['"', '\\'], '', $r).'"', $refs)).'}';
+        $ids = $refs
+            ? DB::select('select id from trainings where deleted_at is null and (code = any(?::text[]) or id::text = any(?::text[]))', [$arr, $arr])
+            : DB::select("select id from trainings where deleted_at is null and training_type = 'drill_training'");
+        foreach ($ids as $t) {
+            if (self::trainedFor($worker, $t->id)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Capacitación vigente del trabajador: certificado validado y no vencido, o asistencia registrada a una sesión de esa capacitación. */

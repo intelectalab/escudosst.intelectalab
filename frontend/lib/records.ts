@@ -132,10 +132,30 @@ export function toLocalInput(v: unknown): string {
 
 /** Tono del chip según el estado (verde vigente, ámbar en curso, rojo vencido, gris cerrado). */
 export function statusTone(value: string): "ok" | "na" | "amber" | "brand" | "bad" {
-  if (/^(active|approved|completed|valid|done|closed_ok|published|in_force|current|fit|compliant|accredited|signed|paid|delivered|executed|met)$/.test(value)) return "ok";
-  if (/^(overdue|expired|rejected|cancelled|failed|unfit|non_compliant|suspended|blocked|terminated|critical|high|very_high)$/.test(value)) return "bad";
-  if (/^(in_progress|pending|pending_management|scheduled|draft|under_review|open|planned|on_leave|partial|medium|requested|submitted|observed)$/.test(value)) return "amber";
+  if (/^(active|approved|completed|valid|done|closed_ok|published|in_force|current|fit|compliant|accredited|signed|paid|delivered|executed|met|operational|complete)$/.test(value)) return "ok";
+  if (/^(overdue|expired|rejected|cancelled|failed|unfit|non_compliant|suspended|blocked|terminated|critical|high|very_high|inspection_overdue|out_of_service|expired_items)$/.test(value)) return "bad";
+  if (/^(in_progress|pending|pending_management|scheduled|draft|under_review|open|planned|on_leave|partial|medium|requested|submitted|observed|needs_maintenance|incomplete)$/.test(value)) return "amber";
   return "na";
+}
+
+/** Días antes del vencimiento en que una fecha de equipo de emergencia pasa a «por vencer» (valor por defecto de equipment_due_notice_days). */
+export const EQE_DUE_NOTICE_DAYS = 15;
+/** Fechas de vigencia que llevan semáforo en la lista (M-EQE SCR-EQE-01: recarga, prueba, inspección mensual, mantenimiento, vencimiento). */
+const VALIDITY_DATES: Record<string, string[]> = {
+  emergency_equipment: ["next_recharge_on", "next_hydrostatic_test_on", "next_inspection_on", "next_maintenance_on", "expires_on"],
+  first_aid_kit_items: ["expires_on"],
+};
+
+/** Semáforo de vigencia de una fecha: vencido (rojo), por vencer (ámbar) o vigente (verde); null si la columna no lleva semáforo. */
+export function validityTone(table: string, field: string, value: unknown, today: Date = new Date()): { tone: "ok" | "amber" | "bad"; label: string } | null {
+  if (!VALIDITY_DATES[table]?.includes(field) || !value) return null;
+  const [y, m, d] = String(value).slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const t0 = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const days = Math.round((Date.UTC(y, m - 1, d) - t0) / 86400000);
+  if (days < 0) return { tone: "bad", label: "Vencido" };
+  if (days <= EQE_DUE_NOTICE_DAYS) return { tone: "amber", label: "Por vencer" };
+  return { tone: "ok", label: "Vigente" };
 }
 
 export type TraceNode = { module: string; table: string; tab: string; id: string; label: string; via: string };

@@ -13,6 +13,7 @@ import { PtrWizard } from "./PtrWizard";
 import { TrbImport } from "./TrbImport";
 import { ReportButton } from "./CtrExtras";
 import { PtrBoard } from "./PtrBoard";
+import { ActRecurrent } from "./ActRecurrent";
 
 const ACTIONS: Record<string, { table: string; label: string; icon: string }> = {
   ACC: { table: "sst_events", label: "Registrar evento", icon: "alert" },
@@ -55,6 +56,8 @@ export function ModuleWizards({ code, readOnly }: { code: string; readOnly: bool
       )}
       {/* M-PTR SCR-PTR-01: tablero de permisos activos por sede con su mapa. */}
       {code === "PTR" && <PtrBoard key={`b${version}`} />}
+      {/* M-ACT §11: ranking de condiciones recurrentes. */}
+      {code === "ACT" && <ActRecurrent key={`r${version}`} />}
       {open && code === "ACC" && <AccWizard onClose={close} onDone={done} />}
       {open && code === "PTR" && <PtrWizard onClose={close} onDone={done} />}
       {open && code === "TRB" && <TrbImport onClose={close} onDone={done} />}

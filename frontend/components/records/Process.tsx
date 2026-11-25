@@ -590,6 +590,14 @@ function InspectionRun({ row, onChanged }: { row: RecordRow; onChanged: () => vo
         </Button>
       </div>
       {msg && <p className="text-sm text-brand-strong">{msg}</p>}
+      {row.latitude != null && row.longitude != null && (
+        <p className="text-xs text-muted">
+          Ubicación GPS: {Number(row.latitude).toFixed(6)}, {Number(row.longitude).toFixed(6)}
+          {row.location_accuracy_m != null ? ` (± ${Number(row.location_accuracy_m)} m)` : ""} ·{" "}
+          <a className="text-brand underline" target="_blank" rel="noreferrer"
+            href={`https://www.openstreetmap.org/?mlat=${Number(row.latitude)}&mlon=${Number(row.longitude)}#map=17/${Number(row.latitude)}/${Number(row.longitude)}`}>Ver en el mapa</a>
+        </p>
+      )}
       {open && (
         <Modal
           title="Checklist de la inspección"

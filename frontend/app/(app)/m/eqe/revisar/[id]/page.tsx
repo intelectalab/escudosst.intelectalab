@@ -1,21 +1,23 @@
 "use client";
 
 // Inspección por QR (M-EQE SCR-EQE-02): al escanear el QR del equipo (con la sesión iniciada, RN-EQE-05) se ve el equipo y se
-// completa el checklist de la ficha (presión, precinto, señalización, acceso libre) con su resultado. Queda la fecha, la hora y el
-// usuario. Un resultado «Inoperativo» genera la acción correctiva (RN-EQE-03) por las reglas del registro.
+// completa el checklist de su tipo (configurable por tipo de equipo; por defecto el de la ficha: presión, precinto, señalización,
+// acceso libre), con una foto opcional y su resultado. Queda la fecha, la hora y el usuario. Un resultado «Inoperativo» genera la
+// acción correctiva (RN-EQE-03) por las reglas del registro.
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { type ApiError } from "@/lib/api";
-import { records } from "@/lib/records";
+import { api, type ApiError } from "@/lib/api";
+import { records, uploadFile } from "@/lib/records";
 import { Button } from "@/components/ui/Button";
 
 type Eq = { id: string; code: string; equipment_type: string; location_text: string | null; status: string; next_maintenance_on: string | null; expires_on: string | null };
 const TYPE: Record<string, string> = { fire_extinguisher: "Extintor", emergency_light: "Luz de emergencia", alarm: "Alarma", hose_cabinet: "Gabinete contra incendio", eyewash: "Lavaojos",
   shower: "Ducha de emergencia", stretcher: "Camilla", aed: "Desfibrilador", signage: "Señalización", other: "Otro" };
-const STATUS: Record<string, string> = { operational: "Operativo", needs_maintenance: "Requiere mantenimiento", out_of_service: "Fuera de servicio", retired: "Dado de baja" };
-const ITEMS = ["Presión", "Precinto", "Señalización", "Acceso libre"];
+const STATUS: Record<string, string> = { operational: "Operativo", needs_maintenance: "Requiere mantenimiento", out_of_service: "Fuera de servicio", retired: "Dado de baja",
+  inspection_overdue: "Inspección vencida" };
+const DEFAULT_ITEMS = ["Presión", "Precinto", "Señalización", "Acceso libre"];
 const ANSWERS: [string, string][] = [["compliant", "Cumple"], ["non_compliant", "No cumple"], ["na", "No aplica"]];
 const RESULTS: [string, string][] = [["ok", "Conforme"], ["observed", "Con observaciones"], ["failed", "Inoperativo"]];
 const fmt = (d: string | null) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "—");
@@ -29,18 +31,23 @@ export default function RevisarEquipo() {
   const [comments, setComments] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [lists, setLists] = useState<Record<string, string[]> | null>(null);
 
   useEffect(() => {
     records.get("EQE", "emergency_equipment", id).then((r) => setEq(r.data as unknown as Eq)).catch((e: ApiError) => setError(e.detail ?? e.title));
+    api<{ data: { types: Record<string, string[]> } }>("/eqe/checklists", { withCompany: true }).then((r) => setLists(r.data.types)).catch(() => setLists({}));
   }, [id]);
+  const ITEMS = (eq && lists?.[eq.equipment_type]) || DEFAULT_ITEMS;
   const suggested = Object.values(answers).includes("non_compliant") ? "observed" : "ok";
   const save = async () => {
     setBusy(true);
     setError(null);
     try {
+      const photoId = photo ? (await uploadFile(photo, "EQE")).id : null;
       await records.create("EQE", "equipment_checks", {
         equipment_id: id, check_type: "monthly_inspection", checked_at: new Date().toISOString(), result: result || suggested,
-        checklist: ITEMS.map((item) => ({ item, answer: answers[item] ?? "na" })), comments: comments || null,
+        checklist: ITEMS.map((item) => ({ item, answer: answers[item] ?? "na" })), comments: comments || null, photo_file_id: photoId,
       });
       setDone(true);
     } catch (e) {
@@ -51,7 +58,7 @@ export default function RevisarEquipo() {
     }
   };
 
-  if (!eq) return <p className="p-4 text-sm text-muted">{error ?? "Cargando el equipo…"}</p>;
+  if (!eq || !lists) return <p className="p-4 text-sm text-muted">{error ?? "Cargando el equipo…"}</p>;
   return (
     <div className="mx-auto max-w-xl space-y-4">
       <nav className="text-xs text-muted"><Link href="/m/eqe" className="underline">Equipos de emergencia</Link> › Inspección por QR</nav>
@@ -83,6 +90,9 @@ export default function RevisarEquipo() {
             </select></label>
           <label className="block text-sm"><span className="mb-1 block text-xs font-semibold text-muted">Comentarios</span>
             <textarea className="input min-h-[64px]" value={comments} onChange={(e) => setComments(e.target.value)} /></label>
+          <label className="block text-sm"><span className="mb-1 block text-xs font-semibold text-muted">Foto (opcional)</span>
+            <input type="file" accept="image/*" capture="environment" className="text-sm" onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} />
+            {photo && <span className="mt-1 block text-xs text-muted">{photo.name}</span>}</label>
           <Button variant="primary" loading={busy} disabled={busy || ITEMS.some((i) => !answers[i])} onClick={save}>Registrar inspección</Button>
           {error && <p role="alert" className="text-sm text-bad">{error}</p>}
         </div>

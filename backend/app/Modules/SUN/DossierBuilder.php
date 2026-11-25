@@ -205,6 +205,60 @@ class DossierBuilder extends Controller
         $rvd = $one("select id from management_reviews where deleted_at is null and status in ('completed', 'closed') and (year = ? or review_on between ? and ?) order by review_on desc nulls last limit 1", [$year, $from, $to]);
         $add('28', "Revisión del sistema por la dirección {$year}", 'RVD', 'management_reviews', $rvd?->id, $rvd ? 'included' : 'missing', $rvd ? null : "No hay revisión por la dirección de {$year}.");
 
+        // M-CH5 §11: charlas de 5 minutos realizadas en el periodo con asistencia firmada (no son obligatorias: sin charlas no es brecha).
+        $ch5 = $one("select count(*) as n, count(*) filter (where exists (select 1 from talk_attendances a where a.safety_talk_id = t.id and a.deleted_at is null and a.signature_id is not null)) as signed,
+                            (select count(*) from talk_attendances a join safety_talks x on x.id = a.safety_talk_id where a.deleted_at is null and x.deleted_at is null and x.status = 'held'
+                                and x.talk_on between ? and ?) as att
+                       from safety_talks t where t.deleted_at is null and t.status = 'held' and t.talk_on between ? and ?", [$from, $to, $from, $to]);
+        $add('29', "Charlas de 5 minutos del periodo ({$ch5->n} charlas, {$ch5->att} asistencias)", 'CH5', 'safety_talks', null,
+            (int) $ch5->n === 0 ? 'not_applicable' : ((int) $ch5->signed === (int) $ch5->n ? 'included' : 'missing'),
+            (int) $ch5->n === 0 ? 'No hubo charlas registradas en el periodo.' : ((int) $ch5->signed === (int) $ch5->n ? null : ((int) $ch5->n - (int) $ch5->signed).' charla(s) sin asistencia firmada.'));
+
+        // M-SIM §11 y RN-SIM-02: simulacros ejecutados en el año por cada sede con trabajadores (mínimo drills_per_year).
+        $drMin = (int) LegalParams::number('drills_per_year', 1);
+        $drSites = DB::select("select s.name, (select count(*) from drills d where d.site_id = s.id and d.deleted_at is null and d.status in ('executed', 'evaluated')
+                                    and extract(year from coalesce(d.executed_at, d.scheduled_at) at time zone 'America/Lima') = ?) as n
+                                 from sites s where s.deleted_at is null and exists (select 1 from workers w where w.current_site_id = s.id and w.status = 'active' and w.deleted_at is null)
+                                order by s.name", [$year]);
+        $drTotal = (int) $one("select count(*) as n from drills where deleted_at is null and status in ('executed', 'evaluated') and (coalesce(executed_at, scheduled_at) at time zone 'America/Lima')::date between ? and ?", [$from, $to])->n;
+        $drLate = array_values(array_filter($drSites, fn ($s) => (int) $s->n < $drMin));
+        $add('30', "Simulacros ejecutados ({$drTotal} en el periodo; mínimo {$drMin} por sede al año)", 'SIM', 'drills', null,
+            ! $drSites ? 'not_applicable' : ($drLate ? 'missing' : 'included'),
+            ! $drSites ? 'No hay sedes con trabajadores activos.' : ($drLate ? 'Sedes sin el mínimo de simulacros en '.$year.': '.implode(', ', array_map(fn ($s) => "{$s->name} ({$s->n})", array_slice($drLate, 0, 5))).(count($drLate) > 5 ? '…' : '').'.' : null));
+
+        // M-SIM RN-SIM-03/04: brigadas activas con líder, el mínimo de integrantes y sus integrantes con la capacitación de brigada vigente.
+        $bMin = max(1, (int) LegalParams::number('min_brigade_members', 2));
+        $brig = DB::select("select b.id, b.brigade_type, b.leader_worker_id,
+                                   (select count(*) from brigade_members m where m.brigade_id = b.id and m.status = 'active' and m.deleted_at is null) as members
+                              from brigades b where b.deleted_at is null and b.status = 'active'");
+        $bIncomplete = count(array_filter($brig, fn ($b) => ! $b->leader_worker_id || (int) $b->members < $bMin));
+        $bUntrained = 0;
+        foreach ($brig as $b) {
+            foreach (DB::select("select worker_id, training_id from brigade_members where brigade_id = ? and status = 'active' and deleted_at is null", [$b->id]) as $m) {
+                if (! \App\Modules\REC\Rules\FieldOpsRules::brigadeTrainingValid($m->worker_id, $b->brigade_type, $m->training_id)) {
+                    $bUntrained++;
+                }
+            }
+        }
+        $add('31', 'Brigadas de emergencia conformadas ('.count($brig).' activas)', 'SIM', 'brigades', null,
+            ! $brig ? 'missing' : ($bIncomplete || $bUntrained ? 'missing' : 'included'),
+            ! $brig ? 'No hay brigadas de emergencia activas.' : (($bIncomplete || $bUntrained) ? trim(($bIncomplete ? "{$bIncomplete} brigada(s) sin líder o con menos de {$bMin} integrantes. " : '')
+                .($bUntrained ? "{$bUntrained} brigadista(s) sin la capacitación de brigada vigente." : '')) : null));
+
+        // M-EQE §11, RN-EQE-02/03/08: equipos de emergencia con mantenimiento, recarga e inspección al día y el mínimo de extintores por sede.
+        $eqe = $one("select count(*) as n,
+                            count(*) filter (where status in ('inspection_overdue', 'out_of_service', 'needs_maintenance')
+                                               or least(next_recharge_on, next_hydrostatic_test_on, next_maintenance_on, next_inspection_on, expires_on) < current_date) as late,
+                            (select count(*) from equipment_checks c where c.deleted_at is null and (c.checked_at at time zone 'America/Lima')::date between ? and ?) as checks
+                       from emergency_equipment where deleted_at is null and status <> 'retired'", [$from, $to]);
+        $exGap = DB::select("select s.name from sites s where s.deleted_at is null and s.status = 'active' and s.min_extinguishers is not null
+                               and (select count(*) from emergency_equipment e where e.site_id = s.id and e.deleted_at is null and e.equipment_type = 'fire_extinguisher' and e.status = 'operational') < s.min_extinguishers
+                             order by s.name");
+        $add('32', "Equipos de seguridad o emergencia ({$eqe->n} equipos, {$eqe->checks} inspecciones o mantenimientos en el periodo)", 'EQE', 'emergency_equipment', null,
+            (int) $eqe->n === 0 || $exGap ? 'missing' : ((int) $eqe->late > 0 ? 'expired' : 'included'),
+            (int) $eqe->n === 0 ? 'No hay equipos de emergencia registrados.' : (((int) $eqe->late > 0 || $exGap) ? trim(((int) $eqe->late > 0 ? "{$eqe->late} equipo(s) con inspección, recarga o mantenimiento vencido, o inoperativos. " : '')
+                .($exGap ? 'Sedes bajo el mínimo de extintores: '.implode(', ', array_map(fn ($s) => $s->name, array_slice($exGap, 0, 5))).'.' : '')) : null));
+
         foreach ($selected as $worker) {
             $w = $worker->id;
             $n = $worker->full_name;
@@ -248,6 +302,16 @@ class DossierBuilder extends Controller
                                                                              where c->>'worker_id' = ?::text))", [$from, $to, $w, $w])->n;
             $add('W8', "{$n}: permisos de trabajo de alto riesgo en que participó ({$pw})", 'PTR', 'work_permits', null, $pw > 0 ? 'included' : 'not_applicable',
                 $pw > 0 ? null : 'No participó en trabajos de alto riesgo con permiso en el periodo.', $w);
+            // M-SUN §9 (paso 2) y M-CH5/M-SIM §11: charlas y simulacros en los que participó en el periodo (firmados o marcados presentes).
+            $tk = (int) $one("select count(distinct a.safety_talk_id) as n from talk_attendances a join safety_talks t on t.id = a.safety_talk_id
+                                where a.worker_id = ? and a.deleted_at is null and t.deleted_at is null and t.status = 'held' and t.talk_on between ? and ?", [$w, $from, $to])->n;
+            $add('W9', "{$n}: charlas de 5 minutos en que participó ({$tk})", 'CH5', 'talk_attendances', null, $tk > 0 ? 'included' : 'not_applicable',
+                $tk > 0 ? null : 'No registra charlas en el periodo.', $w);
+            $dp = (int) $one("select count(distinct p.drill_id) as n from drill_participants p join drills d on d.id = p.drill_id
+                                where p.worker_id = ? and p.attended and p.deleted_at is null and d.deleted_at is null and d.status in ('executed', 'evaluated')
+                                  and (coalesce(d.executed_at, d.scheduled_at) at time zone 'America/Lima')::date between ? and ?", [$w, $from, $to])->n;
+            $add('W10', "{$n}: simulacros en que participó ({$dp})", 'SIM', 'drill_participants', null, $dp > 0 ? 'included' : 'not_applicable',
+                $dp > 0 ? null : 'No registra participación en simulacros en el periodo.', $w);
         }
 
         // SCR-SUN-04: las exclusiones con motivo y el orden manual se conservan al volver a armar el expediente.

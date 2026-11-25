@@ -13,7 +13,7 @@ import { ModuleKpis } from "./ModuleKpis";
 import { SignaturePanel } from "./SignaturePanel";
 import { EMPTY_CONSENT, PhotoCropInput, saveWorkerConsent, WorkerConsentField, type ConsentValue } from "./WorkerExtras";
 import { api, ApiError } from "@/lib/api";
-import { displayValue, downloadFile, isReserved, records, statusTone, toLocalInput, type ModuleSchema, type RecordField, type RecordPage, type RecordResource, type RecordRow } from "@/lib/records";
+import { displayValue, downloadFile, isReserved, records, statusTone, toLocalInput, validityTone, type ModuleSchema, type RecordField, type RecordPage, type RecordResource, type RecordRow } from "@/lib/records";
 import { isQueuedFile, uploadOrQueue } from "@/lib/offline";
 import { Button } from "@/components/ui/Button";
 import { Chip, EmptyState } from "@/components/ui/Display";
@@ -302,7 +302,7 @@ export function ResourcePanel({
                 <button type="button" onClick={() => openRow(row)} className="w-full rounded-xl border border-line bg-surface p-3 text-left active:bg-brand-soft/40">
                   <span className="flex items-start justify-between gap-2">
                     <b className="min-w-0 text-sm">{columns[0] ? displayValue(columns[0], row) : row.id}</b>
-                    {status && row.status ? <Cell f={status} row={row} /> : null}
+                    {status && row.status ? <Cell f={status} row={row} table={res.table} /> : null}
                   </span>
                   {rest.map((f) => (
                     <span key={f.name} className="mt-0.5 block text-xs text-muted">
@@ -379,7 +379,7 @@ export function ResourcePanel({
                   )}
                   {columns.map((f, i) => (
                     <td key={f.name} className={`px-4 py-3 ${i === 0 ? "font-medium" : ""}`}>
-                      <Cell f={f} row={row} />
+                      <Cell f={f} row={row} table={res.table} />
                       {i === 0 && res.hybrid && !row.own && <span className="ml-2 text-xs text-muted">(catálogo general)</span>}
                     </td>
                   ))}
@@ -433,9 +433,12 @@ export function ResourcePanel({
   );
 }
 
-function Cell({ f, row }: { f: RecordField; row: RecordRow }) {
+function Cell({ f, row, table }: { f: RecordField; row: RecordRow; table?: string }) {
   const v = row[f.name];
   if (f.type === "enum" && v) return <Chip tone={f.name === "status" ? statusTone(String(v)) : "na"}>{displayValue(f, row)}</Chip>;
+  // M-EQE SCR-EQE-01: semáforo de vigencia en las fechas de recarga, prueba, inspección y mantenimiento.
+  const validity = table && f.type === "date" ? validityTone(table, f.name, v) : null;
+  if (validity) return <Chip tone={validity.tone}><span title={validity.label}>{displayValue(f, row)}</span><span className="sr-only"> ({validity.label})</span></Chip>;
   return <>{displayValue(f, row)}</>;
 }
 

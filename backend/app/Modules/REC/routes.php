@@ -123,6 +123,9 @@ Route::middleware(['auth:sanctum', 'company', 'module:PSI'])->post('psi/reba', \
 Route::middleware(['auth:sanctum', 'company', 'module:ACC'])->get('acc/report.xlsx', \App\Modules\REC\EventReportController::class);
 // M-ACT §11: reportes por área, tipo y canal con su tiempo de atención.
 Route::middleware(['auth:sanctum', 'company', 'module:ACT'])->get('act/report.xlsx', \App\Modules\REC\SubstandardReportController::class);
+// M-ACT §11: ranking de condiciones recurrentes (en pantalla y en Excel).
+Route::middleware(['auth:sanctum', 'company', 'module:ACT'])->get('act/recurrent-conditions', [\App\Modules\REC\RecurrentConditionsController::class, 'show']);
+Route::middleware(['auth:sanctum', 'company', 'module:ACT'])->get('act/recurrent-conditions.xlsx', [\App\Modules\REC\RecurrentConditionsController::class, 'xlsx']);
 // M-PTR §11: estadísticas de permisos por tipo y sede, y suspensiones con su causa.
 Route::middleware(['auth:sanctum', 'company', 'module:PTR'])->get('ptr/stats.xlsx', \App\Modules\REC\PermitStatsController::class);
 // M-PTR SCR-PTR-01/03/05: tablero de permisos activos por sede, rangos de gases, contexto del permiso en campo y suspensión por un participante (RN-PTR-06).
@@ -163,6 +166,9 @@ Route::middleware(['auth:sanctum', 'company', 'module:RVD'])->get('rvd/summary',
 
 // Calendario de mantenimiento de equipos de emergencia y mínimo de extintores por sede (M-EQE SCR-EQE-04, RN-EQE-08).
 Route::middleware(['auth:sanctum', 'company', 'module:EQE'])->get('eqe/calendar', \App\Modules\REC\EquipmentCalendarController::class);
+// M-EQE SCR-EQE-02: checklist de la inspección por QR según el tipo de equipo (configurable por la empresa).
+Route::middleware(['auth:sanctum', 'company', 'module:EQE'])->get('eqe/checklists', [\App\Modules\REC\EquipmentChecklistController::class, 'show']);
+Route::middleware(['auth:sanctum', 'company', 'module:EQE'])->put('eqe/checklists', [\App\Modules\REC\EquipmentChecklistController::class, 'update']);
 
 // Presupuesto SST: tablero de ejecución, Excel y reasignaciones entre líneas aprobadas por gerencia (M-PRE SCR-PRE-01, §11, RN-PRE-05).
 Route::middleware(['auth:sanctum', 'company', 'module:PRE'])->prefix('pre')->group(function () {

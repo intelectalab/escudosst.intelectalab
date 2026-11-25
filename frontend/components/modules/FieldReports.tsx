@@ -115,12 +115,25 @@ type Insp = {
   company: Company;
   inspection: { code: string; title: string; inspection_type: string; status: string; scheduled_on: string | null; started_at: string | null; completed_at: string | null;
     score_pct: number | null; summary: string | null; participants: unknown; committee_participation: boolean; template: { name: string; version_number: number } | null;
-    site: string | null; area: string | null; inspector: string | null };
+    site: string | null; area: string | null; inspector: string | null; latitude: number | null; longitude: number | null; location_accuracy_m: number | null };
   answers: { question_snapshot: string; answer: string | null; numeric_value: number | null; is_compliant: boolean | null; is_critical: boolean; comment: string | null; section: string | null; photo: string | null }[];
   findings: { finding_type: string; description: string; severity: string | null; status: string; action_code: string | null; action_due: string | null; photo: string | null }[];
   signatures: Sig[];
 };
-const INS_STATUS: Record<string, string> = { scheduled: "Programada", in_progress: "En ejecución", completed: "Completada", closed: "Cerrada", cancelled: "Cancelada" };
+const INS_STATUS: Record<string, string> = { scheduled: "Programada", in_progress: "En ejecución", completed: "Completada", signed: "Firmada", closed: "Cerrada", overdue: "Vencida", cancelled: "Cancelada" };
+
+/** Ubicación GPS capturada (SCR-INS-03) con su mapa de OpenStreetMap y el enlace al mapa grande. */
+export function GpsPlace({ lat, lng, accuracy }: { lat: number | null; lng: number | null; accuracy?: number | null }) {
+  if (lat === null || lng === null) return <span>No se capturó la ubicación.</span>;
+  const url = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=17/${lat}/${lng}`;
+  return (
+    <span className="block space-y-1">
+      <span className="block">{lat.toFixed(6)}, {lng.toFixed(6)}{accuracy != null ? ` (precisión ± ${accuracy} m)` : ""} · <a className="underline" href={url} target="_blank" rel="noreferrer">Ver en el mapa</a></span>
+      <iframe title="Mapa de la ubicación de la inspección" className="h-40 w-full max-w-md rounded border border-gray-300" loading="lazy"
+        src={`https://www.openstreetmap.org/export/embed.html?bbox=${lng - 0.004}%2C${lat - 0.0025}%2C${lng + 0.004}%2C${lat + 0.0025}&layer=mapnik&marker=${lat}%2C${lng}`} />
+    </span>
+  );
+}
 
 export function InspectionReport({ id }: { id: string }) {
   const { data, error } = useReport<Insp>(`/reports/inspections/${id}`);
@@ -133,7 +146,8 @@ export function InspectionReport({ id }: { id: string }) {
       <Section n={1} title="Datos de la inspección">
         <Facts rows={[["Título", i.title], ["Plantilla", i.template ? `${i.template.name} (versión ${i.template.version_number})` : "—"], ["Sede / área", [i.site, i.area].filter(Boolean).join(" · ") || "—"],
           ["Programada", fmtD(i.scheduled_on)], ["Realizada", `${fmtDT(i.started_at)} a ${fmtDT(i.completed_at)}`], ["Inspector", i.inspector], ["Participantes", people || "—"],
-          ["Participó el comité", i.committee_participation ? "Sí" : "No"], ["Puntaje", i.score_pct == null ? "—" : `${i.score_pct} %`]]} />
+          ["Participó el comité", i.committee_participation ? "Sí" : "No"], ["Puntaje", i.score_pct == null ? "—" : `${i.score_pct} %`],
+          ["Ubicación GPS", <GpsPlace key="gps" lat={i.latitude} lng={i.longitude} accuracy={i.location_accuracy_m} />]]} />
       </Section>
       <Section n={2} title="Lista de verificación">
         <table className="w-full border-collapse text-sm">

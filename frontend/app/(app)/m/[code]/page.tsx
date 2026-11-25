@@ -52,6 +52,7 @@ import { AuiTools } from "@/components/modules/AuiTools";
 import { RvdSummary } from "@/components/modules/RvdSummary";
 import { EstTools } from "@/components/modules/EstTools";
 import { EqeCalendar } from "@/components/modules/EqeCalendar";
+import { EqeChecklists } from "@/components/modules/EqeChecklists";
 import { HomRatings } from "@/components/modules/HomViews";
 import { EstSummary } from "@/components/modules/EstSummary";
 import { MapModule } from "@/components/modules/MapModule";
@@ -203,6 +204,7 @@ export default function ModulePage() {
             <a href="/imprimir/qr-equipos" target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-lg border border-line px-3 font-semibold hover:border-brand hover:text-brand-strong">Imprimir QR de los equipos</a>
           </div>
           <EqeCalendar />
+          <EqeChecklists />
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>
       ) : m.code === "OBS" ? (
