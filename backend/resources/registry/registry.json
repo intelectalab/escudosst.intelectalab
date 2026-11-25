@@ -2140,7 +2140,7 @@
       },
       {
        "value": "scanned_paper",
-       "label": "scanned_paper"
+       "label": "Papel escaneado"
       },
       {
        "value": "qr",
@@ -2501,7 +2501,7 @@
       },
       {
        "value": "read",
-       "label": "read"
+       "label": "Leído"
       },
       {
        "value": "failed",
@@ -2509,11 +2509,11 @@
       },
       {
        "value": "bounced",
-       "label": "bounced"
+       "label": "Rebotado"
       },
       {
        "value": "suppressed",
-       "label": "suppressed"
+       "label": "Bloqueado"
       }
      ],
      "required": true,
@@ -14386,11 +14386,11 @@
      "options": [
       {
        "value": "public_web",
-       "label": "public_web"
+       "label": "Web pública"
       },
       {
        "value": "public_qr",
-       "label": "public_qr"
+       "label": "QR público"
       },
       {
        "value": "app",
@@ -14423,7 +14423,7 @@
       },
       {
        "value": "not_public",
-       "label": "not_public"
+       "label": "No público"
       }
      ],
      "required": true
@@ -17355,15 +17355,15 @@
      "options": [
       {
        "value": "public_qr",
-       "label": "public_qr"
+       "label": "QR público"
       },
       {
        "value": "app_scan",
-       "label": "app_scan"
+       "label": "Escaneo con la app"
       },
       {
        "value": "access_point",
-       "label": "access_point"
+       "label": "Punto de acceso"
       }
      ],
      "required": true,
@@ -17388,15 +17388,15 @@
      "options": [
       {
        "value": "enabled",
-       "label": "enabled"
+       "label": "Habilitado"
       },
       {
        "value": "not_enabled",
-       "label": "not_enabled"
+       "label": "No habilitado"
       },
       {
        "value": "invalid",
-       "label": "invalid"
+       "label": "No válido"
       },
       {
        "value": "revoked",
@@ -23326,7 +23326,7 @@
       },
       {
        "value": "contractor_worker",
-       "label": "contractor_worker"
+       "label": "Trabajador de contratista"
       },
       {
        "value": "visitor",
@@ -23378,15 +23378,15 @@
      "options": [
       {
        "value": "granted",
-       "label": "granted"
+       "label": "Permitido"
       },
       {
        "value": "denied",
-       "label": "denied"
+       "label": "Denegado"
       },
       {
        "value": "overridden",
-       "label": "overridden"
+       "label": "Permitido por excepción"
       }
      ],
      "list": true
