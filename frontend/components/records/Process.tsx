@@ -12,6 +12,7 @@ import { AtsTrainingCheck, EscalateReport, PermitQr, RotateQr, TemplateVersion }
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
+import type { PermissionsResponse } from "@/lib/types";
 import { QrCode } from "@/components/mfa/QrCode";
 import { downloadFile, uploadFile, recordsHref, traceOf, type RecordResource, type RecordRow, type TraceGroup, type TraceNode, records } from "@/lib/records";
 import { Button } from "@/components/ui/Button";
@@ -1711,8 +1712,38 @@ function ApiSecret({ row, canEdit, onChanged }: { row: RecordRow; canEdit: boole
           <Button variant="danger-ghost" onClick={revoke}>Revocar</Button>
         </div>
       )}
+      <ApiFitnessApproval row={row} onChanged={onChanged} onError={(m) => setMsg(m)} />
       {msg && <p className="text-bad">{msg}</p>}
     </section>
+  );
+}
+
+/**
+ * M-API RN-API-01: el permiso «fitness.read» (solo la aptitud: estado, restricciones laborales y vigencia; nunca datos médicos)
+ * necesita además la aprobación del administrador de la cuenta o del médico ocupacional.
+ */
+function ApiFitnessApproval({ row, onChanged, onError }: { row: RecordRow; onChanged: () => void; onError: (m: string) => void }) {
+  const [can, setCan] = useState(false);
+  const scopes = Array.isArray(row.scopes) ? (row.scopes as string[]) : [];
+  const wants = scopes.includes("fitness.read");
+  useEffect(() => {
+    if (!wants) return;
+    api<PermissionsResponse>("/me/permissions", { withCompany: true }).then((r) => setCan(r.data.includes("api.api_clients.approve"))).catch(() => setCan(false));
+  }, [wants]);
+  if (!wants) return null;
+  const approved = !!row.fitness_approved_at;
+  const act = (method: "POST" | "DELETE") =>
+    api(`/api-clients/${row.id}/fitness-approval`, { method, withCompany: true }).then(onChanged).catch((e: ApiError) => onError(e.detail ?? e.title));
+  return (
+    <div className="space-y-1 rounded-lg border border-line px-3 py-2 text-xs">
+      <p>
+        <b>Aptitud por la API (fitness.read):</b>{" "}
+        {approved ? `aprobada el ${new Date(String(row.fitness_approved_at)).toLocaleDateString("es-PE")}. El cliente lee solo el estado de aptitud, las restricciones laborales y la vigencia.` : "pendiente de aprobación: hasta entonces el cliente no la puede leer."}
+      </p>
+      {can && (approved
+        ? <Button size="sm" variant="danger-ghost" onClick={() => { if (confirm("El cliente dejará de leer la aptitud. ¿Retirar la aprobación?")) act("DELETE"); }}>Retirar aprobación</Button>
+        : <Button size="sm" onClick={() => { if (confirm("El cliente podrá leer la aptitud (apto, apto con restricciones, no apto, vigencia) de los trabajadores. Nunca datos médicos. ¿Aprobar?")) act("POST"); }}>Aprobar lectura de la aptitud</Button>)}
+    </div>
   );
 }
 

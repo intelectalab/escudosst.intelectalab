@@ -38,7 +38,7 @@ class AccountsController extends Controller
             'ruc' => ['required', 'digits:11'],
             'legal_name' => ['required', 'string', 'min:3', 'max:160'],
             'trade_name' => ['nullable', 'string', 'max:120'],
-            'economic_sector' => ['nullable', 'in:construction,mining,agroindustry,manufacturing,retail,services,office,health,education,transport,energy,other'],
+            'economic_sector' => ['nullable', 'in:'.\App\Core\Support\Sectors::csv()],
             'headcount' => ['required', 'integer', 'min:1', 'max:1000000'],
             'start' => ['required', 'in:trial,active'],
             'plan' => ['required_if:start,active', 'nullable', 'in:E,P,C'],

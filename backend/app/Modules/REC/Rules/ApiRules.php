@@ -18,7 +18,9 @@ class ApiRules extends RecordRules
     /** Secreto recién generado en esta solicitud (se entrega una vez con la respuesta de creación). */
     private static ?string $fresh = null;
 
-    public const SCOPES = ['read', '*', 'workers.read', 'events.read', 'actions.read', 'inspections.read', 'trainings.read', 'credentials.read', 'access_events.read', 'write', 'workers.write'];
+    /** «fitness.read» (solo la aptitud, RN-API-01) además necesita la aprobación de la empresa: POST /api-clients/{id}/fitness-approval. */
+    public const SCOPES = ['read', '*', 'workers.read', 'events.read', 'actions.read', 'inspections.read', 'trainings.read', 'credentials.read', 'access_events.read', 'write', 'workers.write',
+        'fitness.read'];
 
     public function prepare(string $op, array $res, array &$values, ?object $current, array &$extra): void
     {
@@ -39,6 +41,12 @@ class ApiRules extends RecordRules
                 if (! in_array($sc, self::SCOPES, true)) {
                     $this->fail('scopes', "Permiso «{$sc}» no válido. Usa: ".implode(', ', self::SCOPES).'.');
                 }
+            }
+            // RN-API-01: la aprobación de la aptitud vale para el cliente tal como se aprobó; si se quita «fitness.read», se pierde
+            // (y si se vuelve a agregar, hay que aprobarla de nuevo).
+            if ($current && array_key_exists('scopes', $values) && ! in_array('fitness.read', (array) $values['scopes'], true) && $current->fitness_approved_at) {
+                $extra['fitness_approved_by'] = ['null', []];
+                $extra['fitness_approved_at'] = ['null', []];
             }
 
             return;

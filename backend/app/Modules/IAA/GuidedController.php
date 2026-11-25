@@ -297,6 +297,12 @@ class GuidedController extends Controller
 
                 return ['status' => $edit ? 'partially_accepted' : 'accepted', 'dossier_id' => $r['ids'][0]];
             }
+            if ($s->suggestion_type === 'minutes_draft') {
+                $r = MinutesController::apply($s, $payload, array_intersect_key((array) $request->all(), array_flip(['minutes_text', 'agreements'])));
+                $this->review($s->id, $r['status'], 'committee_meetings', [$r['meeting_id']]);
+
+                return $r;
+            }
             if ($s->suggestion_type === 'course_recommendation') {
                 $this->needs('AUL', 'el Aula virtual');
                 $r = IaaExtrasController::applyCourse($s, $payload);
@@ -437,6 +443,28 @@ class GuidedController extends Controller
         return response()->json(['data' => ['used' => $used, 'limit' => $limit, 'months' => $months, 'people' => $people,
             'suggestions' => ['accepted' => $s->accepted, 'rejected' => $s->rejected, 'pending' => $s->pending,
                 'acceptance_pct' => $decided ? round(100 * $s->accepted / $decided) : null]]]);
+    }
+
+    /**
+     * GET /iaa/requests/{id} — estado de una solicitud (docs/17 §2: las largas van a la cola y responden 202): queued, running,
+     * completed (con sus sugerencias) o failed (con el motivo).
+     */
+    public function requestStatus(string $id): JsonResponse
+    {
+        $r = Str::isUuid($id) ? DB::selectOne('select id, feature, status, error_code, provider, prompt_version, subject_type, subject_id, created_at, completed_at
+                                                 from ai_requests where id = ? and deleted_at is null', [$id]) : null;
+        if (! $r) {
+            throw ApiProblem::notFound('La solicitud no existe.');
+        }
+        $msg = match ($r->status) {
+            'queued', 'running' => 'El asistente está trabajando en tu solicitud.',
+            'failed' => 'El asistente no pudo responder (la respuesta no tenía el formato esperado y se descartó). Vuelve a intentarlo.',
+            'blocked' => 'La solicitud se bloqueó.',
+            default => null,
+        };
+
+        return response()->json(['data' => (array) $r + ['message' => $msg, 'suggestions' => $r->status === 'completed'
+            ? array_map(fn ($s) => $this->present($s), DB::select('select * from ai_suggestions where ai_request_id = ? and deleted_at is null order by created_at', [$id])) : []]]);
     }
 
     public function suggestions(string $id): JsonResponse

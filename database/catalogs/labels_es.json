@@ -1305,7 +1305,11 @@
   "target_date": "Fecha comprometida",
   "reminder_opt_in": "Quiere recordatorio",
   "linked_records": "Registros vinculados como evidencia",
-  "is_medical_certificate": "Constancia de aptitud médica"
+  "is_medical_certificate": "Constancia de aptitud médica",
+  "input_hash": "Huella de la entrada",
+  "input_fields": "Campos enviados",
+  "fitness_approved_by": "Aptitud aprobada por",
+  "fitness_approved_at": "Aptitud aprobada el"
  },
  "values": {
   "A": "Tipo A",
@@ -2046,7 +2050,12 @@
   "exposure": "Por exposición",
   "pca": "PCA",
   "sector_package": "Paquete sectorial",
-  "excluded": "Excluido"
+  "excluded": "Excluido",
+  "sunafil_obligation": "Obligación SUNAFIL",
+  "pets_model": "PETS modelo",
+  "record_format": "Formato de registro",
+  "risk_criteria": "Criterios IPERC",
+  "legal_parameter": "Valor legal"
  },
  "tables": {
   "absences": "Ausencias",

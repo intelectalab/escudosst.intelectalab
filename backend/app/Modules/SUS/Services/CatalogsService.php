@@ -260,7 +260,7 @@ class CatalogsService
     public function sectorPacks(): array
     {
         $items = collect($this->db()->select(
-            "select id, sector_pack_id, item_type, code, name, version, case when item_type in ('pets_model', 'record_format') then payload end as payload
+            "select id, sector_pack_id, item_type, code, name, version, case when item_type in ('pets_model', 'record_format', 'document_template', 'sunafil_obligation') then payload end as payload
                from sector_pack_items where deleted_at is null order by sort_order, name"
         ))->map(function ($i) {
             $i->payload = $i->payload ? json_decode($i->payload, true) : null;
@@ -282,21 +282,26 @@ class CatalogsService
     }
 
     /**
-     * M-PSE: el dueño de la plataforma carga en un paquete sus «PETS modelo» y «formatos de registro» con su contenido
+     * M-PSE: el dueño de la plataforma carga en un paquete sus «PETS modelo», «formatos de registro», «formatos de documento» y
+     * «obligaciones SUNAFIL» con su contenido
      * (pse.sector_pack_items.create). Editar un ítem sube su versión: las empresas que lo instalaron lo ven en «Actualizaciones».
      */
     public function savePackItem(string $packId, ?string $itemId, array $d, string $actor): array
     {
         $this->find('sector_packs', $packId, 'El paquete no existe.');
-        $payload = $d['item_type'] === 'pets_model'
-            ? ['code' => $d['code'], 'title' => $d['name'], 'procedure_type' => $d['procedure_type'] ?? 'pets', 'is_critical_task' => (bool) ($d['is_critical_task'] ?? false),
+        $payload = match ($d['item_type']) {
+            'pets_model' => ['code' => $d['code'], 'title' => $d['name'], 'procedure_type' => $d['procedure_type'] ?? 'pets', 'is_critical_task' => (bool) ($d['is_critical_task'] ?? false),
                 'content_html' => $d['content_html'] ?? null, 'steps' => array_values(array_filter($d['steps'] ?? [], fn ($s) => trim((string) ($s['step'] ?? '')) !== '')),
-                'required_ppe' => array_values(array_filter(array_map('trim', $d['required_ppe'] ?? [])))]
-            : ['code' => $d['code'], 'title' => $d['name'], 'description' => $d['description'] ?? null, 'content_html' => $d['content_html'] ?? null, 'category_code' => $d['category_code'] ?? 'REGISTER'];
+                'required_ppe' => array_values(array_filter(array_map('trim', $d['required_ppe'] ?? [])))],
+            'sunafil_obligation' => ['code' => $d['code'], 'name' => $d['name'], 'legal_basis' => $d['legal_basis'] ?? null, 'severity' => $d['severity'] ?? 'serious',
+                'evidence_hint' => $d['evidence_hint'] ?? null],
+            default => ['code' => $d['code'], 'title' => $d['name'], 'description' => $d['description'] ?? null, 'content_html' => $d['content_html'] ?? null,
+                'category_code' => $d['category_code'] ?? ($d['item_type'] === 'record_format' ? 'REGISTER' : 'OTHER')],
+        };
         if ($d['item_type'] === 'pets_model' && empty($payload['content_html']) && $payload['steps'] === []) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'El PETS modelo necesita su texto o al menos un paso.', ['errors' => ['steps' => ['El PETS modelo necesita su texto o al menos un paso.']]]);
         }
-        if ($d['item_type'] === 'record_format' && empty($payload['content_html'])) {
+        if (in_array($d['item_type'], ['record_format', 'document_template'], true) && empty($payload['content_html'])) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Escribe el contenido del formato.', ['errors' => ['content_html' => ['Escribe el contenido del formato.']]]);
         }
         $key = $d['item_type'].':'.$d['code'];
@@ -324,8 +329,8 @@ class CatalogsService
     public function deletePackItem(string $itemId, string $actor): void
     {
         $it = $this->find('sector_pack_items', $itemId, 'El ítem no existe.');
-        if (! in_array($it->item_type, ['pets_model', 'record_format'], true)) {
-            throw new ApiProblem(409, 'conflict', 'No se quita aquí', 'Desde aquí solo se quitan los PETS modelo y los formatos de registro.');
+        if (! in_array($it->item_type, ['pets_model', 'record_format', 'document_template', 'sunafil_obligation'], true)) {
+            throw new ApiProblem(409, 'conflict', 'No se quita aquí', 'Desde aquí solo se quitan los PETS modelo, los formatos y las obligaciones SUNAFIL.');
         }
         // RN-PSE-06: lo ya instalado en las empresas no se borra; solo deja de ofrecerse.
         $this->db()->update('update sector_pack_items set deleted_at = now(), updated_by = ? where id = ?', [$actor, $itemId]);

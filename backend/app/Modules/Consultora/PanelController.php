@@ -24,10 +24,6 @@ class PanelController extends Controller
 {
     private const AGENDA_DAYS = 30;
 
-    private const SECTORS = ['construction' => 'Construcción', 'mining' => 'Minería', 'agroindustry' => 'Agroindustria', 'manufacturing' => 'Manufactura',
-        'retail' => 'Comercio', 'services' => 'Servicios', 'office' => 'Oficinas', 'health' => 'Salud', 'education' => 'Educación', 'transport' => 'Transporte',
-        'energy' => 'Energía', 'other' => 'Otro'];
-
     public function __invoke(): JsonResponse
     {
         $con = Consultancy::resolve();
@@ -71,7 +67,7 @@ class PanelController extends Controller
                 $name = $m->company_name;
                 $rows[] = [
                     'company_id' => $m->company_id, 'name' => $name, 'ruc' => $m->ruc, 'role' => $m->role_code, 'is_active' => $m->company_id === $active,
-                    'sector' => self::SECTORS[$m->economic_sector] ?? ($m->economic_sector ? ucfirst((string) $m->economic_sector) : null),
+                    'sector' => \App\Core\Support\Sectors::label($m->economic_sector),
                     'workers' => $svc->counts()['workers'],
                     'plan' => $plan ? ['code' => $plan->code, 'name' => $plan->name, 'status' => $plan->status] : null,
                     'sst_model' => $m->sst_model,
@@ -127,7 +123,7 @@ class PanelController extends Controller
     }
 
     /** Visitas y actividades programadas de la empresa (inspecciones, reuniones del comité, capacitaciones). */
-    private function agenda(string $from, string $to): array
+    public function agenda(string $from, string $to): array
     {
         $out = [];
         $q = fn (string $sql) => DB::select($sql, [$from, $to]);

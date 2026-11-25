@@ -30,6 +30,9 @@ Route::middleware(['auth:sanctum', 'company'])->prefix('con')->group(function ()
     Route::get('assignments', [AssignmentsController::class, 'index'])->middleware('throttle:60,1');
     Route::post('assignments', [AssignmentsController::class, 'update'])->middleware('throttle:60,1');
     Route::get('link', [AssignmentsController::class, 'link']);
+    // M-CON §11: exportación por cliente para el informe mensual de la consultora (datos para el PDF imprimible y Excel).
+    Route::get('clients/{company}/report', [\App\Modules\Consultora\ClientReportController::class, 'show'])->whereUuid('company')->middleware('throttle:30,1');
+    Route::get('clients/{company}/report.xlsx', [\App\Modules\Consultora\ClientReportController::class, 'xlsx'])->whereUuid('company')->middleware('throttle:30,1');
 });
 Route::middleware('throttle:login')->get('public/con/invitations/{token}', [InvitationsController::class, 'preview'])->where('token', '[A-Za-z0-9]{48}');
 // La empresa invitada que aún no usa EscudoSST crea su cuenta desde la invitación y queda vinculada (M-CON §7.1).

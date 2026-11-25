@@ -17,6 +17,9 @@ Route::middleware(['auth:sanctum', 'company', 'module:IAA'])->prefix('iaa')->gro
     Route::post('courses/suggest', [\App\Modules\IAA\IaaExtrasController::class, 'courses'])->middleware('throttle:10,1');
     Route::get('usage', [\App\Modules\IAA\GuidedController::class, 'usage']);
     Route::get('requests/{id}/suggestions', [\App\Modules\IAA\GuidedController::class, 'suggestions'])->whereUuid('id');
+    // IA-04: borrador de acta del comité (docs/17 §1); y el estado de una solicitud que fue a la cola (§2, 202 «en proceso»).
+    Route::post('minutes/draft', [\App\Modules\IAA\MinutesController::class, 'draft'])->middleware(['throttle:10,1', 'permission:com.committee_meetings.update']);
+    Route::get('requests/{id}', [\App\Modules\IAA\GuidedController::class, 'requestStatus'])->whereUuid('id');
 });
 
 // Panel › Asistente IA: el equipo entrena al asistente (temas, palabras clave, preguntas sin respuesta).

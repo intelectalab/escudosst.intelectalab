@@ -135,7 +135,7 @@ export function ConsultancyPanel({ readOnly = false }: { readOnly?: boolean }) {
             <div className="-mx-4 overflow-x-auto">
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="border-y border-line bg-bg text-xs font-semibold text-muted">
-                  <tr>{["Empresa", "Sector", "Trabajadores", "Plan", "Figura SST", "Cumplimiento", "PASST", "Acciones vencidas", "Próximos 30 días", "Aula / Venta", "Alertas"].map((h) => <th key={h} className="whitespace-nowrap px-4 py-2.5">{h}</th>)}</tr>
+                  <tr>{["Empresa", "Sector", "Trabajadores", "Plan", "Figura SST", "Cumplimiento", "PASST", "Acciones vencidas", "Próximos 30 días", "Aula / Venta", "Alertas", "Informe del mes"].map((h) => <th key={h} className="whitespace-nowrap px-4 py-2.5">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {rows.map((c) => (
@@ -160,9 +160,13 @@ export function ConsultancyPanel({ readOnly = false }: { readOnly?: boolean }) {
                       <td className="px-4 py-3 tabular-nums">{c.upcoming}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs">{c.aul ? "Aula activa" : "Sin aula"} · {c.vta ? "Venta activa" : "Sin venta"}</td>
                       <td className="px-4 py-3"><Chip tone={c.critical > 0 ? "bad" : c.alerts > 0 ? "warn" : "ok"}>{c.alerts} {c.alerts === 1 ? "alerta" : "alertas"}</Chip></td>
+                      <td className="px-4 py-3">
+                        <a href={`/imprimir/informe-cliente/${c.company_id}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}
+                          className="whitespace-nowrap text-xs font-semibold text-brand hover:underline">PDF / Excel</a>
+                      </td>
                     </tr>
                   ))}
-                  {rows.length === 0 && <tr><td colSpan={11} className="px-4 py-6 text-center text-muted">Ninguna empresa con esos filtros.</td></tr>}
+                  {rows.length === 0 && <tr><td colSpan={12} className="px-4 py-6 text-center text-muted">Ninguna empresa con esos filtros.</td></tr>}
                 </tbody>
               </table>
             </div>

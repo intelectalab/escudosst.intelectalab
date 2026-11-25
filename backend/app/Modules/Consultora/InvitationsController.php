@@ -164,7 +164,7 @@ class InvitationsController extends Controller
         $d = $request->validate([
             'full_name' => ['required', 'string', 'min:3', 'max:120'],
             'trade_name' => ['nullable', 'string', 'max:160'],
-            'economic_sector' => ['nullable', 'in:construction,mining,agroindustry,manufacturing,retail,services,office,health,education,transport,energy,other'],
+            'economic_sector' => ['nullable', 'in:'.\App\Core\Support\Sectors::csv()],
             'headcount' => ['required', 'integer', 'min:1', 'max:1000000'],
             'phone' => ['nullable', 'string', 'max:30'],
             'accept_legal' => ['accepted'],

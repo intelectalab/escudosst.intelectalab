@@ -26,7 +26,7 @@
   "verify",
   "vote"
  ],
- "count": 1260,
+ "count": 1261,
  "permissions": [
   {
    "code": "ten.accounts.read",
@@ -12257,6 +12257,16 @@
    "is_special": false,
    "db": "main",
    "description": "Editar · api_clients (API e integraciones)"
+  },
+  {
+   "code": "api.api_clients.approve",
+   "module_code": "API",
+   "resource": "api_clients",
+   "action": "approve",
+   "is_sensitive": true,
+   "is_special": true,
+   "db": "main",
+   "description": "Aprobar · api_clients (lectura de la aptitud por la API)"
   },
   {
    "code": "api.api_clients.delete",

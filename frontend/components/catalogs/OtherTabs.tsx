@@ -591,7 +591,8 @@ function HazardModal({ hazard, onClose, onDone }: { hazard: Hazard | null; onClo
 // ---------------------------------------------------------------- Paquetes sectoriales
 
 type PackItem = SectorPack["items"][number];
-const EDITABLE_ITEMS = ["pets_model", "record_format"];
+const EDITABLE_ITEMS = ["pets_model", "record_format", "document_template", "sunafil_obligation"];
+const SEVERITY: [string, string][] = [["minor", "Leve"], ["serious", "Grave"], ["very_serious", "Muy grave"]];
 const toLines = (html?: string | null) => (html ?? "").replace(/<\/p>\s*<p>/g, "\n").replace(/<br\s*\/?>/g, "\n").replace(/<[^>]+>/g, "").trim();
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const toHtml = (text: string) => text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => `<p>${esc(l)}</p>`).join("");
@@ -610,13 +611,19 @@ function PackItemModal({ pack, type, item, onClose, onDone }: { pack: SectorPack
     ppe: (pl.required_ppe ?? []).join("\n"),
     critical: !!pl.is_critical_task,
     description: pl.description ?? "",
+    legal_basis: pl.legal_basis ?? "",
+    severity: pl.severity ?? "serious",
+    hint: pl.evidence_hint ?? "",
   });
   const { saving, errors, run } = useSave();
   const pets = type === "pets_model";
+  const obligation = type === "sunafil_obligation";
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const body = pets
+    const body = obligation
+      ? { item_type: type, code: form.code.trim().toUpperCase(), name: form.name.trim(), legal_basis: form.legal_basis.trim() || null, severity: form.severity, evidence_hint: form.hint.trim() || null }
+      : pets
       ? { item_type: type, code: form.code.trim().toUpperCase(), name: form.name.trim(), is_critical_task: form.critical, content_html: toHtml(form.content) || null,
           steps: form.steps.split("\n").map((l) => l.split("|").map((x) => x.trim())).filter((p) => p[0]).map(([step, risk, control]) => ({ step, risk: risk || null, control: control || null })),
           required_ppe: form.ppe.split("\n").map((x) => x.trim()).filter(Boolean) }
@@ -626,28 +633,49 @@ function PackItemModal({ pack, type, item, onClose, onDone }: { pack: SectorPack
   }
 
   return (
-    <Modal title={item ? item.name : pets ? "Nuevo PETS modelo" : "Nuevo formato de registro"} subtitle={pack.name} icon="file" size="lg" onClose={onClose} footer={<Footer onClose={onClose} form="pack-item-form" saving={saving} />}>
+    <Modal title={item ? item.name : pets ? "Nuevo PETS modelo" : obligation ? "Nueva obligación SUNAFIL" : type === "document_template" ? "Nuevo formato de documento" : "Nuevo formato de registro"} subtitle={pack.name} icon="file" size="lg" onClose={onClose} footer={<Footer onClose={onClose} form="pack-item-form" saving={saving} />}>
       <form id="pack-item-form" onSubmit={submit} className="space-y-4" noValidate>
         {errors._ && <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{errors._[0]}</p>}
-        <p className="text-xs text-muted">Al instalar el paquete, la empresa lo recibe como {pets ? "PETS" : "documento"} en borrador, editable, y lo aprueba con su flujo de siempre.</p>
+        <p className="text-xs text-muted">{obligation
+          ? "Al instalar el paquete, la obligación se suma al autodiagnóstico SUNAFIL de la empresa y se evalúa con los documentos que vincule como evidencia (sin evidencia no cumple)."
+          : `Al instalar el paquete, la empresa lo recibe como ${pets ? "PETS" : "documento"} en borrador, editable, y lo aprueba con su flujo de siempre.`}</p>
         <div className="grid gap-4 sm:grid-cols-3">
           <FormField label="Código" error={errors.code?.[0]} hint="Mayúsculas, números y guiones.">
-            <input className="input uppercase" maxLength={40} placeholder={pets ? "Ej.: PETS-ALT-01" : "Ej.: FOR-INS-01"} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
+            <input className="input uppercase" maxLength={40} placeholder={pets ? "Ej.: PETS-ALT-01" : obligation ? "Ej.: SUN-ALT-01" : "Ej.: FOR-INS-01"} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
           </FormField>
           <div className="sm:col-span-2">
-            <FormField label={pets ? "Título del PETS" : "Nombre del formato"} error={errors.name?.[0]}>
+            <FormField label={pets ? "Título del PETS" : obligation ? "Obligación" : "Nombre del formato"} error={errors.name?.[0]}>
               <input className="input" maxLength={200} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </FormField>
           </div>
         </div>
-        {!pets && (
+        {obligation && (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField label="Base legal (opcional)" error={errors.legal_basis?.[0]}>
+                <input className="input" maxLength={300} value={form.legal_basis} onChange={(e) => setForm({ ...form, legal_basis: e.target.value })} />
+              </FormField>
+              <FormField label="Gravedad de la infracción" hint="Dato a confirmar por especialista." error={errors.severity?.[0]}>
+                <select className="input" value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value })}>
+                  {SEVERITY.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </FormField>
+            </div>
+            <FormField label="Evidencia esperada (opcional)" error={errors.evidence_hint?.[0]}>
+              <textarea className="input min-h-20" maxLength={1000} value={form.hint} onChange={(e) => setForm({ ...form, hint: e.target.value })} />
+            </FormField>
+          </>
+        )}
+        {!pets && !obligation && (
           <FormField label="Descripción (opcional)">
             <input className="input" maxLength={1000} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </FormField>
         )}
-        <FormField label={pets ? "Texto del procedimiento (opcional si tiene pasos)" : "Contenido del formato"} error={errors.content_html?.[0]} hint="Un párrafo por línea.">
-          <textarea className="input min-h-32" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
-        </FormField>
+        {!obligation && (
+          <FormField label={pets ? "Texto del procedimiento (opcional si tiene pasos)" : "Contenido del formato"} error={errors.content_html?.[0]} hint="Un párrafo por línea.">
+            <textarea className="input min-h-32" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
+          </FormField>
+        )}
         {pets && (
           <>
             <FormField label="Pasos" error={errors.steps?.[0]} hint="Un paso por línea: paso | riesgo | control (riesgo y control opcionales).">

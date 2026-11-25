@@ -91,7 +91,7 @@ it('el webhook muestra su secreto de firma solo al crearlo o rotarlo y envía un
 
 it('limita cada cliente a los recursos de sus permisos, nunca entrega datos de salud y cuenta el uso', function () {
     $h = asAccountAdmin();
-    $this->postJson('/api/v1/records/API/api_clients', ['name' => 'Permiso inventado', 'scopes' => ['fitness.read']], $h)->assertStatus(422)->assertJsonValidationErrors('scopes');
+    $this->postJson('/api/v1/records/API/api_clients', ['name' => 'Permiso inventado', 'scopes' => ['medical_exams.read']], $h)->assertStatus(422)->assertJsonValidationErrors('scopes');
     $c = $this->postJson('/api/v1/records/API/api_clients', ['name' => 'Control de acceso', 'scopes' => ['credentials.read', 'access_events.read']], $h)->assertCreated();
     $ext = ['X-Company-Id' => HUAYLAS_ID, 'X-Api-Key' => $c->json('data.client_key'), 'X-Api-Secret' => $c->json('data.secret')];
 

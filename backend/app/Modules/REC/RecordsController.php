@@ -100,8 +100,9 @@ class RecordsController extends Controller
     public function show(Request $request, string $module, string $table, string $id): JsonResponse
     {
         $res = $this->resource($request, $module, $table, 'read');
+        $data = $this->records->find($res, $id, decrypt: $this->records->abilities($res)['update']);
 
-        return response()->json(['data' => $this->records->find($res, $id, decrypt: $this->records->abilities($res)['update'])]);
+        return $this->versioned($res, $data);
     }
 
     public function store(Request $request, string $module, string $table): JsonResponse
@@ -111,11 +112,29 @@ class RecordsController extends Controller
         return response()->json(['data' => $this->records->create($res, $request->all())], 201);
     }
 
+    /**
+     * PATCH con control de concurrencia (docs/08 §6): If-Match con el ETag que entregó la ficha, o «row_version» en el cuerpo.
+     * Si otra persona cambió el registro entretanto → 409 conflict y no se guarda. Sin ninguno de los dos, se guarda como siempre.
+     */
     public function update(Request $request, string $module, string $table, string $id): JsonResponse
     {
         $res = $this->resource($request, $module, $table, 'update');
+        $input = $request->all();
+        $expected = RecordsService::ifMatch($request->header('If-Match')) ?? (is_string($input['row_version'] ?? null) ? $input['row_version'] : null);
+        unset($input['row_version']);
 
-        return response()->json(['data' => $this->records->update($res, $id, $request->all())]);
+        return $this->versioned($res, $this->records->update($res, $id, $input, $expected));
+    }
+
+    /** Respuesta de un registro con su versión (data.row_version) y la cabecera ETag para el siguiente If-Match. */
+    private function versioned(array $res, array $data): JsonResponse
+    {
+        $v = RecordsService::rowVersion($res, (string) $data['id']);
+        if ($v === null) {
+            return response()->json(['data' => $data]);
+        }
+
+        return response()->json(['data' => $data + ['row_version' => $v]])->header('ETag', '"'.$v.'"');
     }
 
     public function destroy(Request $request, string $module, string $table, string $id): Response

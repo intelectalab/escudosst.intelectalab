@@ -8,8 +8,8 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'company', 'module:SUN', 'permission:sun.inspection_dossiers.read'])->prefix('sun')->group(function () {
     Route::get('diagnosis', \App\Modules\SUN\DiagnosisController::class);
     Route::get('diagnosis/evidence-options', [\App\Modules\SUN\DiagnosisController::class, 'evidenceOptions']);
-    Route::post('diagnosis/{code}/evidence', [\App\Modules\SUN\DiagnosisController::class, 'link'])->where('code', '[a-z_]+');
-    Route::delete('diagnosis/{code}/evidence/{document}', [\App\Modules\SUN\DiagnosisController::class, 'unlink'])->where('code', '[a-z_]+')->whereUuid('document');
+    Route::post('diagnosis/{code}/evidence', [\App\Modules\SUN\DiagnosisController::class, 'link'])->where('code', '[a-z0-9_]+');
+    Route::delete('diagnosis/{code}/evidence/{document}', [\App\Modules\SUN\DiagnosisController::class, 'unlink'])->where('code', '[a-z0-9_]+')->whereUuid('document');
     Route::post('dossiers/{dossier}/build', DossierBuilder::class)->whereUuid('dossier');
     Route::get('dossiers/{dossier}/status', [DossierBuilder::class, 'status'])->whereUuid('dossier');
     Route::get('dossiers/{dossier}/zip', \App\Modules\SUN\DossierZip::class)->whereUuid('dossier');

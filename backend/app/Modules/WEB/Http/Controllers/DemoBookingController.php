@@ -28,7 +28,6 @@ class DemoBookingController extends Controller
 {
     public const OUTCOMES = ['interested' => 'Interesado', 'not_interested' => 'No interesado', 'follow_up' => 'Seguimiento', 'converted' => 'Se volvió cliente'];
 
-    private const SECTORS = 'construction,mining,agroindustry,manufacturing,retail,services,office,health,education,transport,energy,other';
 
     private const MESSAGES = [
         'required' => 'Completa este campo.',
@@ -88,7 +87,7 @@ class DemoBookingController extends Controller
             'company_name' => ['required', 'string', 'min:2', 'max:160'],
             'ruc' => ['nullable', 'regex:/^(10|15|17|20)\d{9}$/'],
             'headcount' => ['nullable', 'integer', 'min:1', 'max:1000000'],
-            'economic_sector' => ['nullable', 'in:'.self::SECTORS],
+            'economic_sector' => ['nullable', 'in:'.\App\Core\Support\Sectors::csv()],
             'is_consultancy' => ['boolean'],
             'meeting_provider' => ['required', 'in:'.implode(',', array_keys(DemoService::PROVIDERS))],
             'message' => ['nullable', 'string', 'max:2000'],

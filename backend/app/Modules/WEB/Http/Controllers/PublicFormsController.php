@@ -26,7 +26,6 @@ use Illuminate\Validation\ValidationException;
  */
 class PublicFormsController extends Controller
 {
-    private const SECTORS = 'construction,mining,agroindustry,manufacturing,retail,services,office,health,education,transport,energy,other';
 
     public function __construct(private readonly AccountsService $accounts) {}
 
@@ -39,7 +38,7 @@ class PublicFormsController extends Controller
             'ruc' => ['required', 'digits:11'],
             'legal_name' => ['required', 'string', 'min:3', 'max:160'],
             'trade_name' => ['nullable', 'string', 'max:160'],
-            'economic_sector' => ['nullable', 'in:'.self::SECTORS],
+            'economic_sector' => ['nullable', 'in:'.\App\Core\Support\Sectors::csv()],
             'headcount' => ['required', 'integer', 'min:1', 'max:1000000'],
             'full_name' => ['required', 'string', 'min:3', 'max:120'],
             'email' => ['required', 'email:rfc', 'max:160'],
@@ -91,7 +90,7 @@ class PublicFormsController extends Controller
             'companies_count' => ['nullable', 'integer', 'min:1', 'max:30'],
             'job_title' => ['nullable', 'string', 'max:120'],
             'headcount' => ['nullable', 'integer', 'min:1', 'max:1000000'],
-            'economic_sector' => ['nullable', 'in:'.self::SECTORS],
+            'economic_sector' => ['nullable', 'in:'.\App\Core\Support\Sectors::csv()],
             'interest_plan_code' => ['nullable', 'in:E,P,C,K'],
             'addon_codes' => ['nullable', 'array', 'max:10'],
             'addon_codes.*' => ['string', 'distinct', 'exists:addons,code'],

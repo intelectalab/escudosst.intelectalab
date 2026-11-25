@@ -12,6 +12,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
 import { Card, Chip, Dot, type Tone } from "./Summary";
 import { ComElection, fmtDateTime } from "./ComElection";
+import { IaaMinutesDraft } from "@/components/addons/IaaMinutes";
 
 type Member = { id: string; worker_id: string; full_name: string; position: string | null; representation: string; member_type: string; role_in_committee: string; starts_on: string; ends_on: string | null };
 type Meeting = { id: string; number: number | null; meeting_type: string; scheduled_at: string | null; held_at: string | null; status: string; quorum_reached: boolean | null; attendees: number; agreements: number; signatures: number };
@@ -341,6 +342,7 @@ function MeetingActa({ id, readOnly, onClose }: { id: string; readOnly?: boolean
               </Button>
             </section>
           )}
+          {attendanceOpen && <IaaMinutesDraft meetingId={id} onSaved={load} />}
           <section>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <h4 className="font-semibold">Firmas</h4>

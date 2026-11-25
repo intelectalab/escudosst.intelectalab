@@ -532,7 +532,9 @@ export function RecordForm({
         setDetail("Adjunta el consentimiento firmado en papel.");
         return;
       }
-      const saved = isNew ? await records.create(code, res.table, body) : await records.update(code, res.table, full!.id, body);
+      // docs/08 §6: con la versión que se abrió; si otra persona cambió el registro entretanto, el servidor responde 409 y no se pisa.
+      const saved = isNew ? await records.create(code, res.table, body)
+        : await records.update(code, res.table, full!.id, typeof full?.row_version === "string" ? { ...body, row_version: full.row_version } : body);
       let note = "";
       if (workerConsent && consent.choice) {
         try {

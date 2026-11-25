@@ -15,7 +15,7 @@ import { SunWizard } from "./SunWizard";
 
 type Evidence = { id: string; code: string | null; title: string; state: "current" | "review_overdue" | "not_valid" };
 type Area = { workers?: string[]; workers_total?: number; code: string; name: string; module: string; table: string | null; pct: number | null; tone: Tone; detail: string; enabled: boolean; severity: string; severity_label: string;
-  no_module?: boolean; evidence?: Evidence[] };
+  no_module?: boolean; evidence?: Evidence[]; sector?: boolean; evidence_hint?: string | null };
 const EVIDENCE_STATE: Record<Evidence["state"], string> = { current: "Vigente", review_overdue: "Revisión vencida", not_valid: "Sin versión vigente" };
 
 /**
@@ -149,12 +149,12 @@ export function SunSummary({ readOnly }: { readOnly: boolean }) {
                 .map((a) => (
                   <li key={a.name}>
                     <Link
-                      href={a.no_module ? recordsHref("DOC", "documents") : a.enabled && a.table ? recordsHref(a.module, a.table) : `/m/${a.module.toLowerCase()}`}
+                      href={a.no_module || a.sector ? recordsHref("DOC", "documents") : a.enabled && a.table ? recordsHref(a.module, a.table) : `/m/${a.module.toLowerCase()}`}
                       className="flex items-center gap-3 rounded-lg px-1 py-2.5 hover:bg-brand-soft/40"
                     >
                       <Dot tone={a.tone} />
                       <span className="min-w-0 flex-1">
-                        <b className="block text-sm">{a.name}{a.no_module && <span className="ml-2 align-middle"><Chip tone="na">Sin módulo</Chip></span>}</b>
+                        <b className="block text-sm">{a.name}{a.no_module && <span className="ml-2 align-middle"><Chip tone="na">Sin módulo</Chip></span>}{a.sector && <span className="ml-2 align-middle"><Chip tone="na">Del paquete sectorial</Chip></span>}</b>
                         <span className="block text-xs text-muted">{a.detail}</span>
                         {a.workers && a.workers.length > 0 && (
                           <span className="block text-xs text-muted" title={a.workers.join(", ")}>
@@ -166,7 +166,8 @@ export function SunSummary({ readOnly }: { readOnly: boolean }) {
                       <span className="hidden w-28 sm:block">{a.pct !== null && <Bar pct={a.pct} tone={a.tone} />}</span>
                       <b className="w-10 text-right font-display tabular-nums">{a.pct ?? "—"}</b>
                     </Link>
-                    {a.no_module && <EvidenceLinker area={a} readOnly={readOnly} onChanged={load} />}
+                    {a.sector && a.evidence_hint && <p className="text-xs text-muted">Evidencia esperada: {a.evidence_hint}</p>}
+                    {(a.no_module || a.sector) && <EvidenceLinker area={a} readOnly={readOnly} onChanged={load} />}
                   </li>
                 ))}
             </ul>

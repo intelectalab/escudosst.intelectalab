@@ -1598,7 +1598,7 @@
     {
      "name": "content_html",
      "label": "Contenido (HTML)",
-     "type": "text"
+     "type": "longtext"
     },
     {
      "name": "change_summary",
@@ -3263,7 +3263,7 @@
     {
      "name": "content_html",
      "label": "Contenido (HTML)",
-     "type": "text"
+     "type": "longtext"
     },
     {
      "name": "file_id",
@@ -5047,7 +5047,7 @@
     {
      "name": "content_html",
      "label": "Contenido (HTML)",
-     "type": "text"
+     "type": "longtext"
     },
     {
      "name": "file_id",
@@ -5913,7 +5913,7 @@
     {
      "name": "minutes_html",
      "label": "Acta de reunión",
-     "type": "text"
+     "type": "longtext"
     },
     {
      "name": "minutes_file_id",
@@ -8561,7 +8561,7 @@
     {
      "name": "content_html",
      "label": "Contenido (HTML)",
-     "type": "text",
+     "type": "longtext",
      "list": true
     },
     {
@@ -14690,7 +14690,7 @@
     {
      "name": "content_html",
      "label": "Contenido (HTML)",
-     "type": "text"
+     "type": "longtext"
     },
     {
      "name": "file_id",
@@ -24265,6 +24265,10 @@
        "label": "Clasificación de reportes"
       },
       {
+       "value": "minutes_draft",
+       "label": "Acta en borrador"
+      },
+      {
        "value": "other",
        "label": "Otro"
       }
@@ -24341,6 +24345,12 @@
      "name": "quota_period",
      "label": "Periodo de cuota",
      "type": "text"
+    },
+    {
+     "name": "input_fields",
+     "label": "Campos enviados",
+     "type": "tags",
+     "item": "text"
     },
     {
      "name": "status",
@@ -25122,6 +25132,19 @@
      ],
      "default": "active",
      "list": true
+    },
+    {
+     "name": "fitness_approved_by",
+     "label": "Aptitud aprobada por",
+     "readonly": true,
+     "type": "ref",
+     "ref": "users"
+    },
+    {
+     "name": "fitness_approved_at",
+     "label": "Aptitud aprobada el",
+     "readonly": true,
+     "type": "datetime"
     }
    ]
   },

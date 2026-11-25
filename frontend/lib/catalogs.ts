@@ -125,10 +125,11 @@ export type SectorPack = {
   items: { id: string; item_type: string; code: string; name: string; version?: number; payload?: PackItemPayload | null }[];
 };
 
-/** Contenido de un «PETS modelo» o «formato de registro» que la plataforma carga en el paquete (M-PSE). */
+/** Contenido de un «PETS modelo», «formato» u «obligación SUNAFIL» que la plataforma carga en el paquete (M-PSE). */
 export type PackItemPayload = {
   code?: string; title?: string; procedure_type?: string; is_critical_task?: boolean; content_html?: string | null;
   steps?: { step: string; risk?: string | null; control?: string | null }[]; required_ppe?: string[]; description?: string | null; category_code?: string;
+  name?: string; legal_basis?: string | null; severity?: string; evidence_hint?: string | null;
 };
 
 export type Holiday = { id: string; holiday_on: string; name: string; scope: string; is_non_working: boolean; to_confirm: boolean };
@@ -183,6 +184,7 @@ export const PACK_ITEM_TYPES: Record<string, string> = {
   credential_requirement: "Requisitos de fotocheck",
   pets_model: "PETS modelo",
   record_format: "Formatos de registro",
+  sunafil_obligation: "Obligaciones SUNAFIL",
 };
 
 export const VALUE_TYPES: Record<string, string> = {

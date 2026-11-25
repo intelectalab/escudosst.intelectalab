@@ -1,0 +1,537 @@
+openapi: 3.0.3
+info:
+  title: EscudoSST · API para integraciones
+  version: 1.1.0
+  description: |
+    API pública de EscudoSST para integraciones de la empresa (planillas, ERP, control de acceso, aulas virtuales). Complemento «API e
+    integraciones» (M-API). Este archivo describe solo la API pública `ext/`; las rutas internas de la aplicación no forman parte del
+    contrato público.
+
+    **Autenticación.** Cada cliente se crea en «API e integraciones › Clientes» y opera en una sola empresa (RN-API-02). En todas las
+    llamadas se envía `X-Company-Id` (ID de la empresa) y además:
+    - un token Bearer `at_…` obtenido con `POST /ext/oauth/token` (OAuth2 «client credentials»), o
+    - `X-Api-Key` (clave pública `esc_…`) y `X-Api-Secret` (secreto `sk_…`, se muestra una sola vez al crear o rotar: RN-API-03).
+
+    **Alcances.** `read` o `*` dan lectura de todos los recursos salvo la aptitud; `<recurso>.read` da lectura de uno; `write` o
+    `workers.write` permiten escribir trabajadores. **Ningún alcance entrega datos médicos** (RN-API-01). La aptitud
+    (`fitness_status`: estado, restricciones en términos laborales y vigencia, nunca diagnósticos) solo se lee con el alcance
+    explícito `fitness.read` **y** la aprobación de la empresa (administrador de la cuenta o médico ocupacional); `read` y `*` no la abren.
+
+    **Límites.** Cada cliente tiene su límite de consultas por minuto (`rate_limit_per_minute`, 120 si no se indica); al pasarlo
+    responde 429 (RN-API-05). Si el cliente tiene IPs permitidas, solo se aceptan llamadas desde ellas.
+
+    **Paginación.** Por cursor (`limit` de 1 a 200, por defecto 100; `cursor` = `meta.next_cursor` de la respuesta anterior). El
+    parámetro `page` se mantiene por compatibilidad con integraciones anteriores.
+
+    **Concurrencia.** `PATCH /ext/v1/workers/{id}` acepta `If-Match` con la versión del trabajador (`row_version` de la lista o el
+    `ETag` de la respuesta anterior). Si el trabajador cambió entretanto responde 409 `conflict` y no escribe.
+
+    **Idempotencia.** Las escrituras aceptan `Idempotency-Key` (hasta 100 caracteres): la misma llave con el mismo cuerpo devuelve la
+    respuesta original con la cabecera `Idempotent-Replay: true`; con otro cuerpo, 409 (RN-API-06).
+
+    **Errores.** Formato `application/problem+json` (RFC 9457) con `type`, `title`, `status`, `detail` y, en validación, `errors`
+    por campo. El endpoint de token responde con el formato de error de OAuth2 (`error`, `error_description`).
+
+    **Webhooks.** Los eventos suscritos se envían por POST a la URL https del webhook, firmados con HMAC-SHA256 (ver `x-webhooks`).
+servers:
+  - url: /api/v1
+    description: Mismo dominio de la aplicación
+tags:
+  - name: Autenticación
+  - name: Consultas
+  - name: Trabajadores
+security:
+  - bearerToken: []
+    companyId: []
+  - apiKey: []
+    apiSecret: []
+    companyId: []
+paths:
+  /ext/oauth/token:
+    post:
+      operationId: extOauthToken
+      tags: [Autenticación]
+      summary: Token OAuth2 «client credentials»
+      description: Entrega un token Bearer `at_…` para el cliente. Vigencia en `expires_in` (segundos). Límite de 30 intentos por minuto y cliente.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema: { $ref: '#/components/schemas/TokenRequest' }
+          application/json:
+            schema: { $ref: '#/components/schemas/TokenRequest' }
+      responses:
+        '200':
+          description: Token emitido
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, token_type, expires_in, scope]
+                properties:
+                  access_token: { type: string, example: at_x8Yq2… }
+                  token_type: { type: string, enum: [Bearer] }
+                  expires_in: { type: integer, example: 3600 }
+                  scope: { type: string, description: Alcances del cliente separados por espacio, example: workers.read workers.write }
+        '400':
+          description: '`unsupported_grant_type` (solo client_credentials) o `invalid_request` (faltan X-Company-Id, client_id o client_secret)'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthError' }
+        '401':
+          description: '`invalid_client`: cliente, secreto o empresa no válidos, o cliente revocado o vencido'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthError' }
+        '429':
+          description: '`slow_down`: demasiados intentos'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthError' }
+  /ext/v1/{resource}:
+    get:
+      operationId: extListResource
+      tags: [Consultas]
+      summary: Lista un recurso de la empresa
+      description: |
+        Registros del recurso ordenados por fecha de cambio (`updated_at`; en `access_events`, `occurred_at`) y por id.
+        Para sincronizar: guarda el último instante y pide `updated_since`; recorre las páginas con `cursor`.
+        Alcance: `read`, `*` o `<recurso>.read`; `fitness_status` solo con `fitness.read` aprobado. Los recursos médicos
+        (`medical_exams`, `medical_exam_orders`, `emo`, `fitness`…) responden siempre 403.
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+        - name: resource
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [workers, events, actions, inspections, trainings, credentials, access_events, fitness_status]
+        - name: updated_since
+          in: query
+          description: Instante ISO 8601; solo registros cambiados desde entonces (en access_events, ocurridos desde entonces).
+          schema: { type: string, format: date-time }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+        - name: cursor
+          in: query
+          description: Valor opaco `meta.next_cursor` de la respuesta anterior.
+          schema: { type: string }
+        - name: page
+          in: query
+          deprecated: true
+          description: Paginación por número de página (compatibilidad). Usa `cursor`.
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Página de registros
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      oneOf:
+                        - $ref: '#/components/schemas/Worker'
+                        - $ref: '#/components/schemas/Event'
+                        - $ref: '#/components/schemas/Action'
+                        - $ref: '#/components/schemas/Inspection'
+                        - $ref: '#/components/schemas/Training'
+                        - $ref: '#/components/schemas/Credential'
+                        - $ref: '#/components/schemas/AccessEvent'
+                        - $ref: '#/components/schemas/FitnessStatus'
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /ext/v1/workers:
+    post:
+      operationId: extCreateWorker
+      tags: [Trabajadores]
+      summary: Alta de un trabajador
+      description: Alcance `write`, `*` o `workers.write`. Mismas validaciones que la ficha del trabajador. Nunca datos de salud.
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/WorkerWrite'
+                - type: object
+                  required: [document_number, first_name, paternal_last_name]
+      responses:
+        '201':
+          description: Trabajador creado
+          headers:
+            Idempotent-Replay: { $ref: '#/components/headers/IdempotentReplay' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkerWriteResult' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /ext/v1/workers/{id}:
+    patch:
+      operationId: extUpdateWorker
+      tags: [Trabajadores]
+      summary: Cambio de datos laborales de un trabajador
+      description: |
+        Parcial: cargo, área, sede, cese, contacto… (el documento de identidad no se cambia por la API). Alcance `write`, `*` o
+        `workers.write`. Con `If-Match`, responde 409 si el trabajador cambió desde que se leyó su versión.
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: If-Match
+          in: header
+          description: Versión del trabajador (`row_version` de la lista o `ETag` de la respuesta anterior), con o sin comillas.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WorkerWrite' }
+      responses:
+        '200':
+          description: Trabajador actualizado
+          headers:
+            ETag:
+              description: Nueva versión del trabajador (para el siguiente If-Match)
+              schema: { type: string }
+            Idempotent-Replay: { $ref: '#/components/headers/IdempotentReplay' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkerWriteResult' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+components:
+  securitySchemes:
+    bearerToken:
+      type: http
+      scheme: bearer
+      description: Token `at_…` de POST /ext/oauth/token.
+    oauth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /api/v1/ext/oauth/token
+          scopes:
+            read: Lectura de todos los recursos (salvo la aptitud)
+            '*': Lectura y escritura (salvo la aptitud)
+            workers.read: Trabajadores
+            events.read: Accidentes, incidentes y enfermedades ocupacionales (sin datos médicos)
+            actions.read: Acciones correctivas
+            inspections.read: Inspecciones
+            trainings.read: Capacitaciones
+            credentials.read: Fotochecks
+            access_events.read: Ingresos y salidas en garita
+            fitness.read: Aptitud (estado, restricciones laborales y vigencia), con aprobación de la empresa
+            write: Escritura de trabajadores
+            workers.write: Escritura de trabajadores
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+    apiSecret:
+      type: apiKey
+      in: header
+      name: X-Api-Secret
+    companyId:
+      type: apiKey
+      in: header
+      name: X-Company-Id
+  parameters:
+    CompanyId:
+      name: X-Company-Id
+      in: header
+      required: true
+      description: ID (UUID) de la empresa del cliente.
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: Llave única de la escritura (hasta 100 caracteres).
+      schema: { type: string, maxLength: 100 }
+  headers:
+    IdempotentReplay:
+      description: '`true` cuando la respuesta es la original de una escritura repetida con la misma Idempotency-Key.'
+      schema: { type: string, enum: ['true'] }
+  responses:
+    BadRequest:
+      description: Parámetro no válido (updated_since, limit o cursor)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: Faltan credenciales, son incorrectas, el token venció o el cliente está revocado o vencido
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Sin el alcance del recurso, IP no permitida, complemento API no activo, datos de salud o aptitud sin aprobación
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Recurso o registro desconocido
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: 'If-Match no coincide (el registro cambió) o Idempotency-Key repetida con otro cuerpo'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ValidationFailed:
+      description: Datos por corregir (errores por campo)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TooManyRequests:
+      description: Límite por minuto del cliente superado
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, example: forbidden, description: 'unauthenticated, forbidden, not_found, conflict, validation_failed, too_many_requests, module_not_in_plan, bad_request' }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+        retry_after: { type: integer, description: Segundos de espera (429) }
+        current_version: { type: string, description: Versión vigente del registro (409 por If-Match) }
+        trace_id: { type: string }
+    OAuthError:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, enum: [unsupported_grant_type, invalid_request, invalid_client, slow_down] }
+        error_description: { type: string }
+    TokenRequest:
+      type: object
+      required: [grant_type, client_id, client_secret]
+      properties:
+        grant_type: { type: string, enum: [client_credentials] }
+        client_id: { type: string, description: Clave pública esc_… }
+        client_secret: { type: string, description: Secreto sk_… }
+    PageMeta:
+      type: object
+      required: [limit, has_more, next_cursor]
+      properties:
+        limit: { type: integer }
+        has_more: { type: boolean }
+        next_cursor: { type: string, nullable: true, description: Para pedir la página siguiente; null si no hay más }
+        page: { type: integer, description: Número de página (cuando no se usa cursor) }
+    Worker:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        full_name: { type: string }
+        document_last4: { type: string, description: Últimos 4 dígitos del documento }
+        status: { type: string, enum: [active, on_leave, terminated, inactive] }
+        site_id: { type: string, format: uuid, nullable: true }
+        area_id: { type: string, format: uuid, nullable: true }
+        position_id: { type: string, format: uuid, nullable: true }
+        updated_at: { type: string, format: date-time }
+        row_version: { type: string, description: 'Versión para If-Match en PATCH /ext/v1/workers/{id}' }
+    Event:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        event_type: { type: string, enum: [fatal_accident, disabling_accident, minor_accident, dangerous_incident, incident, occupational_disease] }
+        occurred_at: { type: string, format: date-time }
+        site_id: { type: string, format: uuid, nullable: true }
+        area_id: { type: string, format: uuid, nullable: true }
+        status: { type: string, enum: [reported, registered, notified, under_investigation, closed, discarded] }
+        lost_days: { type: integer, nullable: true }
+        injured_count: { type: integer, nullable: true }
+        notification_deadline_at: { type: string, format: date-time, nullable: true }
+        updated_at: { type: string, format: date-time }
+    Action:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        title: { type: string }
+        source_type: { type: string }
+        priority: { type: string }
+        status: { type: string, enum: [open, in_progress, pending_verification, verified, overdue, cancelled] }
+        due_on: { type: string, format: date }
+        effectiveness: { type: string, nullable: true }
+        completed_at: { type: string, format: date-time, nullable: true }
+        verified_at: { type: string, format: date-time, nullable: true }
+        updated_at: { type: string, format: date-time }
+    Inspection:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        title: { type: string }
+        inspection_type: { type: string }
+        site_id: { type: string, format: uuid, nullable: true }
+        scheduled_on: { type: string, format: date, nullable: true }
+        completed_at: { type: string, format: date-time, nullable: true }
+        score_pct: { type: number, nullable: true }
+        status: { type: string, enum: [scheduled, in_progress, completed, closed, overdue, cancelled] }
+        updated_at: { type: string, format: date-time }
+    Training:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, nullable: true }
+        title: { type: string }
+        training_type: { type: string }
+        modality: { type: string }
+        duration_minutes: { type: integer, nullable: true }
+        status: { type: string }
+        updated_at: { type: string, format: date-time }
+    Credential:
+      type: object
+      description: Fotocheck (sin el token del QR)
+      properties:
+        id: { type: string, format: uuid }
+        credential_number: { type: string }
+        credential_type_id: { type: string, format: uuid }
+        worker_id: { type: string, format: uuid, nullable: true }
+        contractor_worker_id: { type: string, format: uuid, nullable: true }
+        valid_from: { type: string, format: date, nullable: true }
+        expires_on: { type: string, format: date, nullable: true }
+        status: { type: string }
+        blocking_reasons: { type: array, items: { type: string }, nullable: true }
+        updated_at: { type: string, format: date-time }
+    AccessEvent:
+      type: object
+      description: Ingreso o salida registrada en garita
+      properties:
+        id: { type: string, format: uuid }
+        access_point_id: { type: string, format: uuid }
+        occurred_at: { type: string, format: date-time }
+        direction: { type: string }
+        subject_type: { type: string }
+        worker_id: { type: string, format: uuid, nullable: true }
+        contractor_worker_id: { type: string, format: uuid, nullable: true }
+        credential_id: { type: string, format: uuid, nullable: true }
+        result: { type: string }
+        deny_codes: { type: array, items: { type: string }, nullable: true }
+        is_offline: { type: boolean }
+    FitnessStatus:
+      type: object
+      description: Aptitud vigente del trabajador. Nunca diagnósticos ni resultados del examen (RN-API-01).
+      properties:
+        id: { type: string, format: uuid }
+        worker_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, fit, fit_with_restrictions, unfit, expired] }
+        work_restrictions: { type: string, nullable: true, description: Redactada en términos laborales por el médico }
+        valid_from: { type: string, format: date, nullable: true }
+        valid_until: { type: string, format: date, nullable: true }
+        updated_at: { type: string, format: date-time }
+    WorkerWrite:
+      type: object
+      description: Campos que un sistema externo puede escribir (nunca datos de salud). document_type y document_number solo en el alta.
+      properties:
+        document_type: { type: string }
+        document_number: { type: string }
+        first_name: { type: string }
+        paternal_last_name: { type: string }
+        maternal_last_name: { type: string }
+        birth_on: { type: string, format: date }
+        sex: { type: string }
+        nationality: { type: string }
+        phone_e164: { type: string }
+        personal_email: { type: string, format: email }
+        employee_code: { type: string }
+        hire_on: { type: string, format: date }
+        termination_on: { type: string, format: date }
+        termination_reason: { type: string }
+        employment_type: { type: string }
+        contract_type: { type: string }
+        current_site_id: { type: string, format: uuid }
+        current_area_id: { type: string, format: uuid }
+        current_position_id: { type: string, format: uuid }
+        status: { type: string }
+    WorkerWriteResult:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            full_name: { type: string, nullable: true }
+            status: { type: string, nullable: true }
+            row_version: { type: string, description: Solo en PATCH }
+    WebhookEvent:
+      type: object
+      required: [event, id, table, occurred_at]
+      properties:
+        event: { type: string, enum: [event.created, action.created, action.verified, inspection.completed, report.received, worker.created, training.certificate_issued, credential.status_changed, webhook.test] }
+        id: { type: string, format: uuid, description: ID del registro }
+        table: { type: string, example: sst_events }
+        occurred_at: { type: string, format: date-time }
+        data:
+          type: object
+          description: Solo en credential.status_changed (el estado nuevo del fotocheck)
+          properties:
+            status: { type: string }
+x-webhooks:
+  description: |
+    Cada evento suscrito se envía por POST (JSON) a la URL https del webhook. Cabeceras: `X-EscudoSST-Event` (código del evento),
+    `X-EscudoSST-Delivery` (ID de la entrega) y `X-EscudoSST-Signature: sha256=<HMAC-SHA256 del cuerpo con el secreto del webhook>`.
+    Responder 2xx en menos de 10 segundos. Si falla se reintenta con espera creciente hasta `webhook_max_retries` (6 por defecto) y
+    luego la entrega queda abandonada; con 20 fallas seguidas el webhook se pausa (RN-API-04). Ningún evento lleva datos médicos.
+  events:
+    event.created:
+      summary: 'Se registró un accidente, incidente o enfermedad ocupacional'
+      payload: { $ref: '#/components/schemas/WebhookEvent' }
+    action.created:
+      summary: 'Se creó una acción correctiva'
+      payload: { $ref: '#/components/schemas/WebhookEvent' }
+    action.verified:
+      summary: 'Se verificó una acción correctiva'
+      payload: { $ref: '#/components/schemas/WebhookEvent' }
+    inspection.completed:
+      summary: 'Se completó una inspección'
+      payload: { $ref: '#/components/schemas/WebhookEvent' }
+    report.received:
+      summary: 'Llegó un reporte de acto o condición subestándar'
+      payload: { $ref: '#/components/schemas/WebhookEvent' }
+    worker.created:
+      summary: 'Se dio de alta un trabajador'
+      payload: { $ref: '#/components/schemas/WebhookEvent' }
+    training.certificate_issued:
+      summary: 'Se emitió (validó) un certificado de capacitación'
+      payload: { $ref: '#/components/schemas/WebhookEvent' }
+    credential.status_changed:
+      summary: 'Cambió el estado de un fotocheck'
+      payload: { $ref: '#/components/schemas/WebhookEvent' }
+    webhook.test:
+      summary: 'Evento de prueba enviado desde la aplicación'
+      payload: { $ref: '#/components/schemas/WebhookEvent' }

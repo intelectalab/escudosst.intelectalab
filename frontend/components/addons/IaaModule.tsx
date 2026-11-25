@@ -10,6 +10,7 @@ import { IaaCourses, IaaDocument } from "@/components/addons/IaaExtras";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/Form";
 import { api, ApiError } from "@/lib/api";
+import { waitForRequest } from "@/lib/iaa";
 
 type Item = { title: string; detail?: string; group?: string };
 const FEATURES: [string, string, string, string][] = [
@@ -68,11 +69,18 @@ function QuickAssistant() {
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ data: { topic: string | null; items: Item[]; note: string } }>("/iaa/suggest", { method: "POST", withCompany: true, body: { feature, text } });
+      const r = await api<{ data: { topic: string | null; items: Item[]; note: string; status?: string; request_id?: string } }>("/iaa/suggest", { method: "POST", withCompany: true, body: { feature, text } });
       setRes(r.data);
+      // Sin tema en la biblioteca y con IA encendida, la consulta va a la cola: se muestra la guía general y luego la respuesta.
+      if (r.data.status === "queued" && r.data.request_id) {
+        const done = await waitForRequest(r.data.request_id);
+        const items = (done.suggestions[0]?.payload?.items as Item[] | undefined) ?? null;
+        if (done.status === "completed" && items) setRes({ topic: null, items, note: done.suggestions[0]?.rationale ?? "Sugerencias generadas con IA. Revísalas y adáptalas." });
+        else setError(done.message ?? "El asistente no pudo responder: te dejamos la guía general.");
+      }
     } catch (e) {
-      const ae = e as ApiError;
-      setError(Object.values(ae.errors ?? {})[0]?.[0] ?? ae.detail ?? ae.title);
+      if (e instanceof ApiError) setError(Object.values(e.errors ?? {})[0]?.[0] ?? e.detail ?? e.title);
+      else setError(e instanceof Error ? e.message : "No se pudo completar.");
     } finally {
       setBusy(false);
     }
@@ -119,7 +127,7 @@ type Usage = {
   people: { name: string; n: number; accepted: number }[];
   suggestions: { accepted: number; rejected: number; pending: number; acceptance_pct: number | null };
 };
-const FEATURE_NAME: Record<string, string> = { iperc_suggestion: "IPERC y controles", investigation_guide: "Investigación", document_reading: "Lectura de documentos", training_quiz: "Preguntas de examen", report_classification: "Clasificación de reportes", other: "Charlas y otros" };
+const FEATURE_NAME: Record<string, string> = { iperc_suggestion: "IPERC y controles", investigation_guide: "Investigación", document_reading: "Lectura de documentos", minutes_draft: "Actas del comité", training_quiz: "Preguntas de examen", report_classification: "Clasificación de reportes", other: "Charlas y otros" };
 
 /** SCR-IAA-06: consumo del mes contra el cupo del plan, por mes y caso de uso, por persona y tasa de aceptación. */
 function IaaUsage() {

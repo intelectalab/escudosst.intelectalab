@@ -13,15 +13,13 @@ use Illuminate\Support\Facades\DB;
  * Asistente IA (complemento IAA), entrenado por el equipo de EscudoSST (sin IA de pago):
  *  POST /iaa/suggest {feature: controls|causes|talk, text}
  * Busca en la biblioteca del asistente (Panel › Asistente IA) el tema cuyas palabras clave más coinciden con lo que
- * escribió la persona. Si no encuentra, responde con la guía general y anota la pregunta para que el equipo le enseñe.
- * Nunca acepta datos de salud. Las sugerencias son propuestas: la persona decide qué usar.
+ * escribió la persona. Si no encuentra, responde con la guía general y anota la pregunta para que el equipo le enseñe; si
+ * además el proveedor de IA está encendido, la consulta queda «queued» y la atiende el trabajador de la cola (AiRequestJob,
+ * 202 con request_id: GET /iaa/requests/{id} dice cuándo está lista). Nunca acepta datos de salud. Las sugerencias son propuestas: la persona decide qué usar.
  */
 class AssistantController extends Controller
 {
     private const FEATURES = ['controls' => 'iperc_suggestion', 'causes' => 'investigation_guide', 'talk' => 'other'];
-
-    /** true si la última respuesta salió del proveedor de IA (para registrar proveedor y modelo: RN-IAA-07). */
-    private bool $usedProvider = false;
 
     public function suggest(Request $request): JsonResponse
     {
@@ -29,34 +27,54 @@ class AssistantController extends Controller
             'feature' => ['required', 'in:controls,causes,talk'],
             'text' => ['required', 'string', 'min:5', 'max:1500'],
         ], ['text.required' => 'Escribe el peligro, el evento o el tema.', 'text.min' => 'Escribe un poco más (al menos 5 letras).']);
-        if (preg_match('/\b(diagn[oó]stico|hipertensi[oó]n|diabetes|embarazo|gestante|VIH|c[aá]ncer|depresi[oó]n)\b/iu', $d['text'])) {
+        if (preg_match('/(diagn[oó]stico|hipertensi[oó]n|diabetes|embarazo|gestante|VIH|c[aá]ncer|depresi[oó]n)/iu', $d['text'])) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa el texto', 'No escribas datos de salud de personas: el asistente no los necesita.', ['errors' => ['text' => ['No escribas datos de salud de personas: el asistente no los necesita.']]]);
         }
         Usage::guard();
         $started = microtime(true);
         // RN-IAA-03: nombres, DNI, teléfonos y correos se reemplazan por marcadores antes de procesar y guardar el texto.
         [$d['text'], $hidden] = Redactor::redact($d['text']);
-        [$items, $note, $matched] = $this->answer($d['feature'], $d['text']);
-
+        [$items, $note, $matched, $miss] = $this->answer($d['feature'], $d['text']);
         $ctx = app(CompanyContext::class);
+        $uid = (string) auth()->id();
+
+        // Sin tema en la biblioteca y con proveedor de IA encendido: la consulta va a la cola (docs/17 §2, 202 «en proceso»);
+        // mientras tanto se muestra la guía general. La biblioteca responde al momento (no llama a nadie).
+        if ($miss && AiProvider::enabled()) {
+            $req = DB::selectOne(
+                "insert into ai_requests (company_id, user_id, feature, module_code, provider, model, prompt_template_code, prompt_version, input_redacted, contains_medical_data,
+                    input_summary, input_hash, input_fields, status, created_by, updated_by)
+                 values (?, ?, ?, 'IAA', 'anthropic', ?, ?, ?, true, false, ?, ?, '{text}', 'queued', ?, ?) returning id",
+                [$ctx->companyId, $uid, self::FEATURES[$d['feature']], AiProvider::model(), $d['feature'], PromptTemplates::version($d['feature']),
+                    mb_substr($d['text'], 0, 200), hash('sha256', $d['text']), $uid, $uid]
+            );
+            AiRequestJob::dispatch($req->id, $ctx->companyId, $uid, $d['feature'], $d['text'])->afterCommit();
+
+            return response()->json(['data' => ['status' => 'queued', 'request_id' => $req->id, 'items' => $items, 'topic' => null, 'redacted' => $hidden,
+                'note' => 'La biblioteca aún no tiene este tema: el asistente lo está consultando con IA. Mientras tanto, aquí tienes la guía general.']], 202);
+        }
+
         $req = DB::selectOne(
             "insert into ai_requests (company_id, user_id, feature, module_code, provider, model, prompt_template_code, prompt_version, input_redacted, contains_medical_data,
-                input_summary, latency_ms, status, completed_at, created_by, updated_by)
-             values (?, ?, ?, 'IAA', ?, ?, ?, '2', true, false, ?, ?, 'completed', now(), ?, ?) returning id",
-            [$ctx->companyId, (string) auth()->id(), self::FEATURES[$d['feature']], $this->usedProvider ? 'anthropic' : 'escudosst_library', $this->usedProvider ? AiProvider::model() : 'biblioteca',
-                $d['feature'], mb_substr($d['text'], 0, 200),
-                (int) ((microtime(true) - $started) * 1000), (string) auth()->id(), (string) auth()->id()]
+                input_summary, input_hash, latency_ms, status, completed_at, created_by, updated_by)
+             values (?, ?, ?, 'IAA', 'escudosst_library', 'biblioteca', ?, '2', true, false, ?, ?, ?, 'completed', now(), ?, ?) returning id",
+            [$ctx->companyId, $uid, self::FEATURES[$d['feature']], $d['feature'], mb_substr($d['text'], 0, 200), hash('sha256', $d['text']),
+                (int) ((microtime(true) - $started) * 1000), $uid, $uid]
         );
         DB::insert(
             "insert into ai_suggestions (company_id, ai_request_id, suggestion_type, target_type, payload, rationale, status, created_by, updated_by)
              values (?, ?, ?, 'free_text', ?::jsonb, ?, 'pending', ?, ?)",
-            [$ctx->companyId, $req->id, $d['feature'], json_encode(['items' => $items], JSON_UNESCAPED_UNICODE), $note, (string) auth()->id(), (string) auth()->id()]
+            [$ctx->companyId, $req->id, $d['feature'], json_encode(['items' => $items], JSON_UNESCAPED_UNICODE), $note, $uid, $uid]
         );
 
-        return response()->json(['data' => ['items' => $items, 'note' => $note, 'topic' => $matched, 'redacted' => $hidden]]);
+        return response()->json(['data' => ['status' => 'completed', 'request_id' => $req->id, 'items' => $items, 'note' => $note, 'topic' => $matched, 'redacted' => $hidden]]);
     }
 
-    /** @return array{0: list<array>, 1: string, 2: ?string} sugerencias, nota y tema encontrado */
+    /**
+     * Biblioteca de EscudoSST (responde al momento, sin proveedor externo).
+     *
+     * @return array{0: list<array>, 1: string, 2: ?string, 3: bool} sugerencias, nota, tema encontrado y si faltó el tema (guía general)
+     */
     public function answer(string $feature, string $text): array
     {
         $t = ' '.mb_strtolower($text).' ';
@@ -80,21 +98,13 @@ class AssistantController extends Controller
         if ($best) {
             DB::update('update assistant_knowledge set uses = uses + 1 where id = ?', [$best->id]);
 
-            return [json_decode($best->items, true) ?: [], "Sugerencias del tema «{$best->title}» de la biblioteca de EscudoSST. Revísalas y adáptalas a tu realidad.", $best->title];
+            return [json_decode($best->items, true) ?: [], "Sugerencias del tema «{$best->title}» de la biblioteca de EscudoSST. Revísalas y adáptalas a tu realidad.", $best->title, false];
         }
         // Sin respuesta: se anota para que el equipo le enseñe al asistente.
         $q = mb_substr(trim(preg_replace('/\s+/', ' ', mb_strtolower($text))), 0, 300);
         DB::statement('insert into assistant_misses (feature, question) values (?, ?) on conflict (feature, question) do update set times = assistant_misses.times + 1, last_at = now()', [$feature, $q]);
 
-        // Conexión opcional a un proveedor de IA (apagada por defecto): solo cuando la biblioteca no tiene el tema.
-        $ai = AiProvider::suggest($feature, $text);
-        if ($ai !== null) {
-            $this->usedProvider = true;
-
-            return [$ai, 'Sugerencias generadas con IA (la biblioteca aún no tiene este tema). Revísalas y adáptalas: son propuestas.', null];
-        }
-
-        return [$this->general($feature, $text), 'Aún no tengo un tema para esto: te doy la guía general. El equipo de EscudoSST revisará tu pregunta para enseñarle al asistente.', null];
+        return [$this->general($feature, $text), 'Aún no tengo un tema para esto: te doy la guía general. El equipo de EscudoSST revisará tu pregunta para enseñarle al asistente.', null, true];
     }
 
     private function general(string $feature, string $text): array

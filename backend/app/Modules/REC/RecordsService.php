@@ -185,6 +185,49 @@ final class RecordsService
         ];
     }
 
+    /**
+     * docs/08 §6 «Enviar If-Match: <ETag>; si otro usuario cambió el registro → 409»: versión del registro = huella de sus campos
+     * editables (los que calcula el sistema, como avances o puntajes, no cuentan: no generan conflictos falsos).
+     *
+     * @param  list<string>  $ids
+     * @return array<string, string> id → versión
+     */
+    public static function rowVersions(array $res, array $ids): array
+    {
+        $ids = array_values(array_filter($ids, fn ($i) => Str::isUuid((string) $i)));
+        $cols = array_values(array_filter($res['fields'], fn ($f) => empty($f['readonly']) && ! in_array($f['type'], ['source'], true)));
+        if ($ids === [] || $cols === []) {
+            return [];
+        }
+        // jsonb_build_object admite hasta 100 argumentos: se arma por tramos y se concatenan.
+        $parts = [];
+        foreach (array_chunk($cols, 45) as $chunk) {
+            $parts[] = 'jsonb_build_object('.implode(', ', array_map(fn ($f) => "'".$f['name']."', t.\"".$f['name'].'"', $chunk)).')';
+        }
+        $out = [];
+        foreach (DB::select('select t.id, md5(('.implode(' || ', $parts).')::text) as v from "'.$res['table'].'" t where t.id = any(?::uuid[])', ['{'.implode(',', $ids).'}']) as $r) {
+            $out[$r->id] = $r->v;
+        }
+
+        return $out;
+    }
+
+    public static function rowVersion(array $res, string $id): ?string
+    {
+        return self::rowVersions($res, [$id])[$id] ?? null;
+    }
+
+    /** Valor de If-Match (ETag con o sin comillas y prefijo W/; «*» = cualquiera). */
+    public static function ifMatch(?string $header): ?string
+    {
+        $v = trim((string) $header);
+        if ($v === '' || $v === '*') {
+            return null;
+        }
+
+        return trim((string) preg_replace('#^W/#', '', $v), '"');
+    }
+
     public function find(array $res, string $id, bool $decrypt = false): array
     {
         $row = $this->row($res, $id);
@@ -246,9 +289,19 @@ final class RecordsService
         return $this->find($res, $id, decrypt: true) + ($rules?->reveal($res, $id) ?? []);
     }
 
-    public function update(array $res, string $id, array $input): array
+    /** @param ?string $expectedVersion versión que la persona tenía al editar (If-Match o row_version): si cambió → 409 */
+    public function update(array $res, string $id, array $input, ?string $expectedVersion = null): array
     {
         $current = $this->row($res, $id);
+        if ($expectedVersion !== null && $expectedVersion !== '') {
+            // Bloquea la fila hasta terminar la escritura: nadie la cambia entre la comparación y el guardado.
+            DB::selectOne('select 1 as ok from "'.$res['table'].'" where id = ? for update', [$id]);
+            $now = self::rowVersion($res, $id);
+            if ($now !== null && ! hash_equals($now, $expectedVersion)) {
+                throw new ApiProblem(409, 'conflict', 'El registro cambió', 'Otra persona modificó este registro mientras lo editabas. Vuelve a abrirlo para ver los cambios y guarda de nuevo.',
+                    ['current_version' => $now]);
+            }
+        }
         if ($res['hybrid'] && $current->company_id === null) {
             throw ApiProblem::forbidden('Este registro es del catálogo general de EscudoSST: no se puede editar. Crea uno propio.');
         }

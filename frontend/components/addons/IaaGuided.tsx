@@ -351,7 +351,7 @@ export function InvTreeWithGuide({ row, readOnly }: { row: RecordRow; readOnly: 
 
 // ─────────────── Historial (SCR-IAA-05) ───────────────
 
-const FEATURE: Record<string, string> = { iperc_suggestion: "IPERC sugerido", investigation_guide: "Investigación guiada", other: "Consulta rápida" };
+const FEATURE: Record<string, string> = { iperc_suggestion: "IPERC sugerido", investigation_guide: "Investigación guiada", document_reading: "Lectura de documento", minutes_draft: "Borrador de acta", other: "Consulta rápida" };
 
 export function IaaHistory() {
   const [rows, setRows] = useState<HistoryRow[] | null>(null);

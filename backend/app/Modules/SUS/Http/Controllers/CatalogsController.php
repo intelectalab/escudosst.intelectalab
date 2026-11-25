@@ -138,7 +138,7 @@ class CatalogsController extends Controller
     public function savePackItem(Request $request, string $id, ?string $item = null): JsonResponse
     {
         $data = $request->validate([
-            'item_type' => ['required', 'in:pets_model,record_format'],
+            'item_type' => ['required', 'in:pets_model,record_format,document_template,sunafil_obligation'],
             'code' => ['required', 'string', 'max:40', 'regex:/^[A-Z0-9][A-Z0-9-]{1,39}$/'],
             'name' => ['required', 'string', 'min:3', 'max:200'],
             'procedure_type' => ['nullable', 'in:pets,standard,instruction,emergency_plan,other'],
@@ -152,6 +152,9 @@ class CatalogsController extends Controller
             'required_ppe.*' => ['string', 'max:120'],
             'description' => ['nullable', 'string', 'max:1000'],
             'category_code' => ['nullable', 'string', 'max:40'],
+            'legal_basis' => ['nullable', 'string', 'max:300'],
+            'severity' => ['nullable', 'in:minor,serious,very_serious'],
+            'evidence_hint' => ['nullable', 'string', 'max:1000'],
         ], ['code.regex' => 'El código va en mayúsculas, números y guiones (por ejemplo PETS-ALT-01).', 'name.required' => 'Escribe el nombre.', 'code.required' => 'Escribe el código.']);
 
         return response()->json(['data' => $this->service->savePackItem($id, $item, $data, $request->user()->id)], $item ? 200 : 201);

@@ -69,7 +69,7 @@ class DiagnosisController extends Controller
 
     private function document(string $code, string $id): object
     {
-        if (! in_array($code, self::CODES, true)) {
+        if (! in_array($code, self::CODES, true) && ! in_array($code, array_column($this->sectorObligations(), 'code'), true)) {
             throw ApiProblem::notFound('La obligación no existe en el catálogo.');
         }
         $doc = Str::isUuid($id) ? DB::selectOne('select id from documents where id = ? and deleted_at is null', [$id]) : null;
@@ -136,6 +136,22 @@ class DiagnosisController extends Controller
             $a['severity_label'] = self::SEVERITY_LABEL[$a['severity']];
         }
         unset($a);
+        // M-PSE §5: obligaciones SUNAFIL que la empresa instaló desde un paquete sectorial. No tienen regla sobre datos de los
+        // módulos: se evalúan con los documentos de DOC vinculados como evidencia (RN-SUN-03: sin evidencia nunca cumple).
+        foreach ($this->sectorObligations() as $o) {
+            $a = array_merge($this->area($o->name, 'SUN', null, 0, ''), $this->manualEvidence($o->code, $today, $gapBelow,
+                'Obligación del paquete sectorial'.($o->legal_basis ? " ({$o->legal_basis})" : '').': se evalúa con documentos de Gestión documental.'));
+            $a['code'] = $o->code;
+            $a['enabled'] = true;
+            $a['no_module'] = false;
+            $a['sector'] = true;
+            $a['evidence_hint'] = $o->evidence_hint;
+            $a['tone'] = $a['pct'] >= 90 ? 'ok' : ($a['pct'] >= $gapBelow ? 'warn' : 'bad');
+            $a['result'] = $a['pct'] >= 100 ? 'complies' : ($a['pct'] >= $gapBelow ? 'partial' : 'fails');
+            $a['severity'] = isset(self::SEVERITY_LABEL[$severity[$o->code] ?? '']) ? $severity[$o->code] : $o->severity;
+            $a['severity_label'] = self::SEVERITY_LABEL[$a['severity']];
+            $areas[] = $a;
+        }
         $measured = array_filter($areas, fn ($a) => $a['pct'] !== null);
         $score = $measured ? (int) round(array_sum(array_column($measured, 'pct')) / count($measured)) : null;
         $wsum = array_sum(array_map(fn ($a) => $weights[$a['severity']], $measured));
@@ -162,7 +178,13 @@ class DiagnosisController extends Controller
      * (activos con su versión aprobada o vigente) y se marca «sin módulo»; sin evidencia nunca se considera cumplida.
      * Con evidencia vigente cumple; si solo hay documentos con la revisión vencida (RN-DOC-04), es parcial.
      */
-    private function manualEvidence(string $code, string $today, float $gapBelow): array
+    /** @return list<object> obligaciones SUNAFIL propias de la empresa (instaladas desde paquetes sectoriales), activas */
+    private function sectorObligations(): array
+    {
+        return DB::select("select code, name, legal_basis, severity, evidence_hint from sunafil_obligations where deleted_at is null and status = 'active' order by created_at, code");
+    }
+
+    private function manualEvidence(string $code, string $today, float $gapBelow, ?string $prefix = null): array
     {
         $docs = DB::select(
             "select d.id, d.code, d.title, d.next_review_on, v.status as version_status, v.effective_until
@@ -177,7 +199,7 @@ class DiagnosisController extends Controller
         $current = array_filter($evidence, fn ($e) => $e['state'] === 'current');
         $overdue = array_filter($evidence, fn ($e) => $e['state'] === 'review_overdue');
         $pct = $current ? 100 : ($overdue ? $gapBelow : 0);
-        $detail = 'Sin módulo contratado: se evalúa con documentos cargados en Gestión documental. '.($current
+        $detail = ($prefix ?? 'Sin módulo contratado: se evalúa con documentos cargados en Gestión documental.').' '.($current
             ? count($current).' documento(s) vigente(s) como evidencia: '.implode(', ', array_slice(array_column($current, 'title'), 0, 3)).'.'
             : ($overdue ? 'Los documentos vinculados tienen la revisión vencida.' : ($evidence ? 'Los documentos vinculados no tienen una versión aprobada vigente.' : 'No hay documentos vinculados como evidencia.')));
 

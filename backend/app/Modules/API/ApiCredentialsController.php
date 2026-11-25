@@ -35,6 +35,39 @@ class ApiCredentialsController extends Controller
         return response()->json(['data' => ['secret' => $secret]]);
     }
 
+    /**
+     * RN-API-01: aprobar que el cliente lea la aptitud por la API (alcance «fitness.read»: estado, restricciones laborales y
+     * vigencia; nunca datos médicos). La aprueba el administrador de la cuenta o el médico ocupacional (api.api_clients.approve).
+     *  POST   api-clients/{id}/fitness-approval   aprobar
+     *  DELETE api-clients/{id}/fitness-approval   retirar la aprobación (el cliente deja de leer la aptitud al instante)
+     */
+    public function approveFitness(string $id): JsonResponse
+    {
+        $this->can('api.api_clients.approve');
+        $c = DB::selectOne('select id, status, scopes, fitness_approved_at from api_clients where id = ? and deleted_at is null', [$id])
+            ?? throw ApiProblem::notFound('El cliente no existe o es de otra empresa.');
+        if ($c->status === 'revoked') {
+            throw new ApiProblem(409, 'conflict', 'No se puede hacer este cambio', 'El cliente está revocado: crea uno nuevo.');
+        }
+        if (! in_array('fitness.read', array_map('trim', explode(',', trim((string) $c->scopes, '{}'))), true)) {
+            throw new ApiProblem(409, 'conflict', 'Falta el permiso', 'Primero agrega el permiso «fitness.read» al cliente; luego apruébalo.');
+        }
+        DB::update('update api_clients set fitness_approved_by = ?, fitness_approved_at = now(), updated_by = ? where id = ?', [(string) auth()->id(), (string) auth()->id(), $id]);
+        $this->audit('approve_fitness_read', 'api_clients', $id);
+
+        return response()->json(['data' => DB::selectOne('select id, fitness_approved_by, fitness_approved_at from api_clients where id = ?', [$id])]);
+    }
+
+    public function withdrawFitness(string $id): JsonResponse
+    {
+        $this->can('api.api_clients.approve');
+        DB::selectOne('select id from api_clients where id = ? and deleted_at is null', [$id]) ?? throw ApiProblem::notFound('El cliente no existe o es de otra empresa.');
+        DB::update('update api_clients set fitness_approved_by = null, fitness_approved_at = null, updated_by = ? where id = ?', [(string) auth()->id(), $id]);
+        $this->audit('withdraw_fitness_read', 'api_clients', $id);
+
+        return response()->json(['data' => ['id' => $id, 'fitness_approved_at' => null]]);
+    }
+
     /** M-API §11: uso de la API por cliente (consultas por recurso y rechazadas) entre dos fechas, en Excel. */
     public function usage(\Illuminate\Http\Request $request): \Illuminate\Http\Response
     {

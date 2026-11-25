@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\DB;
  */
 class OnboardingController extends Controller
 {
-    private const SECTORS = ['construction', 'mining', 'agroindustry', 'manufacturing', 'retail', 'services', 'office', 'health', 'education', 'transport', 'energy', 'other'];
+    private const SECTORS = \App\Core\Support\Sectors::LABELS;
 
     public function show(): JsonResponse
     {
@@ -73,7 +73,7 @@ class OnboardingController extends Controller
         $d = $request->validate([
             'trade_name' => ['nullable', 'string', 'max:200'],
             'ciiu_code' => ['nullable', 'string', 'regex:/^\d{4,5}$/'],
-            'economic_sector' => ['nullable', 'in:'.implode(',', self::SECTORS)],
+            'economic_sector' => ['nullable', 'in:'.implode(',', array_keys(self::SECTORS))],
             'risk_level' => ['nullable', 'in:low,medium,high,very_high'],
             'headcount_declared' => ['nullable', 'integer', 'min:0', 'max:500000'],
             'fiscal_address' => ['nullable', 'string', 'max:300'],

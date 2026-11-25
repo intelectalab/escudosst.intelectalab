@@ -5,6 +5,8 @@ namespace App\Modules\API;
 use App\Core\Http\ApiProblem;
 use App\Core\Tenancy\DbContext;
 use App\Http\Controllers\Controller;
+use App\Modules\REC\RecordsService;
+use App\Modules\REC\Registry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -12,9 +14,12 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
 /**
- * API para integraciones de la empresa (complemento API), de solo lectura:
- *  GET /ext/v1/{resource}?updated_since=AAAA-MM-DDTHH:MM:SS&page=1
- *  recursos: workers, events, actions, inspections, trainings, credentials (fotochecks), access_events (ingresos en garita)
+ * API para integraciones de la empresa (complemento API). Contrato: api/openapi.yaml.
+ *  GET /ext/v1/{resource}?updated_since=AAAA-MM-DDTHH:MM:SS&limit=100&cursor=…   (paginación por cursor, docs/08 §5; «page» se
+ *      mantiene por compatibilidad). meta: {limit, has_more, next_cursor} y page (sin cursor).
+ *  recursos: workers, events, actions, inspections, trainings, credentials (fotochecks), access_events (ingresos en garita) y
+ *  fitness_status (solo la aptitud: estado, restricciones laborales y vigencia; RN-API-01: alcance «fitness.read» explícito y
+ *  aprobado por la empresa; «read» o «*» no la abren).
  * Cabeceras: X-Company-Id (ID de la empresa), X-Api-Key (ck_…) y X-Api-Secret (sk_…), que se crean en
  * «API e integraciones › Clientes». El cliente debe estar activo, sin vencer, con permiso para el recurso
  * («workers.read», «credentials.read»…; «read» o «*» dan lectura de todos) y, si tiene IPs permitidas, llamar desde una
@@ -26,6 +31,10 @@ class ExternalApiController extends Controller
     private const RESOURCES = [
         'workers' => ["select id, full_name, document_last4, status, current_site_id as site_id, current_area_id as area_id, current_position_id as position_id, updated_at
                          from workers where deleted_at is null", 'updated_at'],
+        // RN-API-01: solo la aptitud vigente (apto / apto con restricciones / no apto / pendiente / vencida), la restricción en términos
+        // laborales y su vigencia. Nunca diagnósticos, resultados ni datos del examen.
+        'fitness_status' => ["select id, worker_id, status, work_restrictions, valid_from, valid_until, updated_at
+                                from fitness_status where deleted_at is null and is_current", 'updated_at'],
         'events' => ["select id, code, event_type, occurred_at, site_id, area_id, status, lost_days, injured_count, notification_deadline_at, updated_at
                         from sst_events where deleted_at is null", 'updated_at'],
         'actions' => ["select id, code, title, source_type, priority, status, due_on, effectiveness, completed_at, verified_at, updated_at
@@ -42,7 +51,12 @@ class ExternalApiController extends Controller
     ];
 
     /** RN-API-01: recursos que nunca salen por la API (datos de salud). */
-    private const MEDICAL = ['fitness_status', 'medical_exams', 'medical_exam_orders', 'emo', 'fitness'];
+    private const MEDICAL = ['medical_exams', 'medical_exam_orders', 'medical_exam_results', 'clinical_notes', 'emo', 'fitness'];
+
+    /** Recursos que no se abren con «read» ni «*»: piden su alcance propio y la aprobación de la empresa (RN-API-01). */
+    private const EXPLICIT = ['fitness_status' => 'fitness.read'];
+
+    private const MAX_LIMIT = 200;
 
     public function index(Request $request, string $resource): JsonResponse
     {
@@ -51,7 +65,7 @@ class ExternalApiController extends Controller
         }
         [$sql, $col] = self::RESOURCES[$resource] ?? throw ApiProblem::notFound('Recurso desconocido. Disponibles: '.implode(', ', array_keys(self::RESOURCES)).'.');
 
-        return $this->authenticated($request, $resource, function () use ($request, $sql, $col) {
+        return $this->authenticated($request, $resource, function () use ($request, $sql, $col, $resource) {
             $bind = [];
             if ($since = $request->query('updated_since')) {
                 if (! strtotime((string) $since)) {
@@ -60,11 +74,55 @@ class ExternalApiController extends Controller
                 $sql .= " and {$col} >= ?";
                 $bind[] = date(DATE_ATOM, strtotime((string) $since));
             }
-            $page = max(1, (int) $request->query('page', 1));
-            $rows = DB::select($sql." order by {$col}, id limit 101 offset ".(($page - 1) * 100), $bind);
+            $limitIn = $request->query('limit');
+            if ($limitIn !== null && (! ctype_digit((string) $limitIn) || (int) $limitIn < 1 || (int) $limitIn > self::MAX_LIMIT)) {
+                throw ApiProblem::badRequest('limit va de 1 a '.self::MAX_LIMIT.'.');
+            }
+            $limit = $limitIn === null ? 100 : (int) $limitIn;
+            $meta = ['limit' => $limit];
+            // docs/08 §5: paginación por cursor (opaco). «page» queda por compatibilidad con integraciones anteriores.
+            if (($cursor = $request->query('cursor')) !== null) {
+                [$after, $afterId] = self::decodeCursor((string) $cursor);
+                $sql .= " and ({$col}, id) > (?::timestamptz, ?::uuid)";
+                array_push($bind, $after, $afterId);
+                $offset = 0;
+            } else {
+                $page = max(1, (int) $request->query('page', 1));
+                $offset = ($page - 1) * $limit;
+                $meta['page'] = $page;
+            }
+            $rows = DB::select($sql." order by {$col}, id limit ".($limit + 1).' offset '.$offset, $bind);
+            $more = count($rows) > $limit;
+            $rows = array_slice($rows, 0, $limit);
+            if ($resource === 'workers' && $rows) {
+                // Versión de cada trabajador para If-Match en PATCH /ext/v1/workers/{id} (docs/08 §6).
+                $v = RecordsService::rowVersions(Registry::resource('TRB', 'workers'), array_column($rows, 'id'));
+                foreach ($rows as $r) {
+                    $r->row_version = $v[$r->id] ?? null;
+                }
+            }
+            $last = end($rows);
+            $meta += ['has_more' => $more, 'next_cursor' => $more && $last ? self::encodeCursor((string) $last->{$col}, (string) $last->id) : null];
 
-            return response()->json(['data' => array_slice($rows, 0, 100), 'meta' => ['page' => $page, 'has_more' => count($rows) > 100]]);
+            return response()->json(['data' => $rows, 'meta' => $meta]);
         });
+    }
+
+    private static function encodeCursor(string $value, string $id): string
+    {
+        return rtrim(strtr(base64_encode(json_encode([$value, $id])), '+/', '-_'), '=');
+    }
+
+    /** @return array{0: string, 1: string} */
+    private static function decodeCursor(string $cursor): array
+    {
+        $raw = base64_decode(strtr($cursor, '-_', '+/'), true);
+        $v = $raw === false ? null : json_decode($raw, true);
+        if (! is_array($v) || count($v) !== 2 || ! is_string($v[0]) || ! strtotime($v[0]) || ! is_string($v[1]) || ! Str::isUuid($v[1])) {
+            throw ApiProblem::badRequest('El cursor no es válido: usa el valor next_cursor de la respuesta anterior.');
+        }
+
+        return $v;
     }
 
     /**
@@ -106,7 +164,8 @@ class ExternalApiController extends Controller
                 throw new ApiProblem(401, 'unauthenticated', 'Cliente inactivo', 'El cliente de la API está revocado o vencido.');
             }
             $scopes = self::scopesOf($c);
-            $need = $action === 'write' ? ['write', '*', $resource.'.write'] : ['read', '*', $resource.'.read'];
+            $need = isset(self::EXPLICIT[$resource]) ? [self::EXPLICIT[$resource]]
+                : ($action === 'write' ? ['write', '*', $resource.'.write'] : ['read', '*', $resource.'.read']);
             if (! array_intersect($need, $scopes)) {
                 // Se registra el intento rechazado (se confirma la transacción) y luego se responde 403.
                 $this->usage($c, $resource, true);
@@ -124,6 +183,10 @@ class ExternalApiController extends Controller
                     ['retry_after' => RateLimiter::availableIn('ext-api:'.$c->id)]);
             }
             RateLimiter::hit('ext-api:'.$c->id, 60);
+            // RN-API-01: la aptitud, además del alcance, necesita la aprobación expresa de la empresa.
+            if (isset(self::EXPLICIT[$resource]) && empty($c->fitness_approved_at)) {
+                throw new ApiProblem(403, 'forbidden', 'Falta la aprobación', 'La lectura de la aptitud por la API aún no fue aprobada por la empresa (administrador de la cuenta o médico ocupacional).');
+            }
             DB::update('update api_clients set last_used_at = now() where id = ?', [$c->id]);
             $this->usage($c, $resource, false);
             $module = DB::selectOne("select mode from feature_flags where module_code = 'API' and deleted_at is null")?->mode;
@@ -135,8 +198,9 @@ class ExternalApiController extends Controller
         });
 
         $verb = $action === 'write' ? 'escribir en' : 'leer';
+        $scope = self::EXPLICIT[$resource] ?? "{$resource}.{$action}";
 
-        return $out ?? throw new ApiProblem(403, 'forbidden', 'Sin permiso', "El cliente no tiene permiso para {$verb} «{$resource}» (alcance {$resource}.{$action}).");
+        return $out ?? throw new ApiProblem(403, 'forbidden', 'Sin permiso', "El cliente no tiene permiso para {$verb} «{$resource}» (alcance {$scope}).");
     }
 
     private static function scopesOf(object $c): array
@@ -196,18 +260,28 @@ class ExternalApiController extends Controller
         }), 'write');
     }
 
-    /** PATCH /ext/v1/workers/{id} — cambio de datos laborales (cargo, área, sede, cese…), con las mismas reglas que la ficha. */
+    /**
+     * PATCH /ext/v1/workers/{id} — cambio de datos laborales (cargo, área, sede, cese…), con las mismas reglas que la ficha.
+     * Concurrencia (docs/08 §6): con «If-Match: <row_version>» (el ETag o row_version de la lista), si el trabajador cambió
+     * entretanto responde 409 conflict y no escribe. La respuesta trae el ETag nuevo.
+     */
     public function updateWorker(Request $request, string $id): JsonResponse
     {
-        return $this->authenticated($request, 'workers', fn (object $c) => $this->idempotent($request, $c, function () use ($request, $c, $id) {
+        $res = $this->authenticated($request, 'workers', fn (object $c) => $this->idempotent($request, $c, function () use ($request, $c, $id) {
             if (! Str::isUuid($id)) {
                 throw ApiProblem::notFound('El trabajador no existe.');
             }
-            $row = $this->asClient($c, fn () => app(\App\Modules\REC\RecordsService::class)->update(\App\Modules\REC\Registry::resource('TRB', 'workers'), $id,
-                array_intersect_key($request->all(), array_flip(array_diff(self::WORKER_FIELDS, ['document_type', 'document_number'])))));
+            $resource = Registry::resource('TRB', 'workers');
+            $row = $this->asClient($c, fn () => app(RecordsService::class)->update($resource, $id,
+                array_intersect_key($request->all(), array_flip(array_diff(self::WORKER_FIELDS, ['document_type', 'document_number']))),
+                RecordsService::ifMatch($request->header('If-Match'))));
 
-            return [200, ['data' => ['id' => $row['id'], 'full_name' => $row['full_name'] ?? null, 'status' => $row['status'] ?? null]]];
+            return [200, ['data' => ['id' => $row['id'], 'full_name' => $row['full_name'] ?? null, 'status' => $row['status'] ?? null,
+                'row_version' => RecordsService::rowVersion($resource, $row['id'])]]];
         }), 'write');
+        $v = $res->getData(true)['data']['row_version'] ?? null;
+
+        return $v ? $res->header('ETag', '"'.$v.'"') : $res;
     }
 
     /**

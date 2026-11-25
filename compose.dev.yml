@@ -93,6 +93,8 @@ services:
       # Se llena con: docker compose -f compose.dev.yml exec api composer install
       - api_vendor:/var/www/backend/vendor
       - ./docker/php/dev.ini:/usr/local/etc/php/conf.d/zz-dev.ini:ro
+      # Contrato OpenAPI de la API pública (api/openapi.yaml): lo lee la prueba OpenApiContractTest.
+      - ./api:/var/www/api:ro
     depends_on:
       pg-main:
         condition: service_healthy

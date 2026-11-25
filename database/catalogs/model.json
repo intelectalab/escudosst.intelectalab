@@ -52193,6 +52193,7 @@
      "document_reading",
      "training_quiz",
      "report_classification",
+     "minutes_draft",
      "other"
     ],
     "ref": null,
@@ -52346,6 +52347,28 @@
    {
     "name": "quota_period",
     "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "input_hash",
+    "type": "text",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "input_fields",
+    "type": "text[]",
     "not_null": false,
     "default": null,
     "values": null,
@@ -53436,8 +53459,13 @@
      "agroindustry",
      "manufacturing",
      "retail",
+     "services",
      "office",
-     "clinic"
+     "health",
+     "education",
+     "transport",
+     "energy",
+     "other"
     ],
     "ref": null,
     "encrypted": false,
@@ -53598,7 +53626,12 @@
      "legal_requirement",
      "ppe_item",
      "kpi",
-     "credential_requirement"
+     "credential_requirement",
+     "risk_criteria",
+     "legal_parameter",
+     "pets_model",
+     "record_format",
+     "sunafil_obligation"
     ],
     "ref": null,
     "encrypted": false,
@@ -54976,6 +55009,28 @@
      "active",
      "revoked"
     ],
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "fitness_approved_by",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "users.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "fitness_approved_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
+    "values": null,
     "ref": null,
     "encrypted": false,
     "generated": null,

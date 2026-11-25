@@ -30,6 +30,8 @@ READONLY = {"baseline_assessments.submitted_for_review_at", "sst_events.classifi
             "workers.full_name",
             # SUN RN-SUN-07: la aprobación de la constancia de aptitud la registra el médico ocupacional.
             "dossier_items.is_medical_certificate", "dossier_items.approved_by", "dossier_items.approved_at",
+            # API RN-API-01: la aprobación de la lectura de la aptitud la registra quien tiene api.api_clients.approve.
+            "api_clients.fitness_approved_by", "api_clients.fitness_approved_at",
             # IPERC: lo calcula el sistema o lo fija el flujo de aprobación (M-IPC RN-IPC-01, 02, 06, 08).
             "iperc_matrices.current_version_id", "iperc_matrices.next_review_on",
             "iperc_versions.version_number", "iperc_versions.status", "iperc_versions.prepared_by", "iperc_versions.prepared_at",
@@ -190,7 +192,7 @@ COMPUTED = {"vendor_evaluation_templates.criteria", "vendor_evaluations.scores",
             "work_permits.code", "budget_executions.executed_on", "fitness_status.valid_from"}
 LONG_TEXT = re.compile(r"(^|_)(description|notes|note|comment|comments|summary|functions|observations|content|body|"
                        r"details|detail|justification|reason|instructions|scope|recommendations|conclusions|text|"
-                       r"statement|commitments|methodology|findings|lessons|answer|explanation|purpose)$")
+                       r"statement|commitments|methodology|findings|lessons|answer|explanation|purpose|html)$")
 LABEL_COLS = ["name", "full_name", "title", "hazard", "question", "subject", "label", "item", "description", "code"]
 
 

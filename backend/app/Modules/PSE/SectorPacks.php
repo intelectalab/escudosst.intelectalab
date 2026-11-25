@@ -17,8 +17,10 @@ use Illuminate\Support\Facades\DB;
  *
  * Tipos que se instalan: capacitaciones (training_topic), plantillas de inspección con sus ítems, tipos de permiso,
  * peligros del catálogo por familia, EPP, requisitos legales, indicadores, requisitos de fotocheck, criterios IPERC del
- * sector (como alternativos, no reemplazan el criterio por defecto) y valores legales del sector (como parámetros de la
- * empresa «por confirmar»). Los formatos de documento se muestran como «sin contenido instalable».
+ * sector (como alternativos, no reemplazan el criterio por defecto), valores legales del sector (como parámetros de la
+ * empresa «por confirmar»), PETS modelo, formatos de registro y formatos de documento (document_template: documento de DOC en
+ * borrador con su contenido, como el formato de registro) y obligaciones SUNAFIL del sector (sunafil_obligation: se suman al
+ * catálogo del autodiagnóstico SUNAFIL de la empresa y se evalúan con la evidencia vinculada en DOC, M-SUN RN-SUN-03).
  *  - RN-PSE-07: con el complemento PSE apagado, el contenido instalado queda en solo lectura (assertEditable).
  */
 final class SectorPacks
@@ -28,11 +30,11 @@ final class SectorPacks
         'hazard' => 'Peligros del catálogo', 'ppe_item' => 'EPP', 'legal_requirement' => 'Requisito legal', 'kpi' => 'Indicador',
         'document_template' => 'Formato de documento', 'credential_requirement' => 'Requisito de fotocheck',
         'risk_criteria' => 'Criterios IPERC del sector', 'legal_parameter' => 'Valor legal del sector',
-        'pets_model' => 'PETS modelo', 'record_format' => 'Formato de registro',
+        'pets_model' => 'PETS modelo', 'record_format' => 'Formato de registro', 'sunafil_obligation' => 'Obligación SUNAFIL',
     ];
 
     private const SUPPORTED = ['training_topic', 'inspection_template', 'permit_type', 'hazard', 'ppe_item', 'legal_requirement', 'kpi', 'credential_requirement', 'risk_criteria', 'legal_parameter',
-        'pets_model', 'record_format'];
+        'pets_model', 'record_format', 'document_template', 'sunafil_obligation'];
 
     private function company(): string
     {
@@ -217,6 +219,17 @@ final class SectorPacks
                 $templates = [...$templates, ...($m['ids'] ?? [])];
             }
         }
+        // Las obligaciones SUNAFIL siguen en el autodiagnóstico, ya sin vínculo con el paquete.
+        $obligations = [];
+        foreach ($map as $m) {
+            if (($m['type'] ?? '') === 'sunafil_obligation') {
+                $obligations = [...$obligations, ...($m['ids'] ?? [])];
+            }
+        }
+        if ($obligations) {
+            DB::update('update sunafil_obligations set sector_pack_id = null, updated_by = ? where id = any(?::uuid[]) and company_id = ?',
+                [$this->user(), '{'.implode(',', $obligations).'}', $this->company()]);
+        }
         if ($templates) {
             DB::update('update inspection_templates set sector_pack_id = null, updated_by = ?, updated_at = now() where id = any(?::uuid[]) and company_id = ?',
                 [$this->user(), '{'.implode(',', $templates).'}', $this->company()]);
@@ -250,6 +263,7 @@ final class SectorPacks
     public const TYPE_TABLE = [
         'training_topic' => 'trainings', 'inspection_template' => 'inspection_templates', 'permit_type' => 'permit_types', 'ppe_item' => 'ppe_items',
         'kpi' => 'kpi_definitions', 'risk_criteria' => 'risk_criteria', 'legal_requirement' => 'legal_requirements', 'credential_requirement' => 'credential_requirements',
+        'sunafil_obligation' => 'sunafil_obligations',
     ];
 
     /**
@@ -300,7 +314,8 @@ final class SectorPacks
             'kpi' => DB::selectOne('select id from kpi_definitions where company_id = ? and code = ? and deleted_at is null limit 1', [$this->company(), (string) ($pl['code'] ?? $it->code)])?->id,
             'risk_criteria' => DB::selectOne('select id from risk_criteria where company_id = ? and code = ? and deleted_at is null limit 1', [$this->company(), (string) ($pl['code'] ?? $it->code)])?->id,
             'pets_model' => DB::selectOne('select id from procedures where company_id = ? and code = ? and deleted_at is null limit 1', [$this->company(), (string) ($pl['code'] ?? $it->code)])?->id,
-            'record_format' => DB::selectOne('select id from documents where company_id = ? and code = ? and deleted_at is null limit 1', [$this->company(), (string) ($pl['code'] ?? $it->code)])?->id,
+            'record_format', 'document_template' => DB::selectOne('select id from documents where company_id = ? and code = ? and deleted_at is null limit 1', [$this->company(), (string) ($pl['code'] ?? $it->code)])?->id,
+            'sunafil_obligation' => DB::selectOne('select id from sunafil_obligations where company_id = ? and code = ? and deleted_at is null limit 1', [$this->company(), self::obligationCode($pl, $it)])?->id,
             'legal_requirement' => DB::selectOne('select r.id from legal_requirements r join legal_norms n on n.id = r.legal_norm_id where r.company_id = ? and n.number = ? and r.article is not distinct from ? and r.deleted_at is null limit 1',
                 [$this->company(), (string) ($pl['norm_number'] ?? ''), $pl['article'] ?? null])?->id,
             default => null,
@@ -433,13 +448,16 @@ final class SectorPacks
 
                 return [[$id], false];
             case 'record_format':
-                // Formato de registro: documento de la empresa en borrador con el contenido del formato.
+            case 'document_template':
+                // Formato de registro o de documento: documento de la empresa en borrador con el contenido del formato (sigue la
+                // revisión y aprobación de Gestión documental). El formato de documento va por defecto a «Otros documentos SST».
                 if (empty($pl['title']) || empty($pl['content_html'])) {
                     return [[], false];
                 }
+                $fallback = $type === 'record_format' ? 'REGISTER' : 'OTHER';
                 $cat = DB::selectOne('select id from document_categories where code = ? and (company_id = ? or company_id is null) and deleted_at is null order by company_id nulls last limit 1',
-                    [(string) ($pl['category_code'] ?? 'REGISTER'), $c])
-                    ?? DB::selectOne("select id from document_categories where code = 'REGISTER' and company_id is null and deleted_at is null limit 1");
+                    [(string) ($pl['category_code'] ?? $fallback), $c])
+                    ?? DB::selectOne('select id from document_categories where code = ? and company_id is null and deleted_at is null limit 1', [$fallback]);
                 if (! $cat) {
                     return [[], false];
                 }
@@ -448,6 +466,17 @@ final class SectorPacks
                     [$c, $cat->id, (string) ($pl['code'] ?? $it->code), (string) $pl['title'], $pl['description'] ?? null, $u, $u, $u])->id;
                 DB::insert("insert into document_versions (company_id, document_id, version_number, version_label, content_html, change_summary, status, created_by, updated_by)
                             values (?, ?, 1, '1.0', ?, 'Instalado desde el paquete sectorial', 'draft', ?, ?)", [$c, $id, (string) $pl['content_html'], $u, $u]);
+
+                return [[$id], false];
+            case 'sunafil_obligation':
+                // Obligación SUNAFIL del sector: se suma al autodiagnóstico de la empresa (M-SUN RN-SUN-01) con su gravedad (a confirmar
+                // por especialista) y se evalúa con los documentos que la empresa vincule como evidencia (RN-SUN-03).
+                if (empty($pl['name'] ?? $it->name)) {
+                    return [[], false];
+                }
+                $id = DB::selectOne("insert into sunafil_obligations (company_id, code, name, legal_basis, severity, evidence_hint, sector_pack_id, status, created_by, updated_by)
+                                     values (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?) returning id",
+                    [$c, self::obligationCode($pl, $it), (string) ($pl['name'] ?? $it->name), $pl['legal_basis'] ?? null, self::severity($pl), $pl['evidence_hint'] ?? null, $packId, $u, $u])->id;
 
                 return [[$id], false];
             case 'ppe_item':
@@ -482,7 +511,10 @@ final class SectorPacks
                 DB::update('update inspection_template_items set deleted_at = now() where template_id = ? and company_id = ? and deleted_at is null
                               and item_code not in (select item_code from inspection_template_items where template_id = ? and deleted_at is null)', [$ids[0], $this->company(), $g->id]);
             }
-        } elseif (in_array($type, ['pets_model', 'record_format'], true) && $ids) {
+        } elseif ($type === 'sunafil_obligation' && $ids) {
+            DB::update('update sunafil_obligations set name = ?, legal_basis = ?, severity = ?, evidence_hint = ?, updated_by = ? where id = ? and company_id = ?',
+                [(string) ($pl['name'] ?? $it->name), $pl['legal_basis'] ?? null, self::severity($pl), $pl['evidence_hint'] ?? null, $this->user(), $ids[0], $this->company()]);
+        } elseif (in_array($type, ['pets_model', 'record_format', 'document_template'], true) && $ids) {
             // Una versión nueva en borrador con el contenido del paquete (la vigente no se toca hasta aprobarla).
             if ($type === 'pets_model') {
                 $n = (int) DB::selectOne('select coalesce(max(version_number), 0) + 1 as n from procedure_versions where procedure_id = ?', [$ids[0]])->n;
@@ -499,6 +531,23 @@ final class SectorPacks
         } elseif ($type === 'training_topic' && $ids) {
             DB::update('update trainings set title = ?, topic = ?, updated_by = ?, updated_at = now() where id = ? and company_id = ?', [(string) ($pl['topic'] ?? $it->name), (string) ($pl['topic'] ?? $it->name), $this->user(), $ids[0], $this->company()]);
         }
+    }
+
+    /** Código de la obligación en el autodiagnóstico (minúsculas, números y guion bajo; el del ítem si el paquete no lo trae). */
+    private static function obligationCode(array $pl, object $it): string
+    {
+        $raw = mb_strtolower((string) ($pl['code'] ?? $it->code ?? $it->item_key));
+        $code = trim((string) preg_replace('/[^a-z0-9]+/', '_', iconv('UTF-8', 'ASCII//TRANSLIT', $raw) ?: $raw), '_');
+
+        $code = mb_substr($code !== '' ? $code : 'obligacion', 0, 40);
+
+        // No se cruza con las obligaciones del catálogo de EscudoSST (comité, IPERC…): su evidencia se etiqueta con el código.
+        return in_array($code, \App\Modules\SUN\DiagnosisController::CODES, true) || mb_strlen($code) < 2 ? mb_substr('sector_'.$code, 0, 40) : $code;
+    }
+
+    private static function severity(array $pl): string
+    {
+        return in_array($pl['severity'] ?? null, ['minor', 'serious', 'very_serious'], true) ? $pl['severity'] : 'serious';
     }
 
     /** Pasos del PETS modelo en el formato del módulo PETS: [{step, risk, control}]. */
@@ -548,7 +597,9 @@ final class SectorPacks
             'legal_parameter' => DB::selectOne("select string_agg(coalesce(value, ''), '#') as v from legal_parameters where id = any(?::uuid[])", [$in]),
             'pets_model' => DB::selectOne("select string_agg(coalesce(p.title, '') || '|' || coalesce((select coalesce(v.content_html, '') || coalesce(v.steps::text, '') from procedure_versions v
                                         where v.procedure_id = p.id and v.deleted_at is null order by v.version_number desc limit 1), ''), '#') as v from procedures p where p.id = any(?::uuid[])", [$in]),
-            'record_format' => DB::selectOne("select string_agg(coalesce(d.title, '') || '|' || coalesce((select v.content_html from document_versions v where v.document_id = d.id and v.deleted_at is null
+            'sunafil_obligation' => DB::selectOne("select string_agg(coalesce(name, '') || '|' || coalesce(legal_basis, '') || '|' || severity || '|' || coalesce(evidence_hint, '') || '|' || status, '#') as v
+                                        from sunafil_obligations where id = any(?::uuid[])", [$in]),
+            'record_format', 'document_template' => DB::selectOne("select string_agg(coalesce(d.title, '') || '|' || coalesce((select v.content_html from document_versions v where v.document_id = d.id and v.deleted_at is null
                                         order by v.version_number desc limit 1), ''), '#') as v from documents d where d.id = any(?::uuid[])", [$in]),
             default => null,
         };

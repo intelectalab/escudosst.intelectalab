@@ -6177,7 +6177,7 @@ CREATE TABLE IF NOT EXISTS ai_requests (
   id uuid NOT NULL DEFAULT uuidv7(),
   company_id uuid NOT NULL,
   user_id uuid NOT NULL,
-  feature text NOT NULL CHECK (feature IN ('iperc_suggestion', 'investigation_guide', 'document_reading', 'training_quiz', 'report_classification', 'other')),
+  feature text NOT NULL CHECK (feature IN ('iperc_suggestion', 'investigation_guide', 'document_reading', 'training_quiz', 'report_classification', 'minutes_draft', 'other')),
   module_code char(3),
   subject_type text,
   subject_id uuid,
@@ -6192,6 +6192,8 @@ CREATE TABLE IF NOT EXISTS ai_requests (
   output_tokens integer,
   latency_ms integer,
   quota_period text,
+  input_hash text,
+  input_fields text[],
   idempotency_key text,
   status text NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed', 'blocked')),
   error_code text,
@@ -6207,6 +6209,8 @@ CREATE TABLE IF NOT EXISTS ai_requests (
 );
 COMMENT ON TABLE ai_requests IS '[IAA] Solicitud al asistente IA (entrada redactada, sin datos médicos)';
 COMMENT ON COLUMN ai_requests.input_summary IS 'descripción sin datos personales';
+COMMENT ON COLUMN ai_requests.input_hash IS 'SHA-256 de la entrada redactada enviada (docs/17 §3.4); el texto no se guarda en IA-02, IA-03 e IA-04';
+COMMENT ON COLUMN ai_requests.input_fields IS 'campos enviados al proveedor (lista blanca del caso de uso)';
 
 -- IAA · ai_suggestions (company)
 CREATE TABLE IF NOT EXISTS ai_suggestions (
@@ -6319,7 +6323,7 @@ CREATE TABLE IF NOT EXISTS sector_packs (
   id uuid NOT NULL DEFAULT uuidv7(),
   code text NOT NULL,
   name text NOT NULL,
-  sector text NOT NULL CHECK (sector IN ('construction', 'mining', 'agroindustry', 'manufacturing', 'retail', 'office', 'clinic')),
+  sector text NOT NULL CHECK (sector IN ('construction', 'mining', 'agroindustry', 'manufacturing', 'retail', 'services', 'office', 'health', 'education', 'transport', 'energy', 'other')),
   description text,
   legal_references text[],
   version_number integer NOT NULL DEFAULT 1,
@@ -6331,13 +6335,13 @@ CREATE TABLE IF NOT EXISTS sector_packs (
   deleted_at timestamptz,
   PRIMARY KEY (id)
 );
-COMMENT ON TABLE sector_packs IS '[PSE] Paquete sectorial (construcción, minería, agroindustria, manufactura, retail, oficinas, clínicas)';
+COMMENT ON TABLE sector_packs IS '[PSE] Paquete sectorial (construcción, minería, agroindustria, manufactura, retail, oficinas, salud/clínicas); sector con la misma lista que companies.economic_sector';
 
 -- PSE · sector_pack_items (global)
 CREATE TABLE IF NOT EXISTS sector_pack_items (
   id uuid NOT NULL DEFAULT uuidv7(),
   sector_pack_id uuid NOT NULL,
-  item_type text NOT NULL CHECK (item_type IN ('hazard', 'inspection_template', 'permit_type', 'training_topic', 'document_template', 'legal_requirement', 'ppe_item', 'kpi', 'credential_requirement')),
+  item_type text NOT NULL,
   code text NOT NULL,
   name text NOT NULL,
   payload jsonb NOT NULL,
@@ -6349,6 +6353,9 @@ CREATE TABLE IF NOT EXISTS sector_pack_items (
   deleted_at timestamptz,
   PRIMARY KEY (id)
 );
+ALTER TABLE sector_pack_items DROP CONSTRAINT IF EXISTS ck_sector_pack_items_type;
+ALTER TABLE sector_pack_items ADD CONSTRAINT ck_sector_pack_items_type CHECK (item_type IN ('hazard', 'inspection_template', 'permit_type', 'training_topic', 'document_template',
+  'legal_requirement', 'ppe_item', 'kpi', 'credential_requirement', 'risk_criteria', 'legal_parameter', 'pets_model', 'record_format', 'sunafil_obligation'));
 COMMENT ON TABLE sector_pack_items IS '[PSE] Elemento del paquete (peligros, plantillas, permisos, temas de capacitación, requisitos)';
 
 -- PSE · company_sector_packs (company)
@@ -6498,14 +6505,18 @@ CREATE TABLE IF NOT EXISTS api_clients (
   expires_at timestamptz,
   last_used_at timestamptz,
   status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')),
+  fitness_approved_by uuid,
+  fitness_approved_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   deleted_at timestamptz,
   PRIMARY KEY (id),
-  CONSTRAINT uq_api_clients_company_id_id UNIQUE (company_id, id)
+  CONSTRAINT uq_api_clients_company_id_id UNIQUE (company_id, id),
+  CONSTRAINT fk_api_clients_fitness_approved_by FOREIGN KEY (fitness_approved_by) REFERENCES users (id)
 );
+COMMENT ON COLUMN api_clients.fitness_approved_by IS 'quién aprobó que el cliente lea la aptitud (alcance fitness.read, RN-API-01)';
 COMMENT ON TABLE api_clients IS '[API] Cliente de API para integraciones (planillas, ERP, aulas virtuales)';
 
 -- API · webhooks (company)
@@ -15686,4 +15697,32 @@ BEGIN
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO escudo_app, escudo_platform', r.f);
   END LOOP;
 END $$;
+-- SUN · sunafil_obligations (company): obligación SUNAFIL propia de la empresa, instalada desde un paquete sectorial (M-PSE §5); se evalúa con evidencia de DOC (RN-SUN-03)
+CREATE TABLE IF NOT EXISTS sunafil_obligations (
+  id uuid NOT NULL DEFAULT uuidv7(),
+  company_id uuid NOT NULL REFERENCES companies(id),
+  code text NOT NULL,
+  name text NOT NULL,
+  legal_basis text,
+  severity text NOT NULL DEFAULT 'serious' CHECK (severity IN ('minor', 'serious', 'very_serious')),
+  evidence_hint text,
+  sector_pack_id uuid REFERENCES sector_packs(id),
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by uuid REFERENCES users(id),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by uuid REFERENCES users(id),
+  deleted_at timestamptz,
+  PRIMARY KEY (id),
+  CONSTRAINT uq_sunafil_obligations_company_id_id UNIQUE (company_id, id),
+  CONSTRAINT ck_sunafil_obligations_code CHECK (code ~ '^[a-z0-9_]{2,40}$')
+);
+COMMENT ON TABLE sunafil_obligations IS '[SUN] Obligación SUNAFIL propia de la empresa (instalada desde un paquete sectorial); se evalúa con evidencia de DOC';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sunafil_obligations_code ON sunafil_obligations (company_id, code) WHERE deleted_at IS NULL;
+CREATE TRIGGER trg_sunafil_obligations_updated_at BEFORE UPDATE ON sunafil_obligations FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
+ALTER TABLE sunafil_obligations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sunafil_obligations FORCE ROW LEVEL SECURITY;
+CREATE POLICY rls_sunafil_obligations_company ON sunafil_obligations TO escudo_app USING (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid) WITH CHECK (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid);
+GRANT SELECT, INSERT, UPDATE ON sunafil_obligations TO escudo_app;
+GRANT SELECT, INSERT, UPDATE ON sunafil_obligations TO escudo_definer;
 -- Fin del esquema.
