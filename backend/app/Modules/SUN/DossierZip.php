@@ -45,7 +45,7 @@ class DossierZip extends Controller
         $tmp = tempnam(sys_get_temp_dir(), 'exp');
         $zip = new \ZipArchive;
         $zip->open($tmp, \ZipArchive::OVERWRITE);
-        $st = ['included' => 'Incluido', 'missing' => 'Pendiente', 'expired' => 'Vencido', 'not_applicable' => 'No aplica'];
+        $st = ['included' => 'Incluido', 'missing' => 'Pendiente', 'expired' => 'Vencido', 'not_applicable' => 'No aplica', 'excluded' => 'Excluido', 'pending_approval' => 'Por aprobar (médico ocupacional)'];
         $rows = '';
         $files = 0;
         foreach ($items as $it) {

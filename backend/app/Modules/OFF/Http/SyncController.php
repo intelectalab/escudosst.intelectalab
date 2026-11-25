@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
  *
  *  POST /sync/devices                  registrar el dispositivo {device_uid, platform, model, app_version} y ver su estado
  *  POST /sync/batches                  lote de operaciones {batch_uuid, device_uid, client_created_at, operations: [...]}
+ *  GET  /sync/changes                  cambios del servidor desde una marca {changes, next_since, has_more}
  *  GET  /sync/conflicts                conflictos abiertos (propios; todos para quien resuelve en la empresa)
  *  POST /sync/conflicts/{id}/resolve   {resolution: server_wins|client_wins|merged|discarded, payload?, notes?}
  *
@@ -40,6 +41,18 @@ class SyncController extends Controller
         $device = $this->sync->device($request->all(), in_array('off.devices.create', Permissions::effective(), true));
 
         return response()->json(['data' => $this->sync->batch($device, $request->all())]);
+    }
+
+    /**
+     * GET /sync/changes?since=<marca>&device_id=<device_uid>&limit= — cambios del servidor para lo que guarda el equipo
+     * (docs/08 §13). Un dispositivo revocado recibe 403 device_revoked con wipe: true.
+     */
+    public function changes(Request $request, \App\Modules\OFF\Services\ChangeFeed $feed): JsonResponse
+    {
+        $this->sync->device(['device_uid' => $request->query('device_id', $request->query('device_uid'))], in_array('off.devices.create', Permissions::effective(), true));
+        $since = $request->query('since');
+
+        return response()->json(['data' => $feed->changes(is_string($since) ? $since : null, (int) $request->query('limit', \App\Modules\OFF\Services\ChangeFeed::MAX_LIMIT))]);
     }
 
     public function conflicts(): JsonResponse

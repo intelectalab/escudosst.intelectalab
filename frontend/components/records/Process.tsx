@@ -34,6 +34,7 @@ import { InvScatPanel } from "@/components/modules/InvScat";
 import { PetSteps } from "@/components/modules/PetSteps";
 import { InvTeamSignatures } from "@/components/modules/InvSignatures";
 import { DossierSharePanel, ShareLinkDetail } from "@/components/modules/SunShare";
+import { buildDossier, waitDossier, type DossierStatus } from "@/components/modules/SunBuildStatus";
 import { useApp } from "@/components/AppContext";
 import { submitInspectionAnswers } from "@/lib/offline";
 import { fieldPlace } from "@/lib/geo";
@@ -1400,13 +1401,14 @@ function StepButtons({ code, table, row, canEdit, onChanged }: { code: string; t
     setGas(st === "suspended" || !Object.keys(saved).length ? null : saved);
     setAsking(x);
   };
+  // PETAR en campo (docs/16 §2): sin señal, iniciar, suspender o cerrar queda en la cola del equipo con la versión del permiso.
   const run = (x: Step, extra: Record<string, unknown> = {}) =>
     records
-      .update(code, table, row.id, { ...x.body, ...extra })
-      .then(() => {
+      .update(code, table, row.id, { ...x.body, ...extra }, table === "work_permits" && typeof row.version === "number" && ["active", "suspended", "closed"].includes(String(x.body.status)) ? row.version : undefined)
+      .then((r) => {
         setAsking(null);
         setText("");
-        setMsg(null);
+        setMsg((r.data as { offline_pending?: boolean }).offline_pending ? "Sin señal: el cambio quedó en el equipo y se enviará al volver la conexión." : null);
         onChanged();
       })
       .catch((e: ApiError) => setMsg(Object.values(e.errors ?? {})[0]?.[0] ?? e.detail ?? e.title));
@@ -1479,6 +1481,7 @@ const DOSSIER_STATUS: Record<string, [string, string]> = {
   missing: ["Falta", "bg-bad-soft text-bad"],
   expired: ["Vencido", "bg-amber-soft text-amber-ink"],
   not_applicable: ["No aplica", "bg-bg text-muted"],
+  pending_approval: ["Por aprobar (médico)", "bg-amber-soft text-amber-ink"],
 };
 
 function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => void }) {
@@ -1522,20 +1525,31 @@ function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => voi
     setItems(list);
     await api(`/sun/dossiers/${row.id}/order`, { method: "PUT", withCompany: true, body: { item_ids: list.map((x) => x.item_id) } }).catch(() => void loadItems());
   };
+  // docs/08 §12: el armado corre en segundo plano (202); se consulta el estado hasta que termina y la pantalla se actualiza sola.
+  const finish = async (r: DossierStatus) => {
+    if (r.status === "failed") { setMsg(r.error_message ?? "No se pudo armar el expediente."); return; }
+    await loadItems();
+    setMsg(r.gaps === 0 ? "Expediente completo: todos los puntos están incluidos." : `${r.gaps} de ${r.total} puntos con brechas. Toca cada uno para resolverlo.`);
+    onChanged();
+  };
   const build = async () => {
     setBusy(true);
-    setMsg(null);
+    setMsg("Generando… el expediente se arma en segundo plano.");
     try {
-      const r = await api<{ data: { items: DossierItem[]; gaps: number; total: number } }>(`/sun/dossiers/${row.id}/build`, { method: "POST", withCompany: true, body: several ? {} : { worker_id: worker || null } });
-      await loadItems();
-      setMsg(r.data.gaps === 0 ? "Expediente completo: todos los puntos están incluidos." : `${r.data.gaps} de ${r.data.total} puntos con brechas. Toca cada uno para resolverlo.`);
-      onChanged();
+      await finish(await buildDossier(row.id, several ? {} : { worker_id: worker || null }));
     } catch (e) {
       setMsg((e as ApiError).detail ?? (e as ApiError).title);
     } finally {
       setBusy(false);
     }
   };
+  // Si se abrió mientras la cola lo arma, espera a que termine.
+  useEffect(() => {
+    if (!["queued", "building"].includes(String(row.status))) return;
+    setBusy(true);
+    setMsg("Generando… el expediente se arma en segundo plano.");
+    waitDossier(row.id).then(finish).catch(() => setMsg(null)).finally(() => setBusy(false));
+  }, [row.id]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <section className="space-y-3 rounded-xl border border-line p-4 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1543,7 +1557,7 @@ function DossierBuild({ row, onChanged }: { row: RecordRow; onChanged: () => voi
         <span className="flex gap-2">
           {canShare && <Button variant="secondary" icon="download" onClick={() => downloadFile(`/sun/dossiers/${row.id}/zip`, `expediente-${row.id}.zip`).catch((e: ApiError) => setMsg(e.detail ?? e.title))}>Descargar ZIP</Button>}
           {canShare && <a href={`/imprimir/expediente/${row.id}`} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center rounded-lg border border-line px-4 font-semibold hover:border-brand">PDF único</a>}
-          <Button variant="primary" loading={busy} onClick={build}>{items ? "Volver a armar" : "Armar expediente"}</Button>
+          <Button variant="primary" loading={busy} onClick={build}>{busy ? "Generando…" : items ? "Volver a armar" : "Armar expediente"}</Button>
         </span>
       </div>
       <div className="max-w-md">

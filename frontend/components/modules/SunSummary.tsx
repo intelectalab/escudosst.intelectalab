@@ -13,7 +13,54 @@ import { Icon } from "@/components/ui/Icon";
 import { Bar, Card, Chip, Dot, Ring, type Tone } from "./Summary";
 import { SunWizard } from "./SunWizard";
 
-type Area = { workers?: string[]; workers_total?: number; code: string; name: string; module: string; table: string | null; pct: number | null; tone: Tone; detail: string; enabled: boolean; severity: string; severity_label: string };
+type Evidence = { id: string; code: string | null; title: string; state: "current" | "review_overdue" | "not_valid" };
+type Area = { workers?: string[]; workers_total?: number; code: string; name: string; module: string; table: string | null; pct: number | null; tone: Tone; detail: string; enabled: boolean; severity: string; severity_label: string;
+  no_module?: boolean; evidence?: Evidence[] };
+const EVIDENCE_STATE: Record<Evidence["state"], string> = { current: "Vigente", review_overdue: "Revisión vencida", not_valid: "Sin versión vigente" };
+
+/**
+ * RN-SUN-03: obligación de un módulo no contratado. Se evalúa con documentos de Gestión documental vinculados como evidencia;
+ * aquí se vinculan o se quitan (el documento sigue en DOC).
+ */
+function EvidenceLinker({ area, readOnly, onChanged }: { area: Area; readOnly: boolean; onChanged: () => void }) {
+  const [q, setQ] = useState("");
+  const [opts, setOpts] = useState<{ id: string; label: string }[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const search = () => api<{ data: { id: string; label: string }[] }>(`/sun/diagnosis/evidence-options?q=${encodeURIComponent(q.trim())}`, { withCompany: true })
+    .then((r) => setOpts(r.data)).catch((e: ApiError) => setErr(e.detail ?? e.title));
+  const act = (p: Promise<unknown>) => p.then(() => { setOpts(null); setQ(""); setErr(null); onChanged(); }).catch((e: ApiError) => setErr(Object.values(e.errors ?? {})[0]?.[0] ?? e.detail ?? e.title));
+  return (
+    <div className="ml-6 mb-2 space-y-1.5 rounded-lg bg-bg px-3 py-2 text-xs">
+      <p className="font-semibold">Evidencias manuales (Gestión documental)</p>
+      {(area.evidence ?? []).length === 0 ? <p className="text-muted">Sin documentos vinculados: la obligación no se da por cumplida.</p> : (
+        <ul className="space-y-1">
+          {area.evidence?.map((e) => (
+            <li key={e.id} className="flex flex-wrap items-center gap-2">
+              <Link className="font-medium text-brand hover:underline" href={recordsHref("DOC", "documents", { open: e.id })}>{e.code ? `${e.code} · ` : ""}{e.title}</Link>
+              <Chip tone={e.state === "current" ? "ok" : e.state === "review_overdue" ? "warn" : "bad"}>{EVIDENCE_STATE[e.state]}</Chip>
+              {!readOnly && <button type="button" className="font-semibold text-muted underline hover:text-bad" onClick={() => void act(api(`/sun/diagnosis/${area.code}/evidence/${e.id}`, { method: "DELETE", withCompany: true }))}>Quitar</button>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!readOnly && (
+        <div className="flex flex-wrap items-center gap-2">
+          <input className="input h-8 max-w-xs text-xs" placeholder="Buscar documento por código o título" aria-label="Buscar documento" value={q}
+            onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void search(); }} />
+          <Button size="sm" onClick={() => void search()}>Buscar</Button>
+        </div>
+      )}
+      {opts && (opts.length === 0 ? <p className="text-muted">No hay documentos con ese texto. Súbelo primero en Gestión documental.</p> : (
+        <ul className="space-y-1">
+          {opts.map((o) => (
+            <li key={o.id}><button type="button" className="text-left font-medium text-brand hover:underline" onClick={() => void act(api(`/sun/diagnosis/${area.code}/evidence`, { method: "POST", withCompany: true, body: { document_id: o.id } }))}>Vincular: {o.label}</button></li>
+          ))}
+        </ul>
+      ))}
+      {err && <p role="alert" className="text-bad">{err}</p>}
+    </div>
+  );
+}
 type Diagnosis = { score: number | null; risk_weighted_score: number | null; very_serious_gaps: number; evaluated_at: string; areas: Area[] };
 type Month = { month: string; id: string; score: number | null; weighted: number | null; very_serious_gaps: number };
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic"];
@@ -102,12 +149,12 @@ export function SunSummary({ readOnly }: { readOnly: boolean }) {
                 .map((a) => (
                   <li key={a.name}>
                     <Link
-                      href={a.enabled && a.table ? recordsHref(a.module, a.table) : `/m/${a.module.toLowerCase()}`}
+                      href={a.no_module ? recordsHref("DOC", "documents") : a.enabled && a.table ? recordsHref(a.module, a.table) : `/m/${a.module.toLowerCase()}`}
                       className="flex items-center gap-3 rounded-lg px-1 py-2.5 hover:bg-brand-soft/40"
                     >
                       <Dot tone={a.tone} />
                       <span className="min-w-0 flex-1">
-                        <b className="block text-sm">{a.name}</b>
+                        <b className="block text-sm">{a.name}{a.no_module && <span className="ml-2 align-middle"><Chip tone="na">Sin módulo</Chip></span>}</b>
                         <span className="block text-xs text-muted">{a.detail}</span>
                         {a.workers && a.workers.length > 0 && (
                           <span className="block text-xs text-muted" title={a.workers.join(", ")}>
@@ -119,6 +166,7 @@ export function SunSummary({ readOnly }: { readOnly: boolean }) {
                       <span className="hidden w-28 sm:block">{a.pct !== null && <Bar pct={a.pct} tone={a.tone} />}</span>
                       <b className="w-10 text-right font-display tabular-nums">{a.pct ?? "—"}</b>
                     </Link>
+                    {a.no_module && <EvidenceLinker area={a} readOnly={readOnly} onChanged={load} />}
                   </li>
                 ))}
             </ul>

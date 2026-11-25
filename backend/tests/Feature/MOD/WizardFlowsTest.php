@@ -71,7 +71,7 @@ it('asistente de expediente SUNAFIL: crea con orden, inspector y obligaciones y 
         'inspection_order_number' => '123-2026', 'inspector_name' => 'Inspectora Prueba', 'appearance_at' => now()->addDays(3)->toIso8601String(),
         'period_from' => date('Y').'-01-01', 'period_to' => date('Y-m-d'), 'site_id' => null, 'scope_modules' => ['CAP', 'EMO'],
         'scope' => ['obligations' => ['CAP', 'EMO'], 'worker_id' => null]], $h)->assertCreated()->json('data.id');
-    $b = $this->postJson("/api/v1/sun/dossiers/{$d}/build", ['worker_id' => null], $h)->assertOk();
+    $b = sunBuild($d, ['worker_id' => null], $h);
     expect($b->json('data.total'))->toBeGreaterThan(0);
     expect($this->getJson("/api/v1/records/SUN/inspection_dossiers/{$d}", $h)->json('data.inspection_order_number'))->toBe('123-2026');
 });

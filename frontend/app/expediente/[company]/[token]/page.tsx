@@ -25,6 +25,8 @@ const ST: Record<string, [string, string]> = {
   missing: ["Pendiente", "bg-[#FDECEB] text-[#a3261f]"],
   expired: ["Vencido", "bg-[#FFF6DB] text-[#7a5300]"],
   not_applicable: ["No aplica", "bg-[#EEF1F5] text-[#4a5563]"],
+  excluded: ["Excluido", "bg-[#EEF1F5] text-[#4a5563]"],
+  pending_approval: ["Pendiente", "bg-[#FDECEB] text-[#a3261f]"],
 };
 const d = (v: string | null) => (v ? new Date(v.length === 10 ? `${v}T12:00:00-05:00` : v).toLocaleDateString("es-PE", { timeZone: "America/Lima" }) : "—");
 

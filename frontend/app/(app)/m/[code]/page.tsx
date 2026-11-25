@@ -26,6 +26,7 @@ import { ReportButton } from "@/components/modules/CtrExtras";
 import { AulLanding } from "@/components/modules/AulAdmin";
 import { LbaSummary } from "@/components/modules/LbaSummary";
 import { SunSummary } from "@/components/modules/SunSummary";
+import { SunMedicalApprovals } from "@/components/modules/SunMedicalApprovals";
 import { CapMatrix } from "@/components/modules/CapMatrix";
 import { PcaOverview } from "@/components/modules/PcaOverview";
 import { FotIssue } from "@/components/modules/FotIssue";
@@ -188,6 +189,7 @@ export default function ModulePage() {
             <div className="border-t border-line p-4"><EmoProtocols readOnly={m.mode === "read_only"} /></div>
           </details>
           <EmoDue readOnly={m.mode === "read_only"} />
+          <SunMedicalApprovals />
           <VmdIndicators />
           <ModuleRecords code={m.code} readOnly={m.mode === "read_only"} />
         </div>

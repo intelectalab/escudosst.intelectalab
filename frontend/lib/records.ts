@@ -2,7 +2,7 @@
 // El backend describe cada tabla (campos, tipos, opciones y permisos) y esta app arma la pantalla.
 
 import { api } from "./api";
-import { createOrQueue, offlineOptions } from "./offline";
+import { createOrQueue, offlineOptions, updateOrQueue } from "./offline";
 
 export type FieldType = "text" | "longtext" | "int" | "number" | "date" | "datetime" | "time" | "bool" | "enum" | "ref" | "refs" | "tags" | "json" | "source" | "file";
 
@@ -58,8 +58,9 @@ export const records = {
   // Sin señal y con el complemento OFF, los registros de campo quedan en la cola del dispositivo (lib/offline.ts).
   create: (code: string, table: string, body: Record<string, unknown>) =>
     createOrQueue(table, () => api<{ data: RecordRow }>(base(code, table), { method: "POST", body, withCompany: true }), body),
-  update: (code: string, table: string, id: string, body: Record<string, unknown>) =>
-    api<{ data: RecordRow }>(`${base(code, table)}/${id}`, { method: "PATCH", body, withCompany: true }),
+  // Con la versión del registro (baseVersion), una edición de campo sin señal queda en la cola (PETAR en campo, docs/16 §2).
+  update: (code: string, table: string, id: string, body: Record<string, unknown>, baseVersion?: number | null) =>
+    updateOrQueue(table, id, () => api<{ data: RecordRow }>(`${base(code, table)}/${id}`, { method: "PATCH", body, withCompany: true }), body, baseVersion),
   remove: (code: string, table: string, id: string) => api<void>(`${base(code, table)}/${id}`, { method: "DELETE", withCompany: true }),
   options: async (code: string, table: string, field: string, params: { q?: string; id?: string }, ref?: string) => {
     const qs = new URLSearchParams();

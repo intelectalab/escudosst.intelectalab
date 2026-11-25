@@ -7,7 +7,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { records, recordsHref, toLocalInput, uploadFile, type RecordRow } from "@/lib/records";
+import { records, recordsHref, toLocalInput, type RecordRow } from "@/lib/records";
+import { enqueue, uploadOrQueue } from "@/lib/offline";
 import { FormField } from "@/components/ui/Form";
 import { RefSelect } from "./RefSelect";
 import { EnabledChip, RequirementChips, useRequirements } from "./WorkerChecks";
@@ -170,7 +171,8 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
                 const files = Array.from(e.target.files ?? []).slice(0, 10 - d.photos.length);
                 const up: { id: string; name: string }[] = [];
                 for (const f of files) {
-                  try { const u = await uploadFile(f, "ACC"); up.push({ id: u.id, name: u.original_name }); } catch { /* la foto que falla no se adjunta */ }
+                  // Sin señal (con el complemento OFF) la foto queda cifrada en el equipo y se sube al sincronizar.
+                  try { const u = await uploadOrQueue(f, "ACC", "sst_events"); up.push({ id: u.id, name: u.original_name }); } catch { /* la foto que falla no se adjunta */ }
                 }
                 set({ photos: [...d.photos, ...up] });
                 e.target.value = "";
@@ -357,9 +359,12 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
           witnesses: d.witnesses.length ? d.witnesses.map((w) => w.label) : null,
         });
         const id = ev.data.id;
+        // docs/16 (M-OFF §12): sin señal el evento quedó en el equipo con su id; sus personas van a la misma cola, después del evento.
+        const queued = !!(ev.data as { offline_pending?: boolean }).offline_pending;
+        const addPerson = (payload: Record<string, unknown>) => (queued ? enqueue({ entity: "event_people", payload }) : records.create("ACC", "event_people", payload));
         const role = d.event_type === "occupational_disease" ? "ill" : d.event_type.includes("accident") ? "injured" : "affected";
         if (d.person !== "none") {
-          await records.create("ACC", "event_people", {
+          await addPerson({
             event_id: id, person_role: role,
             worker_id: d.person === "worker" ? d.worker_id : null,
             external_person_name: d.person === "external" ? d.external_name.trim() : d.worker_label || null,
@@ -367,7 +372,11 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
             lost_days: d.lost_days ? Number(d.lost_days) : null, medical_attention_place: d.medical_place || null,
           });
         }
-        for (const w of d.witnesses) await records.create("ACC", "event_people", { event_id: id, person_role: "witness", worker_id: w.id, external_person_name: w.label });
+        for (const w of d.witnesses) await addPerson({ event_id: id, person_role: "witness", worker_id: w.id, external_person_name: w.label });
+        if (queued) {
+          onDone();
+          return <AccQueued notified={d.notified} />;
+        }
         let notifyError: string | null = null;
         const notes = await records.list("ACC", "event_notifications", { filters: { event_id: id } });
         if (d.notified && notes.data[0]) {
@@ -384,6 +393,19 @@ export function AccWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
         return <AccResult id={id} notifyError={notifyError} />;
       }}
     />
+  );
+}
+
+/** Evento guardado sin señal: se envía al volver la conexión; el código, el plazo y la investigación los fija el sistema al recibirlo. */
+function AccQueued({ notified }: { notified: boolean }) {
+  return (
+    <div className="space-y-2">
+      <p role="status" className="rounded-lg bg-amber-soft px-3 py-2 text-sm text-amber-ink">
+        Sin señal: el evento quedó guardado en este equipo con la fecha y hora en que lo registraste y se enviará al volver la conexión.
+      </p>
+      <p className="text-sm text-muted">Al recibirlo, el sistema le asigna su código, calcula el plazo de notificación y abre la investigación si corresponde.
+        {notified ? " La constancia de la notificación regístrala desde «Notificaciones» cuando tengas señal." : ""}</p>
+    </div>
   );
 }
 

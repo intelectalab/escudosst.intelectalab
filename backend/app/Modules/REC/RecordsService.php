@@ -620,6 +620,10 @@ final class RecordsService
         if (property_exists($row, 'updated_at')) {
             $out['updated_at'] = $row->updated_at;
         }
+        // docs/16 §6: la versión del registro editable; la app la envía como base_version al editar sin señal.
+        if (property_exists($row, 'version') && $row->version !== null) {
+            $out['version'] = (int) $row->version;
+        }
         foreach ($res['fields'] as $f) {
             $c = $f['name'];
             if (! property_exists($row, $c)) {

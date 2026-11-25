@@ -26,7 +26,7 @@
   "verify",
   "vote"
  ],
- "count": 1259,
+ "count": 1260,
  "permissions": [
   {
    "code": "ten.accounts.read",
@@ -11457,6 +11457,16 @@
    "is_special": false,
    "db": "main",
    "description": "Eliminar (lógico) · dossier_items (Modo Inspección SUNAFIL)"
+  },
+  {
+   "code": "sun.dossier_items.approve",
+   "module_code": "SUN",
+   "resource": "dossier_items",
+   "action": "approve",
+   "is_sensitive": false,
+   "is_special": true,
+   "db": "main",
+   "description": "Aprobar · dossier_items (Modo Inspección SUNAFIL)"
   },
   {
    "code": "sun.dossier_share_links.read",

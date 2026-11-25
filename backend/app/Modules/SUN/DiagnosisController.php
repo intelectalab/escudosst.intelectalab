@@ -2,11 +2,16 @@
 
 namespace App\Modules\SUN;
 
+use App\Core\Auth\Permissions;
+use App\Core\Http\ApiProblem;
 use App\Core\Support\LegalParams;
+use App\Core\Tenancy\CompanyContext;
 use App\Http\Controllers\Controller;
 use App\Modules\REG\RegistersController;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * GET /sun/diagnosis — autodiagnóstico frente a una inspección (M-SUN, SCR-SUN-01/02), calculado en el momento con
@@ -26,6 +31,67 @@ class DiagnosisController extends Controller
     public function __invoke(): JsonResponse
     {
         return response()->json(['data' => $this->evaluate()]);
+    }
+
+    /** GET /sun/diagnosis/evidence-options?q= — documentos de DOC que se pueden vincular como evidencia manual (RN-SUN-03). */
+    public function evidenceOptions(Request $request): JsonResponse
+    {
+        $this->canLink();
+        $q = trim((string) $request->query('q', ''));
+        $rows = DB::select("select d.id, d.code, d.title from documents d where d.deleted_at is null and d.status <> 'archived'"
+            .($q !== '' ? ' and (d.title ilike ? or d.code ilike ?)' : '').' order by d.title limit 30', $q !== '' ? ['%'.$q.'%', '%'.$q.'%'] : []);
+
+        return response()->json(['data' => array_map(fn ($r) => ['id' => $r->id, 'label' => trim(($r->code ? $r->code.' · ' : '').$r->title)], $rows)]);
+    }
+
+    /** POST /sun/diagnosis/{code}/evidence {document_id} — vincula un documento de DOC como evidencia de la obligación. */
+    public function link(Request $request, string $code): JsonResponse
+    {
+        $this->canLink();
+        $doc = $this->document($code, (string) $request->input('document_id'));
+        DB::update("update documents set tags = array_append(coalesce(tags, '{}'::text[]), ?), updated_by = ? where id = ? and not (? = any(coalesce(tags, '{}'::text[])))",
+            [self::evidenceTag($code), (string) auth()->id(), $doc->id, self::evidenceTag($code)]);
+        $this->audit($code, $doc->id, true);
+
+        return response()->json(['data' => ['code' => $code, 'document_id' => $doc->id]], 201);
+    }
+
+    /** DELETE /sun/diagnosis/{code}/evidence/{document} — quita el vínculo (el documento sigue en DOC). */
+    public function unlink(string $code, string $document): JsonResponse
+    {
+        $this->canLink();
+        $doc = $this->document($code, $document);
+        DB::update('update documents set tags = array_remove(tags, ?), updated_by = ? where id = ?', [self::evidenceTag($code), (string) auth()->id(), $doc->id]);
+        $this->audit($code, $doc->id, false);
+
+        return response()->json(['data' => ['code' => $code, 'document_id' => $doc->id]]);
+    }
+
+    private function document(string $code, string $id): object
+    {
+        if (! in_array($code, self::CODES, true)) {
+            throw ApiProblem::notFound('La obligación no existe en el catálogo.');
+        }
+        $doc = Str::isUuid($id) ? DB::selectOne('select id from documents where id = ? and deleted_at is null', [$id]) : null;
+        if (! $doc) {
+            throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Elige un documento de Gestión documental.', ['errors' => ['document_id' => ['Elige un documento de Gestión documental.']]]);
+        }
+
+        return $doc;
+    }
+
+    private function canLink(): void
+    {
+        if (! in_array('sun.self_diagnostics.create', Permissions::effective(), true)) {
+            throw ApiProblem::forbidden('Tu rol no ejecuta el autodiagnóstico.');
+        }
+    }
+
+    private function audit(string $code, string $doc, bool $linked): void
+    {
+        $ctx = app(CompanyContext::class);
+        DB::insert("insert into audit_logs (company_id, actor_user_id, actor_role, actor_type, action, module_code, entity_type, entity_id, changes) values (?, ?, ?, 'user', 'update', 'SUN', 'documents', ?, ?::jsonb)",
+            [$ctx->companyId, (string) auth()->id(), $ctx->roleCode, $doc, json_encode(['sunafil_evidence' => $code, 'linked' => $linked])]);
     }
 
     /**
@@ -58,6 +124,12 @@ class DiagnosisController extends Controller
         foreach ($areas as $i => &$a) {
             $a['code'] = self::CODES[$i];
             $a['enabled'] = in_array($a['module'], $enabled, true);
+            $a['no_module'] = ! $a['enabled'];
+            $a['evidence'] = [];
+            if ($a['no_module']) {
+                // RN-SUN-03: sin el módulo contratado, la obligación se evalúa con los documentos vinculados como evidencia en DOC.
+                $a = array_merge($a, $this->manualEvidence($a['code'], $today, $gapBelow));
+            }
             $a['tone'] = $a['pct'] === null ? 'na' : ($a['pct'] >= 90 ? 'ok' : ($a['pct'] >= $gapBelow ? 'warn' : 'bad'));
             $a['result'] = $a['pct'] === null ? 'na' : ($a['pct'] >= 100 ? 'complies' : ($a['pct'] >= $gapBelow ? 'partial' : 'fails'));
             $a['severity'] = isset(self::SEVERITY_LABEL[$severity[$a['code']] ?? '']) ? $severity[$a['code']] : 'serious';
@@ -77,6 +149,39 @@ class DiagnosisController extends Controller
             'evaluated_at' => now('America/Lima')->toIso8601String(),
             'areas' => $areas,
         ];
+    }
+
+    /** Etiqueta del documento de DOC que lo vincula como evidencia manual de una obligación (RN-SUN-03). */
+    public static function evidenceTag(string $code): string
+    {
+        return 'sunafil:'.$code;
+    }
+
+    /**
+     * RN-SUN-03: obligación de un módulo no contratado. Se evalúa con los documentos de DOC vinculados como evidencia
+     * (activos con su versión aprobada o vigente) y se marca «sin módulo»; sin evidencia nunca se considera cumplida.
+     * Con evidencia vigente cumple; si solo hay documentos con la revisión vencida (RN-DOC-04), es parcial.
+     */
+    private function manualEvidence(string $code, string $today, float $gapBelow): array
+    {
+        $docs = DB::select(
+            "select d.id, d.code, d.title, d.next_review_on, v.status as version_status, v.effective_until
+               from documents d left join document_versions v on v.id = d.current_version_id and v.deleted_at is null
+              where d.deleted_at is null and ? = any(coalesce(d.tags, '{}'::text[])) order by d.title", [self::evidenceTag($code)]);
+        $evidence = array_map(function ($d) use ($today) {
+            $valid = $d->version_status !== null && in_array($d->version_status, ['approved', 'current'], true) && ($d->effective_until === null || $d->effective_until >= $today);
+            $state = ! $valid ? 'not_valid' : ($d->next_review_on !== null && $d->next_review_on < $today ? 'review_overdue' : 'current');
+
+            return ['id' => $d->id, 'code' => $d->code, 'title' => $d->title, 'state' => $state];
+        }, $docs);
+        $current = array_filter($evidence, fn ($e) => $e['state'] === 'current');
+        $overdue = array_filter($evidence, fn ($e) => $e['state'] === 'review_overdue');
+        $pct = $current ? 100 : ($overdue ? $gapBelow : 0);
+        $detail = 'Sin módulo contratado: se evalúa con documentos cargados en Gestión documental. '.($current
+            ? count($current).' documento(s) vigente(s) como evidencia: '.implode(', ', array_slice(array_column($current, 'title'), 0, 3)).'.'
+            : ($overdue ? 'Los documentos vinculados tienen la revisión vencida.' : ($evidence ? 'Los documentos vinculados no tienen una versión aprobada vigente.' : 'No hay documentos vinculados como evidencia.')));
+
+        return ['pct' => (int) round($pct), 'detail' => $detail, 'evidence' => $evidence, 'workers' => [], 'workers_total' => 0];
     }
 
     /** @param list<string> $workers trabajadores que faltan en la obligación (criterio 1 de M-SUN: se listan por nombre) */

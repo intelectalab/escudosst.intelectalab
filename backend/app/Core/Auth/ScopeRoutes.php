@@ -68,6 +68,7 @@ final class ScopeRoutes
         'reports/sst_events/{id}' => ['id' => 'sst_events'],
         'reports/work_permits/{id}' => ['id' => 'work_permits'],
         'sim/drills/{id}' => ['id' => 'drills'],
+        'sun/dossier-items/{id}' => ['id' => 'dossier_items'],
         'sun/dossiers/{dossier}' => ['dossier' => 'inspection_dossiers', 'id' => 'dossier_items'],
         'sun/share-links/{id}' => ['id' => 'dossier_share_links'],
         'trb/workers/{id}' => ['id' => 'workers'],

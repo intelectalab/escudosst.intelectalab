@@ -42,7 +42,7 @@ it('guarda el autodiagnóstico con gravedad y puntaje ponderado y avisa la brech
 
 it('el expediente conserva la copia congelada aunque cambie el registro de origen', function () {
     $d = $this->postJson('/api/v1/records/SUN/inspection_dossiers', ['title' => 'Expediente congelado', 'period_from' => '2026-01-01', 'period_to' => '2026-12-31'], $this->h)->json('data.id');
-    $this->postJson("/api/v1/sun/dossiers/{$d}/build", [], $this->h)->assertOk();
+    sunBuild($d, [], $this->h);
     $item = $this->getJson("/api/v1/sun/dossiers/{$d}/items", $this->h)->assertOk()->json('data.0');
 
     // Un ítem que apunta a un registro real (la empresa de prueba casi no tiene datos): se congela igual que al armar.

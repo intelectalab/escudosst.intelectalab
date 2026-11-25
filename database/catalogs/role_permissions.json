@@ -4351,6 +4351,7 @@
   "psi.psychosocial_surveys.delete",
   "psi.psychosocial_surveys.read",
   "psi.psychosocial_surveys.update",
+  "sun.dossier_items.approve",
   "ten.accounts.read",
   "ten.areas.read",
   "ten.companies.read",

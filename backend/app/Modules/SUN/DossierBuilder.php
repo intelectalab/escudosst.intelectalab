@@ -17,11 +17,18 @@ use Illuminate\Support\Str;
  * Con {worker_ids: [...]} (o {worker_id}) agrega el expediente de cada trabajador inspeccionado (inducción,
  * capacitaciones, aptitud, EPP, RISST, IPERC de su puesto y fotocheck), como lo pide SUNAFIL cuando inspecciona a una o
  * varias personas (SCR-SUN-03/04): una sección por trabajador después de los puntos de la empresa.
+ *
+ * docs/08 §12: la generación corre en segundo plano (BuildDossierJob). La petición valida y guarda los trabajadores, deja el
+ * expediente «en cola» y responde 202 {id, status, status_url} con la cabecera Location; el estado (queued → building →
+ * ready / ready_with_gaps / failed) se consulta con GET /sun/dossiers/{id}/status y al terminar llega un aviso.
  */
 class DossierBuilder extends Controller
 {
     /** Trabajadores inspeccionados por expediente. */
     public const MAX_WORKERS = 50;
+
+    /** Estados que cuentan como brecha (la constancia de aptitud sin aprobar del médico tampoco entra, RN-SUN-07). */
+    public const GAP_STATUSES = ['missing', 'expired', 'pending_approval'];
 
     public function __invoke(Request $request, string $dossier): JsonResponse
     {
@@ -39,24 +46,72 @@ class DossierBuilder extends Controller
         if (count($ids) > self::MAX_WORKERS) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Elige hasta '.self::MAX_WORKERS.' trabajadores por expediente.', ['errors' => ['worker_ids' => ['Elige hasta '.self::MAX_WORKERS.' trabajadores por expediente.']]]);
         }
-        $found = [];
         if ($ids) {
             if (array_filter($ids, fn ($x) => ! Str::isUuid($x))) {
                 $this->badWorker();
             }
-            foreach (DB::select('select id, full_name, current_position_id, current_area_id from workers where deleted_at is null and id = any(?::uuid[])', ['{'.implode(',', $ids).'}']) as $r) {
-                $found[$r->id] = $r;
-            }
-            if (count($found) !== count($ids)) {
+            $n = (int) DB::selectOne('select count(*) as n from workers where deleted_at is null and id = any(?::uuid[])', ['{'.implode(',', $ids).'}'])->n;
+            if ($n !== count($ids)) {
                 $this->badWorker();
             }
         }
-        // En el orden elegido.
-        $selected = array_map(fn ($x) => $found[$x], $ids);
-        $worker = $selected[0] ?? null;
         $scope['worker_ids'] = $ids;
-        $scope['worker_id'] = $worker?->id;
-        DB::update('update inspection_dossiers set scope = ?::jsonb, requested_by = coalesce(requested_by, ?) where id = ?', [json_encode($scope), (string) auth()->id(), $dossier]);
+        $scope['worker_id'] = $ids[0] ?? null;
+        $uid = (string) auth()->id();
+        DB::update("update inspection_dossiers set scope = ?::jsonb, requested_by = coalesce(requested_by, ?), status = 'queued', error_message = null, updated_by = ? where id = ?",
+            [json_encode($scope), $uid, $uid, $dossier]);
+        BuildDossierJob::dispatch($dossier, (string) $d->company_id, $uid)->afterCommit();
+        $url = url("/api/v1/sun/dossiers/{$dossier}/status");
+
+        return response()->json(['data' => ['id' => $dossier, 'status' => 'queued', 'status_url' => $url]], 202)->header('Location', $url);
+    }
+
+    /**
+     * GET /sun/dossiers/{id}/status — estado de la generación y, cuando terminó, el resumen y los ítems armados
+     * (para que la pantalla muestre «Generando…» y se actualice sola).
+     */
+    public function status(string $dossier): JsonResponse
+    {
+        $d = Str::isUuid($dossier) ? DB::selectOne('select id, status, built_at, error_message, scope from inspection_dossiers where id = ? and deleted_at is null', [$dossier]) : null;
+        if (! $d) {
+            throw ApiProblem::notFound('El expediente no existe o es de otra empresa.');
+        }
+        $scope = json_decode($d->scope ?? '{}', true) ?: [];
+        $ids = array_values(array_filter((array) ($scope['worker_ids'] ?? array_filter([$scope['worker_id'] ?? null])), fn ($x) => is_string($x) && Str::isUuid($x)));
+        $names = $ids ? array_column(DB::select('select id, full_name from workers where id = any(?::uuid[])', ['{'.implode(',', $ids).'}']), 'full_name', 'id') : [];
+        $workers = array_values(array_map(fn ($x) => ['id' => $x, 'name' => $names[$x]], array_filter($ids, fn ($x) => isset($names[$x]))));
+        $done = in_array($d->status, ['ready', 'ready_with_gaps'], true);
+        $items = $done ? DB::select(
+            "select section_code as code, title, trim(source_module) as module, source_type as \"table\", source_id as id, status, gap_description as gap, worker_id
+               from dossier_items where dossier_id = ? and deleted_at is null and source_type is distinct from 'manual' order by sort_order", [$dossier]) : [];
+
+        return response()->json(['data' => [
+            'id' => $d->id, 'status' => $d->status, 'built_at' => $d->built_at, 'error_message' => $d->error_message,
+            'pending' => in_array($d->status, ['queued', 'building'], true),
+            'items' => $items, 'total' => count($items),
+            'gaps' => count(array_filter($items, fn ($i) => in_array($i->status, self::GAP_STATUSES, true))),
+            'worker' => $workers[0] ?? null, 'workers' => $workers,
+        ]]);
+    }
+
+    /**
+     * Armado del expediente (lo corre BuildDossierJob con la empresa y el usuario fijados en la conexión): usa los
+     * trabajadores guardados en el alcance. @return array{items: list<array>, gaps: int, total: int}
+     */
+    public static function build(string $dossier, string $userId): array
+    {
+        $d = DB::selectOne('select * from inspection_dossiers where id = ? and deleted_at is null for update', [$dossier]);
+        if (! $d) {
+            throw ApiProblem::notFound('El expediente no existe o es de otra empresa.');
+        }
+        $scope = json_decode($d->scope ?? '{}', true) ?: [];
+        $ids = array_values(array_filter((array) ($scope['worker_ids'] ?? array_filter([$scope['worker_id'] ?? null])), fn ($x) => is_string($x) && Str::isUuid($x)));
+        $found = [];
+        foreach ($ids ? DB::select('select id, full_name, current_position_id, current_area_id from workers where deleted_at is null and id = any(?::uuid[])', ['{'.implode(',', $ids).'}']) : [] as $r) {
+            $found[$r->id] = $r;
+        }
+        // En el orden elegido (un trabajador archivado después de pedir el armado se omite).
+        $selected = array_values(array_filter(array_map(fn ($x) => $found[$x] ?? null, $ids)));
         $from = $d->period_from ?? date('Y').'-01-01';
         $to = $d->period_to ?? date('Y-m-d');
         $workers = (int) DB::selectOne("select count(*) as n from workers where deleted_at is null and status in ('active','on_leave')")->n;
@@ -316,10 +371,27 @@ class DossierBuilder extends Controller
 
         // SCR-SUN-04: las exclusiones con motivo y el orden manual se conservan al volver a armar el expediente.
         $prev = [];
-        foreach (DB::select("select section_code, worker_id, status, exclusion_reason, sort_order, manual_sort from dossier_items where dossier_id = ? and deleted_at is null
-                               and source_type is distinct from 'manual'", [$dossier]) as $p) {
+        foreach (DB::select("select section_code, worker_id, status, exclusion_reason, sort_order, manual_sort, source_id, approved_by, approved_at from dossier_items
+                              where dossier_id = ? and deleted_at is null and source_type is distinct from 'manual'", [$dossier]) as $p) {
             $prev[$p->section_code.'|'.$p->worker_id] = $p;
         }
+        // RN-SUN-07: la constancia de aptitud (W3) entra solo con la aprobación del médico ocupacional; la aprobación se conserva
+        // al volver a armar mientras sea la misma aptitud (una aptitud nueva vuelve a pedirla).
+        foreach ($items as &$it) {
+            $it['medical'] = $it['code'] === 'W3';
+            $it['approved_by'] = null;
+            $it['approved_at'] = null;
+            if ($it['medical'] && $it['status'] === 'included') {
+                $p = $prev['W3|'.$it['worker_id']] ?? null;
+                if ($p && $p->approved_by && $p->source_id === $it['id']) {
+                    [$it['approved_by'], $it['approved_at']] = [$p->approved_by, $p->approved_at];
+                } else {
+                    $it['status'] = 'pending_approval';
+                    $it['gap'] = 'Pendiente de aprobación del médico ocupacional para incluir la constancia de aptitud.';
+                }
+            }
+        }
+        unset($it);
         // Las evidencias manuales (archivos que subió la persona) se conservan al volver a armar.
         DB::update("update dossier_items set deleted_at = now() where dossier_id = ? and deleted_at is null and source_type is distinct from 'manual'", [$dossier]);
         foreach ($items as $k => $it) {
@@ -328,26 +400,31 @@ class DossierBuilder extends Controller
             $snap = self::snapshot($it['table'] ?? null, $it['id'] ?? null);
             DB::insert(
                 "insert into dossier_items (company_id, dossier_id, worker_id, section_code, title, source_module, source_type, source_id, status, gap_description, sort_order,
-                        exclusion_reason, manual_sort, snapshot, snapshot_hash, frozen_at, created_by, updated_by)
-                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, case when ?::text is null then null else now() end, ?, ?)",
+                        exclusion_reason, manual_sort, snapshot, snapshot_hash, frozen_at, is_medical_certificate, approved_by, approved_at, created_by, updated_by)
+                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, case when ?::text is null then null else now() end, ?, ?, ?, ?, ?)",
                 [$d->company_id, $dossier, $it['worker_id'], $it['code'], mb_substr($it['title'], 0, 300), $it['module'], $it['table'], $it['id'], $excluded ? 'excluded' : $it['status'], $it['gap'],
                     $p && $p->manual_sort ? (int) $p->sort_order : $k + 1, $excluded ? $p->exclusion_reason : null, $p && $p->manual_sort ? 'true' : 'false',
-                    $snap[0], $snap[1], $snap[1], (string) auth()->id(), (string) auth()->id()]
+                    $snap[0], $snap[1], $snap[1], $it['medical'] ? 'true' : 'false', $it['approved_by'], $it['approved_at'], $userId, $userId]
             );
         }
         // Lo excluido con motivo no cuenta como brecha (sigue en el índice con su motivo).
-        $gaps = array_values(array_filter($items, fn ($i) => in_array($i['status'], ['missing', 'expired'], true)
+        $gaps = array_values(array_filter($items, fn ($i) => in_array($i['status'], self::GAP_STATUSES, true)
             && ! (($prev[$i['code'].'|'.$i['worker_id']] ?? null)?->status === 'excluded')));
         DB::update('update inspection_dossiers set status = ?, gaps = ?::jsonb, built_at = now() where id = ?',
             [$gaps ? 'ready_with_gaps' : 'ready', json_encode(array_map(fn ($g) => ['code' => $g['code'], 'title' => $g['title'], 'gap' => $g['gap']], $gaps), JSON_UNESCAPED_UNICODE), $dossier]);
 
-        $first = $selected[0] ?? null;
+        $items = array_map(fn ($i) => array_diff_key($i, ['medical' => 1, 'approved_by' => 1, 'approved_at' => 1]), $items);
 
-        return response()->json(['data' => [
-            'items' => $items, 'gaps' => count($gaps), 'total' => count($items),
-            'worker' => $first ? ['id' => $first->id, 'name' => $first->full_name] : null,
-            'workers' => array_map(fn ($x) => ['id' => $x->id, 'name' => $x->full_name], $selected),
-        ]]);
+        return ['items' => $items, 'gaps' => count($gaps), 'total' => count($items)];
+    }
+
+    /** Recalcula las brechas y el estado del expediente después de revisar un ítem (sin volver a armarlo). */
+    public static function refreshGaps(string $dossier): void
+    {
+        $gaps = DB::select("select section_code as code, title, gap_description as gap from dossier_items where dossier_id = ? and deleted_at is null
+                              and status = any(?::text[]) order by sort_order", [$dossier, '{'.implode(',', self::GAP_STATUSES).'}']);
+        DB::update("update inspection_dossiers set status = case when status in ('ready', 'ready_with_gaps') then ? else status end, gaps = ?::jsonb where id = ?",
+            [$gaps ? 'ready_with_gaps' : 'ready', json_encode($gaps, JSON_UNESCAPED_UNICODE), $dossier]);
     }
 
     private function badWorker(): never

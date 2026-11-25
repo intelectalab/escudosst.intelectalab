@@ -119,7 +119,7 @@ it('las adecuaciones de los trabajadores vulnerables aparecen en el expediente S
     pgAs(fn () => DB::update("update feature_flags set mode = 'enabled' where company_id = ? and module_code in ('SUN', 'VUL') and deleted_at is null", [HUAYLAS_ID]));
     $d = $this->postJson('/api/v1/records/SUN/inspection_dossiers', ['title' => 'Expediente PG', 'period_from' => now()->subMonth()->toDateString(), 'period_to' => now()->toDateString()], $this->h)
         ->assertCreated()->json('data.id');
-    $this->postJson("/api/v1/sun/dossiers/{$d}/build", [], $this->h)->assertOk();
+    sunBuild($d, [], $this->h);
     $item = pgAs(fn () => DB::selectOne("select status from dossier_items where dossier_id = ? and section_code = '17'", [$d]));
     expect($item?->status)->toBe('included');
 });

@@ -72,7 +72,7 @@ it('la parte del trabajador en el expediente SUN cuenta los permisos en que part
     pbAs(fn () => DB::update("update work_permits set crew = ?::jsonb where id = ?", [json_encode([['worker_id' => $w, 'role' => 'watcher']]), $crew]));
     $d = $this->postJson('/api/v1/records/SUN/inspection_dossiers', ['title' => 'Expediente PTR', 'period_from' => now()->startOfYear()->toDateString(), 'period_to' => now()->endOfYear()->toDateString()], $this->h)
         ->assertCreated()->json('data.id');
-    $items = collect($this->postJson("/api/v1/sun/dossiers/{$d}/build", ['worker_ids' => [$w, $idle]], $this->h)->assertOk()->json('data.items'))->where('code', 'W8');
+    $items = collect(sunBuild($d, ['worker_ids' => [$w, $idle]], $this->h)->json('data.items'))->where('code', 'W8');
     $mine = $items->firstWhere('worker_id', $w);
     $other = $items->firstWhere('worker_id', $idle);
     expect($mine['title'])->toContain('(2)')->and($mine['status'])->toBe('included')->and($other['status'])->toBe('not_applicable');

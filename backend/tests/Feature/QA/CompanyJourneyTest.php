@@ -471,7 +471,7 @@ it('una empresa nueva recorre todo el sistema de gestión SST por la API', funct
     expect(collect($diag)->pluck('pct')->filter(fn ($v) => $v !== null))->not->toBeEmpty();
     $dossier = $this->postJson('/api/v1/records/SUN/inspection_dossiers', ['title' => 'Expediente inspección', 'period_from' => "{$year}-01-01", 'period_to' => $today], $a)->qaStatus(201)->json('data.id');
     $this->postJson("/api/v1/sun/dossiers/{$dossier}/share", ['days' => 3], $a)->assertStatus(409);   // primero se arma
-    $built = $this->postJson("/api/v1/sun/dossiers/{$dossier}/build", [], $a)->qaStatus(200);
+    $built = sunBuild($dossier, [], $a);
     expect($built->json('data.total'))->toBeGreaterThan(0);
     $share = $this->postJson("/api/v1/sun/dossiers/{$dossier}/share", ['days' => 3, 'max_views' => 5, 'recipient_name' => 'Inspector SUNAFIL'], $a)->qaStatus(201)
         ->assertJsonPath('data.status', 'pending_approval')->json('data');   // RN-SUN-09: lo aprueba gerencia

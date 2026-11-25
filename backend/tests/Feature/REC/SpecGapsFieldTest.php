@@ -40,7 +40,7 @@ it('el expediente SUNAFIL incluye charlas, simulacros, brigadas y equipos de eme
 
     $d = $this->postJson('/api/v1/records/SUN/inspection_dossiers', ['title' => 'Expediente con emergencias', 'period_from' => date('Y').'-01-01', 'period_to' => date('Y').'-12-31'], $this->h)
         ->assertCreated()->json('data.id');
-    $items = collect($this->postJson("/api/v1/sun/dossiers/{$d}/build", ['worker_ids' => [$worker]], $this->h)->assertOk()->json('data.items'));
+    $items = collect(sunBuild($d, ['worker_ids' => [$worker]], $this->h)->json('data.items'));
     $by = fn (string $code) => $items->first(fn ($i) => $i['code'] === $code && $i['worker_id'] === null);
 
     expect($by('29')['module'])->toBe('CH5')

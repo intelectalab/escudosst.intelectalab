@@ -1,14 +1,15 @@
 /* EscudoSST · service worker de la app instalable (docs/16 §1).
  * - Guarda el «shell» de la app (pantallas ya visitadas y archivos de Next) para abrirla sin señal.
  * - Guarda una copia de las consultas de catálogos y registros de campo (sesión, empresa, módulos INS, ACT, CH5,
- *   ATS, EPP, CAP, SIM y sus opciones) para seguir trabajando sin conexión. La copia es por sesión y empresa.
+ *   ATS, EPP, CAP, SIM y sus opciones; opciones del evento ACC y el PETAR en campo) para seguir trabajando sin conexión.
+ *   La copia es por sesión y empresa.
  * - Nunca guarda respuestas médicas ni de otras rutas de la API: solo las de la lista de abajo.
  */
 const VERSION = "escudo-v1";
 const SHELL = `${VERSION}-shell`;
 const STATIC = `${VERSION}-static`;
 const API_PREFIX = "escudo-api-";
-const PRECACHE = ["/inicio", "/login", "/select-company", "/mi", "/mi/ingresar", "/mi/fotocheck", "/mi/reportar", "/manifest.webmanifest", "/icons/escudo.svg"];
+const PRECACHE = ["/inicio", "/login", "/select-company", "/mi", "/mi/ingresar", "/mi/fotocheck", "/mi/reportar", "/m/acc", "/m/ptr", "/manifest.webmanifest", "/icons/escudo.svg"];
 
 // Consultas de la API que se pueden copiar (solo GET). Ninguna de datos médicos.
 const API_ALLOW = [
@@ -16,6 +17,11 @@ const API_ALLOW = [
   /^\/api\/v1\/me\/(companies|modules)$/,
   /^\/api\/v1\/records\/(INS|ACT|CH5|ATS|EPP|CAP|SIM)(\/[a-z0-9_]+(\/options\/[a-z0-9_]+)?)?$/i,
   /^\/api\/v1\/ins\/inspections\/[0-9a-f-]{36}\/checklist$/,
+  // Registrar evento sin señal (M-OFF §12): solo las opciones de sus campos (sedes, trabajadores), no los eventos.
+  /^\/api\/v1\/records\/ACC(\/(sst_events|event_people)\/options\/[a-z0-9_]+)?$/,
+  // PETAR en campo (docs/16 §2): el permiso, sus verificaciones y el contexto (gases y quién suspende).
+  /^\/api\/v1\/records\/PTR(\/(work_permits|permit_checks|permit_types)(\/[0-9a-f-]{36}|\/options\/[a-z0-9_]+)?)?$/,
+  /^\/api\/v1\/ptr\/(gas-limits|work-permits\/[0-9a-f-]{36}\/context)$/,
   // App del trabajador: inicio, fotocheck (para mostrarlo sin señal), pendientes, capacitaciones, EPP y reportes. Nunca salud.
   /^\/api\/v1\/me\/worker(\/(credential|pending|trainings|ppe|reports))?$/,
 ];

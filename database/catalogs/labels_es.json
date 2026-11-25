@@ -1304,7 +1304,8 @@
   "diagnosed_on": "Fecha del diagnóstico",
   "target_date": "Fecha comprometida",
   "reminder_opt_in": "Quiere recordatorio",
-  "linked_records": "Registros vinculados como evidencia"
+  "linked_records": "Registros vinculados como evidencia",
+  "is_medical_certificate": "Constancia de aptitud médica"
  },
  "values": {
   "A": "Tipo A",
@@ -2044,7 +2045,8 @@
   "on_source_record": "Al registrarse en el módulo origen (mismo mes, sede y área)",
   "exposure": "Por exposición",
   "pca": "PCA",
-  "sector_package": "Paquete sectorial"
+  "sector_package": "Paquete sectorial",
+  "excluded": "Excluido"
  },
  "tables": {
   "absences": "Ausencias",

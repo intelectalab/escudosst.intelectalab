@@ -226,3 +226,16 @@ function companyParamForTests(string $companyId, string $key, string $value, str
         [$companyId, $key, $value, $type, $key]);
     \Illuminate\Support\Facades\Cache::flush();
 }
+
+/**
+ * Arma el expediente SUNAFIL (docs/08 §12): la petición responde 202 con su status_url y el armado corre en la cola
+ * (en las pruebas, la cola es síncrona: ya terminó). Devuelve el estado con los ítems armados.
+ */
+function sunBuild(string $dossier, array $body, array $headers): \Illuminate\Testing\TestResponse
+{
+    $res = test()->postJson("/api/v1/sun/dossiers/{$dossier}/build", $body, $headers)->assertStatus(202)
+        ->assertJsonPath('data.id', $dossier)->assertJsonPath('data.status', 'queued');
+    expect($res->headers->get('Location'))->toEndWith("/api/v1/sun/dossiers/{$dossier}/status");
+
+    return test()->getJson("/api/v1/sun/dossiers/{$dossier}/status", $headers)->assertOk();
+}

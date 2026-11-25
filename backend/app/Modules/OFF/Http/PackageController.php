@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * GET /sync/package — paquete de datos de referencia para trabajar sin conexión (M-OFF SCR-OFF-02): trabajadores del
- * ámbito de la persona (sus sedes o áreas si tiene alcance), plantillas de inspección con sus ítems, IPERC vigente del
+ * ámbito de la persona (sus sedes o áreas si tiene alcance), sus sedes, plantillas de inspección con sus ítems, IPERC vigente del
  * área, EPP con lo exigido por puesto y el estado de los fotochecks, con el tamaño estimado.
  * RN-OFF-05: nunca incluye datos médicos; de la aptitud solo va el estado del fotocheck.
  */
@@ -37,12 +37,15 @@ class PackageController extends Controller
         $ppeReq = $positionIds ? DB::select('select position_id, ppe_item_id, quantity, replacement_days, is_mandatory from ppe_position_requirements where position_id = any(?::uuid[]) and deleted_at is null', [$arr($positionIds)]) : [];
         $credentials = $ids ? DB::select('select id, worker_id, credential_number, status, expires_on, blocking_reasons from credentials where worker_id = any(?::uuid[]) and deleted_at is null', [$arr($ids)]) : [];
 
-        $data = ['generated_at' => now()->toIso8601String(), 'workers' => $workers, 'inspection_templates' => $templates, 'inspection_template_items' => $items,
+        // Sedes del alcance: para elegir dónde ocurrió un evento o una inspección sin señal.
+        $sites = DB::select("select s.id, s.name from sites s where s.deleted_at is null and s.status = 'active'".\App\Core\Auth\Scope::andTable('sites', 's').' order by s.name');
+
+        $data = ['generated_at' => now()->toIso8601String(), 'workers' => $workers, 'sites' => $sites, 'inspection_templates' => $templates, 'inspection_template_items' => $items,
             'iperc' => $iperc, 'ppe_items' => $ppe, 'ppe_position_requirements' => $ppeReq, 'credentials' => $credentials];
         $size = strlen((string) json_encode($data, JSON_UNESCAPED_UNICODE));
 
         return response()->json(['data' => $data, 'meta' => ['size_bytes' => $size, 'counts' => [
-            'workers' => count($workers), 'inspection_templates' => count($templates), 'iperc_rows' => count($iperc), 'ppe_items' => count($ppe), 'credentials' => count($credentials),
+            'workers' => count($workers), 'sites' => count($sites), 'inspection_templates' => count($templates), 'iperc_rows' => count($iperc), 'ppe_items' => count($ppe), 'credentials' => count($credentials),
         ], 'scoped' => \App\Core\Auth\Scope::restricted()]]);
     }
 }

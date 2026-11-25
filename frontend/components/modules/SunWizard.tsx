@@ -2,7 +2,7 @@
 
 // Nuevo expediente SUNAFIL (M-SUN, SCR-SUN-03): tipo y orden de inspección → inspector y comparecencia → periodo →
 // trabajadores inspeccionados (uno o varios: una sección por trabajador) → obligaciones requeridas → resumen. Al confirmar crea el expediente y lo arma con los
-// datos reales de la empresa (POST /sun/dossiers/{id}/build, DossierBuilder): queda «completo» o «con brechas».
+// datos reales de la empresa (POST /sun/dossiers/{id}/build, 202 y armado en segundo plano): queda «completo» o «con brechas».
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -11,6 +11,7 @@ import { records, recordsHref } from "@/lib/records";
 import { FormField } from "@/components/ui/Form";
 import { RefSelect } from "./RefSelect";
 import { Chip } from "./Summary";
+import { DossierBuilding } from "./SunBuildStatus";
 import { BTN, BTN_PRIMARY, SummaryRow, Wizard, type WizardStep } from "./Wizard";
 
 type Area = { name: string; module: string; enabled: boolean };
@@ -69,7 +70,7 @@ function Obligations({ d, set }: { d: Data; set: (p: Partial<Data>) => void }) {
                 className={`flex min-h-12 w-full items-center gap-3 rounded-xl border p-3 text-left text-sm ${on ? "border-brand bg-brand-soft/50 ring-1 ring-brand" : "border-line hover:border-brand/50"}`}>
                 <span className={`grid h-5 w-5 shrink-0 place-items-center rounded border-2 text-xs ${on ? "border-brand bg-brand text-white" : "border-line"}`}>{on ? "✓" : ""}</span>
                 <span className="flex-1 font-medium">{a.name}</span>
-                {!a.enabled && <span className="text-xs text-muted">No está en tu plan</span>}
+                {!a.enabled && <span className="text-xs text-muted">Sin módulo: evidencias de Gestión documental</span>}
               </button>
             </li>
           );
@@ -199,23 +200,28 @@ export function SunWizard({ onClose, onDone }: { onClose: () => void; onDone: ()
           scope: { obligations: d.obligations, worker_ids: d.workers.map((w) => w.id), worker_id: d.workers[0]?.id ?? null },
         });
         const id = r.data.id;
-        const b = await api<{ data: { total: number; gaps: number } }>(`/sun/dossiers/${id}/build`, { method: "POST", withCompany: true, body: { worker_ids: d.workers.map((w) => w.id) } });
+        // docs/08 §12: el armado corre en segundo plano (202); el resultado muestra «Generando…» hasta que termina.
+        await api(`/sun/dossiers/${id}/build`, { method: "POST", withCompany: true, body: { worker_ids: d.workers.map((w) => w.id) } });
         onDone();
         return (
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line p-4">
-              <div className="flex-1">
-                <p className="text-sm text-muted">Expediente armado</p>
-                <p className="font-display text-2xl font-bold">{b.data.total - b.data.gaps} de {b.data.total} puntos incluidos</p>
+          <DossierBuilding id={id}>
+            {(b) => (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line p-4">
+                  <div className="flex-1">
+                    <p className="text-sm text-muted">Expediente armado</p>
+                    <p className="font-display text-2xl font-bold">{b.total - b.gaps} de {b.total} puntos incluidos</p>
+                  </div>
+                  <Chip tone={b.gaps ? "warn" : "ok"}>{b.gaps ? `${b.gaps} brecha(s)` : "Completo"}</Chip>
+                </div>
+                {b.gaps > 0 && <p className="text-sm text-muted">Abre el expediente para ver lo que falta, subsanarlo y volver a armarlo antes de la comparecencia.</p>}
+                <div className="flex flex-wrap gap-2">
+                  <Link className={BTN_PRIMARY} href={recordsHref("SUN", "inspection_dossiers", { open: id })}>Abrir el expediente</Link>
+                  <Link className={BTN} href={recordsHref("SUN", "dossier_items", { filters: { dossier_id: id } })}>Ver ítems</Link>
+                </div>
               </div>
-              <Chip tone={b.data.gaps ? "warn" : "ok"}>{b.data.gaps ? `${b.data.gaps} brecha(s)` : "Completo"}</Chip>
-            </div>
-            {b.data.gaps > 0 && <p className="text-sm text-muted">Abre el expediente para ver lo que falta, subsanarlo y volver a armarlo antes de la comparecencia.</p>}
-            <div className="flex flex-wrap gap-2">
-              <Link className={BTN_PRIMARY} href={recordsHref("SUN", "inspection_dossiers", { open: id })}>Abrir el expediente</Link>
-              <Link className={BTN} href={recordsHref("SUN", "dossier_items", { filters: { dossier_id: id } })}>Ver ítems</Link>
-            </div>
-          </div>
+            )}
+          </DossierBuilding>
         );
       }}
     />

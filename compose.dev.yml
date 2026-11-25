@@ -121,6 +121,26 @@ services:
       redis:
         condition: service_started
 
+  # Cola de trabajos en segundo plano (p. ej. el armado del expediente SUNAFIL, docs/08 §12), como en compose.prod.yml.
+  worker:
+    build:
+      context: ./docker/php
+    container_name: escudo_worker
+    working_dir: /var/www/backend
+    command: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600"]
+    restart: unless-stopped
+    environment:
+      TZ: America/Lima
+    volumes:
+      - ./backend:/var/www/backend
+      - api_vendor:/var/www/backend/vendor
+      - ./docker/php/dev.ini:/usr/local/etc/php/conf.d/zz-dev.ini:ro
+    depends_on:
+      pg-main:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
 volumes:
   pg_main_data:
   pg_medical_data:

@@ -9,7 +9,7 @@ beforeEach(function () {
     $this->h = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
     $this->d = $this->postJson('/api/v1/records/SUN/inspection_dossiers', ['title' => 'Expediente con exclusiones', 'period_from' => '2026-01-01', 'period_to' => '2026-12-31'], $this->h)
         ->assertCreated()->json('data.id');
-    $this->postJson("/api/v1/sun/dossiers/{$this->d}/build", [], $this->h)->assertOk();
+    sunBuild($this->d, [], $this->h);
 });
 
 it('excluye un ítem con motivo y conserva la exclusión y el orden manual al rearmar', function () {
@@ -26,7 +26,7 @@ it('excluye un ítem con motivo y conserva la exclusión y el orden manual al re
     $reversed = array_reverse($ids);
     $this->putJson("/api/v1/sun/dossiers/{$this->d}/order", ['item_ids' => $reversed], $this->h)->assertOk();
 
-    $this->postJson("/api/v1/sun/dossiers/{$this->d}/build", [], $this->h)->assertOk();
+    sunBuild($this->d, [], $this->h);
     $after = $this->getJson("/api/v1/sun/dossiers/{$this->d}/items", $this->h)->assertOk()->json('data');
     $byCode = collect($after)->keyBy('code');
     expect($byCode[$first['code']]['status'])->toBe('excluded')
@@ -51,7 +51,7 @@ it('agrega una evidencia manual con su archivo y la conserva al volver a armar',
     $file = evidenceFile($this->h, 'SUN');
     $e = $this->postJson("/api/v1/sun/dossiers/{$this->d}/evidence", ['title' => 'Constancia de entrega en papel', 'file_id' => $file], $this->h)->assertCreated()->json('data');
     expect($e['code'])->toBe('M1');
-    $this->postJson("/api/v1/sun/dossiers/{$this->d}/build", [], $this->h)->assertOk();
+    sunBuild($this->d, [], $this->h);
     $item = collect($this->getJson("/api/v1/sun/dossiers/{$this->d}/items", $this->h)->json('data'))->firstWhere('id', $e['id']);
     expect($item)->not->toBeNull()->and($item['status'])->toBe('included')->and($item['title'])->toBe('Constancia de entrega en papel');
     $this->get("/api/v1/sun/dossiers/{$this->d}/zip", $this->h)->assertOk();

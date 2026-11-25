@@ -22,7 +22,7 @@ class DossierItemsController extends Controller
     {
         $rows = DB::select(
             "select id, section_code as code, title, status, coalesce(exclusion_reason, gap_description) as gap, exclusion_reason, source_module as module, source_type as \"table\", source_id,
-                    snapshot_hash, frozen_at
+                    snapshot_hash, frozen_at, is_medical_certificate, approved_at
                from dossier_items where dossier_id = ? and deleted_at is null order by sort_order", [$dossier]);
         // RN-SUN-05: el expediente conserva la copia congelada; se avisa si el origen cambió después de armarlo.
         foreach ($rows as $r) {
@@ -45,7 +45,9 @@ class DossierItemsController extends Controller
             DB::update("update dossier_items set status = 'excluded', exclusion_reason = ?, updated_by = ?, updated_at = now() where id = ?", [trim($d['reason']), (string) auth()->id(), $id]);
         } else {
             // Al volver a incluirlo, su estado real se recalcula al rearmar el expediente.
-            DB::update("update dossier_items set status = case when source_id is null then 'missing' else 'included' end, exclusion_reason = null, updated_by = ?, updated_at = now() where id = ?",
+            // RN-SUN-07: la constancia de aptitud sin aprobar vuelve a «por aprobar» (no se incluye sin el médico ocupacional).
+            DB::update("update dossier_items set status = case when source_id is null then 'missing' when is_medical_certificate and approved_by is null then 'pending_approval' else 'included' end,
+                               exclusion_reason = null, updated_by = ?, updated_at = now() where id = ?",
                 [(string) auth()->id(), $id]);
         }
         $this->audit($dossier, ['item' => $it->section_code, 'excluded' => $d['excluded'], 'reason' => $d['reason'] ?? null]);

@@ -23525,6 +23525,7 @@
    "columns": [
     "title",
     "dossier_id",
+    "approved_at",
     "status"
    ],
    "module": "SUN",
@@ -23613,6 +23614,14 @@
       {
        "value": "not_applicable",
        "label": "No aplica"
+      },
+      {
+       "value": "excluded",
+       "label": "Excluido"
+      },
+      {
+       "value": "pending_approval",
+       "label": "Pendiente de aprobación"
       }
      ],
      "default": "included",
@@ -23628,6 +23637,27 @@
      "label": "Orden",
      "type": "int",
      "default": 0
+    },
+    {
+     "name": "is_medical_certificate",
+     "label": "Constancia de aptitud médica",
+     "readonly": true,
+     "type": "bool",
+     "default": false
+    },
+    {
+     "name": "approved_by",
+     "label": "Aprobado por",
+     "readonly": true,
+     "type": "ref",
+     "ref": "users"
+    },
+    {
+     "name": "approved_at",
+     "label": "Aprobado el",
+     "readonly": true,
+     "type": "datetime",
+     "list": true
     }
    ]
   },

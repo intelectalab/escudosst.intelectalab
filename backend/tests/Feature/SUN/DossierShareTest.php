@@ -18,7 +18,7 @@ function sunBuiltDossier(): string
 {
     $d = test()->postJson('/api/v1/records/SUN/inspection_dossiers', ['title' => 'Expediente foliado', 'period_from' => '2026-01-01', 'period_to' => '2026-12-31'], sunH())
         ->assertCreated()->json('data.id');
-    test()->postJson("/api/v1/sun/dossiers/{$d}/build", [], sunH())->assertOk();
+    sunBuild($d, [], sunH());
 
     return $d;
 }

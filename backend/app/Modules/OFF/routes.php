@@ -10,6 +10,7 @@ Route::middleware(['auth:sanctum', 'company', 'module:OFF'])->prefix('sync')->gr
     Route::post('devices/{id}/revoke', [\App\Modules\OFF\Http\DevicesController::class, 'revoke'])->whereUuid('id');
     Route::get('package', \App\Modules\OFF\Http\PackageController::class)->middleware(['permission:off.devices.read', 'throttle:20,1']);
     Route::get('report.xlsx', [\App\Modules\OFF\Http\DevicesController::class, 'report'])->middleware('permission:off.devices.read');
+    Route::get('changes', [SyncController::class, 'changes'])->middleware(['permission:off.devices.read', 'throttle:60,1']);
     Route::post('batches', [SyncController::class, 'batch'])->middleware(['permission:off.sync_batches.create', 'throttle:60,1']);
     Route::get('conflicts', [SyncController::class, 'conflicts'])->middleware('permission:off.sync_conflicts.read');
     Route::post('conflicts/{conflict}/resolve', [SyncController::class, 'resolve'])->whereUuid('conflict')->middleware('permission:off.sync_conflicts.update');

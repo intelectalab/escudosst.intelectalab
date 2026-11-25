@@ -52,7 +52,7 @@ class DossierPrint extends Controller
                     'first_folio' => $folio, 'first_number' => $n + 1, 'count' => 0, 'gaps' => 0];
             }
             $sections[$key]['count']++;
-            if (in_array($it->status, ['missing', 'expired'], true)) {
+            if (in_array($it->status, DossierBuilder::GAP_STATUSES, true)) {
                 $sections[$key]['gaps']++;
             }
             $items[] = [
@@ -82,7 +82,7 @@ class DossierPrint extends Controller
             'summary' => [
                 'total' => count($rows),
                 'included' => count(array_filter($rows, fn ($r) => $r->status === 'included')),
-                'gaps' => count(array_filter($rows, fn ($r) => in_array($r->status, ['missing', 'expired'], true))),
+                'gaps' => count(array_filter($rows, fn ($r) => in_array($r->status, DossierBuilder::GAP_STATUSES, true))),
             ],
             'generated_at' => now()->toIso8601String(),
         ]]);

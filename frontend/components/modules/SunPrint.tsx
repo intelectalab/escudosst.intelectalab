@@ -43,7 +43,7 @@ type Sheet = {
   generated_at: string;
 };
 
-const ST: Record<string, string> = { included: "Incluido", missing: "Pendiente", expired: "Vencido", not_applicable: "No aplica" };
+const ST: Record<string, string> = { included: "Incluido", missing: "Pendiente", expired: "Vencido", not_applicable: "No aplica", excluded: "Excluido", pending_approval: "Por aprobar (médico ocupacional)" };
 const day = (v: string | null) => (v ? new Intl.DateTimeFormat("es-PE", { dateStyle: "short", timeZone: "America/Lima" }).format(new Date(v.length === 10 ? `${v}T12:00:00-05:00` : v)) : "—");
 const dtm = (v: string | null) => (v ? new Intl.DateTimeFormat("es-PE", { dateStyle: "short", timeStyle: "short", timeZone: "America/Lima" }).format(new Date(v)) : "—");
 

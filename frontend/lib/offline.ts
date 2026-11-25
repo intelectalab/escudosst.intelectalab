@@ -20,7 +20,15 @@ export const OFFLINE_ENTITIES: Record<string, { module: string; label: string }>
   ppe_deliveries: { module: "EPP", label: "Entrega de EPP" },
   training_attendances: { module: "CAP", label: "Asistencia a capacitación" },
   drill_participants: { module: "SIM", label: "Participante de simulacro" },
+  sst_events: { module: "ACC", label: "Evento (accidente o incidente)" },
+  event_people: { module: "ACC", label: "Persona del evento" },
+  // PETAR en campo (docs/16 §2): inicio, suspensión y cierre (edición del permiso) y verificación de condiciones.
+  work_permits: { module: "PTR", label: "Permiso de trabajo (PETAR)" },
+  permit_checks: { module: "PTR", label: "Verificación del PETAR" },
 };
+
+/** Tablas que sin señal solo admiten ediciones (la solicitud y la aprobación del PETAR se hacen en línea). */
+const UPDATE_ONLY = new Set(["work_permits"]);
 
 export type OutboxOp = {
   idempotency_key: string;
@@ -214,26 +222,46 @@ export async function queueFile(input: File, module?: string): Promise<string> {
   return LOCAL_FILE + id;
 }
 
-async function uploadQueuedFiles(op: OutboxOp): Promise<OutboxOp> {
-  const refs = Object.entries(op.payload).filter(([, v]) => typeof v === "string" && v.startsWith(LOCAL_FILE));
-  if (!refs.length) return op;
+const hasLocalFile = (v: unknown): boolean => (typeof v === "string" && v.startsWith(LOCAL_FILE)) || (Array.isArray(v) && v.some(hasLocalFile));
+
+/** Sube una foto guardada en el equipo y devuelve el id del archivo (null si ya no está o el servidor no la aceptó). */
+async function uploadLocal(ref: string): Promise<string | null> {
   const { uploadFile } = await import("./records");
+  const id = ref.slice(LOCAL_FILE.length);
+  const row = await tx<{ iv: Uint8Array; data: ArrayBuffer; name: string; type: string; module: string | null } | undefined>("files", "readonly", (s) => s.get(id));
+  if (!row) return null;   // la foto ya no está en el equipo: el registro se envía sin ella
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: row.iv as BufferSource }, await key(), row.data);
+  let out: string | null = null;
+  try {
+    out = (await uploadFile(new File([plain], row.name, { type: row.type }), row.module ?? undefined)).id;
+  } catch (e) {
+    if (e instanceof TypeError || isNetwork(e)) throw e;   // sin señal otra vez (fetch no llegó): se reintenta luego
+    out = null;   // el servidor no aceptó el archivo: el registro se envía sin la foto
+  }
+  await tx("files", "readwrite", (s) => s.delete(id));
+  return out;
+}
+
+async function uploadQueuedFiles(op: OutboxOp): Promise<OutboxOp> {
+  const refs = Object.entries(op.payload).filter(([, v]) => hasLocalFile(v));
+  if (!refs.length) return op;
   const payload = { ...op.payload };
   for (const [field, ref] of refs) {
-    const id = (ref as string).slice(LOCAL_FILE.length);
-    const row = await tx<{ iv: Uint8Array; data: ArrayBuffer; name: string; type: string; module: string | null } | undefined>("files", "readonly", (s) => s.get(id));
-    if (!row) {
-      delete payload[field];   // la foto ya no está en el equipo: el registro se envía sin ella
+    if (Array.isArray(ref)) {
+      // Varias fotos (p. ej. photo_file_ids del evento): se suben las guardadas y se conservan las que ya estaban subidas.
+      const ids: unknown[] = [];
+      for (const v of ref) {
+        if (typeof v === "string" && v.startsWith(LOCAL_FILE)) {
+          const up = await uploadLocal(v);
+          if (up) ids.push(up);
+        } else ids.push(v);
+      }
+      payload[field] = ids;
       continue;
     }
-    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: row.iv as BufferSource }, await key(), row.data);
-    try {
-      payload[field] = (await uploadFile(new File([plain], row.name, { type: row.type }), row.module ?? undefined)).id;
-    } catch (e) {
-      if (e instanceof TypeError || isNetwork(e)) throw e;   // sin señal otra vez (fetch no llegó): se reintenta luego
-      delete payload[field];       // el servidor no aceptó el archivo: el registro se envía sin la foto
-    }
-    await tx("files", "readwrite", (s) => s.delete(id));
+    const up = await uploadLocal(ref as string);
+    if (up) payload[field] = up;
+    else delete payload[field];
   }
   const next = { ...op, payload };
   await putOp(next);
@@ -291,12 +319,17 @@ export function setOnline(online: boolean) {
 }
 
 export function canQueue(table: string): boolean {
+  return !!ctx?.enabled && table in OFFLINE_ENTITIES && !UPDATE_ONLY.has(table);
+}
+
+/** Ediciones que se pueden encolar sin señal (con base_version: si el servidor cambió, queda un conflicto y no se pisa). */
+export function canQueueUpdate(table: string): boolean {
   return !!ctx?.enabled && table in OFFLINE_ENTITIES;
 }
 
 /** Encola una operación de campo. Devuelve el id que el registro ya tiene en el dispositivo. */
 export async function enqueue(input: { entity: string; op?: "create" | "update"; payload: Record<string, unknown>; entity_id?: string; base_version?: number | null }): Promise<OutboxOp> {
-  if (!canQueue(input.entity)) throw new ApiError(0, "network_error", "Sin conexión", "Este registro necesita conexión.");
+  if (input.op === "update" ? !canQueueUpdate(input.entity) : !canQueue(input.entity)) throw new ApiError(0, "network_error", "Sin conexión", "Este registro necesita conexión.");
   const queued = await listOutbox();
   // RN-OFF-07: pasados offline_max_days sin sincronizar (contados desde la última sincronización o, si nunca sincronizó,
   // desde el registro pendiente más antiguo) no se aceptan nuevas capturas hasta sincronizar.
@@ -326,7 +359,7 @@ const isNetwork = (e: unknown) => e instanceof ApiError && e.status === 0;
 /** Alta de un registro: en línea va directo; sin señal (y con OFF) queda en la cola con su id definitivo. */
 export async function createOrQueue<T extends { id: string }>(table: string, send: () => Promise<{ data: T }>, body: Record<string, unknown>): Promise<{ data: T }> {
   // Con una foto guardada en el equipo, el registro va por la cola: al sincronizar se sube la foto y luego el registro.
-  if (canQueue(table) && Object.values(body).some((v) => typeof v === "string" && v.startsWith(LOCAL_FILE))) {
+  if (canQueue(table) && Object.values(body).some(hasLocalFile)) {
     const op = await enqueue({ entity: table, payload: body });
     if (typeof navigator !== "undefined" && navigator.onLine) void syncNow();
     return { data: { ...body, id: op.entity_id, own: true, offline_pending: true } as unknown as T };
@@ -337,6 +370,22 @@ export async function createOrQueue<T extends { id: string }>(table: string, sen
     if (!isNetwork(e) || !canQueue(table)) throw e;
     const op = await enqueue({ entity: table, payload: body });
     return { data: { ...body, id: op.entity_id, own: true, offline_pending: true } as unknown as T };
+  }
+}
+
+/**
+ * Edición de un registro de campo: en línea va directo; sin señal (y con OFF) queda en la cola con la versión que tenía el
+ * registro (base_version). Hoy se usa en el PETAR en campo: iniciar, suspender o cerrar el permiso (docs/16 §2).
+ */
+export async function updateOrQueue<T extends { id: string }>(table: string, id: string, send: () => Promise<{ data: T }>, body: Record<string, unknown>, baseVersion?: number | null): Promise<{ data: T }> {
+  try {
+    return await send();
+  } catch (e) {
+    if (!isNetwork(e) || !canQueueUpdate(table) || baseVersion == null) throw e;
+    await enqueue({ entity: table, op: "update", entity_id: id, base_version: baseVersion, payload: body });
+    const local = await localRecord<Record<string, unknown>>(table, id).catch(() => null);
+    if (local) await putLocalRecord(table, { ...local, ...body, offline_pending: true });
+    return { data: { ...(local ?? {}), ...body, id, own: true, offline_pending: true } as unknown as T };
   }
 }
 
@@ -372,6 +421,7 @@ async function doSync() {
   const pending = (await listOutbox().catch(() => [])).filter((o) => o.status === "pending");
   if (!pending.length) {
     await loadConflicts();
+    await pullChanges().catch(() => undefined);
     return;
   }
   emit({ syncing: true, lastError: null });
@@ -408,6 +458,8 @@ async function doSync() {
     }
     emit({ lastSync: now });
     await loadConflicts();
+    // docs/08 §13: después de enviar lo pendiente, se traen los cambios del servidor para lo que guarda el equipo.
+    await pullChanges().catch((e) => { if (e instanceof ApiError && e.type === "device_revoked") throw e; });
   } catch (e) {
     if (e instanceof ApiError && e.type === "device_revoked") {
       await wipeLocal();
@@ -529,6 +581,7 @@ export async function preparePackage(): Promise<OfflinePackageInfo> {
   const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await key(), new TextEncoder().encode(JSON.stringify(r.data)));
   const info: OfflinePackageInfo = { prepared_at: new Date().toISOString(), size_bytes: r.meta.size_bytes, counts: r.meta.counts, scoped: r.meta.scoped };
   await tx("catalogs", "readwrite", (s) => s.put({ id: "package", iv, data, info }));
+  void pullChanges().catch(() => undefined);   // registros propios y permisos en curso (y lo que cambió desde el paquete)
   return info;
 }
 
@@ -570,10 +623,11 @@ export const isQueuedFile = (v: unknown) => typeof v === "string" && v.startsWit
 
 /** Tabla del paquete sin conexión que corresponde a un campo de referencia (por su ref o, si no llega, por el nombre). */
 function packageList(ref: string | undefined, field: string): { key: string; label: (r: Record<string, unknown>) => string } | null {
-  const t = ref ?? (field.endsWith("worker_id") ? "workers" : field.endsWith("template_id") ? "inspection_templates" : field === "ppe_item_id" ? "ppe_items" : "");
+  const t = ref ?? (field.endsWith("worker_id") ? "workers" : field.endsWith("template_id") ? "inspection_templates" : field === "ppe_item_id" ? "ppe_items" : field === "site_id" ? "sites" : "");
   if (t === "workers") return { key: "workers", label: (r) => `${r.full_name}${r.document_last4 ? ` · ***${r.document_last4}` : ""}` };
   if (t === "inspection_templates") return { key: "inspection_templates", label: (r) => String(r.code ? `${r.code} · ${r.name}` : r.name) };
   if (t === "ppe_items") return { key: "ppe_items", label: (r) => String(r.code ? `${r.code} · ${r.name}` : r.name) };
+  if (t === "sites") return { key: "sites", label: (r) => String(r.name) };
   return null;
 }
 
@@ -594,4 +648,110 @@ export async function offlineOptions(ref: string | undefined, field: string, par
     .slice(0, 50)
     .map((r) => ({ id: String(r.id), label: list.label(r) }));
   return { data: out };
+}
+
+// ── Cambios del servidor (GET /sync/changes, docs/08 §13) ───────────────────
+// Al recuperar la señal (y después de enviar la cola) se piden los cambios desde la última marca: los catálogos del paquete
+// (trabajadores, sedes, plantillas, EPP, fotochecks) se actualizan en el paquete guardado y los registros de la persona
+// (estado y versión, y los permisos en curso del PETAR en campo) en el almacén «records». Las lápidas los quitan del equipo.
+
+type Change = { entity: string; id: string; op: "upsert" | "delete"; ts: string; data?: Record<string, unknown> };
+
+/** Catálogos del paquete que se actualizan con los cambios (clave en el paquete). */
+const CATALOG_KEYS: Record<string, string> = { workers: "workers", sites: "sites", inspection_templates: "inspection_templates", ppe_items: "ppe_items", credentials: "credentials" };
+
+async function sealJson(value: unknown): Promise<{ iv: Uint8Array; data: ArrayBuffer }> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await key(), new TextEncoder().encode(JSON.stringify(value)));
+  return { iv, data };
+}
+
+async function openJson<T>(row: { iv: Uint8Array; data: ArrayBuffer } | undefined): Promise<T | null> {
+  if (!row) return null;
+  try {
+    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: row.iv as BufferSource }, await key(), row.data);
+    return JSON.parse(new TextDecoder().decode(plain)) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function putLocalRecord(entity: string, data: Record<string, unknown>): Promise<void> {
+  const sealed = await sealJson(data);
+  await tx("records", "readwrite", (s) => s.put({ id: `${entity}:${String(data.id)}`, entity, ...sealed }));
+}
+
+/** Registro guardado en el equipo (por ejemplo, el PETAR para verlo sin señal); null si no está. */
+export async function localRecord<T = Record<string, unknown>>(entity: string, id: string): Promise<T | null> {
+  if (!ctx) return null;
+  const row = await tx<{ iv: Uint8Array; data: ArrayBuffer } | undefined>("records", "readonly", (s) => s.get(`${entity}:${id}`)).catch(() => undefined);
+  return openJson<T>(row);
+}
+
+/** Registros de una entidad guardados en el equipo. */
+export async function localRecords<T = Record<string, unknown>>(entity: string): Promise<T[]> {
+  if (!ctx) return [];
+  const rows = await tx<{ id: string; entity: string; iv: Uint8Array; data: ArrayBuffer }[]>("records", "readonly", (s) => s.getAll()).catch(() => []);
+  const out = await Promise.all(rows.filter((r) => r.entity === entity).map((r) => openJson<T>(r)));
+  return out.filter((x): x is Awaited<T> => x !== null) as T[];
+}
+
+let pulling: Promise<number> | null = null;
+
+/** Trae los cambios del servidor desde la última marca y los aplica en el equipo. Devuelve cuántos cambios aplicó. */
+export function pullChanges(): Promise<number> {
+  if (!ctx?.enabled || (typeof navigator !== "undefined" && !navigator.onLine)) return Promise.resolve(0);
+  pulling ??= doPull().finally(() => { pulling = null; });
+  return pulling;
+}
+
+async function doPull(): Promise<number> {
+  const saved = await tx<{ id: string; since?: string } | undefined>("sync_state", "readonly", (s) => s.get("changes")).catch(() => undefined);
+  let since = saved?.since ?? null;
+  let applied = 0;
+  for (let page = 0; page < 50; page++) {
+    const qs = new URLSearchParams({ device_id: deviceUid(), limit: "500" });
+    if (since) qs.set("since", since);
+    let r: { data: { changes: Change[]; next_since: string; has_more: boolean } };
+    try {
+      r = await api<{ data: { changes: Change[]; next_since: string; has_more: boolean } }>(`/sync/changes?${qs}`, { withCompany: true });
+    } catch (e) {
+      if (e instanceof ApiError && e.type === "device_revoked") await wipeLocal();
+      throw e;
+    }
+    await applyChanges(r.data.changes);
+    applied += r.data.changes.length;
+    since = r.data.next_since;
+    await tx("sync_state", "readwrite", (s) => s.put({ id: "changes", since, pulled_at: new Date().toISOString() }));
+    if (!r.data.has_more) break;
+  }
+  return applied;
+}
+
+async function applyChanges(changes: Change[]): Promise<void> {
+  if (!changes.length) return;
+  const catalog = changes.filter((c) => c.entity in CATALOG_KEYS);
+  if (catalog.length) {
+    const row = await tx<{ id: string; iv: Uint8Array; data: ArrayBuffer; info?: OfflinePackageInfo } | undefined>("catalogs", "readonly", (s) => s.get("package")).catch(() => undefined);
+    const pkg = (await openJson<Record<string, Record<string, unknown>[]>>(row)) ?? {};
+    for (const c of catalog) {
+      const k = CATALOG_KEYS[c.entity];
+      const list = (pkg[k] ?? []).filter((x) => x.id !== c.id);
+      let data = c.data;
+      if (c.entity === "inspection_templates") {
+        // La plantilla llega con sus ítems: se reemplazan los del paquete.
+        const items = Array.isArray(c.data?.items) ? (c.data.items as Record<string, unknown>[]) : [];
+        pkg.inspection_template_items = [...(pkg.inspection_template_items ?? []).filter((x) => x.template_id !== c.id), ...(c.op === "upsert" ? items : [])];
+        if (data) data = Object.fromEntries(Object.entries(data).filter(([f]) => f !== "items"));
+      }
+      if (c.op === "upsert" && data) list.push(data);
+      pkg[k] = list;
+    }
+    const sealed = await sealJson(pkg);
+    await tx("catalogs", "readwrite", (s) => s.put({ id: "package", ...sealed, info: row?.info ?? { prepared_at: new Date().toISOString(), size_bytes: 0, counts: {}, scoped: false } }));
+  }
+  for (const c of changes.filter((x) => !(x.entity in CATALOG_KEYS))) {
+    if (c.op === "delete") await tx("records", "readwrite", (s) => s.delete(`${c.entity}:${c.id}`));
+    else if (c.data) await putLocalRecord(c.entity, c.data);
+  }
 }

@@ -50944,7 +50944,9 @@
      "included",
      "missing",
      "expired",
-     "not_applicable"
+     "not_applicable",
+     "excluded",
+     "pending_approval"
     ],
     "ref": null,
     "encrypted": false,
@@ -50967,6 +50969,39 @@
     "type": "integer",
     "not_null": true,
     "default": "0",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "is_medical_certificate",
+    "type": "boolean",
+    "not_null": true,
+    "default": "false",
+    "values": null,
+    "ref": null,
+    "encrypted": false,
+    "generated": null,
+    "comment": "constancia de aptitud médica: entra al expediente solo con la aprobación del médico ocupacional (RN-SUN-07)"
+   },
+   {
+    "name": "approved_by",
+    "type": "uuid",
+    "not_null": false,
+    "default": null,
+    "values": null,
+    "ref": "users.id",
+    "encrypted": false,
+    "generated": null,
+    "comment": null
+   },
+   {
+    "name": "approved_at",
+    "type": "timestamptz",
+    "not_null": false,
+    "default": null,
     "values": null,
     "ref": null,
     "encrypted": false,

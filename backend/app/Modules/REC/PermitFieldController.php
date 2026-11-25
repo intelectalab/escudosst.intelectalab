@@ -37,7 +37,7 @@ class PermitFieldController extends Controller
         return response()->json(['data' => [
             'requires_gas_test' => (bool) DB::selectOne('select requires_gas_test from permit_types where id = ?', [$p->permit_type_id])?->requires_gas_test,
             'gas_limits' => self::gasLimits(),
-            'can_suspend' => $p->status === 'active' && $this->maySuspend($p),
+            'can_suspend' => $p->status === 'active' && self::maySuspend($p),
         ]]);
     }
 
@@ -45,7 +45,7 @@ class PermitFieldController extends Controller
     {
         $this->canRead();
         $p = $this->permit($id);
-        if (! $this->maySuspend($p)) {
+        if (! self::maySuspend($p)) {
             throw ApiProblem::forbidden('Suspende el permiso quien participa en él (solicitante, ejecutante o vigía) o la supervisión SST.');
         }
         if ($p->status !== 'active') {
@@ -134,7 +134,7 @@ class PermitFieldController extends Controller
     }
 
     /** RN-PTR-06: cualquier participante puede suspender; quien edita permisos también. */
-    private function maySuspend(object $p): bool
+    public static function maySuspend(object $p): bool
     {
         $mine = Permissions::effective();
         if (in_array('ptr.work_permits.update', $mine, true)) {

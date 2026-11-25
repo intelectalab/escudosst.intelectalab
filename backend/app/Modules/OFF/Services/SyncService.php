@@ -37,7 +37,21 @@ class SyncService
         'ppe_deliveries' => 'EPP',
         'training_attendances' => 'CAP',
         'drill_participants' => 'SIM',
+        // M-OFF §12: eventos (accidentes, incidentes) con sus personas afectadas y testigos.
+        'sst_events' => 'ACC',
+        'event_people' => 'ACC',
+        // docs/16 §2 PTR en campo: verificación de condiciones; inicio, suspensión y cierre como edición del permiso.
+        'work_permits' => 'PTR',
+        'permit_checks' => 'PTR',
     ];
+
+    /**
+     * docs/16 §2: del PETAR en campo, sin conexión solo se inicia (con la medición de gases), se suspende o se cierra; la
+     * solicitud y la cadena de aprobación se hacen en línea. Campos que admite la edición offline del permiso.
+     */
+    private const PERMIT_FIELD_STATUSES = ['active', 'suspended', 'closed'];
+
+    private const PERMIT_FIELD_KEYS = ['status', 'gas_measurements', 'suspended_reason', 'closure_notes', 'area_left_safe'];
 
     /** Asistencias y participantes: la misma persona dos veces en el mismo registro se marca para revisión. */
     private const APPEND_ONLY = [
@@ -45,6 +59,7 @@ class SyncService
         'training_attendances' => 'session_id',
         'ats_participants' => 'ats_form_id',
         'drill_participants' => 'drill_id',
+        'event_people' => 'event_id',
     ];
 
     public function __construct(private RecordsService $records, private InspectionService $inspections) {}
@@ -261,7 +276,11 @@ class SyncService
                 // Plan y permisos de hoy (si se retiraron, se rechaza con motivo y queda en el dispositivo).
                 app(FeatureGate::class)->handle(request(), fn () => new Response, $module);
                 $res = $entity === 'inspection_answers' ? Registry::resource('INS', 'inspections') : Registry::resource($module, $entity);
-                $this->records->authorize($res, $entity === 'inspection_answers' ? 'update' : $kind);
+                if ($entity === 'work_permits') {
+                    $this->permitField($kind, $clientId, $payload, $res);
+                } else {
+                    $this->records->authorize($res, $entity === 'inspection_answers' ? 'update' : $kind);
+                }
 
                 if ($kind === 'update') {
                     return $this->update($base, $res, $this->translateId($clientId), $op['base_version'] ?? null, $payload, $op);
@@ -288,6 +307,26 @@ class SyncService
 
             return $this->store($base, 'rejected', null, trim($reason));
         }
+    }
+
+    /**
+     * PETAR en campo sin conexión (docs/16 §2): solo inicio, suspensión o cierre de un permiso ya aprobado. La suspensión la
+     * hace también un participante con «ptr.work_permits.suspend» (RN-PTR-06), como en línea; lo demás exige editar permisos.
+     */
+    private function permitField(string $kind, ?string $id, array $payload, array $res): void
+    {
+        if ($kind !== 'update') {
+            throw new ApiProblem(422, 'validation_failed', 'Se hace en línea', 'La solicitud y la aprobación del permiso se hacen con conexión.');
+        }
+        $extra = array_diff(array_keys($payload), self::PERMIT_FIELD_KEYS);
+        if ($extra || ! in_array($payload['status'] ?? null, self::PERMIT_FIELD_STATUSES, true)) {
+            throw new ApiProblem(422, 'validation_failed', 'Se hace en línea', 'Sin conexión el permiso solo se inicia, se suspende o se cierra; el resto se hace con conexión.');
+        }
+        $p = $id ? DB::selectOne('select id, status, requested_by, executor_leader_worker_id, crew from work_permits where id = ? and deleted_at is null', [$this->translateId($id)]) : null;
+        if ($p && $payload['status'] === 'suspended' && \App\Modules\REC\PermitFieldController::maySuspend($p)) {
+            return;
+        }
+        $this->records->authorize($res, 'update');
     }
 
     private function update(array $base, array $res, ?string $id, mixed $baseVersion, array $payload, array $op): array

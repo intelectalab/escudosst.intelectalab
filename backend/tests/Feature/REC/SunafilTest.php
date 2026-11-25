@@ -10,14 +10,14 @@ it('arma el expediente con lo incluido y lo que falta', function () {
     $h = authHeaders(tokenFor(PROFESIONAL_EMAIL), ANDINAS_ID);
     $d = $this->postJson('/api/v1/records/SUN/inspection_dossiers', ['title' => 'Inspección SUNAFIL 2026', 'period_from' => '2026-01-01', 'period_to' => '2026-12-31'], $h)
         ->assertCreated()->json('data.id');
-    $res = $this->postJson("/api/v1/sun/dossiers/{$d}/build", [], $h)->assertOk();
+    $res = sunBuild($d, [], $h);
     expect($res->json('data.total'))->toBeGreaterThanOrEqual(14)->and($res->json('data.gaps'))->toBeGreaterThan(0);
     $titles = collect($res->json('data.items'))->pluck('title')->implode(' | ');
     expect($titles)->toContain('Política de SST vigente')->toContain('Matrices IPERC');
     $this->getJson("/api/v1/records/SUN/inspection_dossiers/{$d}", $h)->assertJsonPath('data.status', 'ready_with_gaps');
     expect($this->getJson("/api/v1/records/SUN/dossier_items?f[dossier_id]={$d}&per_page=100", $h)->json('meta.total'))->toBe($res->json('data.total'));
     // Volver a armarlo no duplica.
-    $this->postJson("/api/v1/sun/dossiers/{$d}/build", [], $h)->assertOk();
+    sunBuild($d, [], $h);
     expect($this->getJson("/api/v1/records/SUN/dossier_items?f[dossier_id]={$d}&per_page=100", $h)->json('meta.total'))->toBe($res->json('data.total'));
 });
 
@@ -28,7 +28,7 @@ it('arma el expediente de un trabajador y lo comparte con un enlace que vence y 
 
     // Compartir antes de armar: no.
     $this->postJson("/api/v1/sun/dossiers/{$d}/share", ['days' => 5], $h)->assertStatus(409);
-    $r = $this->postJson("/api/v1/sun/dossiers/{$d}/build", ['worker_id' => $w], $h)->assertOk();
+    $r = sunBuild($d, ['worker_id' => $w], $h);
     expect($r->json('data.worker.name'))->toBe('Pedro Inspeccionado')
         ->and(collect($r->json('data.items'))->pluck('code')->all())->toContain('W1', 'W3', 'W6', '16');
 

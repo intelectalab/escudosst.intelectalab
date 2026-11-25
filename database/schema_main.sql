@@ -6032,9 +6032,12 @@ CREATE TABLE IF NOT EXISTS dossier_items (
   source_type text,
   source_id uuid,
   file_id uuid,
-  status text NOT NULL DEFAULT 'included' CHECK (status IN ('included', 'missing', 'expired', 'not_applicable')),
+  status text NOT NULL DEFAULT 'included' CHECK (status IN ('included', 'missing', 'expired', 'not_applicable', 'excluded', 'pending_approval')),
   gap_description text,
   sort_order integer NOT NULL DEFAULT 0,
+  is_medical_certificate boolean NOT NULL DEFAULT false,
+  approved_by uuid,
+  approved_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -6044,6 +6047,8 @@ CREATE TABLE IF NOT EXISTS dossier_items (
   CONSTRAINT uq_dossier_items_company_id_id UNIQUE (company_id, id)
 );
 COMMENT ON TABLE dossier_items IS '[SUN] Documento o registro incluido (o faltante) en el expediente';
+COMMENT ON COLUMN dossier_items.is_medical_certificate IS 'constancia de aptitud médica: entra al expediente solo con la aprobación del médico ocupacional (RN-SUN-07)';
+COMMENT ON COLUMN dossier_items.approved_by IS 'médico ocupacional que aprobó incluir la constancia de aptitud';
 
 -- SUN · dossier_share_links (company, definer)
 CREATE TABLE IF NOT EXISTS dossier_share_links (
@@ -10561,6 +10566,7 @@ ALTER TABLE dossier_items ADD CONSTRAINT fk_dossier_items_file_id FOREIGN KEY (c
 CREATE INDEX IF NOT EXISTS idx_dossier_items_fk_file_id ON dossier_items (company_id, file_id);
 ALTER TABLE dossier_items ADD CONSTRAINT fk_dossier_items_created_by FOREIGN KEY (created_by) REFERENCES users (id);
 ALTER TABLE dossier_items ADD CONSTRAINT fk_dossier_items_updated_by FOREIGN KEY (updated_by) REFERENCES users (id);
+ALTER TABLE dossier_items ADD CONSTRAINT fk_dossier_items_approved_by FOREIGN KEY (approved_by) REFERENCES users (id);
 ALTER TABLE dossier_share_links ADD CONSTRAINT fk_dossier_share_links_company_id FOREIGN KEY (company_id) REFERENCES companies (id);
 ALTER TABLE dossier_share_links ADD CONSTRAINT fk_dossier_share_links_dossier_id FOREIGN KEY (company_id, dossier_id) REFERENCES inspection_dossiers (company_id, id);
 CREATE INDEX IF NOT EXISTS idx_dossier_share_links_fk_dossier_id ON dossier_share_links (company_id, dossier_id);
