@@ -17,7 +17,8 @@ use Illuminate\Support\Str;
  *  GET /cap/certificates/{id}/print       datos para imprimir el certificado con su QR (con sesión)
  *  GET /fot/credentials/{id}/print        datos para imprimir el fotocheck con su QR (con sesión)
  *  GET /public/verify/certificate/{code}  verificación pública (sin sesión; responde igual a inexistentes y no públicos)
- *  GET /public/verify/credential/{token}  verificación pública del fotocheck en la garita
+ *  GET /public/verify/credential/{token}  verificación pública del fotocheck en la garita (límite credential_verify_rate_limit, RN-FOT-06)
+ *  GET /public/verify/company/{company}   página pública de verificación de la empresa (SCR-CAP-12/13): nombre, texto propio y si está activa
  * Cada verificación pública queda registrada (funciones public_verify_* de la base).
  */
 class PrintController extends Controller
@@ -45,7 +46,10 @@ class PrintController extends Controller
             // Firma de quien validó el certificado (si guardó su firma en «Mi firma»): se pega sola en el certificado.
             'signature' => \App\Modules\FIR\SignatureImages::userDataUrl($c->validated_by),
             'signer_name' => $c->validated_by ? DB::selectOne('select full_name from users where id = ?', [$c->validated_by])?->full_name : null,
-            'verify_url' => rtrim((string) config('escudo.frontend_url'), '/').'/verificar/certificado/'.$c->verification_code,
+            // SCR-CAP-12: el QR lleva a la verificación desde la página de la empresa (su texto y su límite de consultas).
+            'verify_url' => rtrim((string) config('escudo.frontend_url'), '/').'/verificar/certificado/'.$c->verification_code.'?empresa='.$c->company_id,
+            // SCR-CAP-11: diseño de la plantilla del certificado (textos, firmantes, logo, QR, horas y nota).
+            'template' => self::template($c->certificate_template_id),
         ]]);
     }
 
@@ -92,6 +96,41 @@ class PrintController extends Controller
         }
 
         return response()->json(['data' => $data]);
+    }
+
+    /** SCR-CAP-12/13: datos de la página pública de verificación de una empresa (sin datos de personas). */
+    public function verifyPage(string $company): JsonResponse
+    {
+        $c = DB::transaction(function () use ($company) {
+            \App\Core\Tenancy\DbContext::setCompany($company);
+
+            return DB::selectOne("select coalesce(trade_name, legal_name) as name from companies where id = ? and deleted_at is null and status = 'active'", [$company]);
+        });
+        if (! $c) {
+            return response()->json(['data' => ['result' => 'invalid']]);
+        }
+        $on = filter_var(\App\Core\Support\LegalParams::forCompany($company, 'certificate_public_verification'), FILTER_VALIDATE_BOOLEAN);
+
+        return response()->json(['data' => ['result' => 'ok', 'company' => $c->name, 'enabled' => $on,
+            'text' => $on ? trim((string) \App\Core\Support\LegalParams::forCompany($company, 'certificate_verification_page_text')) : '']]);
+    }
+
+    /** Campos de diseño de la plantilla del certificado; null si el certificado no tiene plantilla (diseño estándar). */
+    public static function template(?string $id): ?array
+    {
+        $t = $id ? DB::selectOne('select orientation, paper_size, body_template, logo_file_id, background_file_id, signatory_name, signatory_title, signature_file_id,
+                                         second_signatory_name, second_signatory_title, second_signature_file_id, shows_qr, shows_hours, shows_score, layout
+                                    from certificate_templates where id = ?', [$id]) : null;
+        if (! $t) {
+            return null;
+        }
+        $a = (array) $t;
+        $a['layout'] = json_decode((string) $t->layout, true) ?: [];
+        foreach (['shows_qr', 'shows_hours', 'shows_score'] as $k) {
+            $a[$k] = (bool) $t->{$k};
+        }
+
+        return $a;
     }
 
     public function verifyCredential(Request $request, string $token): JsonResponse

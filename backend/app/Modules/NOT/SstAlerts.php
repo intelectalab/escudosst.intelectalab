@@ -275,6 +275,36 @@ final class SstAlerts
         return false;
     }
 
+    /**
+     * M-SIM RN-SIM-03 (misma regla que FieldOpsRules::brigadeTrainingValid, sin capacitación elegida en el integrante): condición SQL de
+     * «la capacitación {$t} sirve para la brigada {$b}»: las del parámetro «brigade_required_trainings» para su tipo (o «*»), por código o
+     * id; sin entrada para el tipo, cualquier «Entrenamiento de simulacro».
+     */
+    private static function brigadeTrainingSql(string $t, string $b): string
+    {
+        $map = json_decode(\App\Core\Support\LegalParams::text('brigade_required_trainings', '{}'), true);
+        $map = is_array($map) ? $map : [];
+        $refs = function ($list) use ($t): string {
+            $vals = array_values(array_filter(array_map(fn ($r) => is_string($r) ? preg_replace('/[^A-Za-z0-9_.\-]/', '', $r) : '', (array) $list)));
+            if (! $vals) {
+                return 'false';
+            }
+            $arr = "array['".implode("','", $vals)."']::text[]";
+
+            return "({$t}.code = any({$arr}) or {$t}.id::text = any({$arr}))";
+        };
+        $default = array_key_exists('*', $map) ? $refs($map['*']) : "{$t}.training_type = 'drill_training'";
+        $when = '';
+        foreach ($map as $type => $list) {
+            if ($type === '*' || ! is_string($type) || ! preg_match('/^[a-z_]+$/', $type)) {
+                continue;
+            }
+            $when .= " when {$b}.brigade_type = '{$type}' then ".$refs($list);
+        }
+
+        return $when === '' ? "({$default})" : "(case{$when} else {$default} end)";
+    }
+
     private static function days(string $key, int $default): int
     {
         return max(0, (int) \App\Core\Support\LegalParams::number($key, $default));
@@ -519,12 +549,26 @@ final class SstAlerts
                        from brigades b where b.deleted_at is null and b.status = 'active'
                         and (b.leader_worker_id is null or (select count(*) from brigade_members m where m.brigade_id = b.id and m.status = 'active' and m.deleted_at is null) < ".max(1, self::days('min_brigade_members', 2)).')',
                 'sim.brigade_incomplete', 'normal', 'Brigada incompleta', fn ($r) => "La brigada «{$r->ref}» está sin líder o bajo el mínimo de miembros.", '/m/sim?t=brigades&open=', ['sst_manager'], false],
-            // M-SIM RN-SIM-03: brigadista activo cuya capacitación de brigada venció → Jefe SST (al vencer).
+            // M-SIM RN-SIM-03: brigadista activo cuya capacitación de brigada venció → Jefe SST (al vencer). La capacitación es la elegida en
+            // el integrante o, sin ella, la exigida por el tipo de brigada (FieldOpsRules::brigadeTrainingValid): se avisa cuando ninguna sigue vigente.
             ['SIM', "select m.id, w.full_name as ref, t.title as name, null as owner, max(c.expires_on) as due, 'brigadist' as kind
                        from brigade_members m join workers w on w.id = m.worker_id join trainings t on t.id = m.training_id
                        join training_certificates c on c.worker_id = m.worker_id and c.training_id = m.training_id and c.deleted_at is null and c.status in ('validated', 'expired')
                       where m.deleted_at is null and m.status = 'active'
                       group by m.id, w.full_name, t.title
+                     having max(coalesce(c.expires_on, 'infinity'::date)) < current_date
+                     union all
+                     select m.id, w.full_name as ref, (array_agg(t.title order by c.expires_on desc))[1] as name, null as owner, max(c.expires_on) as due, 'brigadist' as kind
+                       from brigade_members m join brigades b on b.id = m.brigade_id join workers w on w.id = m.worker_id
+                       join training_certificates c on c.worker_id = m.worker_id and c.deleted_at is null and c.status in ('validated', 'expired')
+                       join trainings t on t.id = c.training_id and t.deleted_at is null and ".self::brigadeTrainingSql('t', 'b')."
+                      where m.deleted_at is null and m.status = 'active' and m.training_id is null
+                        and not exists (select 1 from training_attendances a join training_sessions s on s.id = a.session_id and s.deleted_at is null
+                                          join trainings t2 on t2.id = s.training_id and t2.deleted_at is null and ".self::brigadeTrainingSql('t2', 'b')."
+                                         where a.worker_id = m.worker_id and a.attended and a.deleted_at is null
+                                           and not exists (select 1 from training_certificates c2 where c2.worker_id = a.worker_id and c2.training_id = s.training_id
+                                                            and c2.deleted_at is null and c2.status in ('validated', 'expired') and c2.expires_on < current_date))
+                      group by m.id, w.full_name
                      having max(coalesce(c.expires_on, 'infinity'::date)) < current_date",
                 'sim.brigadist_training', 'normal', 'Capacitación de brigada vencida', fn ($r) => "La capacitación «{$r->name}» de {$r->ref} venció el ".date('d/m/Y', strtotime($r->due)).': renuévala para que siga en la brigada.', '/m/sim?t=brigade_members&open=', ['sst_manager'], false],
             // M-VTA §10: cupos sin asignar por vencer → representante de la empresa compradora, license_assign_notice_days antes.
@@ -703,15 +747,26 @@ final class SstAlerts
                       where e.deleted_at is null and e.status = 'approved' and e.valid_until between current_date and current_date + ".(int) \App\Core\Support\LegalParams::number('vendor_notice_days', 30),
                 'hom.expiring', 'normal', 'Homologación de proveedor por vencer', fn ($r) => "La homologación de {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.', '/m/hom?t=vendor_evaluations&open=', self::SST_ROLES, false],
             // M-FOT §10: fotocheck por vencer → trabajador y jefe del área (credential_expiry_notice_days).
-            // RN-FOT-12: si el aula ya recomendó la recapacitación a la persona, el aviso la menciona (la persona la ve en «Mis cursos»).
-            ['FOT', "select c.id, c.credential_number as ref, coalesce((select co.title from course_recommendations cr join courses co on co.id = cr.course_id
-                                                                         where cr.worker_id = c.worker_id and cr.deleted_at is null and cr.status in ('suggested', 'sent', 'viewed', 'clicked')
-                                                                         order by cr.created_at desc limit 1), '') as name,
+            // RN-FOT-12: si el aula ya recomendó la recapacitación de un requisito de capacitación de ese fotocheck (regla «certificado por
+            // vencer» del curso que cumple el tema exigido), el aviso la menciona y enlaza a esa recomendación (la persona la ve en «Mis capacitaciones»).
+            ['FOT', "select c.id, c.credential_number as ref, coalesce(rec.title, '') as name, rec.id as rec_id,
+                            case when rec.id is not null then '/m/aul?t=course_recommendations&open=' || rec.id end as link,
+                            case when rec.id is not null then '/mi/capacitaciones' end as worker_link,
                             (select mw.user_id from areas ar join workers mw on mw.id = ar.manager_worker_id where ar.id = w.current_area_id) as owner, c.worker_id as worker, c.expires_on as due, 'fot' as kind
                        from credentials c left join workers w on w.id = c.worker_id
+                       left join lateral (select cr.id, co.title from course_recommendations cr join courses co on co.id = cr.course_id
+                                           where cr.worker_id = c.worker_id and cr.deleted_at is null and cr.reason_code = 'certificate_expiring'
+                                             and cr.status in ('suggested', 'sent', 'viewed', 'clicked')
+                                             and exists (select 1 from credential_requirements q join trainings t on t.id = q.training_id and t.deleted_at is null
+                                                          where q.credential_type_id = c.credential_type_id and q.deleted_at is null and q.training_id is not null
+                                                            and (q.position_id is null or q.position_id = w.current_position_id)
+                                                            and (t.course_id = cr.course_id
+                                                                 or exists (select 1 from training_certificates tc where tc.worker_id = c.worker_id and tc.training_id = q.training_id
+                                                                              and tc.course_id = cr.course_id and tc.deleted_at is null)))
+                                           order by cr.created_at desc limit 1) rec on true
                       where c.deleted_at is null and c.status = 'active' and c.expires_on between current_date and current_date + ".self::days('credential_expiry_notice_days', 15),
                 'fot.expiring', 'low', 'Fotocheck por vencer', fn ($r) => "El fotocheck {$r->ref} vence el ".date('d/m/Y', strtotime($r->due)).'.'.($r->name !== '' ? " Recapacitación recomendada: «{$r->name}»." : ''), '/m/fot?t=credentials&open=', [], false,
-                fn ($r) => 'Tu fotocheck vence el '.date('d/m/Y', strtotime($r->due)).'.'.($r->name !== '' ? " Te recomendamos el curso «{$r->name}»: lo encuentras en Mis cursos." : '')],
+                fn ($r) => 'Tu fotocheck vence el '.date('d/m/Y', strtotime($r->due)).'.'.($r->name !== '' ? " Te recomendamos el curso «{$r->name}»: lo encuentras en Mis capacitaciones." : '')],
             // M-CAP §10: capacitación por vencer → trabajador, jefe del área y Jefe SST (training_expiry_notice_days).
             ['CAP', "select c.id, c.holder_name as ref, c.course_title as name, (select mw.user_id from areas ar join workers mw on mw.id = ar.manager_worker_id where ar.id = w.current_area_id) as owner, c.worker_id as worker, c.expires_on as due, 'cert' as kind
                        from training_certificates c left join workers w on w.id = c.worker_id
@@ -844,7 +899,7 @@ final class SstAlerts
                     $db->selectOne(
                         'insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, title, body, link, priority, due_at, dedupe_key)
                          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id',
-                        [$company, $event, $module, $r->id, $user, $title, mb_substr($body($r), 0, 500), $link.$r->id, $priority, $r->due, $key]
+                        [$company, $event, $module, $r->id, $user, $title, mb_substr($body($r), 0, 500), ! empty($r->link) ? $r->link : $link.$r->id, $priority, $r->due, $key]
                     )->id;
                     $created++;
                 }
@@ -853,7 +908,7 @@ final class SstAlerts
                     $created += $db->affectingStatement(
                         'insert into notifications (company_id, event_code, subject_type, subject_id, recipient_user_id, recipient_worker_id, title, body, link, priority, due_at, dedupe_key)
                          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict do nothing',
-                        [$company, $event, $module, $r->id, $workerUser, $r->worker, $title, mb_substr($workerBody($r), 0, 500), '/mi', $priority, $r->due, $dedupe.':w:'.$r->worker]
+                        [$company, $event, $module, $r->id, $workerUser, $r->worker, $title, mb_substr($workerBody($r), 0, 500), ! empty($r->worker_link) ? $r->worker_link : '/mi', $priority, $r->due, $dedupe.':w:'.$r->worker]
                     );
                 }
             }

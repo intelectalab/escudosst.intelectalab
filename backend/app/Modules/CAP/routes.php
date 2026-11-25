@@ -10,6 +10,9 @@ Route::middleware(['auth:sanctum', 'company', 'module:CAP', 'permission:cap.trai
     // SCR-CAP-07: matriz por cargo desde Excel (plantilla, revisión y guardado).
     Route::get('matrix/template.xlsx', [\App\Modules\CAP\MatrixImportController::class, 'template']);
     Route::post('matrix/import', [\App\Modules\CAP\MatrixImportController::class, 'import']);
+    // SCR-CAP-07: propuesta de la matriz desde el IPERC y el PCA (se revisa y se aceptan las elegidas).
+    Route::get('matrix/proposals', [\App\Modules\CAP\MatrixImportController::class, 'proposals']);
+    Route::post('matrix/proposals', [\App\Modules\CAP\MatrixImportController::class, 'acceptProposals']);
     Route::post('sessions/{id}/invite', [\App\Modules\CAP\MatrixController::class, 'invite'])->whereUuid('id');
     Route::post('certificates/validate', [CertificatesController::class, 'validateBatch']);
     Route::post('trainings/{training}/certificates', [CertificatesController::class, 'issue'])->whereUuid('training');
@@ -22,7 +25,11 @@ Route::middleware(['auth:sanctum', 'company', 'module:FOT'])->get('fot/credentia
 Route::middleware('throttle:30,1')->prefix('public/verify')->group(function () {
     Route::get('certificate/{code}', [\App\Modules\CAP\PrintController::class, 'verifyCertificate'])->where('code', '[A-Za-z0-9-]{4,40}')
         ->withoutMiddleware('throttle:30,1')->middleware('throttle:cert-verify');
-    Route::get('credential/{token}', [\App\Modules\CAP\PrintController::class, 'verifyCredential'])->where('token', '[A-Za-z0-9]{8,64}');
+    Route::get('credential/{token}', [\App\Modules\CAP\PrintController::class, 'verifyCredential'])->where('token', '[A-Za-z0-9]{8,64}')
+        ->withoutMiddleware('throttle:30,1')->middleware('throttle:cred-verify');
+    // SCR-CAP-12/13: página pública de verificación de una empresa (nombre, texto propio y si está activa).
+    Route::get('company/{company}', [\App\Modules\CAP\PrintController::class, 'verifyPage'])->whereUuid('company')
+        ->withoutMiddleware('throttle:30,1')->middleware('throttle:cert-verify');
 });
 
 // Programa de capacitación (M-PCA SCR-PCA-01/03): vista anual temas × meses y matriz puesto × tema.
@@ -39,6 +46,7 @@ Route::middleware(['auth:sanctum', 'company', 'module:CAP'])->prefix('cap')->gro
     Route::get('expirations', [\App\Modules\CAP\CapToolsController::class, 'expirations']);
     Route::post('expirations/retrain', [\App\Modules\CAP\CapToolsController::class, 'retrain']);
     Route::get('reports.xlsx', [\App\Modules\CAP\CapToolsController::class, 'report']);
+    Route::get('report', [\App\Modules\CAP\CapToolsController::class, 'printable']);
     Route::get('verification', [\App\Modules\CAP\CapToolsController::class, 'verification']);
     Route::put('verification', [\App\Modules\CAP\CapToolsController::class, 'setVerification']);
     Route::get('sessions/{id}/trainer-check', [\App\Modules\CAP\CapToolsController::class, 'trainerCheck'])->whereUuid('id');

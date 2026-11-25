@@ -14172,6 +14172,29 @@
      "label": "Vigente hasta",
      "readonly": true,
      "type": "date"
+    },
+    {
+     "name": "source",
+     "label": "Fuente",
+     "type": "enum",
+     "options": [
+      {
+       "value": "manual",
+       "label": "Manual"
+      },
+      {
+       "value": "pca",
+       "label": "PCA"
+      },
+      {
+       "value": "iperc",
+       "label": "IPERC"
+      },
+      {
+       "value": "sector_package",
+       "label": "Paquete sectorial"
+      }
+     ]
     }
    ]
   },

@@ -42,8 +42,20 @@ class AppServiceProvider extends ServiceProvider
             ->by(($request->input('mfa_challenge_id') ?: $request->user()?->id ?: 'anon').'|'.$request->ip()));
 
         // M-CAP RN-CAP-14: consultas de verificación pública por IP y minuto (parámetro certificate_verify_rate_limit).
-        RateLimiter::for('cert-verify', fn (Request $request) => Limit::perMinute(max(1, (int) \App\Core\Support\LegalParams::number('certificate_verify_rate_limit', 30)))
-            ->by('cert-verify|'.$request->ip()));
+        // SCR-CAP-13: desde la página de una empresa (?empresa=), rige el límite que fijó esa empresa (o el global).
+        RateLimiter::for('cert-verify', function (Request $request) {
+            $company = (string) ($request->query('empresa') ?: $request->route('company') ?: '');
+            if (\Illuminate\Support\Str::isUuid($company)) {
+                $v = \App\Core\Support\LegalParams::forCompany($company, 'certificate_verify_rate_limit');
+
+                return Limit::perMinute(max(1, is_numeric($v) ? (int) $v : 30))->by('cert-verify|'.$company.'|'.$request->ip());
+            }
+
+            return Limit::perMinute(max(1, (int) \App\Core\Support\LegalParams::number('certificate_verify_rate_limit', 30)))->by('cert-verify|'.$request->ip());
+        });
+        // M-FOT RN-FOT-06: consultas de verificación pública del fotocheck por IP y minuto (parámetro credential_verify_rate_limit).
+        RateLimiter::for('cred-verify', fn (Request $request) => Limit::perMinute(max(1, (int) \App\Core\Support\LegalParams::number('credential_verify_rate_limit', 30)))
+            ->by('cred-verify|'.$request->ip()));
 
         // Límites con nombre del sitio y del panel: cada uno con su propio contador por persona (usuario o IP real).
         // En producción (THROTTLE_TRUST_INTERNAL=true) no cuentan las llamadas de la red interna de Docker: son las

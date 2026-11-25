@@ -18,19 +18,28 @@ const fmt = (d: string | null) => (d ? d.slice(0, 10).split("-").reverse().join(
 type Exp = { id: string; worker_id: string; full_name: string; position: string | null; area: string | null; site: string | null; training_id: string; training: string; expires_on: string; expired: boolean };
 
 export function CapTools({ readOnly }: { readOnly: boolean }) {
-  const [ver, setVer] = useState<{ enabled: boolean; trainings: { id: string; title: string }[]; can_edit: boolean } | null>(null);
+  const [ver, setVer] = useState<{ enabled: boolean; trainings: { id: string; title: string }[]; page_text: string; rate_limit: number; page_url: string; can_edit: boolean } | null>(null);
+  const [page, setPage] = useState({ page_text: "", rate_limit: "" });
   const [exp, setExp] = useState<{ days: number; rows: Exp[] } | null>(null);
   const [sel, setSel] = useState<Record<string, boolean>>({});
   const [form, setForm] = useState({ training_id: "", starts_at: "", ends_at: "" });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const load = useCallback(() => {
-    api<{ data: typeof ver }>("/cap/verification", { withCompany: true }).then((r) => setVer(r.data)).catch(() => setVer(null));
+    api<{ data: NonNullable<typeof ver> }>("/cap/verification", { withCompany: true }).then((r) => { setVer(r.data); setPage({ page_text: r.data.page_text ?? "", rate_limit: String(r.data.rate_limit ?? "") }); }).catch(() => setVer(null));
     api<{ data: { days: number; rows: Exp[] } }>("/cap/expirations", { withCompany: true }).then((r) => setExp(r.data)).catch(() => setExp(null));
   }, []);
   useEffect(() => { load(); }, [load]);
   const toggle = async () => {
     if (!ver) return;
     try { await api("/cap/verification", { method: "PUT", withCompany: true, body: { enabled: !ver.enabled } }); load(); } catch (e) { setMsg({ ok: false, text: err(e) }); }
+  };
+  const savePage = async () => {
+    setMsg(null);
+    try {
+      await api("/cap/verification", { method: "PUT", withCompany: true, body: { page_text: page.page_text, rate_limit: Number(page.rate_limit) } });
+      setMsg({ ok: true, text: "Se guardó la configuración de la página de verificación." });
+      load();
+    } catch (e) { setMsg({ ok: false, text: err(e) }); }
   };
   const chosen = (exp?.rows ?? []).filter((r) => sel[r.id] && (!form.training_id || r.training_id === form.training_id));
   const retrain = async () => {
@@ -46,7 +55,7 @@ export function CapTools({ readOnly }: { readOnly: boolean }) {
   return (
     <div className="space-y-4">
       {msg && <p role={msg.ok ? "status" : "alert"} className={`text-sm ${msg.ok ? "text-ok" : "text-bad"}`}>{msg.text}</p>}
-      <Card title="Vencimientos de certificados" action={<Button size="sm" icon="download" onClick={() => downloadFile("/cap/reports.xlsx", "reporte-capacitaciones.xlsx")}>Reporte en Excel</Button>}>
+      <Card title="Vencimientos de certificados" action={<div className="flex flex-wrap gap-2"><Button size="sm" icon="download" onClick={() => downloadFile("/cap/reports.xlsx", "reporte-capacitaciones.xlsx")}>Reporte en Excel</Button><Button size="sm" icon="file" onClick={() => window.open("/imprimir/reporte-capacitacion", "_blank")}>Reporte en PDF</Button></div>}>
         {!exp || exp.rows.length === 0 ? <p className="text-sm text-muted">No hay certificados vencidos ni por vencer en los próximos {exp?.days ?? 30} días.</p> : (
           <>
             <table className="w-full text-left text-sm">
@@ -76,6 +85,15 @@ export function CapTools({ readOnly }: { readOnly: boolean }) {
           <p className="text-sm">{ver.enabled ? "Activada: los certificados de los temas marcados como verificables se pueden consultar con su código o QR." : "Desactivada: nadie fuera de la empresa puede verificar los certificados."}</p>
           <p className="mt-1 text-xs text-muted">Temas verificables: {ver.trainings.length ? ver.trainings.map((t) => t.title).join(", ") : "ninguno (márcalos en cada capacitación)"}.</p>
           {ver.can_edit && !readOnly && <div className="mt-2"><Button size="sm" onClick={toggle}>{ver.enabled ? "Desactivar" : "Activar"} la verificación pública</Button></div>}
+          <p className="mt-2 text-xs text-muted">Página pública de la empresa: <a className="text-brand underline" href={ver.page_url} target="_blank" rel="noreferrer">{ver.page_url}</a></p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_12rem]">
+            <label className="text-xs text-muted">Texto de la página
+              <textarea className="input mt-1 min-h-20" maxLength={2000} disabled={!ver.can_edit || readOnly} value={page.page_text}
+                placeholder="Por ejemplo: «Consulta aquí la validez de los certificados emitidos por nuestra empresa.»" onChange={(e) => setPage({ ...page, page_text: e.target.value })} /></label>
+            <label className="text-xs text-muted">Límite de consultas por minuto (por IP)
+              <input type="number" min={1} max={600} className="input mt-1" disabled={!ver.can_edit || readOnly} value={page.rate_limit} onChange={(e) => setPage({ ...page, rate_limit: e.target.value })} /></label>
+          </div>
+          {ver.can_edit && !readOnly && <div className="mt-2"><Button size="sm" disabled={!page.rate_limit} onClick={savePage}>Guardar texto y límite</Button></div>}
         </Card>
       )}
     </div>
@@ -158,7 +176,7 @@ export function VmdIndicators() {
     </div>
   );
   return (
-    <Card title="Vigilancia médica (indicadores agregados)" action={<a href="/imprimir/vigilancia-medica" target="_blank" rel="noreferrer" className="text-sm font-semibold text-brand-strong underline">Informe</a>}>
+    <Card title="Vigilancia médica (indicadores agregados)" action={<div className="flex flex-wrap items-center gap-3"><a href="/imprimir/vigilancia-medica" target="_blank" rel="noreferrer" className="text-sm font-semibold text-brand-strong underline">Informe para imprimir</a><Button size="sm" icon="download" onClick={() => downloadFile("/vmd/report.xlsx", "vigilancia-medica-agregado.xlsx")}>Excel</Button></div>}>
       <div className="mb-3"><Kpi label="Casos en seguimiento" value={d.total != null ? String(d.total) : `Menos de ${d.min_group}`} /></div>
       <div className="grid gap-4 lg:grid-cols-2">{table("Por programa", d.by_program)}{table("Por área", d.by_area)}</div>
       <p className="mt-2 text-xs text-muted">Sin nombres ni datos médicos: solo conteos.</p>

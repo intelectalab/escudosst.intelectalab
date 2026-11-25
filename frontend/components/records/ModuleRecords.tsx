@@ -11,6 +11,7 @@ import { EvidencePicker } from "./EvidencePicker";
 import { PlanReferencePicker } from "./PlanReferencePicker";
 import { ModuleKpis } from "./ModuleKpis";
 import { SignaturePanel } from "./SignaturePanel";
+import { CertificateTemplateEditor } from "./CertificateTemplateEditor";
 import { EMPTY_CONSENT, PhotoCropInput, saveWorkerConsent, WorkerConsentField, type ConsentValue } from "./WorkerExtras";
 import { api, ApiError } from "@/lib/api";
 import { displayValue, downloadFile, isReserved, records, statusTone, toLocalInput, validityTone, type ModuleSchema, type RecordField, type RecordPage, type RecordResource, type RecordRow } from "@/lib/records";
@@ -539,7 +540,11 @@ export function RecordForm({
           note = ` No se registró el consentimiento: ${(ce as ApiError).detail ?? (ce as ApiError).title}. Regístralo desde la ficha.`;
         }
       }
-      onSaved(isNew ? `Registro creado.${note}` : "Cambios guardados.", saved.data);
+      // M-CAP RN-CAP-17: la sesión fuera del horario de trabajo de la sede se registra igual, con advertencia.
+      if (res.table === "training_sessions" && saved.data.out_of_hours) {
+        note += " Advertencia: la sesión queda fuera del horario de trabajo de la sede (sus turnos); las capacitaciones se dictan en horario de trabajo.";
+      }
+      onSaved(isNew ? `Registro creado.${note}` : `Cambios guardados.${note}`, saved.data);
     } catch (e) {
       const err = e as ApiError;
       setErrors(err.errors ?? {});
@@ -696,6 +701,12 @@ export function RecordForm({
                 </div>
               ))}
               {workerConsent && <WorkerConsentField value={consent} onChange={setConsent} disabled={!canEdit} />}
+              {res.table === "certificate_templates" && (
+                <CertificateTemplateEditor values={values} disabled={!canEdit} onInsert={(field, text) => {
+                  touched.current.add(field);
+                  setValues((x) => ({ ...x, [field]: `${String(x[field] ?? "")}${String(x[field] ?? "").endsWith(" ") || !x[field] ? "" : " "}${text}` }));
+                }} />
+              )}
             </div>
             {full && computed.length > 0 && (
               <div className="grid gap-3 rounded-xl bg-bg p-4 text-sm sm:grid-cols-2">

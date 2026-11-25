@@ -80,3 +80,34 @@ it('las áreas con menos casos que el grupo mínimo se suman a nivel de su sede 
     $names = collect($ind['by_area']['groups'])->pluck('cases', 'name');
     expect($names['Sede Planta Vigilancia (áreas con pocos casos)'] ?? null)->toBe(5)->and($names->has('Molienda'))->toBeFalse();
 });
+
+it('el informe agregado para el comité sale en pantalla y en Excel con abiertos y cerrados, sin nombres, y queda registrado (§11)', function () {
+    $sst = authHeaders(tokenFor(CORPORATIVO_EMAIL), HUAYLAS_ID);
+    $workers = [];
+    foreach (range(1, 5) as $i) {
+        $workers[] = $this->postJson('/api/v1/records/TRB/workers', ['document_number' => (string) random_int(65000000, 65999999), 'first_name' => "Informe{$i}", 'paternal_last_name' => 'Comite'], $sst)->json('data.id');
+    }
+    $doc = authHeaders(tokenFor(ESENCIAL_EMAIL), HUAYLAS_ID);
+    $m = $doc + ['X-Medical-Reauth' => medReauth('/api/v1/vmd/reauth', $doc, ESENCIAL_EMAIL)->assertOk()->json('data.reauth_id')];
+    $p = $this->postJson('/api/v1/vmd/programs', ['code' => 'VMD-INF', 'name' => 'Programa del informe', 'target_risk' => 'noise'], $m)->assertCreated()->json('data.id');
+    $cases = [];
+    foreach ($workers as $w) {
+        $cases[] = $this->postJson('/api/v1/vmd/cases', ['program_id' => $p, 'worker_id' => $w, 'risk_classification' => 'medium'], $m)->assertCreated()->json('data.id');
+    }
+    $this->patchJson("/api/v1/vmd/cases/{$cases[0]}", ['status' => 'closed', 'closure_reason' => 'Alta'], $m)->assertOk();
+
+    app('auth')->forgetGuards();
+    \App\Core\Auth\Permissions::flush();
+    // Sin clave médica: solo conteos.
+    $r = $this->getJson('/api/v1/vmd/report', $sst)->assertOk();
+    $g = collect($r->json('data.by_program.groups'))->firstWhere('name', 'Programa del informe');
+    expect($g)->toMatchArray(['cases' => 5, 'open' => 4, 'closed' => 1])->and($r->json('data.company.ruc'))->not->toBeEmpty()
+        ->and(json_encode($r->json()))->not->toContain('Informe1')->not->toContain('worker_id');
+    $x = $this->get('/api/v1/vmd/report.xlsx', $sst)->assertOk();
+    expect($x->headers->get('Content-Type'))->toContain('spreadsheetml');
+    // Ambas lecturas quedan en la bitácora de accesos médicos y la exportación en la bitácora de la empresa.
+    DB::connection('medical')->select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    expect((int) DB::connection('medical')->selectOne("select count(*) as n from medical_access_logs where purpose like 'Informe agregado%'")->n)->toBeGreaterThanOrEqual(2);
+    DB::select("select set_config('app.company_id', ?, false)", [HUAYLAS_ID]);
+    expect(DB::selectOne("select action from audit_logs where module_code = 'VMD' and changes->>'route' = 'vmd/report.xlsx' order by created_at desc limit 1")?->action)->toBe('export');
+});

@@ -3972,6 +3972,7 @@ CREATE TABLE IF NOT EXISTS position_training_requirements (
   legal_parameter_key text,
   notes text,
   is_active boolean NOT NULL DEFAULT true,
+  source text NOT NULL DEFAULT 'manual',
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -3979,6 +3980,7 @@ CREATE TABLE IF NOT EXISTS position_training_requirements (
   deleted_at timestamptz,
   PRIMARY KEY (id),
   CONSTRAINT uq_position_training_requirements_company_id_id UNIQUE (company_id, id),
+  CONSTRAINT ck_position_training_requirements_source CHECK (source IN ('manual', 'pca', 'iperc', 'sector_package')),
   CONSTRAINT ck_position_training_requirements_1 CHECK ((training_id IS NOT NULL) <> (course_id IS NOT NULL)),
   CONSTRAINT ck_position_training_requirements_2 CHECK (renewal_months IS NULL OR renewal_months > 0),
   CONSTRAINT ck_position_training_requirements_3 CHECK (due_within_days IS NULL OR due_within_days >= 0)
@@ -3988,6 +3990,7 @@ COMMENT ON COLUMN position_training_requirements.renewal_months IS 'NULL = no se
 COMMENT ON COLUMN position_training_requirements.due_within_days IS 'plazo interno de la empresa desde la asignación al puesto (configuración de la empresa)';
 COMMENT ON COLUMN position_training_requirements.auto_enroll IS 'al asignar un trabajador al puesto se matricula en el curso (origen position_assignment)';
 COMMENT ON COLUMN position_training_requirements.legal_parameter_key IS 'si la exigencia viene de un parámetro legal con vigencia';
+COMMENT ON COLUMN position_training_requirements.source IS 'origen de la fila: manual, PCA, IPERC o paquete sectorial (M-CAP §5)';
 
 -- AUL · courses (hybrid, module=AUL)
 CREATE TABLE IF NOT EXISTS courses (

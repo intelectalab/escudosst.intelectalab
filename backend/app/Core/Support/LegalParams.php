@@ -66,6 +66,30 @@ final class LegalParams
         return $v && trim((string) $v->value) !== '' ? trim((string) $v->value) : $default;
     }
 
+    /**
+     * Valor vigente de un parámetro para una empresa dada sin sesión (páginas públicas por empresa): el propio de la empresa o el
+     * global. Abre su propia transacción con el contexto de esa empresa (RLS); null si no hay parámetro vigente.
+     */
+    public static function forCompany(string $companyId, string $key): ?string
+    {
+        return DB::transaction(function () use ($companyId, $key) {
+            // Dentro de otra transacción (pruebas), SET LOCAL duraría hasta su fin: se restaura el valor previo.
+            $previous = DB::selectOne("select current_setting('app.company_id', true) as v")->v ?? '';
+            DB::select("select set_config('app.company_id', ?, true)", [$companyId]);
+            try {
+                $v = DB::selectOne(
+                    'select value from legal_parameters where key = ? and (company_id is null or company_id = ?) and valid_from <= current_date
+                        and (valid_to is null or valid_to >= current_date) and deleted_at is null order by company_id nulls last, valid_from desc limit 1',
+                    [$key, $companyId]
+                );
+            } finally {
+                DB::select("select set_config('app.company_id', ?, true)", [$previous]);
+            }
+
+            return $v?->value;
+        });
+    }
+
     /** Fija el valor propio de la empresa activa desde hoy (el anterior queda con vigencia hasta ayer). */
     public static function setForCompany(string $key, string $value): void
     {

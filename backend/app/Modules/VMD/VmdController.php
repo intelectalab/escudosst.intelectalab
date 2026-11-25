@@ -30,6 +30,10 @@ use Illuminate\Support\Str;
  *                                        «share_with_worker» queda visible para el trabajador en su app (SCR-VMD-03)
  *  GET   /vmd/indicators                 SCR-VMD-04 / RN-VMD-01: casos por programa y por área, agregados y sin nombres; un grupo con menos de
  *                                        min_group_size casos no se muestra (para SST y gerencia, sin datos de personas)
+ *  GET   /vmd/report · /vmd/report.xlsx  §11: informe agregado de vigilancia (sin nombres) para el comité y la revisión por la dirección:
+ *                                        casos, abiertos, cerrados, control vencido y riesgo alto por programa y por área, con las mismas reglas
+ *                                        de grupo mínimo; imprimible y Excel. Solo conteos (RN-VMD-01): no pide clave médica (RN-VMD-02 la exige
+ *                                        para casos y notas) y queda registrado como acceso agregado en medical_access_logs.
  *  PATCH /vmd/cases/{id} {work_restrictions} RN-VMD-05: la restricción funcional (sin diagnóstico) pasa a la aptitud vigente del trabajador
  *
  * Cada lectura o escritura de datos de personas se registra en medical_access_logs con la clave de re-autenticación.
@@ -328,6 +332,50 @@ class VmdController extends Controller
 
     public function indicators(): JsonResponse
     {
+        return response()->json(['data' => $this->aggregate('Indicadores agregados')]);
+    }
+
+    /** §11: informe agregado para imprimir (comité y revisión por la dirección). */
+    public function report(): JsonResponse
+    {
+        $d = $this->aggregate('Informe agregado (comité / revisión por la dirección)');
+        $c = DB::selectOne('select legal_name, ruc from companies where id = ?', [$this->company()]);
+
+        return response()->json(['data' => $d + ['company' => ['legal_name' => $c->legal_name, 'ruc' => trim((string) $c->ruc)], 'generated_at' => now('America/Lima')->toIso8601String()]]);
+    }
+
+    /** §11: el mismo informe agregado en Excel. */
+    public function reportXlsx(): \Illuminate\Http\Response
+    {
+        $d = $this->aggregate('Informe agregado en Excel (comité / revisión por la dirección)');
+        $c = DB::selectOne('select legal_name, ruc from companies where id = ?', [$this->company()]);
+        $out = [['VIGILANCIA MÉDICA OCUPACIONAL · INFORME AGREGADO'], ["{$c->legal_name} · RUC ".trim((string) $c->ruc)],
+            ['Generado: '.now('America/Lima')->format('d/m/Y H:i').' · casos en seguimiento: '.($d['total'] ?? "menos de {$d['min_group']}")], [],
+            ['Grupo', 'Casos', 'Abiertos', 'Cerrados', 'Control vencido', 'Riesgo alto']];
+        foreach (['by_program' => 'POR PROGRAMA', 'by_area' => 'POR ÁREA'] as $k => $t) {
+            $out[] = [$t];
+            foreach ($d[$k]['groups'] as $g) {
+                $out[] = [$g['name'], $g['cases'], $g['open'], $g['closed'], $g['overdue'], $g['high']];
+            }
+            if ($d[$k]['hidden'] > 0) {
+                $out[] = ["{$d[$k]['hidden']} grupo(s) con menos de {$d['min_group']} casos no se muestran para proteger la identidad."];
+            }
+            $out[] = [];
+        }
+        $out[] = ['Informe anónimo: no contiene nombres, documentos ni datos médicos de ninguna persona.'];
+
+        return response(\App\Core\Support\Xlsx::build('Vigilancia', $out, 5), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="vigilancia-medica-agregado.xlsx"',
+        ]);
+    }
+
+    /**
+     * SCR-VMD-04 / RN-VMD-01: casos por programa y por área, solo conteos; un grupo con menos de min_group_size casos no se muestra y
+     * un área con pocos casos se suma a su sede. Cada lectura queda en medical_access_logs con su motivo.
+     */
+    private function aggregate(string $reason): array
+    {
         $role = DB::selectOne('select coalesce(base_role_code, code) as c from roles where code = ? limit 1', [app(CompanyContext::class)->roleCode])?->c;
         if (! in_array('vmd.surveillance_programs.read', Permissions::effective(), true) && ! in_array($role, ['sst_manager', 'management'], true)) {
             throw ApiProblem::forbidden('Tu rol no ve los indicadores de vigilancia médica.');
@@ -335,10 +383,10 @@ class VmdController extends Controller
         $min = (int) \App\Core\Support\LegalParams::number('min_group_size', 5);
         $db = DB::connection('medical');
         // Solo conteos: la sesión de lectura es propia de esta consulta y queda registrada como acceso agregado.
-        $rows = $db->transaction(function () use ($db) {
+        $rows = $db->transaction(function () use ($db, $reason) {
             $db->select("select set_config('app.company_id', ?, true), set_config('app.user_id', ?, true), set_config('app.reauth_session_id', ?, true)",
                 [$this->company(), $this->uid(), (string) Str::uuid()]);
-            $db->select('select med_log_access(?, null, ?, null, ?, ?, ?::inet)', ['surveillance_program', 'read', app(CompanyContext::class)->roleCode, 'Indicadores agregados', request()->ip()]);
+            $db->select('select med_log_access(?, null, ?, null, ?, ?, ?::inet)', ['surveillance_program', 'read', app(CompanyContext::class)->roleCode, $reason, request()->ip()]);
 
             return $db->select("select p.name as program, c.worker_id, c.status, c.risk_classification, (c.next_control_on < current_date) as overdue
                                   from surveillance_cases c join surveillance_programs p on p.id = c.program_id where c.deleted_at is null and p.deleted_at is null");
@@ -362,9 +410,10 @@ class VmdController extends Controller
             $g = [];
             foreach ($rows as $r) {
                 $k = $key($r);
-                $g[$k] ??= ['name' => $k, 'cases' => 0, 'open' => 0, 'overdue' => 0, 'high' => 0];
+                $g[$k] ??= ['name' => $k, 'cases' => 0, 'open' => 0, 'closed' => 0, 'overdue' => 0, 'high' => 0];
                 $g[$k]['cases']++;
                 $g[$k]['open'] += $r->status !== 'closed' ? 1 : 0;
+                $g[$k]['closed'] += $r->status === 'closed' ? 1 : 0;
                 $g[$k]['overdue'] += $r->status !== 'closed' && $r->overdue ? 1 : 0;
                 $g[$k]['high'] += $r->risk_classification === 'high' ? 1 : 0;
             }
@@ -374,8 +423,8 @@ class VmdController extends Controller
         };
         $total = count($rows);
 
-        return response()->json(['data' => ['min_group' => $min, 'total' => $total >= $min ? $total : null,
-            'by_program' => $group(fn ($r) => $r->program), 'by_area' => $group(fn ($r) => $areas[$r->worker_id] ?? 'Sin área')]]);
+        return ['min_group' => $min, 'total' => $total >= $min ? $total : null,
+            'by_program' => $group(fn ($r) => $r->program), 'by_area' => $group(fn ($r) => $areas[$r->worker_id] ?? 'Sin área')];
     }
 
     public function showCase(Request $request, string $id): JsonResponse

@@ -296,6 +296,7 @@ function RecordActionsInner({
     return (
       <div className="space-y-3">
         <TrainerWarning row={row} />
+        {!!row.out_of_hours && <p className="rounded-lg bg-amber-soft px-3 py-2 text-sm text-amber-ink">Sesión fuera del horario de trabajo de la sede: quedó registrada con advertencia (RN-CAP-17).</p>}
         <SessionHeld row={row} canEdit={res.can.update} onChanged={onChanged} />
       </div>
     );

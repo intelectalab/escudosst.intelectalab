@@ -11,6 +11,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Card, Dot, Kpi, fmtNum, toneOf, TONE_CHIP } from "./Summary";
 import { CapCompliance, CapToValidate } from "./CapCompliance";
 import { CapMatrixImport } from "./CapMatrixImport";
+import { CapMatrixProposals } from "./CapMatrixProposals";
 
 type Matrix = {
   positions: { id: string; name: string; workers: number }[];
@@ -125,6 +126,7 @@ export function CapMatrix() {
           ))}
       </Card>
       <CapMatrixImport onSaved={() => setTick((t) => t + 1)} />
+      <CapMatrixProposals onSaved={() => setTick((t) => t + 1)} />
       <CapToValidate />
       <CapCompliance />
     </div>

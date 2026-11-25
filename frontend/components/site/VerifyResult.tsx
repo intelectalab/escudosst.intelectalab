@@ -32,14 +32,14 @@ const POL: Record<string, [string, string]> = {
 
 const d = (v: unknown) => (v ? String(v).slice(0, 10).split("-").reverse().join("/") : "—");
 
-export function VerifyResult({ kind, code }: { kind: "certificate" | "credential" | "policy"; code: string }) {
+export function VerifyResult({ kind, code, company }: { kind: "certificate" | "credential" | "policy"; code: string; company?: string }) {
   const [r, setR] = useState<Result | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
-    api<{ data: Result }>(`/public/verify/${kind}/${kind === "policy" ? code.split("/").map(encodeURIComponent).join("/") : encodeURIComponent(code)}`)
+    api<{ data: Result }>(`/public/verify/${kind}/${kind === "policy" ? code.split("/").map(encodeURIComponent).join("/") : encodeURIComponent(code)}${company && kind === "certificate" ? `?empresa=${encodeURIComponent(company)}` : ""}`)
       .then((x) => setR(x.data))
       .catch(() => setError(true));
-  }, [kind, code]);
+  }, [kind, code, company]);
 
   const map = kind === "certificate" ? CERT : kind === "policy" ? POL : CRED;
   if (error) return <p className="site-card p-6">No pudimos verificar en este momento. Inténtalo de nuevo en unos minutos.</p>;

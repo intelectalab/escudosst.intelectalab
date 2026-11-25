@@ -2037,7 +2037,9 @@
   "void": "Anulación",
   "pending_management": "Pendiente de gerencia",
   "on_source_record": "Al registrarse en el módulo origen (mismo mes, sede y área)",
-  "exposure": "Por exposición"
+  "exposure": "Por exposición",
+  "pca": "PCA",
+  "sector_package": "Paquete sectorial"
  },
  "tables": {
   "absences": "Ausencias",

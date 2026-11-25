@@ -22,9 +22,13 @@ use Illuminate\Support\Str;
  *  POST /cap/attendances/{id}/sign      SCR-CAP-05: firma del participante en la pantalla (trazo) que valida su asistencia (RN-CAP-01)
  *  GET  /cap/expirations?days=          SCR-CAP-09: certificados vencidos y por vencer (último por trabajador y tema) de trabajadores activos
  *  POST /cap/expirations/retrain        programación masiva de reentrenamiento: crea la sesión y convoca a los trabajadores
- *  GET  /cap/reports.xlsx?year=         SCR-CAP-14: por tema, sesiones, participantes, aprobados, desaprobados y horas-hombre por modalidad
- *  GET  /cap/verification               SCR-CAP-13: verificación pública activada para la empresa y temas verificables
- *  PUT  /cap/verification {enabled}     activa o desactiva la verificación pública de la empresa (RN-CAP-12)
+ *  GET  /cap/reports.xlsx?year=         SCR-CAP-14: por tema, sesiones, participantes, aprobados, desaprobados y horas-hombre por modalidad;
+ *                                       permanencia en el aula por curso, cumplimiento de la matriz por área y por cargo y certificados del año
+ *  GET  /cap/report?year=               SCR-CAP-14: el mismo reporte para imprimir o guardar en PDF (/imprimir/reporte-capacitacion)
+ *  GET  /cap/verification               SCR-CAP-13: verificación pública activada para la empresa, temas verificables, texto de la página,
+ *                                       límite de consultas por minuto y dirección de la página pública de la empresa
+ *  PUT  /cap/verification {enabled?, page_text?, rate_limit?}  activa o desactiva la verificación pública (RN-CAP-12), fija el texto de la
+ *                                       página y el límite propio de la empresa (certificate_verify_rate_limit, RN-CAP-14)
  *  GET  /cap/sessions/{id}/trainer-check RN-CAP-16: si el capacitador no tiene disponibilidad registrada en ese horario, se advierte
  */
 class CapToolsController extends Controller
@@ -119,6 +123,50 @@ class CapToolsController extends Controller
     {
         $this->can('cap.trainings.read');
         $year = (int) ($request->query('year') ?: now('America/Lima')->year);
+        $d = self::reportData($year);
+        $c = $d['company'];
+        $out = [["REPORTE DE CAPACITACIONES {$year}"], ["{$c['name']} · RUC {$c['ruc']}"], ['Generado: '.now('America/Lima')->format('d/m/Y H:i')], [],
+            ['Tema', 'Modalidad', 'Sesiones realizadas', 'Participantes', 'Aprobados (certificados)', 'Desaprobados o sin certificado', 'Horas-hombre presenciales', 'Horas-hombre en el aula']];
+        $mod = ['in_person' => 'Presencial', 'virtual' => 'Virtual', 'blended' => 'Mixta'];
+        foreach ($d['topics'] as $r) {
+            $out[] = [$r['title'], $mod[$r['modality']] ?? $r['modality'], $r['sessions'], $r['participants'], $r['approved'], $r['failed'], $r['hours_in_person'], $r['hours_aula']];
+        }
+        $out[] = [];
+        $out[] = ['PERMANENCIA EN EL AULA VIRTUAL'];
+        $out[] = ['Curso', 'Matriculados', 'Completaron', 'Aprobaron', 'Permanencia promedio (min)', 'Permanencia total (horas)'];
+        foreach ($d['permanence'] as $r) {
+            $out[] = [$r['course'], $r['enrolled'], $r['completed'], $r['passed'], $r['avg_minutes'], $r['total_hours']];
+        }
+        foreach (['by_area' => 'CUMPLIMIENTO DE LA MATRIZ POR ÁREA', 'by_position' => 'CUMPLIMIENTO DE LA MATRIZ POR CARGO'] as $k => $t) {
+            $out[] = [];
+            $out[] = [$t];
+            $out[] = [$k === 'by_area' ? 'Área' : 'Cargo', 'Trabajadores', 'Temas exigidos', 'Vigentes', 'Por vencer', 'Vencidos', 'Faltantes', 'Cumplimiento (%)'];
+            foreach ($d['compliance'][$k] as $r) {
+                $out[] = [$r['name'], $r['workers'], $r['required'], $r['valid'], $r['expiring'], $r['expired'], $r['missing'], $r['pct']];
+            }
+        }
+        $out[] = [];
+        $out[] = ['CERTIFICADOS DEL AÑO'];
+        $out[] = ['Emitidos', 'Validados', 'Por validar', 'Anulados'];
+        $out[] = [$d['certificates']['issued'], $d['certificates']['validated'], $d['certificates']['pending'], $d['certificates']['voided']];
+
+        return response(Xlsx::build('Capacitaciones', $out, 5), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="reporte-capacitaciones-'.$year.'.xlsx"',
+        ]);
+    }
+
+    public function printable(Request $request): JsonResponse
+    {
+        $this->can('cap.trainings.read');
+        $year = (int) ($request->query('year') ?: now('America/Lima')->year);
+
+        return response()->json(['data' => self::reportData($year)]);
+    }
+
+    /** SCR-CAP-14 / §11: datos del reporte anual de capacitación (los mismos para Excel y para imprimir). */
+    public static function reportData(int $year): array
+    {
         $rows = DB::select(
             "select t.title, t.modality,
                     (select count(*) from training_sessions s where s.training_id = t.id and s.status = 'held' and s.deleted_at is null and extract(year from s.starts_at) = ?) as sessions,
@@ -131,37 +179,93 @@ class CapToolsController extends Controller
                     (select coalesce(sum(c.hours), 0) from training_certificates c where c.training_id = t.id and c.course_id is not null and c.deleted_at is null
                        and c.status in ('validated', 'expired') and extract(year from c.issued_on) = ?) as hours_aula
                from trainings t where t.deleted_at is null order by t.title", [$year, $year, $year, $year, $year]);
-        $c = DB::selectOne('select legal_name, ruc from companies where id = ?', [app(CompanyContext::class)->companyId]);
-        $out = [["REPORTE DE CAPACITACIONES {$year}"], ["{$c->legal_name} · RUC ".trim((string) $c->ruc)], ['Generado: '.now('America/Lima')->format('d/m/Y H:i')], [],
-            ['Tema', 'Modalidad', 'Sesiones realizadas', 'Participantes', 'Aprobados (certificados)', 'Desaprobados o sin certificado', 'Horas-hombre presenciales', 'Horas-hombre en el aula']];
-        $mod = ['in_person' => 'Presencial', 'virtual' => 'Virtual', 'blended' => 'Mixta'];
+        $topics = [];
         foreach ($rows as $r) {
             if ((int) $r->sessions === 0 && (int) $r->approved === 0) {
                 continue;
             }
-            $out[] = [$r->title, $mod[$r->modality] ?? $r->modality, (int) $r->sessions, (int) $r->participants, (int) $r->approved, max(0, (int) $r->participants - (int) $r->approved),
-                round((float) $r->hours_in_person, 1), round((float) $r->hours_aula, 1)];
+            $topics[] = ['title' => $r->title, 'modality' => $r->modality, 'sessions' => (int) $r->sessions, 'participants' => (int) $r->participants, 'approved' => (int) $r->approved,
+                'failed' => max(0, (int) $r->participants - (int) $r->approved), 'hours_in_person' => round((float) $r->hours_in_person, 1), 'hours_aula' => round((float) $r->hours_aula, 1)];
         }
+        // RN-CAP-04: permanencia real en el aula (tiempo activo, no la ventana abierta), por curso, de las matrículas del año.
+        $permanence = array_map(fn ($r) => ['course' => $r->title, 'enrolled' => (int) $r->enrolled, 'completed' => (int) $r->completed, 'passed' => (int) $r->passed,
+            'avg_minutes' => round((float) $r->avg_seconds / 60, 1), 'total_hours' => round((float) $r->total_seconds / 3600, 1)], DB::select(
+            "select c.title, count(*) as enrolled, count(*) filter (where e.status = 'completed') as completed, count(*) filter (where e.passed) as passed,
+                    coalesce(avg(e.active_seconds_total) filter (where e.active_seconds_total > 0), 0) as avg_seconds, coalesce(sum(e.active_seconds_total), 0) as total_seconds
+               from course_enrollments e join courses c on c.id = e.course_id
+              where e.deleted_at is null and e.status <> 'cancelled' and extract(year from e.enrolled_at) = ?
+              group by c.title order by c.title", [$year]));
+        // Cumplimiento de la matriz por área y por cargo (RN-CAP-05), con los trabajadores activos del alcance del usuario.
+        $soon = (int) LegalParams::number('training_expiry_notice_days', 30);
+        $items = DB::select(
+            "select coalesce(a.name, 'Sin área') as area, coalesce(p.name, 'Sin cargo') as position, w.id as worker_id,
+                    case when c.id is not null and (c.expires_on is null or c.expires_on > current_date + ?::int) then 'valid'
+                         when c.id is not null and c.expires_on >= current_date then 'expiring'
+                         when x.id is not null then 'expired' else 'missing' end as state
+               from workers w
+               join position_training_requirements q on q.position_id = w.current_position_id and q.deleted_at is null and coalesce(q.is_active, true)
+                and q.training_id is not null and q.requirement_level <> 'suggested' and (q.effective_to is null or q.effective_to >= current_date)
+               join trainings t on t.id = q.training_id and t.deleted_at is null
+               left join positions p on p.id = w.current_position_id left join areas a on a.id = w.current_area_id
+               left join lateral (select id, expires_on from training_certificates where worker_id = w.id and training_id = t.id and deleted_at is null and status = 'validated'
+                                    order by expires_on desc nulls first limit 1) c on true
+               left join lateral (select id from training_certificates where worker_id = w.id and training_id = t.id and deleted_at is null and status in ('validated', 'expired') limit 1) x on true
+              where w.deleted_at is null and w.status = 'active'".\App\Core\Auth\Scope::andSql('w.current_site_id', 'w.current_area_id'), [$soon]);
+        $group = function (string $key) use ($items): array {
+            $g = [];
+            foreach ($items as $r) {
+                $k = $r->{$key};
+                $g[$k] ??= ['name' => $k, 'workers' => [], 'required' => 0, 'valid' => 0, 'expiring' => 0, 'expired' => 0, 'missing' => 0];
+                $g[$k]['workers'][$r->worker_id] = true;
+                $g[$k]['required']++;
+                $g[$k][$r->state]++;
+            }
+            ksort($g);
 
-        return response(Xlsx::build('Capacitaciones', $out, 5), 200, [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition' => 'attachment; filename="reporte-capacitaciones-'.$year.'.xlsx"',
-        ]);
+            return array_values(array_map(fn ($x) => ['workers' => count($x['workers']), 'pct' => $x['required'] ? (int) round(($x['valid'] + $x['expiring']) * 100 / $x['required']) : null] + $x, $g));
+        };
+        $cert = DB::selectOne("select count(*) as issued, count(*) filter (where status in ('validated', 'expired')) as validated, count(*) filter (where status = 'pending_validation') as pending,
+                                      count(*) filter (where status = 'voided') as voided
+                                 from training_certificates where deleted_at is null and extract(year from issued_on) = ?", [$year]);
+        $co = DB::selectOne('select legal_name, trade_name, ruc from companies where id = ?', [app(CompanyContext::class)->companyId]);
+
+        return ['year' => $year, 'company' => ['name' => $co->trade_name ?: $co->legal_name, 'legal_name' => $co->legal_name, 'ruc' => trim((string) $co->ruc)],
+            'topics' => $topics, 'permanence' => $permanence,
+            'compliance' => ['by_area' => $group('area'), 'by_position' => $group('position')],
+            'certificates' => ['issued' => (int) $cert->issued, 'validated' => (int) $cert->validated, 'pending' => (int) $cert->pending, 'voided' => (int) $cert->voided]];
     }
 
     public function verification(): JsonResponse
     {
         $this->can('cap.trainings.read');
 
+        $company = app(CompanyContext::class)->companyId;
+
         return response()->json(['data' => ['enabled' => LegalParams::flag('certificate_public_verification', false),
             'trainings' => DB::select('select id, title from trainings where deleted_at is null and public_verification_enabled order by title'),
+            'page_text' => LegalParams::text('certificate_verification_page_text', ''),
+            'rate_limit' => (int) LegalParams::number('certificate_verify_rate_limit', 30),
+            'page_url' => rtrim((string) config('escudo.frontend_url'), '/').'/verificar/empresa/'.$company,
             'can_edit' => in_array('cap.trainings.update', Permissions::effective(), true)]]);
     }
 
     public function setVerification(Request $request): JsonResponse
     {
         $this->can('cap.trainings.update');
-        $on = (bool) $request->validate(['enabled' => ['required', 'boolean']])['enabled'];
+        $d = $request->validate(['enabled' => ['sometimes', 'boolean'], 'page_text' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'rate_limit' => ['sometimes', 'integer', 'min:1', 'max:600']],
+            ['rate_limit.min' => 'El límite debe ser de al menos 1 consulta por minuto.', 'rate_limit.max' => 'El límite no puede pasar de 600 consultas por minuto.',
+                'page_text.max' => 'El texto de la página admite hasta 2000 caracteres.']);
+        if (array_key_exists('page_text', $d)) {
+            LegalParams::setForCompany('certificate_verification_page_text', trim((string) $d['page_text']));
+        }
+        if (isset($d['rate_limit'])) {
+            LegalParams::setForCompany('certificate_verify_rate_limit', (string) (int) $d['rate_limit']);
+        }
+        if (! array_key_exists('enabled', $d)) {
+            return $this->verification();
+        }
+        $on = (bool) $d['enabled'];
         LegalParams::setForCompany('certificate_public_verification', $on ? 'true' : 'false');
         // Los certificados de los temas verificables siguen la decisión de la empresa.
         DB::update('update training_certificates c set public_verification_enabled = ? from trainings t where t.id = c.training_id and t.public_verification_enabled and c.deleted_at is null',

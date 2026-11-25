@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { QrCode } from "@/components/mfa/QrCode";
+import { CertificateView, type CertData } from "./CertificateView";
 
 const d = (v: unknown) => (v ? String(v).slice(0, 10).split("-").reverse().join("/") : "—");
 
@@ -29,11 +30,7 @@ function Toolbar({ hint }: { hint: string }) {
   );
 }
 
-type Cert = {
-  certificate_code: string; holder_name: string; holder_document_masked: string | null; course_title: string; hours: number | null; score: number | null;
-  issued_on: string; expires_on: string | null; status: string; public_verification_enabled: boolean; instructor: string | null;
-  company: { name: string; legal_name: string; ruc: string }; verify_url: string; signature: string | null; signer_name: string | null;
-};
+type Cert = CertData & { public_verification_enabled: boolean };
 
 export function CertificateSheet({ id }: { id: string }) {
   const { data: c, error } = useSheet<Cert>(`/cap/certificates/${id}/print`);
@@ -41,43 +38,8 @@ export function CertificateSheet({ id }: { id: string }) {
   if (!c) return <p className="p-8">Preparando el certificado…</p>;
   return (
     <div className="min-h-screen bg-gray-100 p-4 print:bg-white print:p-0">
-      <style>{`@page { size: A4 landscape; margin: 12mm } @media print { .no-print { display: none } }`}</style>
       <Toolbar hint={c.public_verification_enabled ? "El QR permite verificarlo en línea." : "La verificación pública de este certificado está desactivada: actívala en el certificado para que el QR funcione."} />
-      <div className="mx-auto flex max-w-4xl flex-col justify-between rounded-2xl border-[6px] border-double border-[#0d3b6e] bg-white p-10 text-center text-gray-900 print:border-[#0d3b6e]" style={{ minHeight: "170mm" }}>
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[#1b6fb7]">{c.company.name}</p>
-          <h1 className="mt-3 text-4xl font-bold text-[#0d3b6e]">CERTIFICADO</h1>
-          {c.status === "voided" && <p className="mt-2 text-2xl font-bold text-red-700">ANULADO</p>}
-          <p className="mt-6 text-lg">Se certifica que</p>
-          <p className="mt-2 text-3xl font-bold">{c.holder_name}</p>
-          {c.holder_document_masked && <p className="text-sm text-gray-600">Documento {c.holder_document_masked}</p>}
-          <p className="mt-6 text-lg">participó y aprobó la capacitación</p>
-          <p className="mt-2 text-2xl font-semibold text-[#0d3b6e]">«{c.course_title}»</p>
-          <p className="mt-3 text-base">
-            {c.hours !== null && <>con una duración de <b>{c.hours} horas</b></>}
-            {c.score !== null && <> y nota <b>{c.score}</b></>}.
-          </p>
-        </div>
-        <div className="mt-8 flex items-end justify-between gap-6 text-left text-sm">
-          <div>
-            <p>Emitido: <b>{d(c.issued_on)}</b></p>
-            <p>Vigente hasta: <b>{c.expires_on ? d(c.expires_on) : "sin vencimiento"}</b></p>
-            <p>Código: <b>{c.certificate_code}</b></p>
-            <p className="text-xs text-gray-500">{c.company.legal_name} · RUC {c.company.ruc}</p>
-          </div>
-          <div className="text-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            {c.signature && <img src={c.signature} alt="Firma" className="mx-auto -mb-1 h-16 max-w-[14rem] object-contain" />}
-            <div className="mx-auto h-0 w-56 border-t border-gray-800" />
-            <p className="mt-1">{c.signer_name ?? c.instructor ?? "Capacitador"}</p>
-            {c.signer_name && c.instructor && <p className="text-xs text-gray-500">Capacitador: {c.instructor}</p>}
-          </div>
-          <div className="text-center">
-            <QrCode value={c.verify_url} size={110} />
-            <p className="mt-1 text-[10px] text-gray-500">Verifica en línea</p>
-          </div>
-        </div>
-      </div>
+      <CertificateView c={c} />
     </div>
   );
 }
