@@ -25,7 +25,7 @@ type Course = {
   id: string; code: string; title: string; summary: string | null; category: string | null; hours: string | number | null; status: string; sequential: boolean;
   passing_score: string | number | null; max_attempts: number | null; randomize_questions: boolean; randomize_options: boolean; completion_commitment: string; commitment_text: string | null;
   min_active_time_pct: string | number | null; certificate_enabled: boolean; certificate_validity_months: number | null; public_verification_enabled: boolean; grading_scale_id: string | null;
-  scale_name: string | null; published_at: string | null;
+  certificate_template_id: string | null; certificate_template_name?: string | null; scale_name: string | null; published_at: string | null;
 };
 type Section = { id: string; section_number: number; title: string; sort_order: number; unlock_rule?: string; unlock_on?: string | null };
 type Lesson = {
@@ -761,6 +761,7 @@ function ConfigTab({ d, can, onChanged }: { d: Detail; can: AulCan; onChanged: (
     randomize_questions: c.randomize_questions, randomize_options: c.randomize_options, completion_commitment: c.completion_commitment, commitment_text: c.commitment_text ?? "",
     min_active_time_pct: c.min_active_time_pct != null ? String(Number(c.min_active_time_pct)) : "", certificate_enabled: c.certificate_enabled,
     certificate_validity_months: c.certificate_validity_months != null ? String(c.certificate_validity_months) : "", public_verification_enabled: c.public_verification_enabled,
+    certificate_template_id: c.certificate_template_id ?? "",
   });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -777,6 +778,7 @@ function ConfigTab({ d, can, onChanged }: { d: Detail; can: AulCan; onChanged: (
         randomize_questions: f.randomize_questions, randomize_options: f.randomize_options, completion_commitment: f.completion_commitment,
         commitment_text: f.completion_commitment === "none" ? (f.commitment_text || null) : f.commitment_text, min_active_time_pct: nn(f.min_active_time_pct),
         certificate_enabled: f.certificate_enabled, certificate_validity_months: nn(f.certificate_validity_months), public_verification_enabled: f.public_verification_enabled,
+        certificate_template_id: f.certificate_template_id || null,
         ...(locked ? {} : { grading_scale_id: f.grading_scale_id || null, passing_score: nn(f.passing_score) }),
       });
       setMsg({ ok: true, text: "Configuración guardada." });
@@ -823,7 +825,16 @@ function ConfigTab({ d, can, onChanged }: { d: Detail; can: AulCan; onChanged: (
           <SwitchRow label="Emite certificado" hint="Al aprobar se crea el certificado en Capacitaciones." checked={f.certificate_enabled} onChange={(v) => !dis && set({ certificate_enabled: v })} />
           <SwitchRow label="Verificación pública" hint="El certificado se valida con su código QR." checked={f.public_verification_enabled} onChange={(v) => !dis && set({ public_verification_enabled: v })} />
         </div>
-        {f.certificate_enabled && <FormField label="Vigencia del certificado (meses)"><input className="input max-w-40" disabled={dis} inputMode="numeric" value={f.certificate_validity_months} onChange={(e) => set({ certificate_validity_months: e.target.value })} /></FormField>}
+        {f.certificate_enabled && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField label="Plantilla de certificado" hint="Sin plantilla, se usa la del tema de Capacitaciones que acredita o la de la plataforma.">
+              {dis ? <input className="input" disabled value={c.certificate_template_name ?? "Plantilla por defecto"} /> : (
+                <RefSelect module="AUL" table="courses" field="certificate_template_id" label="Plantilla de certificado" value={f.certificate_template_id} onChange={(v) => set({ certificate_template_id: v })} placeholder="Plantilla por defecto" />
+              )}
+            </FormField>
+            <FormField label="Vigencia del certificado (meses)"><input className="input max-w-40" disabled={dis} inputMode="numeric" value={f.certificate_validity_months} onChange={(e) => set({ certificate_validity_months: e.target.value })} /></FormField>
+          </div>
+        )}
         {can.update_course && (
           <div className="flex items-center gap-3">
             <Button variant="primary" loading={busy} onClick={save}>Guardar configuración</Button>

@@ -192,8 +192,11 @@ class AulController extends Controller
             }
         }
 
+        // RN-CAP-08: el participante ve si su certificado está por validar; solo se descarga cuando el Jefe SST lo valida.
+        $certStatus = $e?->certificate_id ? DB::selectOne('select status from training_certificates where id = ? and deleted_at is null', [$e->certificate_id])?->status : null;
+
         return ['enrollment' => $e ? ['id' => $e->id, 'status' => $e->status, 'progress_pct' => (float) $e->progress_pct, 'final_score' => $e->final_score, 'final_score_label' => $e->final_score_label,
-            'passed' => $e->passed, 'certificate_id' => $e->certificate_id, 'active_seconds_total' => (int) $e->active_seconds_total] : null,
+            'passed' => $e->passed, 'certificate_id' => $e->certificate_id, 'certificate_status' => $certStatus, 'active_seconds_total' => (int) $e->active_seconds_total] : null,
             'course' => $course, 'sections' => $sections, 'lessons' => $lessons, 'heartbeat_seconds' => Heartbeats::beatSeconds()];
     }
 

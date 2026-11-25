@@ -258,6 +258,7 @@ class VtaSalesController extends Controller
             if (DB::selectOne("select 1 as ok from license_assignments where course_license_id = ? and external_learner_id = ? and status <> 'revoked' and deleted_at is null", [$lic->id, $learner])) {
                 throw new ApiProblem(409, 'conflict', 'Ya asignado', 'Esa persona ya tiene un cupo de esta compra.');
             }
+            VtaSales::assertNoActiveEnrollment($learner, $lic->course_id);
             $a = DB::selectOne("insert into license_assignments (company_id, course_license_id, external_learner_id, assigned_by, assigned_at, status, created_by, updated_by)
                                 values (?, ?, ?, ?, now(), 'assigned', ?, ?) returning id", [$lic->company_id, $lic->id, $learner, $me, $me, $me])->id;
             $e = DB::selectOne("insert into course_enrollments (company_id, course_id, external_learner_id, source, license_assignment_id, enrolled_by, access_until, status, created_by, updated_by)

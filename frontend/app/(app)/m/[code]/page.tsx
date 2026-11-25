@@ -82,10 +82,21 @@ export default function ModulePage() {
     return (
       <Card>
         <h1 className="text-xl font-semibold">Página no disponible</h1>
-        <p className="text-muted">Este módulo no existe o tu rol no tiene acceso. Si lo necesitas, pídelo al administrador de tu cuenta.</p>
-        <Link href="/inicio" className="inline-block rounded-lg border border-line px-4 py-2 hover:bg-bg">
-          Volver al inicio
-        </Link>
+        <p className="text-muted">
+          {m?.mode === "disabled_by_company"
+            ? "La empresa desactivó este módulo. Quien administra la cuenta lo vuelve a activar en «Mi suscripción», sección «Módulos opcionales por empresa»."
+            : "Este módulo no existe o tu rol no tiene acceso. Si lo necesitas, pídelo al administrador de tu cuenta."}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/inicio" className="inline-block rounded-lg border border-line px-4 py-2 hover:bg-bg">
+            Volver al inicio
+          </Link>
+          {m?.mode === "disabled_by_company" && (
+            <Link href="/cuenta/suscripcion" className="inline-block rounded-lg border border-line px-4 py-2 hover:bg-bg">
+              Ir a Mi suscripción
+            </Link>
+          )}
+        </div>
       </Card>
     );
   }

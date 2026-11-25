@@ -66,6 +66,7 @@ class VtaController extends Controller
 
         $id = DB::transaction(function () use ($ctx, $number, $d, $company, $name, $sub, $igv, $total, $o, $qty, $unit, $cp) {
             $learner = $company ? null : VtaSales::learner($ctx, $d, (string) auth()->id());
+            VtaSales::assertNoActiveEnrollment($learner, $o->course_id);
             $id = DB::selectOne(
                 "insert into orders (company_id, order_number, external_learner_id, buyer_type, buyer_document_type, buyer_document_number, buyer_name, buyer_email, buyer_ruc, buyer_legal_name,
                     billing_document_type, coupon_id, discount_total, subtotal, igv_rate, igv_total, total, idempotency_key, source, status, expires_at, created_by, updated_by)
@@ -114,6 +115,10 @@ class VtaController extends Controller
             .' · registrado por '.(DB::selectOne('select full_name from users where id = ?', [(string) auth()->id()])?->full_name ?? '');
         if (! empty($p['reference']) && DB::selectOne("select 1 as ok from orders where status = 'paid' and notes ilike ? and deleted_at is null", ['%operación '.$p['reference'].'%'])) {
             throw new ApiProblem(422, 'validation_failed', 'Revisa los datos', 'Ese número de operación ya se registró en otro pedido.', ['errors' => ['reference' => ['Ese número de operación ya se registró en otro pedido.']]]);
+        }
+        // Una matrícula vigente por persona y curso (docs/04): se avisa antes de cobrar en lugar de fallar al insertar.
+        foreach (DB::select("select course_id from order_items where order_id = ? and item_type <> 'license' and deleted_at is null", [$order->id]) as $it) {
+            VtaSales::assertNoActiveEnrollment($order->external_learner_id, $it->course_id, 'El comprador');
         }
         $ctx = app(CompanyContext::class)->companyId;
         $result = DB::transaction(function () use ($order, $ctx, $note, $p) {

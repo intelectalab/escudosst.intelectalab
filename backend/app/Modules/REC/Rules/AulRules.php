@@ -16,6 +16,12 @@ class AulRules extends RecordRules
 
     public function prepare(string $op, array $res, array &$values, ?object $current, array &$extra): void
     {
+        // SCR-AUL-03 / RN-AUL-18: la plantilla de certificado del curso debe estar activa (global de la plataforma o propia de la empresa).
+        if ($res['table'] === 'courses' && ! empty($values['certificate_template_id']) && \Illuminate\Support\Str::isUuid((string) $values['certificate_template_id'])
+            && ($current?->certificate_template_id ?? null) !== $values['certificate_template_id']
+            && ! DB::selectOne("select 1 as ok from certificate_templates where id = ? and deleted_at is null and status = 'active'", [$values['certificate_template_id']])) {
+            $this->fail('certificate_template_id', 'La plantilla de certificado elegida no existe o no está activa.');
+        }
         if (! $current) {
             return;
         }

@@ -266,7 +266,7 @@ function LbaResult({ id, pending, answered }: { id: string; pending: number; ans
   }, [id]);
   const score = row?.score_pct != null ? Number(row.score_pct) : null;
 
-  const move = async (status: "completed" | "approved") => {
+  const move = async (status: "in_review" | "approved") => {
     setBusy(status);
     setMsg(null);
     try {
@@ -306,8 +306,9 @@ function LbaResult({ id, pending, answered }: { id: string; pending: number; ans
           <Button variant="primary" icon="check" loading={busy === "approved"} disabled={!!busy} onClick={() => move("approved")}>
             Aprobar y generar brechas
           </Button>
-          <Button loading={busy === "completed"} disabled={!!busy || row?.status === "completed"} onClick={() => move("completed")}>
-            {row?.status === "completed" ? "Marcado como completado" : "Marcar como completado"}
+          {/* M-LBA §9: draft → in_review → approved. «Enviar a revisión» deja la aprobación al comité o supervisor. */}
+          <Button loading={busy === "in_review"} disabled={!!busy || row?.status === "in_review"} onClick={() => move("in_review")}>
+            {row?.status === "in_review" ? "Enviado a revisión" : "Enviar a revisión"}
           </Button>
         </div>
       )}

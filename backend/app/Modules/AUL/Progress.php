@@ -77,16 +77,20 @@ final class Progress
             ? DB::selectOne('select full_name as name, document_last4 as last4 from workers where id = ?', [$e->worker_id])
             : ($e->external_learner_id ? DB::selectOne("select first_name || ' ' || last_name as name, document_last4 as last4 from external_learners where id = ?", [$e->external_learner_id])
                 : DB::selectOne('select first_name || \' \' || paternal_last_name as name, document_last4 as last4 from contractor_workers where id = ?', [$e->contractor_worker_id]));
-        $year = date('Y');
-        $n = (int) DB::selectOne('select count(*) + 1 as n from training_certificates where certificate_code like ?', ["CERT-{$year}-%"])->n;
-        do {
-            $code = sprintf('CERT-%s-%06d', $year, $n++);
-        } while (DB::selectOne('select 1 as ok from training_certificates where certificate_code = ?', [$code]));
         $validator = $c->published_by ?? $c->created_by ?? (string) auth()->id();
         // RN-AUL-18 / RN-CAP-04: el certificado cuenta para la capacitación de CAP ligada al curso (matriz, fotocheck, permisos).
         $training = DB::selectOne('select id, certificate_template_id from trainings where course_id = ? and deleted_at is null order by created_at limit 1', [$c->id]);
+        // SCR-AUL-03: la plantilla elegida en el curso manda; si no tiene, la del tema de CAP que acredita.
         $templateId = $c->certificate_template_id ?? $training?->certificate_template_id;
-        $pending = $templateId && DB::selectOne('select requires_validation from certificate_templates where id = ? and deleted_at is null', [$templateId])?->requires_validation;
+        $tpl = $templateId ? DB::selectOne('select code_prefix, requires_validation from certificate_templates where id = ? and deleted_at is null', [$templateId]) : null;
+        $pending = (bool) $tpl?->requires_validation;
+        // Código legible con el prefijo de la plantilla (docs/04: PREFIJO-AÑO-CORRELATIVO), como los de capacitaciones presenciales.
+        $prefix = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string) ($tpl?->code_prefix ?: 'CERT'))) ?: 'CERT';
+        $year = date('Y');
+        $n = (int) DB::selectOne('select count(*) + 1 as n from training_certificates where certificate_code like ?', ["{$prefix}-{$year}-%"])->n;
+        do {
+            $code = sprintf('%s-%s-%06d', $prefix, $year, $n++);
+        } while (DB::selectOne('select 1 as ok from training_certificates where certificate_code = ?', [$code]));
         $status = $pending ? 'pending_validation' : 'validated';
         DB::insert(
             "insert into training_certificates (company_id, course_id, training_id, course_enrollment_id, worker_id, contractor_worker_id, external_learner_id, certificate_code, verification_code,

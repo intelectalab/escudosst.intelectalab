@@ -152,13 +152,54 @@ function tx<T>(store: (typeof STORES)[number], mode: IDBTransactionMode, fn: (s:
   );
 }
 
-/** Llave AES-GCM del dispositivo: no extraíble, vive solo en esta base y se borra con ella. */
-async function key(): Promise<CryptoKey> {
+/**
+ * Llave AES-GCM del dispositivo: no extraíble, vive solo en esta base y se borra con ella.
+ * Una sola creación (single-flight): las llamadas concurrentes de esta pestaña comparten la misma promesa por base, y entre pestañas
+ * la llave se guarda solo si aún no existe dentro de una única transacción de escritura (se serializan), devolviendo siempre la que quedó
+ * guardada. Antes dos llamadas simultáneas creaban llaves distintas y lo cifrado con la que se pisaba quedaba ilegible.
+ */
+const keys = new Map<string, Promise<CryptoKey>>();
+
+function key(): Promise<CryptoKey> {
+  if (!ctx) return Promise.reject(new Error("offline sin contexto"));
+  const name = dbName(ctx);
+  let p = keys.get(name);
+  if (!p) {
+    p = loadOrCreateKey();
+    keys.set(name, p);
+    p.catch(() => keys.delete(name));   // si falla, la próxima llamada lo intenta de nuevo
+  }
+  return p;
+}
+
+async function loadOrCreateKey(): Promise<CryptoKey> {
   const saved = await tx<{ id: string; key: CryptoKey } | undefined>("sync_state", "readonly", (s) => s.get("key"));
   if (saved?.key) return saved.key;
-  const k = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
-  await tx("sync_state", "readwrite", (s) => s.put({ id: "key", key: k }));
-  return k;
+  const fresh = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  // Leer y guardar en la misma transacción: si otra pestaña la guardó primero, se usa esa y la nueva se descarta.
+  const db = await openDb();
+  const stored = await new Promise<CryptoKey>((resolve, reject) => {
+    const t = db.transaction("sync_state", "readwrite");
+    const st = t.objectStore("sync_state");
+    let result: CryptoKey = fresh;
+    const get = st.get("key");
+    get.onsuccess = () => {
+      const row = get.result as { id: string; key: CryptoKey } | undefined;
+      if (row?.key) result = row.key;
+      else st.put({ id: "key", key: fresh });
+    };
+    t.oncomplete = () => {
+      db.close();
+      resolve(result);
+    };
+    t.onerror = t.onabort = () => {
+      db.close();
+      reject(t.error ?? new Error("no se pudo guardar la llave"));
+    };
+  });
+  // Releer lo persistido: se cifra solo con la llave que quedó en la base.
+  const check = await tx<{ id: string; key: CryptoKey } | undefined>("sync_state", "readonly", (s) => s.get("key"));
+  return check?.key ?? stored;
 }
 
 async function seal(op: OutboxOp): Promise<{ k: string; seq: number; iv: Uint8Array; data: ArrayBuffer }> {
@@ -293,6 +334,7 @@ async function refreshCounts() {
 export async function wipeLocal(): Promise<void> {
   if (!ctx) return;
   const name = dbName(ctx);
+  keys.delete(name);
   await new Promise<void>((resolve) => {
     const req = indexedDB.deleteDatabase(name);
     req.onsuccess = req.onerror = req.onblocked = () => resolve();

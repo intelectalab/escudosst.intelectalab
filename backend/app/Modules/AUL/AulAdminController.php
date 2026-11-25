@@ -656,9 +656,11 @@ class AulAdminController extends Controller
             'commitment_text' => ['nullable', 'string', 'max:2000'],
             'min_active_time_pct' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'certificate_enabled' => ['boolean'],
+            'certificate_template_id' => ['nullable', 'uuid'],
             'certificate_validity_months' => ['nullable', 'integer', 'min:1', 'max:120'],
             'public_verification_enabled' => ['boolean'],
         ], [
+            'certificate_template_id.uuid' => 'Elige una plantilla de certificado de la lista.',
             'title.required' => 'Escribe el nombre del curso.',
             'hours.required' => 'Indica las horas que acredita el curso.',
             'hours.gt' => 'Las horas deben ser mayores que cero.',
@@ -749,8 +751,8 @@ class AulAdminController extends Controller
         $this->staff();
         $f = $this->trainerFilter('c.id');
         $c = Str::isUuid($id) ? DB::selectOne(
-            "select c.*, g.name as scale_name, g.scale_type, g.min_value as scale_min, g.max_value as scale_max, g.passing_value as scale_passing
-               from courses c left join grading_scales g on g.id = c.grading_scale_id
+            "select c.*, g.name as scale_name, g.scale_type, g.min_value as scale_min, g.max_value as scale_max, g.passing_value as scale_passing, ct.name as certificate_template_name
+               from courses c left join grading_scales g on g.id = c.grading_scale_id left join certificate_templates ct on ct.id = c.certificate_template_id and ct.deleted_at is null
               where c.id = ? and c.deleted_at is null and c.company_id is not null {$f[0]}", [$id, ...$f[1]]) : null;
 
         return $c ?? throw ApiProblem::notFound('El curso no existe, es de otra empresa o no lo tienes asignado.');

@@ -34,6 +34,8 @@ it('calcula la línea base, exige comentario en «no aplica» y genera brechas a
     $this->getJson("/api/v1/records/LBA/baseline_assessments/{$a}", $h)->assertJsonPath('data.score_pct', 81.25)
         ->assertJsonPath('data.total_items', 8)->assertJsonPath('data.compliant_items', 6)->assertJsonPath('data.status', 'in_progress');
 
+    // M-LBA §9: draft → in_review → approved; «completado» ya no es un estado al que se pase.
+    $this->patchJson("/api/v1/records/LBA/baseline_assessments/{$a}", ['status' => 'completed'], $h)->assertStatus(422);
     $this->patchJson("/api/v1/records/LBA/baseline_assessments/{$a}", ['status' => 'in_review'], $h)->assertOk();
     $this->patchJson("/api/v1/records/LBA/baseline_assessments/{$a}", ['status' => 'approved'], $h)->assertOk();
     $gaps = $this->getJson("/api/v1/records/LBA/baseline_gaps?f[assessment_id]={$a}", $h)->json('data');

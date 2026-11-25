@@ -114,3 +114,34 @@ it('registra la disponibilidad del capacitador sin superponer franjas', function
     $list = $this->getJson('/api/v1/aul/admin/trainers', $h)->assertOk()->json('data');
     expect(collect($list)->firstWhere('id', $me)['availability'])->toHaveCount(2);
 });
+
+it('elige la plantilla de certificado del curso (SCR-AUL-03) y el participante ve «en validación» hasta que se valide', function () {
+    $h = aulAdmin();
+    $tpl = DB::transaction(function () {
+        \App\Core\Tenancy\DbContext::setCompany(HUAYLAS_ID);
+        $id = DB::selectOne("insert into certificate_templates (company_id, code, name, body_template, code_prefix, requires_validation, status)
+                             values (?, ?, 'Plantilla del aula', 'Certificado de {{holder_name}}', 'AULT', true, 'active') returning id", [HUAYLAS_ID, 'AULT-'.random_int(1000, 9999)])->id;
+        \App\Core\Tenancy\DbContext::setCompany(null);
+
+        return $id;
+    });
+    $this->postJson('/api/v1/aul/admin/courses', ['title' => 'Plantilla mala', 'hours' => 1, 'certificate_template_id' => (string) \Illuminate\Support\Str::uuid()], $h)
+        ->assertStatus(422)->assertJsonValidationErrors('certificate_template_id');
+    $id = $this->postJson('/api/v1/aul/admin/courses', ['title' => 'Con plantilla', 'hours' => 1, 'passing_score' => 70, 'certificate_template_id' => $tpl], $h)->assertCreated()->json('data.id');
+    expect($this->getJson("/api/v1/aul/admin/courses/{$id}", $h)->assertOk()->json('data.course'))
+        ->certificate_template_id->toBe($tpl)->certificate_template_name->toBe('Plantilla del aula');
+
+    $e = $this->postJson("/api/v1/aul/admin/courses/{$id}/lessons", ['lesson_type' => 'exam', 'title' => 'Evaluación', 'num_questions' => 1], $h)->assertCreated()->json('data');
+    $q = $this->postJson('/api/v1/records/AUL/questions', ['question_bank_id' => $e['question_bank_id'], 'code' => 'PT1', 'question_type' => 'single_choice', 'statement' => 'Quién firma', 'points' => 1, 'status' => 'active'], $h)
+        ->assertCreated()->json('data.id');
+    $this->putJson("/api/v1/aul/questions/{$q}/options", ['options' => [['text' => 'El Jefe SST', 'correct' => true], ['text' => 'Nadie', 'correct' => false]]], $h)->assertOk();
+    $this->postJson("/api/v1/aul/admin/courses/{$id}/publish", ['publish' => true], $h)->assertOk();
+    $w = aulWorker($this, $h, 'Eva');
+    $this->postJson("/api/v1/aul/admin/courses/{$id}/enroll", ['worker_ids' => [$w]], $h)->assertCreated();
+    $enr = collect($this->getJson("/api/v1/aul/admin/courses/{$id}/participants", $h)->json('data'))->firstWhere('worker_id', $w)['id'];
+    $this->postJson("/api/v1/aul/enrollments/{$enr}/lessons/{$e['id']}/exam", ['answers' => [$q => '0']], $h)->assertOk()->assertJsonPath('data.passed', true);
+
+    $cert = DB::selectOne('select c.certificate_code, c.status, c.certificate_template_id from training_certificates c join course_enrollments e on e.certificate_id = c.id where e.id = ?', [$enr]);
+    expect($cert->status)->toBe('pending_validation')->and($cert->certificate_template_id)->toBe($tpl)->and($cert->certificate_code)->toStartWith('AULT-');
+    $this->getJson("/api/v1/aul/enrollments/{$enr}", $h)->assertOk()->assertJsonPath('data.enrollment.certificate_status', 'pending_validation');
+});

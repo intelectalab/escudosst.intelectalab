@@ -84,7 +84,8 @@ class DiagnosticRules extends RecordRules
         }
         $to = $values['status'] ?? null;
         // M-LBA §9: se envía a revisión del comité o supervisor, que lo aprueba o lo devuelve con observaciones.
-        $flow = ['draft' => ['in_progress', 'completed', 'in_review'], 'in_progress' => ['completed', 'in_review', 'draft'], 'completed' => ['in_review', 'in_progress'],
+        // «in_progress» y «completed» quedan solo por compatibilidad con registros anteriores: ya no son destino (no están en el flujo de M-LBA).
+        $flow = ['draft' => ['in_review'], 'in_progress' => ['in_review', 'draft'], 'completed' => ['in_review', 'draft'],
             'in_review' => ['approved', 'draft'], 'approved' => ['archived'], 'archived' => []];
         if ($to && $to !== $current->status && ! in_array($to, $flow[$current->status] ?? [], true)) {
             $this->fail('status', $current->status === 'approved' ? 'El diagnóstico aprobado no se reabre: crea un nuevo diagnóstico para actualizarlo.' : 'Ese cambio de estado no está permitido.');

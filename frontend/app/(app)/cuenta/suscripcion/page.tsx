@@ -2,9 +2,11 @@
 
 // SCR-SUS-05 · Mi suscripción (administrador de la cuenta): plan, complementos y módulos con su estado; los bloqueados
 // tienen «Solicitar mejora», que llega como consulta al equipo de EscudoSST. Los precios se muestran «Por definir».
+// SCR-SUS-06 · Módulos opcionales por empresa (docs/03 §7.1): interruptores del aula y de la venta de cursos, alcanzables aunque estén apagados.
 
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
+import { CompanyModuleSwitches } from "@/components/modules/CompanyModuleSwitches";
 
 type Detail = {
   plan: { code: string; name: string; status: string; billing_period: string | null; started_at: string | null; trial_ends_at: string | null; current_period_end: string | null;
@@ -84,6 +86,7 @@ export default function MySubscriptionPage() {
           );
         })}</ul>
       </section>
+      <CompanyModuleSwitches title="Módulos opcionales por empresa: aula virtual y venta de cursos" withCases />
     </div>
   );
 }

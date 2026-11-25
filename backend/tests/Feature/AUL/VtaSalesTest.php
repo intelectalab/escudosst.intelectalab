@@ -240,3 +240,23 @@ it('muestra al participante sus «Recomendados para ti» y registra el clic y el
     expect(collect($this->getJson('/api/v1/vta/portal', $hl)->json('data.recommendations'))->pluck('id'))->not->toContain($r2);
     DB::delete("delete from personal_access_tokens where name = 'e2e-vp'");
 });
+
+it('no matricula de nuevo a quien ya tiene una matrícula vigente del curso: responde 409 al vender, pagar o asignar un cupo', function () {
+    $person = vtaPerson(['course_offer_id' => $this->offer, 'document_number' => '75757575', 'email' => 'dup.vs@example.com']);
+    $a = $this->postJson('/api/v1/vta/sell', $person, $this->h)->assertCreated()->json('data');
+    $b = $this->postJson('/api/v1/vta/sell', $person, $this->h)->assertCreated()->json('data');
+    $this->postJson("/api/v1/vta/orders/{$a['id']}/pay", ['method' => 'yape', 'reference' => 'DU-0001', 'evidence_file_id' => evidenceFile($this->h, 'VTA')], $this->h)->assertOk();
+    // El segundo pedido no se cobra: la persona ya está matriculada (antes chocaba con el índice único y daba 500).
+    $this->postJson("/api/v1/vta/orders/{$b['id']}/pay", ['method' => 'yape', 'reference' => 'DU-0002', 'evidence_file_id' => evidenceFile($this->h, 'VTA')], $this->h)
+        ->assertStatus(409)->assertJsonPath('title', 'Matrícula vigente');
+    expect(vtaQuery('select status from orders where id = ?', [$b['id']])[0]->status)->toBe('pending');
+    $this->postJson('/api/v1/vta/sell', $person, $this->h)->assertStatus(409);
+
+    $o = $this->postJson('/api/v1/vta/sell', ['course_offer_id' => $this->offer, 'buyer_type' => 'company', 'document_type' => 'RUC', 'document_number' => '20575757571',
+        'legal_name' => 'Cliente DU SAC', 'ruc' => '20575757571', 'email' => 'compras.du@example.com', 'seats' => 2], $this->h)->assertCreated()->json('data');
+    $this->postJson("/api/v1/vta/orders/{$o['id']}/pay", ['method' => 'transfer', 'reference' => 'DU-0003', 'evidence_file_id' => evidenceFile($this->h, 'VTA')], $this->h)->assertOk();
+    $lic = vtaQuery('select course_license_id as id from order_items where order_id = ?', [$o['id']])[0]->id;
+    $this->postJson("/api/v1/vta/licenses/{$lic}/assignments", ['document_type' => 'DNI', 'document_number' => '75757575', 'first_name' => 'Ana', 'last_name' => 'Ríos',
+        'email' => 'dup.vs@example.com'], $this->h)->assertStatus(409)->assertJsonPath('title', 'Matrícula vigente');
+    expect($this->getJson("/api/v1/vta/licenses/{$lic}/assignments", $this->h)->assertOk()->json('data.license.used'))->toBe(0);
+});

@@ -46,7 +46,7 @@ type Lesson = {
   last_result?: { score_pct: number | null; label: string | null; passed: boolean; feedback: string | null } | null;
 };
 type Player = {
-  enrollment: { id: string; status: string; progress_pct: number; certificate_id: string | null; active_seconds_total: number; final_score_label: string | null } | null;
+  enrollment: { id: string; status: string; progress_pct: number; certificate_id: string | null; certificate_status?: string | null; active_seconds_total: number; final_score_label: string | null } | null;
   course: { id: string; title: string; summary: string | null; min_active_time_pct: number | null; hours: number | null }; lessons: Lesson[]; heartbeat_seconds: number; preview?: boolean;
   commitment?: { required: boolean; text: string | null };
 };
@@ -154,9 +154,14 @@ export function CoursePlayer({ id, preview = false }: { id: string; preview?: bo
               {need > 0 && activeSeconds < need && Number(e.progress_pct) >= 100 && <p className="text-xs text-amber-ink">Te falta {hm(need - activeSeconds)} de permanencia para completar el curso.</p>}
             </>
           )}
-          {e?.certificate_id && (
+          {e?.certificate_id && e.certificate_status === "pending_validation" && (
+            <p role="status" className="rounded-lg bg-amber-soft px-3 py-2 text-sm font-semibold text-amber-ink">
+              Curso completado. Certificado en validación: podrás descargarlo cuando lo valide el responsable de SST.
+            </p>
+          )}
+          {e?.certificate_id && (e.certificate_status === "validated" || e.certificate_status === "expired") && (
             <a href={`/imprimir/certificado/${e.certificate_id}`} target="_blank" rel="noreferrer" className="block rounded-lg bg-ok-soft px-3 py-2 text-sm font-semibold text-ok">
-              Curso completado: ver mi certificado
+              Curso completado: ver mi certificado{e.certificate_status === "expired" ? " (vencido)" : ""}
             </a>
           )}
           <ol className="space-y-1 text-sm">

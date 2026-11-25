@@ -94,6 +94,24 @@ final class VtaSales
         )->id;
     }
 
+    /**
+     * docs/04 «una matrícula vigente por persona y curso»: si el participante ya está matriculado o cursando el curso,
+     * se responde 409 con un mensaje claro antes de insertar (antes chocaba con uq_course_enrollments_3 y daba error 500).
+     */
+    public static function assertNoActiveEnrollment(?string $learnerId, string $courseId, string $who = 'Esa persona'): void
+    {
+        if (! $learnerId) {
+            return;
+        }
+        $e = DB::selectOne("select e.status, c.title from course_enrollments e join courses c on c.id = e.course_id
+                             where e.course_id = ? and e.external_learner_id = ? and e.status in ('enrolled', 'in_progress') and e.deleted_at is null limit 1",
+            [$courseId, $learnerId]);
+        if ($e) {
+            $state = $e->status === 'in_progress' ? 'está cursando' : 'ya está matriculada en';
+            throw new ApiProblem(409, 'conflict', 'Matrícula vigente', "{$who} {$state} «{$e->title}»: no se puede matricular de nuevo hasta que termine o se anule esa matrícula.");
+        }
+    }
+
     /** Pedidos pendientes cuyo plazo venció: pasan a «vencido» y liberan el aforo (RN-VTA-12). */
     public static function expire(\Illuminate\Database\ConnectionInterface $db): int
     {
